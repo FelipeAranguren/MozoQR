@@ -1,0 +1,66 @@
+{
+  "kind": "collectionType",
+  "collectionName": "productos",
+  "info": {
+    "singularName": "producto",
+    "pluralName": "productos",
+    "displayName": "Producto"
+  },
+  "options": {
+    "draftAndPublish": true
+  },
+  "pluginOptions": {},
+  "attributes": {
+    "name": {
+      "type": "string",
+      "required": true
+    },
+    "price": {
+      "type": "decimal",
+      "required": true
+    },
+    "restaurante": {
+      "type": "relation",
+      "relation": "manyToOne",
+      "target": "api::restaurante.restaurante",
+      "inversedBy": "productos"
+    },
+    "description": {
+      "type": "blocks"
+    },
+    "image": {
+      "type": "media",
+      "multiple": false,
+      "allowedTypes": [
+        "images",
+        "files",
+        "videos",
+        "audios"
+      ]
+    },
+    "categoria": {
+      "type": "relation",
+      "relation": "manyToOne",
+      "target": "api::categoria.categoria",
+      "inversedBy": "productos"
+    },
+    "item_pedidos": {
+      "type": "relation",
+      "relation": "oneToMany",
+      "target": "api::item-pedido.item-pedido",
+      "mappedBy": "product"
+    },
+    "slug": {
+      "type": "uid"
+    },
+    "available": {
+      "type": "boolean"
+    },
+    "sku": {
+      "type": "string"
+    },
+    "extras": {
+      "type": "json"
+    }
+  }
+}

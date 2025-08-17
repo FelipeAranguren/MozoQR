@@ -1,0 +1,40 @@
+{
+    "kind": "collectionType",
+    "collectionName": "item_pedidos",
+    "info": {
+        "singularName": "item-pedido",
+        "pluralName": "item-pedidos",
+        "displayName": "Item-Pedido"
+    },
+    "options": {
+        "draftAndPublish": true
+    },
+    "pluginOptions": {},
+    "attributes": {
+        "quantity": {
+            "type": "integer",
+            "required": true
+        },
+        "product": {
+            "type": "relation",
+            "relation": "manyToOne",
+            "target": "api::producto.producto",
+            "inversedBy": "item_pedidos"
+        },
+        "order": {
+            "type": "relation",
+            "relation": "manyToOne",
+            "target": "api::pedido.pedido",
+            "inversedBy": "items"
+        },
+        "notes": {
+            "type": "string"
+        },
+        "UnitPrice": {
+            "type": "decimal"
+        },
+        "totalPrice": {
+            "type": "decimal"
+        }
+    }
+}
