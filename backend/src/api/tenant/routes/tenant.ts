@@ -10,5 +10,21 @@ export default {
         auth: false,
       },
     },
+    {
+      method: 'POST',
+      path: '/restaurants/:slug/close-account',
+      handler: 'tenant.closeAccount',
+      config: {
+        auth: false,
+      },
+    },
+    {
+      method: 'PUT',
+      path: '/restaurants/:slug/close-account',
+      handler: 'tenant.closeAccount',
+      config: {
+        auth: false,
+      },
+    },
   ],
 };

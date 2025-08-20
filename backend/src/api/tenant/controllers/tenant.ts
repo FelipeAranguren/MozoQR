@@ -1,37 +1,39 @@
 // backend/src/api/tenant/controllers/tenant.ts
 import { errors } from '@strapi/utils';
-const { ApplicationError, NotFoundError, ValidationError } = errors;
+const { ValidationError, NotFoundError } = errors;
 
-type CreateOrderItem = {
-  productId?: number | string;
-  id?: number | string;
-  qty?: number | string;
-  unitPrice?: number | string;
-  price?: number | string;
-  notes?: string;
+type Ctx = {
+  params?: Record<string, any>;
+  request: { body: any };
+  body?: any;
 };
 
 export default {
   /**
    * POST /restaurants/:slug/orders
-   * Crea un Pedido e Item-Pedidos, forzando la relación 'restaurante' por slug.
-   * Público por ahora (MVP). Luego se agrega policy y throttling.
+   * Crea un pedido para un restaurante (busca restaurante por slug),
+   * luego crea sus ítems usando ids planos (REST).
    */
-  async createOrder(ctx) {
+  async createOrder(ctx: Ctx) {
     const { slug } = ctx.params || {};
     const raw = ctx.request.body;
     const data = (raw && (raw as any).data) ? (raw as any).data : raw || {};
 
-    const table = data?.table;
-    const items: CreateOrderItem[] = Array.isArray(data?.items) ? data.items : [];
-    const customerNotes: string = data?.customerNotes || '';
-    const tableSessionId: string | null = data?.tableSessionId || null;
-
     if (!slug) throw new ValidationError('Missing restaurant slug');
-    if (table === undefined || table === null || table === '') throw new ValidationError('Missing table');
-    if (!items.length) throw new ValidationError('Empty items');
 
-    // 1) Buscar restaurante por slug (solo publicados)
+    const table = data?.table;
+    const tableSessionId: string | null = data?.tableSessionId ?? null;
+    const customerNotes: string = data?.customerNotes ?? '';
+    const items: any[] = Array.isArray(data?.items) ? data.items : [];
+
+    if (table === undefined || table === null || table === '') {
+      throw new ValidationError('Missing table');
+    }
+    if (!Array.isArray(items) || items.length === 0) {
+      throw new ValidationError('Empty items');
+    }
+
+    // 1) Buscar restaurante por slug
     const restaurantes = await strapi.entityService.findMany('api::restaurante.restaurante', {
       filters: { slug },
       fields: ['id', 'name'],
@@ -41,22 +43,29 @@ export default {
     const restaurante = restaurantes?.[0];
     if (!restaurante?.id) throw new NotFoundError('Restaurante no encontrado');
 
-    // 2) Calcular total/subtotal
-    const subtotal = items.reduce((sum, it) => {
-      const qty = Number(it?.qty ?? 0);
-      const unit = Number(it?.unitPrice ?? it?.price ?? 0);
-      return sum + qty * unit;
-    }, 0);
+    // 2) Calcular total (si no vino del cliente)
+    const calcTotal = (arr: any[]) =>
+      arr.reduce((s, it) => {
+        const q = Number(it?.qty ?? 0);
+        const p = Number(it?.unitPrice ?? it?.price ?? 0);
+        const line = q * p;
+        return s + (Number.isFinite(line) ? line : 0);
+      }, 0);
 
-    // 3) Crear Pedido forzando relación 'restaurante'
+    const total =
+      data?.total !== undefined && data?.total !== null && data?.total !== ''
+        ? Number(data.total)
+        : calcTotal(items);
+
+    // 3) Crear pedido
     const pedido = await strapi.entityService.create('api::pedido.pedido', {
       data: {
         table: Number(table),
-        order_status: 'pending', // mapea al enum actual: pending|preparing|served|paid
+        order_status: 'pending',
         customerNotes,
         tableSessionId,
-        total: subtotal,
-        restaurante: restaurante.id, // << clave: se setea en el servidor
+        total,
+        restaurante: restaurante.id, // relación por id plano en REST
         publishedAt: new Date(),
       },
     });
@@ -84,5 +93,60 @@ export default {
     );
 
     ctx.body = { data: { id: pedido.id } };
+  },
+
+  /**
+   * POST /restaurants/:slug/close-account
+   * Marca todos los pedidos de la mesa como pagados.
+   */
+  async closeAccount(ctx) {
+    const { slug } = ctx.params || {};
+    const raw = ctx.request.body;
+    const data = (raw && (raw as any).data) ? (raw as any).data : raw || {};
+
+    const table = data?.table;
+    const tableSessionId: string | null = data?.tableSessionId || null;
+
+    if (!slug) throw new ValidationError('Missing restaurant slug');
+    if (table === undefined || table === null || table === '')
+      throw new ValidationError('Missing table');
+
+    // Buscar restaurante por slug
+    const restaurantes = await strapi.entityService.findMany(
+      'api::restaurante.restaurante',
+      {
+        filters: { slug },
+        fields: ['id'],
+        publicationState: 'live',
+        limit: 1,
+      }
+    );
+    const restaurante = restaurantes?.[0];
+    if (!restaurante?.id) throw new NotFoundError('Restaurante no encontrado');
+
+    // Buscar pedidos pendientes de la mesa
+    const filters: any = {
+      restaurante: restaurante.id,
+      table: Number(table),
+      order_status: { $ne: 'paid' },
+    };
+    if (tableSessionId) filters.tableSessionId = tableSessionId;
+
+    const pedidos = await strapi.entityService.findMany('api::pedido.pedido', {
+      filters,
+      fields: ['id'],
+      publicationState: 'live',
+    });
+
+    const ids = (pedidos || []).map((p: any) => p.id);
+    await Promise.all(
+      ids.map((id: number) =>
+        strapi.entityService.update('api::pedido.pedido', id, {
+          data: { order_status: 'paid' },
+        })
+      )
+    );
+
+    ctx.body = { data: { paidOrders: ids.length } };
   },
 };

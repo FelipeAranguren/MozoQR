@@ -31,7 +31,8 @@
             "mappedBy": "order"
         },
         "total": {
-            "type": "decimal"
+            "type": "decimal",
+            "required": true
         },
         "customerNotes": {
             "type": "text"

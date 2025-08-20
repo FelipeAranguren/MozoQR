@@ -476,7 +476,7 @@ export interface ApiPedidoPedido extends Struct.CollectionTypeSchema {
     >;
     table: Schema.Attribute.Integer;
     tableSessionId: Schema.Attribute.String;
-    total: Schema.Attribute.Decimal;
+    total: Schema.Attribute.Decimal & Schema.Attribute.Required;
     updatedAt: Schema.Attribute.DateTime;
     updatedBy: Schema.Attribute.Relation<'oneToOne', 'admin::user'> &
       Schema.Attribute.Private;

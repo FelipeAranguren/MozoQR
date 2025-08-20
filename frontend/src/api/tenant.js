@@ -16,9 +16,26 @@ function buildMediaURL(relUrl) {
   return filesBase + relUrl;
 }
 
+// Normalizadores (aceptan varias keys)
+function normQty(it) {
+  return Number(it?.qty ?? it?.quantity ?? it?.cant ?? it?.amount ?? it?.qtySelected ?? 0);
+}
+function normPrice(it) {
+  return Number(it?.unitPrice ?? it?.price ?? it?.precio ?? it?.unit_price ?? 0);
+}
+
+function calcCartTotal(items = []) {
+  return items.reduce((s, it) => {
+    const q = normQty(it);
+    const p = normPrice(it);
+    const line = q * p;
+    return s + (Number.isFinite(line) ? line : 0);
+  }, 0);
+}
+
 /* ---------------- MENÚS ---------------- */
 export async function fetchMenus(slug) {
-  // 1) Intentar endpoint namespaced si existe
+  // Namespaced (si existe)
   try {
     const { data } = await http.get(`/restaurants/${slug}/menus`);
     const products = [];
@@ -34,7 +51,7 @@ export async function fetchMenus(slug) {
     });
     return { restaurantName: data?.data?.name || slug, products };
   } catch {
-    // 2) Fallback al modelo actual
+    // Fallback: colecciones Strapi v4
     try {
       const res = await http.get(
         `/restaurantes?filters[slug][$eq]=${encodeURIComponent(
@@ -66,20 +83,39 @@ async function getRestaurantBySlug(slug) {
   return { id: Number(r.id), name: r.name };
 }
 
+// buscar el id numérico real del pedido usando su documentId
+async function findPedidoIdByDocumentId(documentId) {
+  if (!documentId) return null;
+  const params = new URLSearchParams();
+  params.append('filters[documentId][$eq]', documentId);
+  params.append('fields[0]', 'id');
+  params.append('fields[1]', 'documentId');
+  params.append('publicationState', 'preview');
+  params.append('sort', 'updatedAt:desc');
+  params.append('pagination[pageSize]', '1');
+  try {
+    const { data } = await http.get(`/pedidos?${params.toString()}`);
+    const first = data?.data?.[0];
+    return first?.id ? Number(first.id) : null;
+  } catch (e) {
+    console.warn('findPedidoIdByDocumentId error:', e?.response?.data || e?.message);
+    return null;
+  }
+}
+
 async function createItemPedido(pedidoId, it) {
-  const quantity = Number(it.qty || 0);
-  const unitPrice = Number(it.unitPrice ?? it.price ?? it.precio ?? 0);
+  const quantity = normQty(it);
+  const unitPrice = normPrice(it);
   const total = quantity * unitPrice;
 
-  // Importante: usar ids planos (no connect) en REST
   return http.post('/item-pedidos', {
     data: {
-      product: Number(it.productId ?? it.id),
+      product: Number(it?.productId ?? it?.id),
       order: Number(pedidoId),
       quantity,
-      notes: it.notes || '',
-      UnitPrice: unitPrice,
-      totalPrice: total,
+      notes: it?.notes || '',
+      UnitPrice: Number.isFinite(unitPrice) ? unitPrice : 0,
+      totalPrice: Number.isFinite(total) ? total : 0,
       publishedAt: new Date().toISOString(),
     },
   });
@@ -91,39 +127,59 @@ export async function createOrder(slug, payload) {
   if (table === undefined || table === null || table === '') throw new Error('Falta número de mesa');
   if (!Array.isArray(items) || items.length === 0) throw new Error('El carrito está vacío');
 
-  // 1) Intentar primero el endpoint namespaced (nuestro controller setea restaurante server-side)
+  const total = calcCartTotal(items);
+
+  // 1) Namespaced: el controller setea restaurante y debería devolver documentId
   try {
     const res = await http.post(`/restaurants/${slug}/orders`, {
       data: {
-        table,
+        table: Number(table),
         tableSessionId,
         customerNotes: notes || '',
+        total, // se envía; el backend puede ignorarlo si recalcula
         items: items.map((i) => ({
           productId: i.productId ?? i.id,
-          qty: i.qty,
-          price: i.unitPrice ?? i.price ?? i.precio,
+          qty: normQty(i),
+          price: normPrice(i),
           notes: i.notes || '',
         })),
       },
     });
-    return res.data; // { data: { id } }
+
+    // extraer documentId de la respuesta en forma defensiva
+    const payloadData = res?.data?.data ?? res?.data ?? {};
+    const docId =
+      payloadData?.documentId ??
+      payloadData?.document_id ??
+      payloadData?.attributes?.documentId ??
+      null;
+
+    // si tenemos documentId, buscar el id numérico real y actualizar total ahí
+    if (docId) {
+      try {
+        const realId = await findPedidoIdByDocumentId(docId);
+        if (realId) {
+          await http.put(`/pedidos/${realId}`, {
+            data: { total, publishedAt: new Date().toISOString() },
+          });
+        }
+      } catch (eFix) {
+        console.warn('PUT total via documentId falló:', eFix?.response?.data || eFix?.message);
+      }
+    }
+
+    return res.data; // { data: {..., documentId} }
   } catch (eNS) {
-    // Si existe y falló por otra razón que no sea 404, logueamos y caemos al fallback
     if (eNS?.response?.status && eNS.response.status !== 404) {
-      console.warn('Namespaced order endpoint error, falling back:', eNS.response.data || eNS.message);
+      console.warn('Namespaced endpoint error, fallback:', eNS.response.data || eNS.message);
     }
   }
 
-  // 2) Fallback al core controller POST /pedidos (por compatibilidad)
+  // 2) Fallback /pedidos: acá la API devuelve id numérico; seguimos igual
   const restaurant = await getRestaurantBySlug(slug);
   const restaurantId = Number(restaurant.id);
 
-  const total = items.reduce(
-    (s, it) => s + Number(it.qty || 0) * Number(it.unitPrice ?? it.price ?? it.precio ?? 0),
-    0
-  );
-
-  // Intento A: id plano
+  // Intento A: restaurante como id plano
   let created;
   try {
     created = await http.post('/pedidos', {
@@ -138,7 +194,7 @@ export async function createOrder(slug, payload) {
       },
     });
   } catch (ePlain) {
-    // Intento B: objeto { id }
+    // Intento B: restaurante como objeto { id }
     created = await http.post('/pedidos', {
       data: {
         table: Number(table),
@@ -158,4 +214,49 @@ export async function createOrder(slug, payload) {
   await Promise.all(items.map((it) => createItemPedido(pedidoId, it)));
 
   return { data: { id: pedidoId } };
+}
+
+export async function closeAccount(slug, payload) {
+  const { table, tableSessionId } = payload || {};
+  if (table === undefined || table === null || table === '')
+    throw new Error('Falta número de mesa');
+  try {
+    const res = await http.post(`/restaurants/${slug}/close-account`, {
+      data: { table, tableSessionId },
+    });
+    return res.data; // { data: { paidOrders } }
+  } catch (err) {
+    // Algunos despliegues exigen PUT para actualizar recursos.
+    if (err?.response?.status === 405) {
+      const res = await http.put(`/restaurants/${slug}/close-account`, {
+        data: { table, tableSessionId },
+      });
+      return res.data;
+    }
+    throw err;
+  }
+}
+
+export async function hasOpenAccount(slug, payload) {
+  const { table, tableSessionId } = payload || {};
+  if (table === undefined || table === null || table === '') return false;
+  try {
+    const parts = [
+      `filters[restaurante][slug][$eq]=${encodeURIComponent(slug)}`,
+      `filters[table][$eq]=${table}`,
+      `filters[order_status][$ne]=paid`,
+    ];
+    if (tableSessionId)
+      parts.push(
+        `filters[tableSessionId][$eq]=${encodeURIComponent(tableSessionId)}`
+      );
+    const qs = parts.join('&');
+    const res = await http.get(
+      `/pedidos?${qs}&fields[0]=id&pagination[pageSize]=1`
+    );
+    return Array.isArray(res?.data?.data) && res.data.data.length > 0;
+  } catch (err) {
+    console.warn('hasOpenAccount error:', err?.response?.data || err);
+    return false;
+  }
 }
