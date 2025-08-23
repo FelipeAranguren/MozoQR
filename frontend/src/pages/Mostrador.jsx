@@ -121,7 +121,7 @@ export default function Mostrador() {
         const a = row.attributes || row;
 
         // mesa_sesion (relation)
-        const ses = a.mesa_sesions?.data || a.mesa_sesions || null;
+        const ses = a.mesa_sesion?.data || a.mesa_sesion || null;
         const sesAttrs = ses?.attributes || ses || null;
         const mesa = sesAttrs?.mesa?.data || sesAttrs?.mesa || null;
         const mesaAttrs = mesa?.attributes || mesa || null;
