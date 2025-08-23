@@ -7,26 +7,19 @@ exports.default = {
             method: 'POST',
             path: '/restaurants/:slug/orders',
             handler: 'tenant.createOrder',
-            config: {
-                // En MVP lo dejamos público; luego ponemos policy/ratelimit
-                auth: false,
-            },
+            config: { auth: false },
         },
         {
             method: 'POST',
             path: '/restaurants/:slug/close-account',
             handler: 'tenant.closeAccount',
-            config: {
-                auth: false,
-            },
+            config: { auth: false },
         },
         {
             method: 'PUT',
             path: '/restaurants/:slug/close-account',
             handler: 'tenant.closeAccount',
-            config: {
-                auth: false,
-            },
+            config: { auth: false },
         },
     ],
 };

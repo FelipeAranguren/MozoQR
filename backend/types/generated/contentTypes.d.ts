@@ -440,6 +440,87 @@ export interface ApiItemPedidoItemPedido extends Struct.CollectionTypeSchema {
   };
 }
 
+export interface ApiMesaSesionMesaSesion extends Struct.CollectionTypeSchema {
+  collectionName: 'mesa_sesions';
+  info: {
+    displayName: 'MesaSesion';
+    pluralName: 'mesa-sesions';
+    singularName: 'mesa-sesion';
+  };
+  options: {
+    draftAndPublish: true;
+  };
+  attributes: {
+    closedAt: Schema.Attribute.DateTime;
+    code: Schema.Attribute.UID & Schema.Attribute.Required;
+    createdAt: Schema.Attribute.DateTime;
+    createdBy: Schema.Attribute.Relation<'oneToOne', 'admin::user'> &
+      Schema.Attribute.Private;
+    locale: Schema.Attribute.String & Schema.Attribute.Private;
+    localizations: Schema.Attribute.Relation<
+      'oneToMany',
+      'api::mesa-sesion.mesa-sesion'
+    > &
+      Schema.Attribute.Private;
+    mesa: Schema.Attribute.Relation<'manyToOne', 'api::mesa.mesa'>;
+    notes: Schema.Attribute.String;
+    openedAt: Schema.Attribute.DateTime;
+    paidTotal: Schema.Attribute.Integer & Schema.Attribute.DefaultTo<0>;
+    pedidos: Schema.Attribute.Relation<'oneToMany', 'api::pedido.pedido'>;
+    publishedAt: Schema.Attribute.DateTime;
+    restaurante: Schema.Attribute.Relation<
+      'manyToOne',
+      'api::restaurante.restaurante'
+    >;
+    session_status: Schema.Attribute.Enumeration<['open', 'closed', 'paid']> &
+      Schema.Attribute.DefaultTo<'open'>;
+    total: Schema.Attribute.Integer & Schema.Attribute.DefaultTo<0>;
+    updatedAt: Schema.Attribute.DateTime;
+    updatedBy: Schema.Attribute.Relation<'oneToOne', 'admin::user'> &
+      Schema.Attribute.Private;
+  };
+}
+
+export interface ApiMesaMesa extends Struct.CollectionTypeSchema {
+  collectionName: 'mesas';
+  info: {
+    displayName: 'Mesa';
+    pluralName: 'mesas';
+    singularName: 'mesa';
+  };
+  options: {
+    draftAndPublish: true;
+  };
+  attributes: {
+    createdAt: Schema.Attribute.DateTime;
+    createdBy: Schema.Attribute.Relation<'oneToOne', 'admin::user'> &
+      Schema.Attribute.Private;
+    currentSession: Schema.Attribute.Relation<
+      'oneToOne',
+      'api::mesa-sesion.mesa-sesion'
+    >;
+    displayName: Schema.Attribute.String;
+    isActive: Schema.Attribute.Boolean & Schema.Attribute.DefaultTo<true>;
+    locale: Schema.Attribute.String & Schema.Attribute.Private;
+    localizations: Schema.Attribute.Relation<'oneToMany', 'api::mesa.mesa'> &
+      Schema.Attribute.Private;
+    mesa_sesions: Schema.Attribute.Relation<
+      'oneToMany',
+      'api::mesa-sesion.mesa-sesion'
+    >;
+    notes: Schema.Attribute.String;
+    number: Schema.Attribute.Integer & Schema.Attribute.Required;
+    publishedAt: Schema.Attribute.DateTime;
+    restaurante: Schema.Attribute.Relation<
+      'manyToOne',
+      'api::restaurante.restaurante'
+    >;
+    updatedAt: Schema.Attribute.DateTime;
+    updatedBy: Schema.Attribute.Relation<'oneToOne', 'admin::user'> &
+      Schema.Attribute.Private;
+  };
+}
+
 export interface ApiPedidoPedido extends Struct.CollectionTypeSchema {
   collectionName: 'pedidos';
   info: {
@@ -465,6 +546,10 @@ export interface ApiPedidoPedido extends Struct.CollectionTypeSchema {
       'api::pedido.pedido'
     > &
       Schema.Attribute.Private;
+    mesa_sesion: Schema.Attribute.Relation<
+      'manyToOne',
+      'api::mesa-sesion.mesa-sesion'
+    >;
     order_status: Schema.Attribute.Enumeration<
       ['pending', 'preparing', 'served', 'paid']
     > &
@@ -474,8 +559,6 @@ export interface ApiPedidoPedido extends Struct.CollectionTypeSchema {
       'manyToOne',
       'api::restaurante.restaurante'
     >;
-    table: Schema.Attribute.Integer;
-    tableSessionId: Schema.Attribute.String;
     total: Schema.Attribute.Decimal & Schema.Attribute.Required;
     updatedAt: Schema.Attribute.DateTime;
     updatedBy: Schema.Attribute.Relation<'oneToOne', 'admin::user'> &
@@ -561,6 +644,11 @@ export interface ApiRestauranteRestaurante extends Struct.CollectionTypeSchema {
     > &
       Schema.Attribute.Private;
     logo: Schema.Attribute.Media<'images' | 'files' | 'videos' | 'audios'>;
+    mesa_sesions: Schema.Attribute.Relation<
+      'oneToMany',
+      'api::mesa-sesion.mesa-sesion'
+    >;
+    mesas: Schema.Attribute.Relation<'oneToMany', 'api::mesa.mesa'>;
     mp_access_token: Schema.Attribute.Text & Schema.Attribute.Private;
     mp_public_key: Schema.Attribute.String & Schema.Attribute.Private;
     name: Schema.Attribute.String & Schema.Attribute.Required;
@@ -1087,6 +1175,8 @@ declare module '@strapi/strapi' {
       'admin::user': AdminUser;
       'api::categoria.categoria': ApiCategoriaCategoria;
       'api::item-pedido.item-pedido': ApiItemPedidoItemPedido;
+      'api::mesa-sesion.mesa-sesion': ApiMesaSesionMesaSesion;
+      'api::mesa.mesa': ApiMesaMesa;
       'api::pedido.pedido': ApiPedidoPedido;
       'api::producto.producto': ApiProductoProducto;
       'api::restaurante.restaurante': ApiRestauranteRestaurante;

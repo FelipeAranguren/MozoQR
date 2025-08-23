@@ -1,0 +1,46 @@
+{
+    "kind": "collectionType",
+    "collectionName": "mesas",
+    "info": {
+        "singularName": "mesa",
+        "pluralName": "mesas",
+        "displayName": "Mesa"
+    },
+    "options": {
+        "draftAndPublish": true
+    },
+    "pluginOptions": {},
+    "attributes": {
+        "number": {
+            "type": "integer",
+            "required": true
+        },
+        "displayName": {
+            "type": "string"
+        },
+        "isActive": {
+            "type": "boolean",
+            "default": true
+        },
+        "restaurante": {
+            "type": "relation",
+            "relation": "manyToOne",
+            "target": "api::restaurante.restaurante",
+            "inversedBy": "mesas"
+        },
+        "notes": {
+            "type": "string"
+        },
+        "mesa_sesions": {
+            "type": "relation",
+            "relation": "oneToMany",
+            "target": "api::mesa-sesion.mesa-sesion",
+            "mappedBy": "mesa"
+        },
+        "currentSession": {
+            "type": "relation",
+            "relation": "oneToOne",
+            "target": "api::mesa-sesion.mesa-sesion"
+        }
+    }
+}

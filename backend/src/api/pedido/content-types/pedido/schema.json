@@ -11,9 +11,6 @@
   },
   "pluginOptions": {},
   "attributes": {
-    "table": {
-      "type": "integer"
-    },
     "order_status": {
       "type": "enumeration",
       "default": "pending",
@@ -49,8 +46,11 @@
       "target": "plugin::users-permissions.user",
       "inversedBy": "pedidos"
     },
-    "tableSessionId": {
-      "type": "string"
+    "mesa_sesion": {
+      "type": "relation",
+      "relation": "manyToOne",
+      "target": "api::mesa-sesion.mesa-sesion",
+      "inversedBy": "pedidos"
     }
   }
 }

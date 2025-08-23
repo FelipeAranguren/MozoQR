@@ -66,6 +66,18 @@
     },
     "cuenta_bancaria": {
       "type": "string"
+    },
+    "mesas": {
+      "type": "relation",
+      "relation": "oneToMany",
+      "target": "api::mesa.mesa",
+      "mappedBy": "restaurante"
+    },
+    "mesa_sesions": {
+      "type": "relation",
+      "relation": "oneToMany",
+      "target": "api::mesa-sesion.mesa-sesion",
+      "mappedBy": "restaurante"
     }
   }
 }
