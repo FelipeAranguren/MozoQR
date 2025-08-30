@@ -1,23 +1,24 @@
-// backend/src/api/tenant/routes/tenant.ts
+// src/api/tenant/routes/tenant.ts
 export default {
   routes: [
     {
       method: 'POST',
       path: '/restaurants/:slug/orders',
       handler: 'tenant.createOrder',
-      config: { auth: false },
+      config: { policies: [], middlewares: [] },
     },
     {
       method: 'POST',
       path: '/restaurants/:slug/close-account',
       handler: 'tenant.closeAccount',
-      config: { auth: false },
+      config: { policies: [], middlewares: [] },
     },
+    // opcional: permitir cerrar cuenta también con PUT
     {
       method: 'PUT',
       path: '/restaurants/:slug/close-account',
       handler: 'tenant.closeAccount',
-      config: { auth: false },
+      config: { policies: [], middlewares: [] },
     },
   ],
 };

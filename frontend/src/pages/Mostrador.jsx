@@ -108,7 +108,7 @@ export default function Mostrador() {
       const listQS =
         `?filters[restaurante][slug][$eq]=${encodeURIComponent(slug)}` +
         `&fields[0]=id&fields[1]=documentId&fields[2]=order_status&fields[3]=customerNotes&fields[4]=total&fields[5]=createdAt&fields[6]=updatedAt` +
-        `&populate[mesa_sesion][fields][0]=session_status` +
+        `&populate[mesa_sesion][fields][0]=session_status&populate[mesa_sesion][fields][1]=code` +
         `&populate[mesa_sesion][populate][mesa][fields][0]=number` +
         `&sort[0]=${encodeURIComponent(sort)}` +
         `&pagination[pageSize]=100`;
@@ -122,9 +122,9 @@ export default function Mostrador() {
 
         // mesa_sesion (relation)
         const ses = a.mesa_sesion?.data || a.mesa_sesion || null;
-        const sesAttrs = ses?.attributes || ses || null;
+        const sesAttrs = ses?.attributes || ses || {};
         const mesa = sesAttrs?.mesa?.data || sesAttrs?.mesa || null;
-        const mesaAttrs = mesa?.attributes || mesa || null;
+        const mesaAttrs = mesa?.attributes || mesa || {};
 
         return {
           id: row.id || a.id,
@@ -134,10 +134,14 @@ export default function Mostrador() {
           createdAt: a.createdAt,
           updatedAt: a.updatedAt,
           total: a.total,
-          // claves derivadas de la relación
-          mesaSesionId: ses?.id || null,
-          mesaNumber: mesaAttrs?.number ?? null,
-          mesaSesionStatus: sesAttrs?.session_status ?? null,
+          mesa_sesion: ses
+            ? {
+                id: ses.id,
+                session_status: sesAttrs.session_status,
+                code: sesAttrs.code,
+                mesa: mesa ? { id: mesa.id, number: mesaAttrs.number } : null,
+              }
+            : null,
         };
       });
 
@@ -163,6 +167,7 @@ export default function Mostrador() {
         ? [...conItems].sort((a, b) => new Date(b.updatedAt) - new Date(a.updatedAt))
         : ordenar(conItems);
 
+      // Visibles (tarjetas de la izquierda)
       const visibles = showHistory
         ? ordenados.filter((p) => ['served', 'paid'].includes(p.order_status))
         : ordenados.filter((p) => isActive(p.order_status));
@@ -170,47 +175,63 @@ export default function Mostrador() {
       pedidosRef.current = visibles;
       setPedidos(visibles);
 
-      // ---- agrupar por mesa_sesion (si no hay, agrupamos por mesaNumber como fallback) ----
+      // ---- CUENTAS: agrupar **solo por sesión** y filtrar por estado de sesión ----
       const grupos = new Map();
-      ordenados.forEach((p) => {
-        const key = p.mesaSesionId ? `ses:${p.mesaSesionId}` : `mesa:${p.mesaNumber ?? 's/n'}`;
+
+      for (const p of ordenados) {
+        const ses = p.mesa_sesion;
+        if (!ses?.id) {
+          // No agrupamos en "Cuentas" pedidos sin sesión (evita mezclas por mesa)
+          continue;
+        }
+
+        // Filtrado por estado de la sesión
+        const sesIsPaid = ses.session_status === 'paid';
+        if (!showHistory && sesIsPaid) continue;      // activos: solo sesiones abiertas
+        if (showHistory && !sesIsPaid) continue;      // historial: solo sesiones pagadas
+
+        const key = `ses:${ses.id}`;
         const arr = grupos.get(key) || [];
         arr.push(p);
         grupos.set(key, arr);
-      });
+      }
 
       const cuentasArr = Array.from(grupos, ([groupKey, arr]) => {
-        const hasUnpaid = arr.some((o) => o.order_status !== 'paid');
-        const lista = hasUnpaid ? arr.filter((o) => o.order_status !== 'paid') : arr;
-        const total = lista.reduce((sum, it) => sum + Number(it.total || 0), 0);
-        const lastUpdated = arr.reduce((max, it) => Math.max(max, new Date(it.updatedAt).getTime()), 0);
+        // En activos, queremos mostrar lo no pagado; en historial, todo lo que estuvo en la sesión
+        const ses = arr[0]?.mesa_sesion;
+        const mesaNumber = ses?.mesa?.number ?? null;
 
-        // Mostrar número de mesa si existe en alguno
-        const mesaNumber =
-          arr.find((x) => Number.isFinite(Number(x.mesaNumber)))?.mesaNumber ?? null;
-        const sesId = arr.find((x) => x.mesaSesionId)?.mesaSesionId ?? null;
+        // Si la sesión está abierta, sumamos sólo pedidos no pagados
+        const lista = (ses?.session_status === 'paid')
+          ? arr
+          : arr.filter((o) => o.order_status !== 'paid');
+
+        const total = lista.reduce((sum, it) => sum + Number(it.total || 0), 0);
+        const lastUpdated = arr.reduce(
+          (max, it) => Math.max(max, new Date(it.updatedAt).getTime()),
+          0
+        );
 
         return {
           groupKey,
           mesaNumber,
-          mesaSesionId: sesId,
+          mesaSesionId: ses?.id ?? null,
           pedidos: ordenar(lista),
           total,
-          hasUnpaid,
           lastUpdated,
         };
       });
 
-      const filtradas = showHistory
-        ? cuentasArr.filter((c) => !c.hasUnpaid).sort((a, b) => b.lastUpdated - a.lastUpdated)
-        : cuentasArr.filter((c) => c.hasUnpaid).sort((a, b) => {
-            // ordenar por número de mesa si lo tenemos
+      // Orden de las cuentas
+      const ordenadas = showHistory
+        ? cuentasArr.sort((a, b) => b.lastUpdated - a.lastUpdated)
+        : cuentasArr.sort((a, b) => {
             const am = Number.isFinite(Number(a.mesaNumber)) ? Number(a.mesaNumber) : 999999;
             const bm = Number.isFinite(Number(b.mesaNumber)) ? Number(b.mesaNumber) : 999999;
             return am - bm;
           });
 
-      setCuentas(filtradas);
+      setCuentas(ordenadas);
       setError(null);
     } catch (err) {
       console.error('Error al obtener pedidos:', err?.response?.data || err);
@@ -248,22 +269,29 @@ export default function Mostrador() {
 
   const marcarComoRecibido = async (pedido) => {
     try {
-      setPedidos((prev) => {
-        const next = prev.map((p) =>
+      // Optimista: NO tocamos items, solo estado
+      setPedidos(prev => {
+        const next = prev.map(p =>
           keyOf(p) === keyOf(pedido) ? { ...p, order_status: 'preparing' } : p
         );
         pedidosRef.current = next;
         return next;
       });
 
+      // Efecto visual inmediato
       triggerFlash(pedido.documentId);
+
+      // Backend
       await putEstadoByDocumentId(pedido.documentId, 'preparing');
-      await refreshItemsDe(pedido.id);
+
+      // Rehidratar items por las dudas
+      await refreshItemsDe(pedido.documentId);
     } catch (err) {
       console.error('Error al marcar como Recibido:', err?.response?.data || err);
       setError('No se pudo actualizar el pedido.');
-      setPedidos((prev) => {
-        const next = prev.map((p) =>
+      // rollback
+      setPedidos(prev => {
+        const next = prev.map(p =>
           keyOf(p) === keyOf(pedido) ? { ...p, order_status: 'pending' } : p
         );
         pedidosRef.current = next;
@@ -274,21 +302,25 @@ export default function Mostrador() {
 
   const marcarComoServido = async (pedido) => {
     try {
-      triggerFlash(pedido.documentId);
-
-      setPedidos((prev) => {
-        const next = prev.filter((p) => keyOf(p) !== keyOf(pedido));
+      
+      
+      // Optimista: quitarlo
+      setPedidos(prev => {
+        const next = prev.filter(p => keyOf(p) !== keyOf(pedido));
         pedidosRef.current = next;
         return next;
       });
 
       await putEstadoByDocumentId(pedido.documentId, 'served');
+
+      // refresco general por si aparecieron nuevos
       fetchPedidos();
     } catch (err) {
       console.error('Error al marcar como servido:', err?.response?.data || err);
       setError('No se pudo actualizar el pedido.');
-      setPedidos((prev) => {
-        if (prev.some((p) => keyOf(p) === keyOf(pedido))) return prev;
+      // rollback
+      setPedidos(prev => {
+        if (prev.some(p => keyOf(p) === keyOf(pedido))) return prev;
         const next = [pedido, ...prev];
         pedidosRef.current = next;
         return next;
@@ -327,13 +359,10 @@ export default function Mostrador() {
                 customerNotes,
                 items = [],
                 total,
-                mesaNumber,
               } = pedido;
-
+              const mesaNumero = pedido.mesa_sesion?.mesa?.number;
               const flashing = flashIds.has(documentId);
-              const tituloMesa = Number.isFinite(Number(mesaNumber))
-                ? `Mesa ${mesaNumber}`
-                : 'Mesa';
+              const tituloMesa = `Mesa ${mesaNumero ?? '—'}`;
 
               return (
                 <Grid item key={documentId || id} xs={12} sm={6} md={6} lg={4}>
@@ -431,9 +460,7 @@ export default function Mostrador() {
           {cuentas.map((c) => (
             <Card key={c.groupKey} sx={{ mb: 2 }}>
               <CardContent>
-                <Typography variant="h6">
-                  {Number.isFinite(Number(c.mesaNumber)) ? `Mesa ${c.mesaNumber}` : 'Mesa'}
-                </Typography>
+                <Typography variant="h6">Mesa {c.mesaNumber ?? '—'}</Typography>
                 <List>
                   {c.pedidos.map((p) => (
                     <ListItem key={p.documentId || p.id}>

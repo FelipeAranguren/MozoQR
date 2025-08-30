@@ -33,8 +33,8 @@ function calcCartTotal(items = []) {
 
 /* ---------------- MENÚS ---------------- */
 export async function fetchMenus(slug) {
+  // 1) Intento namespaced (si no existe, 404 -> seguimos al fallback)
   try {
-    // namespaced (si existe)
     const { data } = await http.get(`/restaurants/${slug}/menus`);
     const products = [];
     (data?.data?.categories || []).forEach((cat) => {
@@ -47,27 +47,39 @@ export async function fetchMenus(slug) {
         });
       });
     });
-    return { restaurantName: data?.data?.name || slug, products };
-  } catch {
-    // fallback Strapi directo
-    try {
-      const res = await http.get(
-        `/restaurantes?filters[slug][$eq]=${encodeURIComponent(slug)}&populate[productos][populate][image]=true`
-      );
-      const restaurante = res?.data?.data?.[0];
-      const products =
-        (restaurante?.productos || []).map((p) => {
-          const fm = p?.image?.formats;
-          const rel = fm?.small?.url || fm?.thumbnail?.url || p?.image?.url || null;
-          return { id: p.id, name: p.name, price: p.price, image: buildMediaURL(rel) };
-        }) || [];
-      return { restaurantName: restaurante?.name || slug, products };
-    } catch (err) {
-      console.error('fetchMenus fallback error:', err?.response?.data || err?.message || err);
-      return { restaurantName: slug, products: [] };
+    if (products.length) {
+      return { restaurantName: data?.data?.name || slug, products };
     }
+  } catch (e) {
+    // útil para entender si es 404 (endpoint no existe) o 403 (permisos)
+    console.warn('menus namespaced error:', e?.response?.status, e?.response?.data || e?.message);
+  }
+
+  // 2) Fallback directo a Strapi (v4)
+  try {
+    const qs =
+      `?filters[slug][$eq]=${encodeURIComponent(slug)}` +
+      `&publicationState=preview` +
+      `&populate[productos][populate][image]=true` +
+      `&fields[0]=id&fields[1]=name`;
+
+    const res = await http.get(`/restaurantes${qs}`);
+    const restaurante = res?.data?.data?.[0];
+    const products =
+      (restaurante?.productos || []).map((p) => {
+        const fm = p?.image?.formats;
+        const rel = fm?.small?.url || fm?.thumbnail?.url || p?.image?.url || null;
+        return { id: p.id, name: p.name, price: p.price, image: buildMediaURL(rel) };
+      }) || [];
+
+    return { restaurantName: restaurante?.name || slug, products };
+  } catch (err) {
+    console.error('fetchMenus fallback error:', err?.response?.status, err?.response?.data || err?.message);
+    return { restaurantName: slug, products: [] };
   }
 }
+
+
 
 /* ---------------- PEDIDOS ---------------- */
 export async function createOrder(slug, payload) {
@@ -81,7 +93,6 @@ export async function createOrder(slug, payload) {
   const res = await http.post(`/restaurants/${slug}/orders`, {
     data: {
       table: Number(table),
-      tableSessionId: tableSessionId || null,
       customerNotes: notes || '',
       total,
       items: items.map((i) => ({
@@ -97,41 +108,52 @@ export async function createOrder(slug, payload) {
 }
 
 export async function closeAccount(slug, payload) {
-  const { table, tableSessionId } = payload || {};
+  const { table } = payload || {};
   if (!table) throw new Error('Falta número de mesa');
   try {
-    const res = await http.post(`/restaurants/${slug}/close-account`, {
-      data: { table, tableSessionId },
-    });
-    return res.data; // { data: { paidOrders } }
+    const res = await http.post(`/restaurants/${slug}/close-account`, { data: { table } });
+    return res.data;
   } catch (err) {
     if (err?.response?.status === 405) {
-      const res = await http.put(`/restaurants/${slug}/close-account`, {
-        data: { table, tableSessionId },
-      });
+      const res = await http.put(`/restaurants/${slug}/close-account`, { data: { table } });
       return res.data;
     }
     throw err;
   }
 }
 
+
 export async function hasOpenAccount(slug, payload) {
-  const { table, tableSessionId } = payload || {};
-  if (!table) return false;
+  const { table } = payload || {};
+  if (table === undefined || table === null || table === '') return false;
+
   try {
     const params = new URLSearchParams();
     params.append('filters[restaurante][slug][$eq]', slug);
     params.append('filters[order_status][$ne]', 'paid');
-    params.append('filters[mesa_sesion][mesa][number][$eq]', String(table));
-    if (tableSessionId) {
-      params.append('filters[mesa_sesion][code][$eq]', tableSessionId);
-    }
     params.append('fields[0]', 'id');
-    params.append('pagination[pageSize]', '1');
+    params.append('fields[1]', 'order_status');
+    // poblar lo justo para conocer el número de mesa
+    params.append('populate[mesa_sesion][fields][0]', 'id');
+    params.append('populate[mesa_sesion][populate][mesa][fields][0]', 'number');
+    params.append('pagination[pageSize]', '100');
+
     const { data } = await http.get(`/pedidos?${params.toString()}`);
-    return Array.isArray(data?.data) && data.data.length > 0;
+    const rows = data?.data || [];
+
+    // aplanado defensivo (v4)
+    const anyForThisTable = rows.some((row) => {
+      const a = row.attributes || row;
+      const ses = a.mesa_sesion?.data || a.mesa_sesion;
+      const mesa = ses?.attributes?.mesa?.data || ses?.mesa;
+      const num = mesa?.attributes?.number ?? mesa?.number;
+      return Number(num) === Number(table) && a.order_status !== 'paid';
+    });
+
+    return anyForThisTable;
   } catch (err) {
     console.warn('hasOpenAccount error:', err?.response?.data || err);
     return false;
   }
 }
+

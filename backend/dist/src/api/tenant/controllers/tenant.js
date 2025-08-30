@@ -1,209 +1,221 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-// backend/src/api/tenant/controllers/tenant.ts
+/**
+ * Custom tenant controller
+ * Endpoints:
+ *  - POST /api/restaurants/:slug/orders
+ *  - POST|PUT /api/restaurants/:slug/close-account
+ */
 const utils_1 = require("@strapi/utils");
 const { ValidationError, NotFoundError } = utils_1.errors;
-/* ----------------------- Helpers ----------------------- */
-async function findRestauranteBySlug(slug) {
-    var _a;
-    const restaurantes = await strapi.entityService.findMany('api::restaurante.restaurante', {
-        filters: { slug: { $eq: slug } },
-        fields: ['id', 'name'],
-        publicationState: 'live',
-        limit: 1,
-    });
-    return (_a = restaurantes === null || restaurantes === void 0 ? void 0 : restaurantes[0]) !== null && _a !== void 0 ? _a : null;
+function getPayload(raw) {
+    // Acepta { data: {...} } o {...}
+    return raw && typeof raw === 'object' && 'data' in raw ? raw.data : raw;
 }
-async function getOrCreateMesa(restauranteId, tableNumber) {
-    const mesas = await strapi.entityService.findMany('api::mesa.mesa', {
-        filters: {
-            restaurante: { id: { $eq: restauranteId } },
-            number: { $eq: tableNumber },
-        },
-        fields: ['id', 'number'],
-        publicationState: 'live',
+/* -------------------------------------------------------
+ * Helpers (REST-safe: usamos ids planos)
+ * ----------------------------------------------------- */
+/** Busca restaurante por slug y devuelve { id, name } */
+async function getRestaurantBySlug(slug) {
+    const rows = await strapi.entityService.findMany('api::restaurante.restaurante', {
+        filters: { slug },
+        fields: ['id', 'name'],
         limit: 1,
     });
-    if (mesas === null || mesas === void 0 ? void 0 : mesas[0])
-        return mesas[0];
+    const r = rows === null || rows === void 0 ? void 0 : rows[0];
+    if (!(r === null || r === void 0 ? void 0 : r.id))
+        throw new NotFoundError('Restaurante no encontrado');
+    return { id: r.id, name: r.name };
+}
+/** Crea (si no existe) o devuelve la Mesa (por restaurante + number) */
+async function getOrCreateMesa(restauranteId, number) {
+    var _a;
+    const found = await strapi.entityService.findMany('api::mesa.mesa', {
+        filters: { restaurante: { id: Number(restauranteId) }, number },
+        fields: ['id', 'number'],
+        limit: 1,
+    });
+    if ((_a = found === null || found === void 0 ? void 0 : found[0]) === null || _a === void 0 ? void 0 : _a.id)
+        return found[0];
     return await strapi.entityService.create('api::mesa.mesa', {
         data: {
-            number: tableNumber,
+            number,
             isActive: true,
             restaurante: restauranteId,
             publishedAt: new Date(),
         },
     });
 }
-async function getOrCreateOpenSession(restauranteId, mesaId, tableSessionCode) {
-    const filters = {
-        restaurante: { id: { $eq: restauranteId } },
-        mesa: { id: { $eq: mesaId } },
-        session_status: { $eq: 'open' },
-    };
-    if (tableSessionCode)
-        filters.code = { $eq: tableSessionCode };
-    const sesiones = await strapi.entityService.findMany('api::mesa-sesion.mesa-sesion', {
-        filters,
-        fields: ['id', 'code', 'session_status'],
-        publicationState: 'live',
+/**
+ * Devuelve la sesión ABIERTA para esa mesa.
+ * Estrategia: primero buscar una 'open' por (restaurante, mesa).
+ * Si no hay, crear una nueva (code autogenerado).
+ * Ignoramos 'code' para reutilizar por robustez (evita “primer pedido sin sesión”).
+ */
+async function getOrCreateOpenSession(opts) {
+    var _a;
+    const { restauranteId, mesaId } = opts;
+    // 1) Buscar sesión abierta existente (única por mesa)
+    const existingOpen = await strapi.entityService.findMany('api::mesa-sesion.mesa-sesion', {
+        filters: {
+            restaurante: { id: Number(restauranteId) },
+            mesa: { id: Number(mesaId) },
+            session_status: 'open',
+        },
+        fields: ['id', 'code', 'session_status', 'openedAt'],
+        sort: ['openedAt:desc', 'createdAt:desc'],
         limit: 1,
     });
-    if (sesiones === null || sesiones === void 0 ? void 0 : sesiones[0])
-        return sesiones[0];
-    const sesion = await strapi.entityService.create('api::mesa-sesion.mesa-sesion', {
+    if ((_a = existingOpen === null || existingOpen === void 0 ? void 0 : existingOpen[0]) === null || _a === void 0 ? void 0 : _a.id)
+        return existingOpen[0];
+    // 2) Crear una nueva
+    const newCode = Math.random().toString(36).slice(2, 8) + '-' + Date.now().toString(36).slice(-4);
+    return await strapi.entityService.create('api::mesa-sesion.mesa-sesion', {
         data: {
-            code: tableSessionCode || undefined,
+            code: newCode,
             session_status: 'open',
             openedAt: new Date(),
-            total: 0,
-            paidTotal: 0,
-            mesa: mesaId,
-            restaurante: restauranteId,
+            restaurante: { id: Number(restauranteId) }, // <= así
+            mesa: { id: Number(mesaId) }, // <= así
             publishedAt: new Date(),
         },
     });
-    await strapi.entityService.update('api::mesa.mesa', mesaId, {
-        data: { currentSession: sesion.id },
-    });
-    return sesion;
 }
-/* ----------------------- Controller ----------------------- */
+/** Crea los ítems de un pedido (ids planos) */
+async function createItems(pedidoId, items) {
+    await Promise.all((items || []).map((it) => {
+        var _a, _b, _c, _d, _e;
+        const quantity = Number((_b = (_a = it === null || it === void 0 ? void 0 : it.qty) !== null && _a !== void 0 ? _a : it === null || it === void 0 ? void 0 : it.quantity) !== null && _b !== void 0 ? _b : 0);
+        const unitPrice = Number((_d = (_c = it === null || it === void 0 ? void 0 : it.unitPrice) !== null && _c !== void 0 ? _c : it === null || it === void 0 ? void 0 : it.price) !== null && _d !== void 0 ? _d : 0);
+        const total = Number.isFinite(quantity * unitPrice) ? quantity * unitPrice : 0;
+        const productId = Number((_e = it === null || it === void 0 ? void 0 : it.productId) !== null && _e !== void 0 ? _e : it === null || it === void 0 ? void 0 : it.id);
+        if (!productId)
+            throw new ValidationError('Item sin productId');
+        return strapi.entityService.create('api::item-pedido.item-pedido', {
+            data: {
+                quantity,
+                notes: (it === null || it === void 0 ? void 0 : it.notes) || '',
+                UnitPrice: Number.isFinite(unitPrice) ? unitPrice : 0,
+                totalPrice: total,
+                order: pedidoId,
+                product: productId,
+                publishedAt: new Date(),
+            },
+        });
+    }));
+}
+/* -------------------------------------------------------
+ * Controller
+ * ----------------------------------------------------- */
 exports.default = {
+    /**
+     * POST /restaurants/:slug/orders
+     * Body esperado: { table: number, items: [...], total?: number, customerNotes?: string }
+     */
     async createOrder(ctx) {
         var _a, _b;
         const { slug } = ctx.params || {};
-        const raw = ctx.request.body || {};
-        const data = (raw && raw.data) ? raw.data : raw;
         if (!slug)
             throw new ValidationError('Missing restaurant slug');
+        const data = getPayload(ctx.request.body);
         const table = data === null || data === void 0 ? void 0 : data.table;
-        const tableSessionId = (_a = data === null || data === void 0 ? void 0 : data.tableSessionId) !== null && _a !== void 0 ? _a : null;
-        const customerNotes = (_b = data === null || data === void 0 ? void 0 : data.customerNotes) !== null && _b !== void 0 ? _b : '';
         const items = Array.isArray(data === null || data === void 0 ? void 0 : data.items) ? data.items : [];
+        const customerNotes = (_b = (_a = data === null || data === void 0 ? void 0 : data.customerNotes) !== null && _a !== void 0 ? _a : data === null || data === void 0 ? void 0 : data.notes) !== null && _b !== void 0 ? _b : '';
         if (table === undefined || table === null || table === '') {
             throw new ValidationError('Missing table');
         }
-        if (!items.length)
+        if (!Array.isArray(items) || items.length === 0) {
             throw new ValidationError('Empty items');
-        const restaurante = await findRestauranteBySlug(slug);
-        if (!(restaurante === null || restaurante === void 0 ? void 0 : restaurante.id))
-            throw new NotFoundError('Restaurante no encontrado');
-        // 👇 casteamos ids a number
-        const mesa = await getOrCreateMesa(Number(restaurante.id), Number(table)); // 👈
-        const sesion = await getOrCreateOpenSession(Number(restaurante.id), Number(mesa.id), tableSessionId); // 👈
-        const calcTotal = (arr) => arr.reduce((s, it) => {
-            var _a, _b, _c;
-            const q = Number((_a = it === null || it === void 0 ? void 0 : it.qty) !== null && _a !== void 0 ? _a : 0);
-            const p = Number((_c = (_b = it === null || it === void 0 ? void 0 : it.unitPrice) !== null && _b !== void 0 ? _b : it === null || it === void 0 ? void 0 : it.price) !== null && _c !== void 0 ? _c : 0);
-            const line = q * p;
-            return s + (Number.isFinite(line) ? line : 0);
-        }, 0);
+        }
+        // Restaurante
+        const restaurante = await getRestaurantBySlug(String(slug));
+        // Mesa & Sesión (única sesión "open" por mesa)
+        const mesa = await getOrCreateMesa(restaurante.id, Number(table));
+        const sesion = await getOrCreateOpenSession({
+            restauranteId: restaurante.id,
+            mesaId: mesa.id,
+        });
+        // Total (del cliente o calculado)
         const total = (data === null || data === void 0 ? void 0 : data.total) !== undefined && (data === null || data === void 0 ? void 0 : data.total) !== null && (data === null || data === void 0 ? void 0 : data.total) !== ''
             ? Number(data.total)
-            : calcTotal(items);
+            : items.reduce((s, it) => {
+                var _a, _b, _c, _d;
+                const q = Number((_b = (_a = it === null || it === void 0 ? void 0 : it.qty) !== null && _a !== void 0 ? _a : it === null || it === void 0 ? void 0 : it.quantity) !== null && _b !== void 0 ? _b : 0);
+                const p = Number((_d = (_c = it === null || it === void 0 ? void 0 : it.unitPrice) !== null && _c !== void 0 ? _c : it === null || it === void 0 ? void 0 : it.price) !== null && _d !== void 0 ? _d : 0);
+                const line = q * p;
+                return s + (Number.isFinite(line) ? line : 0);
+            }, 0);
+        // Crear pedido vinculado a la sesión (usar objeto { id } para la relación)
         const pedido = await strapi.entityService.create('api::pedido.pedido', {
             data: {
                 order_status: 'pending',
                 customerNotes,
                 total,
-                mesa_sesion: sesion.id,
-                restaurante: restaurante.id,
+                restaurante: { id: Number(restaurante.id) },
+                mesa_sesion: { id: Number(sesion.id) },
                 publishedAt: new Date(),
             },
         });
-        await Promise.all(items.map((it) => {
-            var _a, _b, _c, _d;
-            const quantity = Number((_a = it === null || it === void 0 ? void 0 : it.qty) !== null && _a !== void 0 ? _a : 0);
-            const unit = Number((_c = (_b = it === null || it === void 0 ? void 0 : it.unitPrice) !== null && _b !== void 0 ? _b : it === null || it === void 0 ? void 0 : it.price) !== null && _c !== void 0 ? _c : 0);
-            const productId = Number((_d = it === null || it === void 0 ? void 0 : it.productId) !== null && _d !== void 0 ? _d : it === null || it === void 0 ? void 0 : it.id);
-            if (!productId)
-                throw new ValidationError('Item without productId');
-            return strapi.entityService.create('api::item-pedido.item-pedido', {
-                data: {
-                    quantity,
-                    notes: (it === null || it === void 0 ? void 0 : it.notes) || '',
-                    UnitPrice: unit,
-                    totalPrice: quantity * unit,
-                    order: pedido.id,
-                    product: productId,
-                    publishedAt: new Date(),
-                },
-            });
-        }));
-        const pedidosDeSesion = await strapi.entityService.findMany('api::pedido.pedido', {
-            filters: { mesa_sesion: { id: { $eq: sesion.id } } },
-            fields: ['id', 'total'],
-            publicationState: 'live',
-            limit: 500,
-        });
-        const nuevoTotal = (pedidosDeSesion || []).reduce((s, p) => s + Number(p.total || 0), 0);
-        await strapi.entityService.update('api::mesa-sesion.mesa-sesion', sesion.id, {
-            data: { total: nuevoTotal },
-        });
-        ctx.body = { data: { id: pedido.id, mesaSesionId: sesion.id } };
+        // Ítems
+        await createItems(pedido.id, items);
+        ctx.body = { data: { id: pedido.id } };
     },
+    /**
+     * POST|PUT /restaurants/:slug/close-account
+     * Body: { table: number }
+     * Marca como 'paid' los pedidos de la sesión abierta para esa mesa
+     * y cierra la sesión. Limpia mesa.currentSession (si lo usás).
+     */
     async closeAccount(ctx) {
         const { slug } = ctx.params || {};
-        const raw = ctx.request.body || {};
-        const data = (raw && raw.data) ? raw.data : raw;
         if (!slug)
             throw new ValidationError('Missing restaurant slug');
+        const data = getPayload(ctx.request.body);
         const table = data === null || data === void 0 ? void 0 : data.table;
-        const tableSessionId = (data === null || data === void 0 ? void 0 : data.tableSessionId) || null;
-        if (table === undefined || table === null || table === '')
+        if (table === undefined || table === null || table === '') {
             throw new ValidationError('Missing table');
-        const restaurante = await findRestauranteBySlug(slug);
-        if (!(restaurante === null || restaurante === void 0 ? void 0 : restaurante.id))
-            throw new NotFoundError('Restaurante no encontrado');
-        const mesas = await strapi.entityService.findMany('api::mesa.mesa', {
+        }
+        // Restaurante, mesa y sesión abierta actual
+        const restaurante = await getRestaurantBySlug(String(slug));
+        const mesa = await getOrCreateMesa(restaurante.id, Number(table));
+        const openList = await strapi.entityService.findMany('api::mesa-sesion.mesa-sesion', {
             filters: {
-                restaurante: { id: { $eq: Number(restaurante.id) } },
-                number: { $eq: Number(table) },
+                restaurante: { id: Number(restaurante.id) },
+                mesa: { id: Number(mesa.id) },
+                session_status: 'open',
             },
             fields: ['id'],
-            publicationState: 'live',
+            sort: ['openedAt:desc', 'createdAt:desc'],
             limit: 1,
         });
-        const mesa = mesas === null || mesas === void 0 ? void 0 : mesas[0];
-        if (!(mesa === null || mesa === void 0 ? void 0 : mesa.id))
-            throw new NotFoundError('Mesa no encontrada');
-        const sesFilters = {
-            restaurante: { id: { $eq: Number(restaurante.id) } },
-            mesa: { id: { $eq: Number(mesa.id) } },
-            session_status: { $eq: 'open' },
-        };
-        if (tableSessionId)
-            sesFilters.code = { $eq: tableSessionId };
-        const sesiones = await strapi.entityService.findMany('api::mesa-sesion.mesa-sesion', {
-            filters: sesFilters,
-            fields: ['id'],
-            publicationState: 'live',
-            limit: 1,
-        });
-        const sesion = sesiones === null || sesiones === void 0 ? void 0 : sesiones[0];
+        const sesion = (openList === null || openList === void 0 ? void 0 : openList[0]) || null;
         if (!(sesion === null || sesion === void 0 ? void 0 : sesion.id)) {
-            ctx.body = { data: { paidOrders: 0, message: 'No open session' } };
+            ctx.body = { data: { paidOrders: 0 } };
             return;
         }
+        // Pedidos NO pagados de esa sesión
         const pedidos = await strapi.entityService.findMany('api::pedido.pedido', {
-            filters: {
-                mesa_sesion: { id: { $eq: sesion.id } },
-                order_status: { $ne: 'paid' },
-            },
-            fields: ['id', 'total'],
-            publicationState: 'live',
-            limit: 500,
+            filters: { mesa_sesion: sesion.id, order_status: { $ne: 'paid' } },
+            fields: ['id'],
+            limit: 1000,
         });
         const ids = (pedidos || []).map((p) => p.id);
         await Promise.all(ids.map((id) => strapi.entityService.update('api::pedido.pedido', id, {
             data: { order_status: 'paid' },
         })));
-        const totalPagado = (pedidos || []).reduce((s, p) => s + Number(p.total || 0), 0);
+        // Cerrar la sesión (marcar como 'paid' y poner closedAt)
         await strapi.entityService.update('api::mesa-sesion.mesa-sesion', sesion.id, {
-            data: { session_status: 'closed', closedAt: new Date(), paidTotal: totalPagado },
+            data: { session_status: 'paid', closedAt: new Date() },
         });
-        await strapi.entityService.update('api::mesa.mesa', Number(mesa.id), { data: { currentSession: null } });
-        ctx.body = { data: { paidOrders: ids.length, mesaSesionId: sesion.id } };
+        // Limpia la referencia de sesión actual en la mesa (si la usás)
+        try {
+            await strapi.entityService.update('api::mesa.mesa', mesa.id, {
+                data: { currentSession: null },
+            });
+        }
+        catch {
+            // opcional: si no existe el campo, ignorar
+        }
+        ctx.body = { data: { paidOrders: ids.length } };
     },
 };

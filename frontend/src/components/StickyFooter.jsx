@@ -36,7 +36,6 @@ export default function StickyFooter({ table, tableSessionId }) {
       setLoading(true);
       await createOrder(slug, {
         table,
-        tableSessionId,
         items: items.map(i => ({
           productId: i.id,
           qty: i.qty,
