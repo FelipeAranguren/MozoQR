@@ -79,8 +79,6 @@ export async function fetchMenus(slug) {
   }
 }
 
-
-
 /* ---------------- PEDIDOS ---------------- */
 export async function createOrder(slug, payload) {
   const { table, tableSessionId, items = [], notes } = payload || {};
@@ -108,20 +106,52 @@ export async function createOrder(slug, payload) {
 }
 
 export async function closeAccount(slug, payload) {
-  const { table } = payload || {};
+  const { table, tableSessionId } = payload || {};
   if (!table) throw new Error('Falta número de mesa');
+  const data = { table };
+  if (tableSessionId) data.tableSessionId = tableSessionId;
+  let res;
   try {
-    const res = await http.post(`/restaurants/${slug}/close-account`, { data: { table } });
-    return res.data;
+    res = await http.post(`/restaurants/${slug}/close-account`, { data });
   } catch (err) {
     if (err?.response?.status === 405) {
-      const res = await http.put(`/restaurants/${slug}/close-account`, { data: { table } });
-      return res.data;
+      res = await http.put(`/restaurants/${slug}/close-account`, { data });
+    } else {
+      throw err;
     }
-    throw err;
   }
-}
 
+  // Aseguramos que todos los pedidos de la mesa queden marcados como paid
+  try {
+    const params = new URLSearchParams();
+    params.append('filters[restaurante][slug][$eq]', slug);
+    params.append('filters[order_status][$ne]', 'paid');
+    params.append('fields[0]', 'id');
+    params.append('populate[mesa_sesion][populate][mesa][fields][0]', 'number');
+    params.append('pagination[pageSize]', '100');
+
+    const { data: list } = await http.get(`/pedidos?${params.toString()}`);
+    const rows = list?.data || [];
+
+    const pendientes = rows.filter((row) => {
+      const a = row.attributes || row;
+      const ses = a.mesa_sesion?.data || a.mesa_sesion;
+      const mesa = ses?.attributes?.mesa?.data || ses?.mesa;
+      const num = mesa?.attributes?.number ?? mesa?.number;
+      return Number(num) === Number(table);
+    });
+
+    await Promise.all(
+      pendientes.map((row) =>
+        http.put(`/pedidos/${row.id}`, { data: { order_status: 'paid' } })
+      )
+    );
+  } catch (e) {
+    console.warn('closeAccount sync paid error:', e?.response?.data || e);
+  }
+
+  return res?.data;
+}
 
 export async function hasOpenAccount(slug, payload) {
   const { table } = payload || {};
@@ -156,4 +186,3 @@ export async function hasOpenAccount(slug, payload) {
     return false;
   }
 }
-

@@ -28,6 +28,7 @@ export default function Mostrador() {
 
   // ref para snapshot siempre fresco
   const pedidosRef = useRef([]);
+  const servingIdsRef = useRef(new Set());
 
   // ids (documentId) que deben “flashear” por ~1.2s
   const [flashIds, setFlashIds] = useState(new Set());
@@ -46,20 +47,6 @@ export default function Mostrador() {
     }, 1200);
   };
 
-  // silenciar warnings HMR de Vite en dev (opcional)
-  useEffect(() => {
-    if (!import.meta.env.DEV) return;
-    const origError = console.error;
-    console.error = (...args) => {
-      try {
-        const msg = args?.map((a) => (typeof a === 'string' ? a : a?.message || '')).join(' ');
-        if (msg.includes('WebSocket connection to') || msg.includes("Failed to construct 'WebSocket'")) return;
-      } catch {}
-      origError(...args);
-    };
-    return () => { console.error = origError; };
-  }, []);
-
   // helpers
   const keyOf = (p) => p?.documentId || String(p?.id);
   const isActive = (st) => !['served', 'paid'].includes(st);
@@ -72,6 +59,62 @@ export default function Mostrador() {
       if (pa !== pb) return pa - pb;
       return new Date(a.createdAt) - new Date(b.createdAt);
     });
+  };
+
+  // --------- mapeos/rehidratación ----------
+  const mapPedidoRow = (row) => {
+    const a = row.attributes || row;
+
+    // mesa_sesion (relation)
+    const ses = a.mesa_sesion?.data || a.mesa_sesion || null;
+    const sesAttrs = ses?.attributes || ses || {};
+    const mesa = sesAttrs?.mesa?.data || sesAttrs?.mesa || null;
+    const mesaAttrs = mesa?.attributes || mesa || {};
+
+    return {
+      id: row.id || a.id,
+      documentId: a.documentId,
+      order_status: a.order_status,
+      customerNotes: a.customerNotes,
+      createdAt: a.createdAt,
+      updatedAt: a.updatedAt,
+      total: a.total,
+      mesa_sesion: ses
+        ? {
+            id: ses.id,
+            session_status: sesAttrs.session_status,
+            code: sesAttrs.code,
+            mesa: mesa ? { id: mesa.id, number: mesaAttrs.number } : null,
+          }
+        : null,
+    };
+  };
+
+  // Si un pedido viene sin mesa_sesion, intento una rehidratación puntual con populate profundo.
+  const hydrateMesaSesionIfMissing = async (pedido) => {
+    if (pedido.mesa_sesion) return pedido;
+    try {
+      const qs =
+        `?publicationState=preview` +
+        `&fields[0]=id&fields[1]=documentId&fields[2]=order_status&fields[3]=customerNotes&fields[4]=total&fields[5]=createdAt&fields[6]=updatedAt` +
+        `&populate[mesa_sesion][fields][0]=session_status` +
+        `&populate[mesa_sesion][fields][1]=code` +
+        `&populate[mesa_sesion][populate][mesa][fields][0]=number`;
+
+      const r = await api.get(`/pedidos/${pedido.id}${qs}`);
+      const data = r?.data?.data;
+      if (!data) return pedido;
+
+      // en /:id, Strapi devuelve data: { id, attributes, ... }
+      const filled = mapPedidoRow({
+        id: data.id,
+        ...(data.attributes ? data : { attributes: data }),
+      });
+
+      return filled.mesa_sesion ? filled : pedido;
+    } catch {
+      return pedido;
+    }
   };
 
   // ---- items de un pedido (por id numérico) ----
@@ -103,12 +146,18 @@ export default function Mostrador() {
   const fetchPedidos = async () => {
     try {
       const sort = showHistory ? 'updatedAt:desc' : 'createdAt:asc';
+      const statusFilter = showHistory
+        ? `&filters[order_status][$in][0]=served&filters[order_status][$in][1]=paid`
+        : `&filters[order_status][$in][0]=pending&filters[order_status][$in][1]=preparing`;
 
       // Traemos sólo lo necesario, y populamos la relación para obtener el número de mesa
       const listQS =
         `?filters[restaurante][slug][$eq]=${encodeURIComponent(slug)}` +
+        statusFilter +
+        `&publicationState=preview` +
         `&fields[0]=id&fields[1]=documentId&fields[2]=order_status&fields[3]=customerNotes&fields[4]=total&fields[5]=createdAt&fields[6]=updatedAt` +
-        `&populate[mesa_sesion][fields][0]=session_status&populate[mesa_sesion][fields][1]=code` +
+        `&populate[mesa_sesion][fields][0]=session_status` +
+        `&populate[mesa_sesion][fields][1]=code` +
         `&populate[mesa_sesion][populate][mesa][fields][0]=number` +
         `&sort[0]=${encodeURIComponent(sort)}` +
         `&pagination[pageSize]=100`;
@@ -117,32 +166,19 @@ export default function Mostrador() {
       const base = res?.data?.data ?? [];
 
       // Aplanar
-      const planos = base.map((row) => {
-        const a = row.attributes || row;
+      const planos = base.map(mapPedidoRow);
 
-        // mesa_sesion (relation)
-        const ses = a.mesa_sesion?.data || a.mesa_sesion || null;
-        const sesAttrs = ses?.attributes || ses || {};
-        const mesa = sesAttrs?.mesa?.data || sesAttrs?.mesa || null;
-        const mesaAttrs = mesa?.attributes || mesa || {};
+      // Re-hidratar puntualmente los que (por timing) vinieron sin mesa_sesion
+      const planosFilled = await Promise.all(
+        planos.map((p) => hydrateMesaSesionIfMissing(p))
+      );
 
-        return {
-          id: row.id || a.id,
-          documentId: a.documentId,
-          order_status: a.order_status,
-          customerNotes: a.customerNotes,
-          createdAt: a.createdAt,
-          updatedAt: a.updatedAt,
-          total: a.total,
-          mesa_sesion: ses
-            ? {
-                id: ses.id,
-                session_status: sesAttrs.session_status,
-                code: sesAttrs.code,
-                mesa: mesa ? { id: mesa.id, number: mesaAttrs.number } : null,
-              }
-            : null,
-        };
+      // quitar ids que ya no aparecen desde el servidor
+      servingIdsRef.current.forEach((id) => {
+        const found = planosFilled.find((p) => p.id === id);
+        if (!found || !isActive(found.order_status)) {
+          servingIdsRef.current.delete(id);
+        }
       });
 
       // snapshot previo por key (para no perder items si una consulta viene sin populate)
@@ -150,7 +186,7 @@ export default function Mostrador() {
 
       // Si el pedido está activo, traemos ítems; sino los omitimos
       const conItems = await Promise.all(
-        planos.map(async (p) => {
+        planosFilled.map(async (p) => {
           let items = [];
           if (isActive(p.order_status)) {
             try { items = await fetchItemsDePedido(p.id); } catch {}
@@ -167,71 +203,60 @@ export default function Mostrador() {
         ? [...conItems].sort((a, b) => new Date(b.updatedAt) - new Date(a.updatedAt))
         : ordenar(conItems);
 
-      // Visibles (tarjetas de la izquierda)
       const visibles = showHistory
         ? ordenados.filter((p) => ['served', 'paid'].includes(p.order_status))
-        : ordenados.filter((p) => isActive(p.order_status));
+        : ordenados.filter(
+            (p) => isActive(p.order_status) && !servingIdsRef.current.has(p.id)
+          );
 
       pedidosRef.current = visibles;
       setPedidos(visibles);
 
-      // ---- CUENTAS: agrupar **solo por sesión** y filtrar por estado de sesión ----
+      // ---- agrupar pedidos en cuentas (por sesión de mesa) ----
       const grupos = new Map();
-
-      for (const p of ordenados) {
-        const ses = p.mesa_sesion;
-        if (!ses?.id) {
-          // No agrupamos en "Cuentas" pedidos sin sesión (evita mezclas por mesa)
-          continue;
-        }
-
-        // Filtrado por estado de la sesión
-        const sesIsPaid = ses.session_status === 'paid';
-        if (!showHistory && sesIsPaid) continue;      // activos: solo sesiones abiertas
-        if (showHistory && !sesIsPaid) continue;      // historial: solo sesiones pagadas
-
-        const key = `ses:${ses.id}`;
+      ordenados.forEach((p) => {
+        const sesId = p.mesa_sesion?.id;
+        const mesaNum = p.mesa_sesion?.mesa?.number;
+        const key = sesId ? `ses:${sesId}` : `mesa:${mesaNum ?? 's/n'}`;
         const arr = grupos.get(key) || [];
         arr.push(p);
         grupos.set(key, arr);
-      }
+      });
 
       const cuentasArr = Array.from(grupos, ([groupKey, arr]) => {
-        // En activos, queremos mostrar lo no pagado; en historial, todo lo que estuvo en la sesión
-        const ses = arr[0]?.mesa_sesion;
-        const mesaNumber = ses?.mesa?.number ?? null;
-
-        // Si la sesión está abierta, sumamos sólo pedidos no pagados
-        const lista = (ses?.session_status === 'paid')
-          ? arr
-          : arr.filter((o) => o.order_status !== 'paid');
-
+        const hasUnpaid = arr.some((o) => o.order_status !== 'paid');
+        const lista = hasUnpaid ? arr.filter((o) => o.order_status !== 'paid') : arr;
         const total = lista.reduce((sum, it) => sum + Number(it.total || 0), 0);
         const lastUpdated = arr.reduce(
           (max, it) => Math.max(max, new Date(it.updatedAt).getTime()),
           0
         );
 
+        // Mostrar número de mesa si existe en alguno
+        const mesaNumber =
+          arr.find((x) => Number.isFinite(Number(x.mesa_sesion?.mesa?.number)))?.mesa_sesion?.mesa?.number ?? null;
+        const sesId = arr.find((x) => x.mesa_sesion?.id)?.mesa_sesion.id ?? null;
+
         return {
           groupKey,
           mesaNumber,
-          mesaSesionId: ses?.id ?? null,
+          mesaSesionId: sesId,
           pedidos: ordenar(lista),
           total,
+          hasUnpaid,
           lastUpdated,
         };
       });
 
-      // Orden de las cuentas
-      const ordenadas = showHistory
-        ? cuentasArr.sort((a, b) => b.lastUpdated - a.lastUpdated)
-        : cuentasArr.sort((a, b) => {
+      const filtradas = showHistory
+        ? cuentasArr.filter((c) => !c.hasUnpaid).sort((a, b) => b.lastUpdated - a.lastUpdated)
+        : cuentasArr.filter((c) => c.hasUnpaid).sort((a, b) => {
             const am = Number.isFinite(Number(a.mesaNumber)) ? Number(a.mesaNumber) : 999999;
             const bm = Number.isFinite(Number(b.mesaNumber)) ? Number(b.mesaNumber) : 999999;
             return am - bm;
           });
 
-      setCuentas(ordenadas);
+      setCuentas(filtradas);
       setError(null);
     } catch (err) {
       console.error('Error al obtener pedidos:', err?.response?.data || err);
@@ -247,9 +272,9 @@ export default function Mostrador() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [slug, showHistory]);
 
-  // ---- actualizar estado por documentId (Strapi v4 soporta documentId en REST) ----
-  const putEstadoByDocumentId = async (documentId, estado) => {
-    await api.put(`/pedidos/${documentId}`, { data: { order_status: estado } });
+  // ---- actualizar estado por ID numérico (más robusto que documentId) ----
+  const putEstado = async (id, estado) => {
+    await api.put(`/pedidos/${id}`, { data: { order_status: estado } });
   };
 
   const refreshItemsDe = async (orderId) => {
@@ -269,29 +294,22 @@ export default function Mostrador() {
 
   const marcarComoRecibido = async (pedido) => {
     try {
-      // Optimista: NO tocamos items, solo estado
-      setPedidos(prev => {
-        const next = prev.map(p =>
+      setPedidos((prev) => {
+        const next = prev.map((p) =>
           keyOf(p) === keyOf(pedido) ? { ...p, order_status: 'preparing' } : p
         );
         pedidosRef.current = next;
         return next;
       });
 
-      // Efecto visual inmediato
       triggerFlash(pedido.documentId);
-
-      // Backend
-      await putEstadoByDocumentId(pedido.documentId, 'preparing');
-
-      // Rehidratar items por las dudas
-      await refreshItemsDe(pedido.documentId);
+      await putEstado(pedido.id, 'preparing');
+      await refreshItemsDe(pedido.id);
     } catch (err) {
       console.error('Error al marcar como Recibido:', err?.response?.data || err);
       setError('No se pudo actualizar el pedido.');
-      // rollback
-      setPedidos(prev => {
-        const next = prev.map(p =>
+      setPedidos((prev) => {
+        const next = prev.map((p) =>
           keyOf(p) === keyOf(pedido) ? { ...p, order_status: 'pending' } : p
         );
         pedidosRef.current = next;
@@ -302,25 +320,23 @@ export default function Mostrador() {
 
   const marcarComoServido = async (pedido) => {
     try {
-      
-      
-      // Optimista: quitarlo
-      setPedidos(prev => {
-        const next = prev.filter(p => keyOf(p) !== keyOf(pedido));
+      triggerFlash(pedido.documentId);
+      servingIdsRef.current.add(pedido.id);
+
+      setPedidos((prev) => {
+        const next = prev.filter((p) => keyOf(p) !== keyOf(pedido));
         pedidosRef.current = next;
         return next;
       });
 
-      await putEstadoByDocumentId(pedido.documentId, 'served');
-
-      // refresco general por si aparecieron nuevos
-      fetchPedidos();
+      await putEstado(pedido.id, 'served');
+      await fetchPedidos();
     } catch (err) {
       console.error('Error al marcar como servido:', err?.response?.data || err);
       setError('No se pudo actualizar el pedido.');
-      // rollback
-      setPedidos(prev => {
-        if (prev.some(p => keyOf(p) === keyOf(pedido))) return prev;
+      servingIdsRef.current.delete(pedido.id);
+      setPedidos((prev) => {
+        if (prev.some((p) => keyOf(p) === keyOf(pedido))) return prev;
         const next = [pedido, ...prev];
         pedidosRef.current = next;
         return next;
@@ -362,7 +378,7 @@ export default function Mostrador() {
               } = pedido;
               const mesaNumero = pedido.mesa_sesion?.mesa?.number;
               const flashing = flashIds.has(documentId);
-              const tituloMesa = `Mesa ${mesaNumero ?? '—'}`;
+              const tituloMesa = `Mesa ${mesaNumero ?? 's/n'}`;
 
               return (
                 <Grid item key={documentId || id} xs={12} sm={6} md={6} lg={4}>
@@ -460,7 +476,7 @@ export default function Mostrador() {
           {cuentas.map((c) => (
             <Card key={c.groupKey} sx={{ mb: 2 }}>
               <CardContent>
-                <Typography variant="h6">Mesa {c.mesaNumber ?? '—'}</Typography>
+                <Typography variant="h6">Mesa {c.mesaNumber ?? 's/n'}</Typography>
                 <List>
                   {c.pedidos.map((p) => (
                     <ListItem key={p.documentId || p.id}>
