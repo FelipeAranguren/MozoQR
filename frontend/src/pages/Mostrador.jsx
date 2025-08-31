@@ -148,8 +148,7 @@ export default function Mostrador() {
       const sort = showHistory ? 'updatedAt:desc' : 'createdAt:asc';
       const statusFilter = showHistory
         ? `&filters[order_status][$in][0]=served&filters[order_status][$in][1]=paid`
-        : `&filters[order_status][$in][0]=pending&filters[order_status][$in][1]=preparing`;
-
+        : `&filters[order_status][$in][0]=pending&filters[order_status][$in][1]=preparing&filters[order_status][$in][2]=served`;
       // Traemos sólo lo necesario, y populamos la relación para obtener el número de mesa
       const listQS =
         `?filters[restaurante][slug][$eq]=${encodeURIComponent(slug)}` +
@@ -189,7 +188,11 @@ export default function Mostrador() {
         planosFilled.map(async (p) => {
           let items = [];
           if (isActive(p.order_status)) {
-            try { items = await fetchItemsDePedido(p.id); } catch {}
+            try {
+              items = await fetchItemsDePedido(p.id);
+            } catch {
+              /* ignore fetch errors */
+            }
           }
           if (!items.length) {
             const prev = prevByKey.get(keyOf(p));
@@ -212,12 +215,11 @@ export default function Mostrador() {
       pedidosRef.current = visibles;
       setPedidos(visibles);
 
-      // ---- agrupar pedidos en cuentas (por sesión de mesa) ----
+      // ---- agrupar pedidos en cuentas (agrupados por número de mesa) ----
       const grupos = new Map();
       ordenados.forEach((p) => {
-        const sesId = p.mesa_sesion?.id;
-        const mesaNum = p.mesa_sesion?.mesa?.number;
-        const key = sesId ? `ses:${sesId}` : `mesa:${mesaNum ?? 's/n'}`;
+        const mesaNum = p.mesa_sesion?.mesa?.number ?? 's/n';
+        const key = `mesa:${mesaNum}`;
         const arr = grupos.get(key) || [];
         arr.push(p);
         grupos.set(key, arr);

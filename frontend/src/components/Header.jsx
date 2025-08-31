@@ -20,7 +20,7 @@ export default function Header() {
           underline="none"
           sx={{ flexGrow: 1 }}
         >
-          <Typography variant="h6">Mi Restaurante QR</Typography>
+          <Typography variant="h6">MozoQR</Typography>
         </Link>
 
         {isAuthenticated ? (

@@ -25,7 +25,7 @@ export default {
         return { title, quantity, unit_price, currency_id: 'ARS' as const };
       });
 
-      const baseFront = (process.env.FRONTEND_URL || 'http://localhost:5173').trim();
+      const baseFront = (process.env.FRONTEND_URL || 'http://127.0.0.1:5173').trim();
       const successUrl = new URL('/pago/success', baseFront).toString();
       const failureUrl = new URL('/pago/failure', baseFront).toString();
       const pendingUrl = new URL('/pago/pending', baseFront).toString();
