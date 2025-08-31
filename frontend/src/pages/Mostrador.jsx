@@ -215,11 +215,13 @@ export default function Mostrador() {
       pedidosRef.current = visibles;
       setPedidos(visibles);
 
-      // ---- agrupar pedidos en cuentas (agrupados por número de mesa) ----
+      // ---- agrupar pedidos en cuentas (agrupados por mesa_sesion) ----
       const grupos = new Map();
       ordenados.forEach((p) => {
-        const mesaNum = p.mesa_sesion?.mesa?.number ?? 's/n';
-        const key = `mesa:${mesaNum}`;
+        // usar el id de la sesión para evitar agrupar pedidos de distintas sesiones en la misma mesa
+        const sesId = p.mesa_sesion?.id ?? null;
+        // si no hay sesión asociada, agrupar por pedido para no mezclarlos
+        const key = sesId != null ? `sesion:${sesId}` : `pedido:${p.id}`;
         const arr = grupos.get(key) || [];
         arr.push(p);
         grupos.set(key, arr);
