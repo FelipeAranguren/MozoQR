@@ -32,7 +32,7 @@ function addMonths(base, m) {
 const prettyName = (s='') => s.replaceAll('-', ' ').toUpperCase();
 
 export default function OwnerDashboard() {
-  const { slug } = useParams(); // lo mantenemos por compatibilidad con tu ruta
+  const { slug } = useParams();
   const navigate = useNavigate();
 
   const [periodKey, setPeriodKey] = useState('7d'); // por defecto 7d
@@ -55,47 +55,50 @@ export default function OwnerDashboard() {
   const [lifetimeOrders, setLifetimeOrders] = useState(0);  // total histórico
   const [sessionsCount, setSessionsCount] = useState(0);    // sesiones del rango (clientes)
 
-  // Carga pedidos del período (MISMO QS que el gráfico; no depende de slug)
+  // Carga pedidos del período (MISMO QS que el gráfico) — POR RESTAURANTE
   useEffect(() => {
+    if (!slug) return;
     let cancelled = false;
     (async () => {
       try {
-        const list = await getPaidOrders({ from: new Date(startMs), to: new Date(endMs) });
+        const list = await getPaidOrders({ slug, from: new Date(startMs), to: new Date(endMs) });
         if (!cancelled) setPeriodOrders(list || []);
       } catch {
         if (!cancelled) setPeriodOrders([]);
       }
     })();
     return () => { cancelled = true; };
-  }, [startMs, endMs]);
+  }, [slug, startMs, endMs]);
 
-  // Carga total histórico (lifetime)
+  // Carga total histórico (lifetime) — POR RESTAURANTE
   useEffect(() => {
+    if (!slug) return;
     let cancelled = false;
     (async () => {
       try {
-        const total = await getTotalOrdersCount();
+        const total = await getTotalOrdersCount({ slug });
         if (!cancelled) setLifetimeOrders(total);
       } catch {
         if (!cancelled) setLifetimeOrders(0);
       }
     })();
     return () => { cancelled = true; };
-  }, []);
+  }, [slug]);
 
-  // Carga cantidad de sesiones (clientes atendidos) del período
+  // Carga cantidad de sesiones (clientes atendidos) del período — POR RESTAURANTE
   useEffect(() => {
+    if (!slug) return;
     let cancelled = false;
     (async () => {
       try {
-        const total = await getSessionsCount({ from: new Date(startMs), to: new Date(endMs) });
+        const total = await getSessionsCount({ slug, from: new Date(startMs), to: new Date(endMs) });
         if (!cancelled) setSessionsCount(total);
       } catch {
         if (!cancelled) setSessionsCount(0);
       }
     })();
     return () => { cancelled = true; };
-  }, [startMs, endMs]);
+  }, [slug, startMs, endMs]);
 
   // === Derivados (basado en createdAt) ===
   const ingresosHoy = useMemo(() => {
@@ -128,7 +131,7 @@ export default function OwnerDashboard() {
       {/* Encabezado */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 16, marginBottom: 8, flexWrap: 'wrap' }}>
         <h2 style={{ margin: 0 }}>
-          Ventas en los últimos {periodDef.label} — 
+          Ventas en los últimos {periodDef.label} — {money(periodTotal)}
         </h2>
         <div style={{ opacity: 0.7 }}>({prettyName(slug)})</div>
 

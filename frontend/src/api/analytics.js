@@ -1,6 +1,5 @@
 // src/api/analytics.js
-// Ventas por día (pagados) + utilidades para KPIs (pedidos del período,
-// total histórico y cantidad de sesiones de mesa en el período).
+// Ventas por día (pagados) + utilidades para KPIs por restaurante.
 
 import { api } from '../api';
 
@@ -60,16 +59,18 @@ async function fetchAllPedidos(qsBase) {
 }
 
 /**
- * Ventas por día (agrupa por día LOCAL usando createdAt).
- * NOTA: no filtramos por restaurante porque tu API actual no lo expone en /pedidos.
+ * Ventas por día (agrupa por día LOCAL usando createdAt) PARA UN RESTAURANTE.
  */
-export async function fetchSalesByDay(_slug, options = {}) {
+export async function fetchSalesByDay(slug, options = {}) {
+  if (!slug) throw new Error('slug requerido');
+
   const end = options.end ? new Date(options.end) : new Date();
   const start = options.start
     ? new Date(options.start)
     : new Date(end.getTime() - 29 * 24 * 60 * 60 * 1000);
 
   const qs = buildQS({
+    'filters[restaurante][slug][$eq]': slug,
     'filters[order_status][$eq]': 'paid',
     'filters[createdAt][$gte]': new Date(start).toISOString(),
     'filters[createdAt][$lte]': endOfDayLocalISO(end),
@@ -104,11 +105,14 @@ export async function fetchSalesByDay(_slug, options = {}) {
 }
 
 /**
- * Pedidos "paid" en un rango [from, to] (para KPIs de período).
+ * Pedidos "paid" en un rango [from, to] (para KPIs de PERÍODO) POR RESTAURANTE.
  * Reutiliza el mismo paginado/qs que el gráfico → consistencia total.
  */
-export async function getPaidOrders({ from, to }) {
+export async function getPaidOrders({ slug, from, to }) {
+  if (!slug) throw new Error('slug requerido');
+
   const qs = buildQS({
+    'filters[restaurante][slug][$eq]': slug,
     'filters[order_status][$eq]': 'paid',
     'filters[createdAt][$gte]': new Date(from).toISOString(),
     'filters[createdAt][$lte]': endOfDayLocalISO(to),
@@ -119,12 +123,14 @@ export async function getPaidOrders({ from, to }) {
 }
 
 /**
- * Total histórico de pedidos "paid" (lifetime).
- * Sin filtro de restaurante por el motivo explicado arriba.
+ * Total HISTÓRICO de pedidos "paid" del restaurante.
  */
-export async function getTotalOrdersCount() {
+export async function getTotalOrdersCount({ slug }) {
+  if (!slug) throw new Error('slug requerido');
+
   const p = new URLSearchParams();
   p.set('filters[order_status][$eq]', 'paid');
+  p.set('filters[restaurante][slug][$eq]', slug);
   p.set('pagination[pageSize]', '1'); // mínimo payload
 
   const url = `/pedidos?${p.toString()}`;
@@ -134,12 +140,14 @@ export async function getTotalOrdersCount() {
 }
 
 /**
- * Cantidad de sesiones de mesa (clientes atendidos) abiertas en el período.
- * Endpoint confirmado: /mesa-sesions (sin segunda "s").
- * Regla: cuenta sesiones con openedAt dentro del rango.
+ * Cantidad de sesiones de mesa (clientes atendidos) en el período POR RESTAURANTE.
+ * Endpoint: /mesa-sesions (sin segunda "s"). Requiere relación restaurante en ese CT.
  */
-export async function getSessionsCount({ from, to }) {
+export async function getSessionsCount({ slug, from, to }) {
+  if (!slug) throw new Error('slug requerido');
+
   const p = new URLSearchParams();
+  p.set('filters[restaurante][slug][$eq]', slug); // requiere relación en mesa-sesions
   if (from) p.set('filters[openedAt][$gte]', new Date(from).toISOString());
   if (to)   p.set('filters[openedAt][$lte]', endOfDayLocalISO(to));
   p.set('pagination[pageSize]', '1');
