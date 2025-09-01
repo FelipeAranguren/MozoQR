@@ -13,6 +13,7 @@ import GoogleRedirect from './pages/GoogleRedirect';
 import PagoSuccess from './pages/PagoSuccess';
 import PagoFailure from './pages/PagoFailure';
 import PagoPending from './pages/PagoPending';
+import OwnerDashboard from './pages/OwnerDashboard';
 
 // Redirige rutas viejas /restaurantes/:slug -> /:slug/menu?t=1
 function LegacyRestaurantesRoute() {
@@ -45,6 +46,7 @@ export default function App() {
           <Route path="/pago/success" element={<PagoSuccess />} />
           <Route path="/pago/failure" element={<PagoFailure />} />
           <Route path="/pago/pending" element={<PagoPending />} />
+          <Route path="/owner/:slug/dashboard" element={<OwnerDashboard />} />
 
           {/* 404 simple: redirige al home */}
           <Route path="*" element={<Navigate to="/" replace />} />
