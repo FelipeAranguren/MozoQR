@@ -1,16 +1,21 @@
 // src/pages/OwnerDashboard.jsx
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import SalesByDayChart from '../components/SalesByDayChart';
+import {
+  getPaidOrders,
+  getTotalOrdersCount,
+  getSessionsCount,
+} from '../api/analytics';
 
 const money = (n) =>
-  new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS' })
+  new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS', maximumFractionDigits: 0 })
     .format(Number(n) || 0);
 
 const PERIODS = [
-  { key: '7d',  label: '7 días',   computeStart: (end) => addDays(end, -7) },
-  { key: '15d', label: '15 días',  computeStart: (end) => addDays(end, -15) },
-  { key: '30d', label: '30 días',  computeStart: (end) => addDays(end, -30) },
+  { key: '7d',  label: '7 días',   computeStart: (end) => addDays(end, -6) }, // incluye hoy
+  { key: '15d', label: '15 días',  computeStart: (end) => addDays(end, -14) },
+  { key: '30d', label: '30 días',  computeStart: (end) => addDays(end, -29) },
   { key: '6m',  label: '6 meses',  computeStart: (end) => addMonths(end, -6) },
   { key: '1y',  label: '12 meses', computeStart: (end) => addMonths(end, -12) },
 ];
@@ -27,18 +32,87 @@ function addMonths(base, m) {
 const prettyName = (s='') => s.replaceAll('-', ' ').toUpperCase();
 
 export default function OwnerDashboard() {
-  const { slug } = useParams();
+  const { slug } = useParams(); // lo mantenemos por compatibilidad con tu ruta
   const navigate = useNavigate();
 
-  const [periodKey, setPeriodKey] = useState('30d');
+  const [periodKey, setPeriodKey] = useState('7d'); // por defecto 7d
+  const [periodTotal, setPeriodTotal] = useState(0); // total del período (desde el gráfico)
 
-  // ¡Importante!: end siempre “ahora” (no memoizado) para no quedarse viejo
-  const end = new Date();
-  const { label: periodLabel, computeStart } =
-    useMemo(() => PERIODS.find(p => p.key === periodKey) || PERIODS[2], [periodKey]);
-  const start = useMemo(() => computeStart(end), [computeStart, end]);
+  // end se fija por período para evitar renders infinitos
+  const end = useMemo(() => new Date(), [periodKey]);
+  const periodDef = useMemo(
+    () => PERIODS.find(p => p.key === periodKey) || PERIODS[0],
+    [periodKey]
+  );
+  const start = useMemo(() => periodDef.computeStart(end), [periodDef, end]);
 
-  const [periodTotal, setPeriodTotal] = useState(0);
+  // Para deps estables
+  const startMs = start.getTime();
+  const endMs = end.getTime();
+
+  // KPIs
+  const [periodOrders, setPeriodOrders] = useState([]);     // pedidos del rango
+  const [lifetimeOrders, setLifetimeOrders] = useState(0);  // total histórico
+  const [sessionsCount, setSessionsCount] = useState(0);    // sesiones del rango (clientes)
+
+  // Carga pedidos del período (MISMO QS que el gráfico; no depende de slug)
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const list = await getPaidOrders({ from: new Date(startMs), to: new Date(endMs) });
+        if (!cancelled) setPeriodOrders(list || []);
+      } catch {
+        if (!cancelled) setPeriodOrders([]);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [startMs, endMs]);
+
+  // Carga total histórico (lifetime)
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const total = await getTotalOrdersCount();
+        if (!cancelled) setLifetimeOrders(total);
+      } catch {
+        if (!cancelled) setLifetimeOrders(0);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, []);
+
+  // Carga cantidad de sesiones (clientes atendidos) del período
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const total = await getSessionsCount({ from: new Date(startMs), to: new Date(endMs) });
+        if (!cancelled) setSessionsCount(total);
+      } catch {
+        if (!cancelled) setSessionsCount(0);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [startMs, endMs]);
+
+  // === Derivados (basado en createdAt) ===
+  const ingresosHoy = useMemo(() => {
+    const today = new Date();
+    const sameLocalDay = (d) => {
+      const a = new Date(d);
+      return a.getFullYear() === today.getFullYear()
+        && a.getMonth() === today.getMonth()
+        && a.getDate() === today.getDate();
+    };
+    return periodOrders
+      .filter(o => o.createdAt && sameLocalDay(o.createdAt))
+      .reduce((s, o) => s + (Number(o.total) || 0), 0);
+  }, [periodOrders]);
+
+  const pedidosPeriodo = periodOrders.length;
+  const ticketPromedio = pedidosPeriodo ? (periodTotal / pedidosPeriodo) : 0;
 
   if (!slug) {
     return (
@@ -52,9 +126,9 @@ export default function OwnerDashboard() {
   return (
     <div style={{ padding: 24 }}>
       {/* Encabezado */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: 16, marginBottom: 8 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 16, marginBottom: 8, flexWrap: 'wrap' }}>
         <h2 style={{ margin: 0 }}>
-          Ventas en los últimos {periodLabel} — {money(periodTotal)}
+          Ventas en los últimos {periodDef.label} — 
         </h2>
         <div style={{ opacity: 0.7 }}>({prettyName(slug)})</div>
 
@@ -79,29 +153,79 @@ export default function OwnerDashboard() {
         </div>
       </div>
 
-      {/* Grid */}
+      {/* Una fila: izquierda gráfico, derecha KPIs ocupando TODO el alto */}
       <div
         style={{
           display: 'grid',
-          gridTemplateColumns: '1fr 1fr',
-          gridTemplateRows: 'minmax(320px, auto) minmax(320px, auto)',
+          gridTemplateColumns: '1fr 520px',
+          gridAutoRows: 'minmax(360px, auto)',
           gap: 16,
+          alignItems: 'stretch',
         }}
       >
-        {/* Gráfico ventas por día */}
+        {/* Gráfico */}
         <div style={{ border: '1px solid #e5e7eb', borderRadius: 12, padding: 16, background: '#fff' }}>
           <SalesByDayChart
             slug={slug}
-            start={start}
-            end={end}
+            start={new Date(startMs)}
+            end={new Date(endMs)}
             periodKey={periodKey}
             onTotalChange={setPeriodTotal}
           />
         </div>
 
-        <div style={{ border: '1px dashed #e5e7eb', borderRadius: 12, background: '#fafafa' }} />
-        <div style={{ border: '1px dashed #e5e7eb', borderRadius: 12, background: '#fafafa' }} />
-        <div style={{ border: '1px dashed #e5e7eb', borderRadius: 12, background: '#fafafa' }} />
+        {/* KPIs (2x2) */}
+        <div
+          style={{
+            border: '1px solid #e5e7eb',
+            borderRadius: 12,
+            background: '#fff',
+            display: 'grid',
+            gridTemplateColumns: '1fr 1fr',
+            gridTemplateRows: '1fr 1fr',
+            gap: 16,
+            padding: 20,
+            minHeight: 0,
+            overflow: 'visible',
+          }}
+        >
+          <KpiBox title="Ingresos del Día" value={money(ingresosHoy)} />
+          <KpiBox title="Pedidos Completados" value={String(lifetimeOrders)} />
+          <KpiBox title="Ticket Promedio" value={money(ticketPromedio)} />
+          <KpiBox title="Clientes Atendidos" value={String(sessionsCount)} />
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/** Caja simple para KPI con tipografía responsiva */
+function KpiBox({ title, value }) {
+  const isIngresos = title === 'Ingresos del Día';
+  return (
+    <div style={{
+      border: '1px solid #f0f0f0',
+      borderRadius: 12,
+      padding: 16,
+      display: 'flex',
+      flexDirection: 'column',
+      justifyContent: 'center',
+      minWidth: 0,
+      overflow: 'visible',
+      background: '#fff'
+    }}>
+      <div style={{ color: '#6b7280', fontWeight: 600, marginBottom: 8 }}>{title}</div>
+      <div
+        style={{
+          fontWeight: 800,
+          lineHeight: 1.05,
+          fontSize: isIngresos ? 'clamp(22px, 3vw, 36px)' : 'clamp(28px, 5vw, 48px)',
+          wordBreak: 'break-word',
+          whiteSpace: 'normal',
+        }}
+        title={value}
+      >
+        {value}
       </div>
     </div>
   );

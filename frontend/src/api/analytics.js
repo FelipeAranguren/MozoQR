@@ -1,9 +1,10 @@
 // src/api/analytics.js
-// Obtiene ventas por día (pedidos pagados) para un restaurante dado.
+// Ventas por día (pagados) + utilidades para KPIs (pedidos del período,
+// total histórico y cantidad de sesiones de mesa en el período).
 
 import { api } from '../api';
 
-/** Normaliza una fecha JS a texto YYYY-MM-DD usando HORA LOCAL (no UTC). */
+/** YYYY-MM-DD en HORA LOCAL */
 function toYMDLocal(date) {
   const d = new Date(date);
   const y = d.getFullYear();
@@ -12,14 +13,14 @@ function toYMDLocal(date) {
   return `${y}-${m}-${day}`;
 }
 
-/** Fin-de-día en HORA LOCAL convertido a ISO para la query (incluye todo el día local). */
+/** Fin de día LOCAL -> ISO (cubre todo el día local) */
 function endOfDayLocalISO(date) {
   const d = new Date(date);
-  d.setHours(23, 59, 59, 999); // localtime
-  return d.toISOString();      // el backend recibe ISO en Z
+  d.setHours(23, 59, 59, 999);
+  return d.toISOString();
 }
 
-/** Construye querystring para Strapi v4. */
+/** QS helper */
 function buildQS(paramsObj) {
   const p = new URLSearchParams();
   Object.entries(paramsObj).forEach(([k, v]) => {
@@ -28,7 +29,7 @@ function buildQS(paramsObj) {
   return p.toString();
 }
 
-/** Trae todas las páginas de /pedidos con filtros dados. */
+/** Paginado general /pedidos (normaliza plano o attributes) */
 async function fetchAllPedidos(qsBase) {
   let page = 1;
   const pageSize = 100;
@@ -36,17 +37,20 @@ async function fetchAllPedidos(qsBase) {
   while (true) {
     const url = `/pedidos?${qsBase}&pagination[page]=${page}&pagination[pageSize]=${pageSize}`;
     const res = await api.get(url);
+
     const items = res?.data?.data ?? [];
     for (const row of items) {
-      const a = row.attributes || row;
+      const a = row.attributes ? row.attributes : row; // soporta ambas formas
       out.push({
-        id: row.id || a.id,
-        total: Number(a.total ?? 0),
+        id: row.id ?? a.id,
         order_status: a.order_status,
+        total: Number(a.total ?? 0),
         createdAt: a.createdAt,
         updatedAt: a.updatedAt,
+        tableSessionId: a.tableSessionId ?? null,
       });
     }
+
     const meta = res?.data?.meta?.pagination;
     if (!meta) break;
     if (page >= (meta.pageCount || 1)) break;
@@ -56,48 +60,36 @@ async function fetchAllPedidos(qsBase) {
 }
 
 /**
- * Obtiene ventas por día para el restaurante `slug` en el rango [start, end] (LOCAL).
+ * Ventas por día (agrupa por día LOCAL usando createdAt).
+ * NOTA: no filtramos por restaurante porque tu API actual no lo expone en /pedidos.
  */
-export async function fetchSalesByDay(slug, options = {}) {
-  if (!slug) throw new Error('slug requerido');
-
-  // Rango por defecto: últimos 30 días (LOCAL)
+export async function fetchSalesByDay(_slug, options = {}) {
   const end = options.end ? new Date(options.end) : new Date();
   const start = options.start
     ? new Date(options.start)
     : new Date(end.getTime() - 29 * 24 * 60 * 60 * 1000);
 
-  // Filtros: usamos updatedAt en ISO, pero el fin de día es el LOCAL.
   const qs = buildQS({
-    'filters[restaurante][slug][$eq]': slug,
     'filters[order_status][$eq]': 'paid',
-    'filters[updatedAt][$gte]': new Date(start).toISOString(),
-    'filters[updatedAt][$lte]': endOfDayLocalISO(end),
-    'fields[0]': 'id',
-    'fields[1]': 'total',
-    'fields[2]': 'order_status',
-    'fields[3]': 'createdAt',
-    'fields[4]': 'updatedAt',
-    'publicationState': 'preview',
-    'sort[0]': 'updatedAt:asc',
+    'filters[createdAt][$gte]': new Date(start).toISOString(),
+    'filters[createdAt][$lte]': endOfDayLocalISO(end),
+    'sort[0]': 'createdAt:asc',
   });
 
   const pedidos = await fetchAllPedidos(qs);
 
-  // Agrupar por DÍA LOCAL usando updatedAt (cuando quedó pagado)
   const byDay = new Map();
   let grandTotal = 0;
 
   for (const p of pedidos) {
     if (p.order_status !== 'paid') continue;
-    const key = toYMDLocal(p.updatedAt || p.createdAt || new Date());
-    const prev = byDay.get(key) || 0;
+    const key = toYMDLocal(p.createdAt || new Date());
     const t = Number(p.total || 0);
-    byDay.set(key, prev + (Number.isFinite(t) ? t : 0));
+    byDay.set(key, (byDay.get(key) || 0) + (Number.isFinite(t) ? t : 0));
     grandTotal += Number.isFinite(t) ? t : 0;
   }
 
-  // Completar días vacíos en el rango con 0 (LOCAL)
+  // Completar días vacíos
   const filled = [];
   const cursor = new Date(start.getFullYear(), start.getMonth(), start.getDate());
   const endLocal = new Date(end.getFullYear(), end.getMonth(), end.getDate());
@@ -111,4 +103,57 @@ export async function fetchSalesByDay(slug, options = {}) {
   return { series: filled, grandTotal };
 }
 
-export default { fetchSalesByDay };
+/**
+ * Pedidos "paid" en un rango [from, to] (para KPIs de período).
+ * Reutiliza el mismo paginado/qs que el gráfico → consistencia total.
+ */
+export async function getPaidOrders({ from, to }) {
+  const qs = buildQS({
+    'filters[order_status][$eq]': 'paid',
+    'filters[createdAt][$gte]': new Date(from).toISOString(),
+    'filters[createdAt][$lte]': endOfDayLocalISO(to),
+    'sort[0]': 'createdAt:asc',
+  });
+
+  return await fetchAllPedidos(qs);
+}
+
+/**
+ * Total histórico de pedidos "paid" (lifetime).
+ * Sin filtro de restaurante por el motivo explicado arriba.
+ */
+export async function getTotalOrdersCount() {
+  const p = new URLSearchParams();
+  p.set('filters[order_status][$eq]', 'paid');
+  p.set('pagination[pageSize]', '1'); // mínimo payload
+
+  const url = `/pedidos?${p.toString()}`;
+  const res = await api.get(url);
+  const total = res?.data?.meta?.pagination?.total;
+  return Number(total || 0);
+}
+
+/**
+ * Cantidad de sesiones de mesa (clientes atendidos) abiertas en el período.
+ * Endpoint confirmado: /mesa-sesions (sin segunda "s").
+ * Regla: cuenta sesiones con openedAt dentro del rango.
+ */
+export async function getSessionsCount({ from, to }) {
+  const p = new URLSearchParams();
+  if (from) p.set('filters[openedAt][$gte]', new Date(from).toISOString());
+  if (to)   p.set('filters[openedAt][$lte]', endOfDayLocalISO(to));
+  p.set('pagination[pageSize]', '1');
+  p.set('fields[0]', 'id');
+
+  const url = `/mesa-sesions?${p.toString()}`;
+  const res = await api.get(url);
+  const total = res?.data?.meta?.pagination?.total;
+  return Number(total || 0);
+}
+
+export default {
+  fetchSalesByDay,
+  getPaidOrders,
+  getTotalOrdersCount,
+  getSessionsCount,
+};
