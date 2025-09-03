@@ -183,7 +183,7 @@ export default function OwnerDashboard() {
       {/* Encabezado */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 16, marginBottom: 8, flexWrap: 'wrap' }}>
         <h2 style={{ margin: 0 }}>
-          Ventas en los últimos {periodDef.label} — {money(periodTotal)}
+          Ventas en los últimos {periodDef.label} — 
         </h2>
         <div style={{ opacity: 0.7 }}>({prettyName(slug)})</div>
 
