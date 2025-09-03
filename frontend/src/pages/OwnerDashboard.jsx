@@ -6,6 +6,8 @@ import {
   getPaidOrders,
   getTotalOrdersCount,
   getSessionsCount,
+  fetchRecentPaidOrders,
+  fetchTopProducts,
 } from '../api/analytics';
 
 const money = (n) =>
@@ -55,7 +57,11 @@ export default function OwnerDashboard() {
   const [lifetimeOrders, setLifetimeOrders] = useState(0);  // total histórico
   const [sessionsCount, setSessionsCount] = useState(0);    // sesiones del rango (clientes)
 
-  // Carga pedidos del período (MISMO QS que el gráfico) — POR RESTAURANTE
+  // Listas nuevas
+  const [recentOrders, setRecentOrders] = useState([]);
+  const [topProducts, setTopProducts] = useState([]);
+
+  // Carga pedidos del período — POR RESTAURANTE
   useEffect(() => {
     if (!slug) return;
     let cancelled = false;
@@ -95,6 +101,52 @@ export default function OwnerDashboard() {
         if (!cancelled) setSessionsCount(total);
       } catch {
         if (!cancelled) setSessionsCount(0);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [slug, startMs, endMs]);
+
+  // Carga “Últimos pedidos” — POR RESTAURANTE, con fallback a período
+  useEffect(() => {
+    if (!slug) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const rows = await fetchRecentPaidOrders({ slug, limit: 10 });
+        if (!cancelled) {
+          if (rows && rows.length) {
+            setRecentOrders(rows);
+          } else {
+            // Fallback: tomo los del período, ordeno desc y corto a 10
+            const fallback = [...periodOrders]
+              .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))
+              .slice(0, 10)
+              .map((a) => ({
+                id: a.id,
+                total: a.total,
+                mesa: a.tableNumber ?? a.table?.number ?? a.tableSessionId ?? '—',
+                createdAt: a.createdAt,
+              }));
+            setRecentOrders(fallback);
+          }
+        }
+      } catch {
+        if (!cancelled) setRecentOrders([]);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [slug, periodOrders]);
+
+  // Carga “Top productos” — POR RESTAURANTE y PERÍODO
+  useEffect(() => {
+    if (!slug) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const rows = await fetchTopProducts({ slug, from: new Date(startMs), to: new Date(endMs), limit: 10 });
+        if (!cancelled) setTopProducts(rows || []);
+      } catch {
+        if (!cancelled) setTopProducts([]);
       }
     })();
     return () => { cancelled = true; };
@@ -156,7 +208,7 @@ export default function OwnerDashboard() {
         </div>
       </div>
 
-      {/* Una fila: izquierda gráfico, derecha KPIs ocupando TODO el alto */}
+      {/* FILA 1: izquierda gráfico, derecha KPIs */}
       <div
         style={{
           display: 'grid',
@@ -164,6 +216,7 @@ export default function OwnerDashboard() {
           gridAutoRows: 'minmax(360px, auto)',
           gap: 16,
           alignItems: 'stretch',
+          marginBottom: 16,
         }}
       >
         {/* Gráfico */}
@@ -198,6 +251,35 @@ export default function OwnerDashboard() {
           <KpiBox title="Clientes Atendidos" value={String(sessionsCount)} />
         </div>
       </div>
+
+      {/* FILA 2: izquierda últimos pedidos, derecha top productos */}
+      <div
+        style={{
+          display: 'grid',
+          gridTemplateColumns: '1fr 520px',
+          gridAutoRows: 'minmax(360px, auto)',
+          gap: 16,
+          alignItems: 'stretch',
+        }}
+      >
+        {/* Últimos pedidos */}
+        <div style={{ border: '1px solid #e5e7eb', borderRadius: 12, background: '#fff', padding: 16 }}>
+          <h3 style={{ marginTop: 0, marginBottom: 12 }}>Últimos pedidos</h3>
+          <OrdersTable rows={recentOrders} />
+        </div>
+
+        {/* Top productos */}
+        <div style={{ border: '1px solid #e5e7eb', borderRadius: 12, background: '#fff', padding: 16 }}>
+          <h3 style={{ marginTop: 0, marginBottom: 12 }}>Top productos del período</h3>
+          <TopProductsList rows={topProducts} />
+          {!topProducts?.length && (
+            <div style={{ marginTop: 8, color: '#6b7280', fontSize: 13 }}>
+              Para ver este ranking, la API debe devolver los ítems del pedido
+              (<code>items</code> / <code>lineItems</code>) con <code>product</code> y <code>quantity</code>.
+            </div>
+          )}
+        </div>
+      </div>
     </div>
   );
 }
@@ -222,7 +304,7 @@ function KpiBox({ title, value }) {
         style={{
           fontWeight: 800,
           lineHeight: 1.05,
-          fontSize: isIngresos ? 'clamp(22px, 3vw, 36px)' : 'clamp(28px, 5vw, 48px)',
+          fontSize: isIngresos ? 'clamp(22px, 3vw, 36px)' : 'clamp(28px, 5vw, 30px)',
           wordBreak: 'break-word',
           whiteSpace: 'normal',
         }}
@@ -230,6 +312,66 @@ function KpiBox({ title, value }) {
       >
         {value}
       </div>
+    </div>
+  );
+}
+
+/* ===================== NUEVOS COMPONENTES ===================== */
+
+function OrdersTable({ rows }) {
+  if (!rows?.length) {
+    return <div style={{ color: '#6b7280' }}>Sin pedidos recientes.</div>;
+  }
+  return (
+    <div style={{ overflow: 'auto' }}>
+      <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+        <thead>
+          <tr style={{ textAlign: 'left', color: '#6b7280' }}>
+            <th style={{ padding: '8px 6px', borderBottom: '1px solid #e5e7eb' }}># Pedido</th>
+            <th style={{ padding: '8px 6px', borderBottom: '1px solid #e5e7eb' }}>Mesa</th>
+            <th style={{ padding: '8px 6px', borderBottom: '1px solid #e5e7eb' }}>Total</th>
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((r) => (
+            <tr key={r.id}>
+              <td style={{ padding: '10px 6px', borderBottom: '1px solid #f1f5f9' }}>{r.id}</td>
+              <td style={{ padding: '10px 6px', borderBottom: '1px solid #f1f5f9' }}>{r.mesa ?? '—'}</td>
+              <td style={{ padding: '10px 6px', borderBottom: '1px solid #f1f5f9', fontWeight: 700 }}>
+                {money(r.total)}
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+function TopProductsList({ rows }) {
+  if (!rows?.length) {
+    return <div style={{ color: '#6b7280' }}>Sin datos de productos en este período.</div>;
+  }
+  return (
+    <div style={{ overflow: 'auto' }}>
+      <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+        <thead>
+          <tr style={{ textAlign: 'left', color: '#6b7280' }}>
+            <th style={{ padding: '8px 6px', borderBottom: '1px solid #e5e7eb' }}>Producto</th>
+            <th style={{ padding: '8px 6px', borderBottom: '1px solid #e5e7eb' }}>Cantidad</th>
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((r, i) => (
+            <tr key={`${r.name}-${i}`}>
+              <td style={{ padding: '10px 6px', borderBottom: '1px solid #f1f5f9' }}>{r.name}</td>
+              <td style={{ padding: '10px 6px', borderBottom: '1px solid #f1f5f9', fontWeight: 700 }}>
+                {r.qty}
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
     </div>
   );
 }
