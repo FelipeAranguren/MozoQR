@@ -30,6 +30,50 @@ function buildQS(paramsObj) {
   return p.toString();
 }
 
+/* ------------ normalizadores v4 (unwrap de data/attributes) ----------- */
+
+function unwrapEntity(e) {
+  if (!e) return null;
+  if (e?.attributes || typeof e?.id !== 'undefined') {
+    const id = e.id ?? e?.attributes?.id ?? null;
+    const attrs = e.attributes ?? e;
+    return { id, ...attrs };
+  }
+  return e;
+}
+
+/** Convierte items v4 (objeto con .data) en array plano [{quantity, product}, ...] */
+function normalizeItemsField(field) {
+  if (!field) return null;
+
+  // Si ya es array plano
+  if (Array.isArray(field)) return field;
+
+  // Strapi v4: { data: [ { id, attributes: { quantity, product: { data: { ... } } } } ] }
+  const arr = Array.isArray(field?.data) ? field.data : null;
+  if (!arr) return null;
+
+  return arr.map((node) => {
+    const a = node?.attributes ?? node ?? {};
+    const qty = Number(a.quantity ?? a.qty ?? 0);
+
+    // producto puede venir como relation v4 o plano
+    const prodRaw =
+      a?.product?.data ??
+      a?.product ??
+      a?.producto?.data ??
+      a?.producto ??
+      null;
+    const prod = unwrapEntity(prodRaw);
+
+    return {
+      id: node?.id ?? a?.id ?? null,
+      quantity: qty,
+      product: prod, // prod?.name / prod?.nombre
+    };
+  });
+}
+
 /* ------------------------- fetchers de pedidos ------------------------ */
 
 /** Paginador general para /pedidos (soporta attributes o plano) */
@@ -44,6 +88,13 @@ async function fetchAllPedidos(qsBase) {
     const rows = res?.data?.data ?? [];
     for (const row of rows) {
       const a = row.attributes ? row.attributes : row;
+
+      // Normalizamos items embebidos (puede ser items o lineItems)
+      const rawItems = a.items ?? a.lineItems ?? null;
+      const itemsNorm =
+        normalizeItemsField(rawItems) ??
+        null;
+
       out.push({
         id: row.id ?? a.id,
         order_status: a.order_status,
@@ -56,7 +107,8 @@ async function fetchAllPedidos(qsBase) {
         mesa_sesion: a.mesa_sesion ?? null,
         tableNumber: a.tableNumber ?? a.mesaNumber ?? null,
 
-        items: a.items ?? a.lineItems ?? null,
+        // ítems embebidos ya normalizados (array plano o null)
+        items: itemsNorm,
       });
     }
 
@@ -68,7 +120,7 @@ async function fetchAllPedidos(qsBase) {
   return out;
 }
 
-/** Paginador general para /item-pedidos */
+/** Paginador general para /item-pedidos (con populate robusto) */
 async function fetchAllItemPedidos(qsBase) {
   let page = 1;
   const pageSize = 200;
@@ -80,23 +132,31 @@ async function fetchAllItemPedidos(qsBase) {
     const rows = res?.data?.data ?? [];
     for (const row of rows) {
       const a = row.attributes ? row.attributes : row;
+
+      // product puede venir como relation v4 o plano
+      const prodRaw =
+        a?.product?.data ??
+        a?.product ??
+        a?.producto?.data ??
+        a?.producto ??
+        null;
+      const prod = unwrapEntity(prodRaw);
+
+      // order puede venir como relation v4 o id plano
+      const orderId =
+        a?.order?.data?.id ??
+        (typeof a.order === 'number' ? a.order : null) ??
+        a?.pedido?.data?.id ??
+        a?.pedido?.id ??
+        (typeof a.pedido === 'number' ? a.pedido : null) ??
+        null;
+
       out.push({
         id: row.id ?? a.id,
         quantity: Number(a.quantity ?? a.qty ?? 0),
         createdAt: a.createdAt,
-        product:
-          a?.product?.data?.attributes ??
-          a?.product ??
-          a?.producto?.data?.attributes ??
-          a?.producto ??
-          null,
-        orderId:
-          a?.order?.data?.id ??
-           (typeof a.order === 'number' ? a.order : null) ??
-          a?.pedido?.data?.id ??
-          a?.pedido?.id ??
-          (typeof a.pedido === 'number' ? a.pedido : null) ??
-          null,
+        product: prod,
+        orderId,
       });
     }
 
@@ -159,6 +219,24 @@ export async function getPaidOrders({ slug, from, to }) {
     'filters[createdAt][$gte]': new Date(from).toISOString(),
     'filters[createdAt][$lte]': endOfDayLocalISO(to),
     'sort[0]': 'createdAt:asc',
+  });
+
+  return await fetchAllPedidos(qs);
+}
+
+/** Igual que getPaidOrders, pero pidiendo items/lineItems+product */
+async function getPaidOrdersWithItems({ slug, from, to }) {
+  if (!slug) throw new Error('slug requerido');
+
+  const qs = buildQS({
+    'filters[restaurante][slug][$eq]': slug,
+    'filters[order_status][$eq]': 'paid',
+    'filters[createdAt][$gte]': new Date(from).toISOString(),
+    'filters[createdAt][$lte]': endOfDayLocalISO(to),
+    'sort[0]': 'createdAt:asc',
+    // populate robusto: items y su product
+    'populate[items][populate]': 'product,producto',
+    'populate[lineItems][populate]': 'product,producto',
   });
 
   return await fetchAllPedidos(qs);
@@ -233,51 +311,115 @@ export async function fetchRecentPaidOrders({ slug, limit = 5 }) {
   });
 }
 
+/* ---------------------- Top productos (3 estrategias) ----------------- */
+
 /**
  * Top productos del período por CANTIDAD vendida (top 5 por defecto).
- * Estrategia robusta: obtenemos pedidos del período y luego filtramos item-pedidos por esos IDs.
- * NOTA: no filtramos por fecha en /item-pedidos para no perder relaciones; filtramos por orderId en cliente.
+ *
+ * A) Intenta /item-pedidos filtrando por la RELACIÓN `order`:
+ *    - order.restaurante.slug, order.order_status (paid), order.createdAt (rango)
+ * B) Si no hay `order` seteado en los items, cae a /item-pedidos filtrando por:
+ *    - product.restaurante.slug, item.createdAt (rango)
+ *    (Limitación: aquí no podemos filtrar por `paid` ya que no hay `order`)
+ * C) Último fallback: sumar desde ítems embebidos en /pedidos (si existieran)
  */
 export async function fetchTopProducts({ slug, from, to, limit = 5 }) {
   if (!slug) throw new Error('slug requerido');
 
-  // 1) IDs de pedidos pagados del período
-  const orders = await getPaidOrders({ slug, from, to });
-    // Normalizamos IDs como strings para evitar problemas de comparaci\u00f3n
-  const orderIds = new Set(orders.map(o => String(o.id)).filter(Boolean));
-  if (orderIds.size === 0) return [];
+  const startISO = new Date(from).toISOString();
+  const endISO   = endOfDayLocalISO(new Date(to));
 
-  // 2) Traigo TODOS los items con product y order (paginados)
-  const qs = buildQS({
-    'sort[0]': 'createdAt:desc',
-    'populate[product]': 'true',
-    'populate[order]': 'true',
-  });
-  const items = await fetchAllItemPedidos(qs);
+  /* -------- Estrategia A: /item-pedidos filtrando por `order` -------- */
+  {
+    const qsA = buildQS({
+      'filters[order][restaurante][slug][$eq]': slug,
+      'filters[order][order_status][$eq]': 'paid',
+      'filters[order][createdAt][$gte]': startISO,
+      'filters[order][createdAt][$lte]': endISO,
+      'populate[product]': 'true',
+      'populate[order]': 'true',
+      'sort[0]': 'createdAt:desc',
+    });
 
-  // 3) Sumo cantidades por producto de esos pedidos
-  const counts = new Map(); // name -> qty
-  for (const it of items) {
-    const oid =
-      it?.orderId ??
-      it?.order ??
-      it?.pedido ??
-      it?.order?.id ??
-      it?.pedido?.id;
-    if (!orderIds.has(String(oid))) continue;
+    const itemsA = await fetchAllItemPedidos(qsA);
+    const countsA = sumByProduct(itemsA);
+    if (countsA.size > 0) {
+      return toTopArray(countsA, limit);
+    }
+    // Si no hay resultados, seguimos con B
+  }
+
+  /* --- Estrategia B: /item-pedidos filtrando por `product.restaurante` --- */
+  {
+    const qsB = buildQS({
+      'filters[product][restaurante][slug][$eq]': slug,
+      'filters[createdAt][$gte]': startISO,
+      'filters[createdAt][$lte]': endISO,
+      'populate[product]': 'true',
+      // no tenemos `order`, por eso no podemos filtrar `paid` aquí
+      'sort[0]': 'createdAt:desc',
+    });
+
+    const itemsB = await fetchAllItemPedidos(qsB);
+    const countsB = sumByProduct(itemsB);
+    if (countsB.size > 0) {
+      if (typeof window !== 'undefined' && window?.console) {
+        console.warn('[TopProducts] Fallback B: sumando por product.restaurante (sin garantizar solo pedidos paid). Recomendado: asegurar item.order seteado.');
+      }
+      return toTopArray(countsB, limit);
+    }
+    // Si tampoco hay resultados, vamos a C
+  }
+
+  /* --- Estrategia C: ítems embebidos en /pedidos (si existen) --------- */
+  {
+    const ordersWithItems = await getPaidOrdersWithItems({ slug, from, to });
+    const countsC = new Map();
+    for (const o of ordersWithItems) {
+      const list = Array.isArray(o.items) ? o.items : [];
+      for (const it of list) {
+        const prod = it?.product ? unwrapEntity(it.product) : null;
+        const name =
+          prod?.name ??
+          prod?.nombre ??
+          prod?.title ??
+          'Sin nombre';
+        const qty = Number(it?.quantity ?? it?.qty ?? 0);
+        if (!qty) continue;
+        countsC.set(name, (countsC.get(name) || 0) + qty);
+      }
+    }
+    if (countsC.size > 0) {
+      if (typeof window !== 'undefined' && window?.console) {
+        console.warn('[TopProducts] Fallback C: sumando desde items embebidos en pedidos.');
+      }
+      return toTopArray(countsC, limit);
+    }
+  }
+
+  // Sin datos
+  return [];
+}
+
+/* ------------------------------- utils -------------------------------- */
+
+function sumByProduct(items) {
+  const counts = new Map();
+  for (const it of items || []) {
     const name =
       it?.product?.name ??
       it?.product?.nombre ??
       it?.product?.title ??
-      it?.product?.data?.attributes?.name ??
-      it?.product?.data?.attributes?.nombre ??
       'Sin nombre';
-    const qty = Number(it.quantity ?? it.qty ?? 0);
+    const qty = Number(it?.quantity ?? 0);
     if (!qty) continue;
     counts.set(name, (counts.get(name) || 0) + qty);
   }
+  return counts;
+}
 
-  return Array.from(counts.entries())
+function toTopArray(mapCounts, limit) {
+  return Array.from(mapCounts.entries())
     .sort((a, b) => b[1] - a[1])
     .slice(0, limit)
     .map(([name, qty]) => ({ name, qty }));

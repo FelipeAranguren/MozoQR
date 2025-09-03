@@ -112,15 +112,15 @@ export default function OwnerDashboard() {
     let cancelled = false;
     (async () => {
       try {
-        const rows = await fetchRecentPaidOrders({ slug, limit: 10 });
+        const rows = await fetchRecentPaidOrders({ slug, limit: 5 });
         if (!cancelled) {
           if (rows && rows.length) {
             setRecentOrders(rows);
           } else {
-            // Fallback: tomo los del período, ordeno desc y corto a 10
+            // Fallback: tomo los del período, ordeno desc y corto a 5
             const fallback = [...periodOrders]
               .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))
-              .slice(0, 10)
+              .slice(0, 5)
               .map((a) => ({
                 id: a.id,
                 total: a.total,
@@ -275,7 +275,8 @@ export default function OwnerDashboard() {
           {!topProducts?.length && (
             <div style={{ marginTop: 8, color: '#6b7280', fontSize: 13 }}>
               Para ver este ranking, la API debe devolver los ítems del pedido
-              (<code>items</code> / <code>lineItems</code>) con <code>product</code> y <code>quantity</code>.
+              (<code>items</code> / <code>lineItems</code>) con <code>product</code> y <code>quantity</code>,
+              o bien la colección <code>item-pedidos</code> con <code>product</code> y el <code>order</code>.
             </div>
           )}
         </div>
