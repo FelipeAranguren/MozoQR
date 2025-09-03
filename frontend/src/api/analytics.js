@@ -82,15 +82,20 @@ async function fetchAllItemPedidos(qsBase) {
       const a = row.attributes ? row.attributes : row;
       out.push({
         id: row.id ?? a.id,
-        quantity: Number(a.quantity ?? 0),
+        quantity: Number(a.quantity ?? a.qty ?? 0),
         createdAt: a.createdAt,
         product:
           a?.product?.data?.attributes ??
           a?.product ??
+          a?.producto?.data?.attributes ??
+          a?.producto ??
           null,
         orderId:
           a?.order?.data?.id ??
-          a?.order?.id ??
+           (typeof a.order === 'number' ? a.order : null) ??
+          a?.pedido?.data?.id ??
+          a?.pedido?.id ??
+          (typeof a.pedido === 'number' ? a.pedido : null) ??
           null,
       });
     }
@@ -238,7 +243,8 @@ export async function fetchTopProducts({ slug, from, to, limit = 5 }) {
 
   // 1) IDs de pedidos pagados del período
   const orders = await getPaidOrders({ slug, from, to });
-  const orderIds = new Set(orders.map(o => o.id).filter(Boolean));
+    // Normalizamos IDs como strings para evitar problemas de comparaci\u00f3n
+  const orderIds = new Set(orders.map(o => String(o.id)).filter(Boolean));
   if (orderIds.size === 0) return [];
 
   // 2) Traigo TODOS los items con product y order (paginados)
@@ -252,12 +258,21 @@ export async function fetchTopProducts({ slug, from, to, limit = 5 }) {
   // 3) Sumo cantidades por producto de esos pedidos
   const counts = new Map(); // name -> qty
   for (const it of items) {
-    if (!orderIds.has(it.orderId)) continue;
+    const oid =
+      it?.orderId ??
+      it?.order ??
+      it?.pedido ??
+      it?.order?.id ??
+      it?.pedido?.id;
+    if (!orderIds.has(String(oid))) continue;
     const name =
       it?.product?.name ??
+      it?.product?.nombre ??
+      it?.product?.title ??
       it?.product?.data?.attributes?.name ??
+      it?.product?.data?.attributes?.nombre ??
       'Sin nombre';
-    const qty = Number(it.quantity || 0);
+    const qty = Number(it.quantity ?? it.qty ?? 0);
     if (!qty) continue;
     counts.set(name, (counts.get(name) || 0) + qty);
   }

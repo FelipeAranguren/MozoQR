@@ -143,7 +143,7 @@ export default function OwnerDashboard() {
     let cancelled = false;
     (async () => {
       try {
-        const rows = await fetchTopProducts({ slug, from: new Date(startMs), to: new Date(endMs), limit: 10 });
+        const rows = await fetchTopProducts({ slug, from: new Date(startMs), to: new Date(endMs), limit: 5 });
         if (!cancelled) setTopProducts(rows || []);
       } catch {
         if (!cancelled) setTopProducts([]);
