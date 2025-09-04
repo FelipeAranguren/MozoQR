@@ -1,6 +1,0 @@
-backend-src.tgz
-frontend-src.tgz
-proyecto.tar.gz
-*.tar.gz
-node_modules
-.env

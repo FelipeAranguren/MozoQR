@@ -215,17 +215,115 @@ export default function Mostrador() {
       pedidosRef.current = visibles;
       setPedidos(visibles);
 
-      // ---- agrupar pedidos en cuentas (agrupados por mesa_sesion) ----
+       // ---- agrupar pedidos en cuentas (mesa/sesión) ----
       const grupos = new Map();
       ordenados.forEach((p) => {
-        // usar el id de la sesión para evitar agrupar pedidos de distintas sesiones en la misma mesa
-        const sesId = p.mesa_sesion?.id ?? null;
-        // si no hay sesión asociada, agrupar por pedido para no mezclarlos
-        const key = sesId != null ? `sesion:${sesId}` : `pedido:${p.id}`;
+        // usar el número de mesa para evitar cuentas duplicadas visuales
+        // Agrupar pedidos en cuentas:
+         // Agrupar pedidos en cuentas:
+        // - vista activa: por número de mesa (evita duplicados)
+        // - historial: por sesión de mesa (separa cada cliente)
+        const mesaNum = p.mesa_sesion?.mesa?.number;
+        const key = showHistory
+          ? p.mesa_sesion?.id != null
+            ? `sesion:${p.mesa_sesion.id}`
+            : mesaNum != null
+            ? `mesa:${mesaNum}`
+            : `pedido:${p.id}`
+          : mesaNum != null
+          ? `mesa:${mesaNum}`
+          : p.mesa_sesion?.id != null
+          ? `sesion:${p.mesa_sesion.id}`
+          : `pedido:${p.id}`;
+
         const arr = grupos.get(key) || [];
         arr.push(p);
         grupos.set(key, arr);
       });
+
+       // En historial, si algún pedido carece de sesión pero comparte mesa,
+      // únelo a la sesión existente más reciente para esa mesa.
+      if (showHistory) {
+        for (const [key, arr] of Array.from(grupos.entries())) {
+          if (key.startsWith('mesa:')) {
+            const mesaNum = key.slice(5);
+            let targetKey = null;
+            let latest = 0;
+            for (const [k, otros] of grupos.entries()) {
+              if (k.startsWith('sesion:')) {
+                const coincide = otros.some(
+                  (o) => o.mesa_sesion?.mesa?.number == mesaNum
+                );
+                if (coincide) {
+                  const last = otros.reduce(
+                    (max, it) =>
+                      Math.max(max, new Date(it.updatedAt).getTime()),
+                    0
+                  );
+                  if (last >= latest) {
+                    latest = last;
+                    targetKey = k;
+                  }
+                }
+              }
+            }
+            if (targetKey) {
+              const destino = grupos.get(targetKey);
+              destino.push(...arr);
+              grupos.delete(key);
+            }
+          }
+        }
+      }
+
+      // En historial pueden existir sesiones duplicadas para la misma mesa
+      // (p.ej. cuando el backend crea más de una sesión para un mismo cliente).
+      // Si esas sesiones se cierran casi al mismo tiempo, fusiónalas para que
+      // se muestren como una sola cuenta en el historial.
+      if (showHistory) {
+        const porMesa = new Map();
+        for (const [key, arr] of grupos.entries()) {
+          const mesa = arr.find((o) => o.mesa_sesion?.mesa?.number != null)?.mesa_sesion?.mesa?.number;
+          if (mesa == null) continue;
+          if (!porMesa.has(mesa)) porMesa.set(mesa, []);
+          porMesa.get(mesa).push({ key, arr });
+        }
+        const THRESHOLD_MS = 2 * 60 * 1000; // 2 minutos
+        for (const lista of porMesa.values()) {
+          if (lista.length < 2) continue;
+          lista.sort((a, b) => {
+            const aTime = a.arr.reduce(
+              (min, it) => Math.min(min, new Date(it.createdAt).getTime()),
+              Infinity
+            );
+            const bTime = b.arr.reduce(
+              (min, it) => Math.min(min, new Date(it.createdAt).getTime()),
+              Infinity
+            );
+            return aTime - bTime;
+          });
+          let actual = lista[0];
+          for (let i = 1; i < lista.length; i++) {
+            const sig = lista[i];
+            const finActual = actual.arr.reduce(
+              (max, it) => Math.max(max, new Date(it.updatedAt).getTime()),
+              0
+            );
+            const inicioSig = sig.arr.reduce(
+              (min, it) => Math.min(min, new Date(it.createdAt).getTime()),
+              Infinity
+            );
+            if (inicioSig - finActual <= THRESHOLD_MS) {
+              actual.arr.push(...sig.arr);
+              grupos.delete(sig.key);
+            } else {
+              actual = sig;
+            }
+          }
+        }
+      }
+
+
 
       const cuentasArr = Array.from(grupos, ([groupKey, arr]) => {
         const hasUnpaid = arr.some((o) => o.order_status !== 'paid');

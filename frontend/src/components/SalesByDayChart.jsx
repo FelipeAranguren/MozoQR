@@ -50,9 +50,11 @@ export default function SalesByDayChart({
 
   let labels = [];
   let values = [];
+  let sixMonthPlacements = []; // [{centerIndex, monthDate}]
 
-  // ===== Agregación/Etiquetas según período =====
+  // ===== Agregación/Etiquetas según período (de tu segunda versión) =====
   if (periodKey === '1y') {
+    // 12 meses
     const byMonth = new Map(); // 'YYYY-MM' -> total
     for (const r of series) {
       const d = toLocalDate(r.date);
@@ -73,15 +75,16 @@ export default function SalesByDayChart({
       return byMonth.get(key) || 0;
     });
   } else if (periodKey === '7d') {
+    // últimos 7 días
     const s = series.slice(-7);
     labels = s.map((r) => weekdayShort.format(toLocalDate(r.date)).replace('.', ''));
     values = s.map((r) => r.total);
   } else if (periodKey === '15d' || periodKey === '30d') {
-    // día del mes (LOCAL). El mes se pinta con un plugin abajo.
+    // día del mes (LOCAL). El mes se pinta con plugin.
     labels = series.map((r) => String(toLocalDate(r.date).getDate()));
     values = series.map((r) => r.total);
   } else if (periodKey === '6m') {
-    // 6 meses: 2 barras por mes (mitades reales, LOCAL)
+    // 6 meses: 2 barras por mes
     const byHalf = new Map(); // 'YYYY-MM' -> { h1, h2, mm, yy }
     for (const r of series) {
       const d = toLocalDate(r.date);
@@ -96,15 +99,32 @@ export default function SalesByDayChart({
       byHalf.set(key, prev);
     }
     const monthsSorted = [...byHalf.entries()].sort((a, b) => (a[0] > b[0] ? 1 : -1));
-    const bars = [];
+
+    const bars = []; // [{value, monthKey, monthDate}]
     monthsSorted.forEach(([key, obj]) => {
       const monthDate = new Date(obj.yy, obj.mm, 1);
       bars.push({ value: obj.h1, monthKey: key, monthDate });
       bars.push({ value: obj.h2, monthKey: key, monthDate });
     });
     while (bars.length && bars[bars.length - 1].value === 0) bars.pop();
+
     labels = bars.map(() => '');
     values = bars.map((b) => b.value);
+
+    // Centros para el rótulo del mes
+    const monthToIdx = new Map();
+    bars.forEach((b, idx) => {
+      const arr = monthToIdx.get(b.monthKey) || [];
+      arr.push(idx);
+      monthToIdx.set(b.monthKey, arr);
+    });
+    sixMonthPlacements = monthsSorted
+      .filter(([k]) => monthToIdx.has(k))
+      .map(([k, obj]) => {
+        const idxs = monthToIdx.get(k);
+        const center = idxs.length === 2 ? (idxs[0] + idxs[1]) / 2 : idxs[0];
+        return { centerIndex: center, monthDate: new Date(obj.yy, obj.mm, 1) };
+      });
   } else {
     labels = series.map((r) => r.date);
     values = series.map((r) => r.total);
@@ -112,28 +132,22 @@ export default function SalesByDayChart({
 
   const data = { labels, datasets: [{ label: 'Total (ARS)', data: values }] };
 
-  // ===== SOLO para 15/30 días: mes + año centrado por bloque =====
+  // ===== Plugins para rótulos de meses (copiados de la PRIMERA versión) =====
   const monthBanner15_30 = {
     id: 'monthBanner15_30',
-    afterDatasetsDraw(chart) {
+    afterDraw(chart) {
       if (!(periodKey === '15d' || periodKey === '30d')) return;
       if (!series.length) return;
-
-      const { ctx, chartArea, scales } = chart;
-      if (!chartArea) return;
-      const xScale = scales.x;
+      const ctx = chart.ctx;
+      const xScale = chart.scales.x;
+      const area = chart.chartArea;
+      const y = area.bottom + 40;
 
       ctx.save();
-      // importantísimo: evitamos el clip/transform del chart
-      if (ctx.resetTransform) ctx.resetTransform();
       ctx.font = '600 11px system-ui, -apple-system, Segoe UI, Roboto';
       ctx.fillStyle = '#6b7280';
       ctx.textAlign = 'center';
-      ctx.textBaseline = 'top';
 
-      const y = chartArea.bottom + 16;
-
-      // Detectar bloques por mes en `series`
       const blocks = [];
       let blockStart = 0;
       let cur = toLocalDate(series[0].date);
@@ -149,29 +163,49 @@ export default function SalesByDayChart({
       for (const b of blocks) {
         const mid = (b.start + b.end) / 2;
         const x = xScale.getPixelForValue(mid);
-        const label = `${monthAbbr(b.date).toUpperCase()} ${b.date.getFullYear()}`;
-        ctx.fillText(label, x, y);
+        ctx.fillText(`${monthAbbr(b.date).toUpperCase()} ${b.date.getFullYear()}`, x, y);
       }
       ctx.restore();
     },
   };
 
-  // ===== Opciones Chart.js =====
+  const monthCenter6m = {
+    id: 'monthCenter6m',
+    afterDraw(chart) {
+      if (periodKey !== '6m') return;
+      if (!sixMonthPlacements.length) return;
+      const ctx = chart.ctx;
+      const xScale = chart.scales.x;
+      const area = chart.chartArea;
+      const y = area.bottom + 28;
+
+      ctx.save();
+      ctx.font = '600 11px system-ui, -apple-system, Segoe UI, Roboto';
+      ctx.fillStyle = '#6b7280';
+      ctx.textAlign = 'center';
+      sixMonthPlacements.forEach(({ centerIndex, monthDate }) => {
+        ctx.fillText(monthAbbr(monthDate).toUpperCase(), xScale.getPixelForValue(centerIndex), y);
+      });
+      ctx.restore();
+    },
+  };
+
+  // ===== OPCIONES: layout + scales (copiados de la PRIMERA versión) =====
   const options = {
     responsive: true,
-    maintainAspectRatio: false,
-    animation: { duration: 300, easing: 'easeOutQuart' },
-    responsiveAnimationDuration: 0,
+    maintainAspectRatio: false, // (se mantiene de la segunda versión)
+    animation: { duration: 300, easing: 'easeOutQuart' }, // (de la segunda)
+    responsiveAnimationDuration: 0, // (de la segunda)
     layout: {
       padding: {
         bottom:
-          (periodKey === '15d' || periodKey === '30d') ? 56 :
-          periodKey === '6m' ? 30 : 8,
+          periodKey === '6m' ? 30 :
+          (periodKey === '15d' || periodKey === '30d') ? 36 : 8,
       },
     },
     plugins: {
       title: { display: false, text: title },
-      legend: { display: false },
+      legend: { display: false }, // (de la segunda)
       tooltip: { callbacks: { label: (ctx) => ` ${money(ctx.parsed.y)}` } },
     },
     scales: {
@@ -201,8 +235,10 @@ export default function SalesByDayChart({
     },
   };
 
+  // Mezcla final de plugins
   const plugins = [];
   if (periodKey === '15d' || periodKey === '30d') plugins.push(monthBanner15_30);
+  if (periodKey === '6m') plugins.push(monthCenter6m);
 
   const overlayMessage = loading
     ? 'Cargando ventas…'
