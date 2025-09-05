@@ -1,4 +1,4 @@
-// backend/src/api/payment/controllers/payments.js
+// backend/src/api/payments/controllers/payments.js
 'use strict';
 
 /**
@@ -14,7 +14,7 @@ module.exports = {
 
     if (!orderId) return ctx.badRequest('Falta orderId');
 
-    // Verify order belongs to restaurant
+    // Verificar que el pedido exista y pertenezca al restaurante
     const order = await strapi.entityService.findOne('api::pedido.pedido', orderId, {
       fields: ['id', 'order_status', 'total'],
       populate: { restaurante: { fields: ['id'] } },
@@ -24,24 +24,28 @@ module.exports = {
       return ctx.unauthorized('Pedido de otro restaurante');
     }
 
-    // Create payment (if content-type exists)
+    // Datos a guardar en el CT de pagos
+    const data = {
+      status: status || 'approved',
+      amount: amount ?? order.total,
+      provider: provider || 'mock',
+      externalRef: externalRef || null,
+      order: order.id,
+      restaurante: restauranteId,
+    };
+
+    // Crear Payment (intenta plural y luego singular)
     try {
-      await strapi.entityService.create('api::payment.payment', {
-        data: {
-          status: status || 'approved',
-          amount: amount ?? order.total,
-          provider: provider || 'mock',
-          externalRef: externalRef || null,
-          order: order.id,
-          restaurante: restauranteId,
-        },
-      });
-    } catch (e) {
-      // Swallow if model not present; this is optional in MVP
-      strapi.log.warn('Payment model missing or failed to create. Continuing.');
+      await strapi.entityService.create('api::payments.payments', { data });
+    } catch (e1) {
+      try {
+        await strapi.entityService.create('api::payment.payment', { data });
+      } catch (e2) {
+        strapi.log.warn('Payment CT missing. Continuing without persisting payment record.');
+      }
     }
 
-    // If approved, mark order as paid
+    // Si aprobado, marcar pedido como paid
     if (String(status || 'approved').toLowerCase() === 'approved') {
       await strapi.entityService.update('api::pedido.pedido', order.id, {
         data: { order_status: 'paid' },

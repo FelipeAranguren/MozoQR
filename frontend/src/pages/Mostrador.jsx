@@ -1,5 +1,5 @@
 // src/pages/Mostrador.jsx
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useRef, useState, useMemo } from 'react';
 import { useParams } from 'react-router-dom';
 import { api } from '../api';
 import {
@@ -12,6 +12,8 @@ import {
   Button,
   Divider,
   Grid,
+  TextField,
+  InputAdornment,
 } from '@mui/material';
 
 const money = (n) =>
@@ -22,16 +24,18 @@ export default function Mostrador() {
   const { slug } = useParams();
 
   const [pedidos, setPedidos] = useState([]);     // pedidos visibles (activos o historial)
-  const [cuentas, setCuentas] = useState([]);     // agrupadas por mesa_sesion
+  const [cuentas, setCuentas] = useState([]);     // agrupadas por mesa/sesión
   const [error, setError] = useState(null);
   const [showHistory, setShowHistory] = useState(false);
 
-  // ref para snapshot siempre fresco
+  // 🔎 Buscador (solo mesa, coincidencia parcial)
+  const [searchQuery, setSearchQuery] = useState('');
+
+  // refs / estado auxiliar
   const pedidosRef = useRef([]);
   const servingIdsRef = useRef(new Set());
-
-  // ids (documentId) que deben “flashear” por ~1.2s
   const [flashIds, setFlashIds] = useState(new Set());
+
   const triggerFlash = (documentId) => {
     setFlashIds((prev) => {
       const next = new Set(prev);
@@ -50,7 +54,6 @@ export default function Mostrador() {
   // helpers
   const keyOf = (p) => p?.documentId || String(p?.id);
   const isActive = (st) => !['served', 'paid'].includes(st);
-
   const ordenar = (arr) => {
     const orden = { pending: 0, preparing: 1 };
     return [...arr].sort((a, b) => {
@@ -65,7 +68,6 @@ export default function Mostrador() {
   const mapPedidoRow = (row) => {
     const a = row.attributes || row;
 
-    // mesa_sesion (relation)
     const ses = a.mesa_sesion?.data || a.mesa_sesion || null;
     const sesAttrs = ses?.attributes || ses || {};
     const mesa = sesAttrs?.mesa?.data || sesAttrs?.mesa || null;
@@ -90,7 +92,6 @@ export default function Mostrador() {
     };
   };
 
-  // Si un pedido viene sin mesa_sesion, intento una rehidratación puntual con populate profundo.
   const hydrateMesaSesionIfMissing = async (pedido) => {
     if (pedido.mesa_sesion) return pedido;
     try {
@@ -100,24 +101,21 @@ export default function Mostrador() {
         `&populate[mesa_sesion][fields][0]=session_status` +
         `&populate[mesa_sesion][fields][1]=code` +
         `&populate[mesa_sesion][populate][mesa][fields][0]=number`;
-
       const r = await api.get(`/pedidos/${pedido.id}${qs}`);
       const data = r?.data?.data;
       if (!data) return pedido;
 
-      // en /:id, Strapi devuelve data: { id, attributes, ... }
       const filled = mapPedidoRow({
         id: data.id,
         ...(data.attributes ? data : { attributes: data }),
       });
-
       return filled.mesa_sesion ? filled : pedido;
     } catch {
       return pedido;
     }
   };
 
-  // ---- items de un pedido (por id numérico) ----
+  // ---- items de un pedido ----
   const fetchItemsDePedido = async (orderId) => {
     const qs =
       `/item-pedidos?publicationState=preview` +
@@ -142,14 +140,14 @@ export default function Mostrador() {
     });
   };
 
-  // ---- lista de pedidos (aplanado v4 + mesa_sesion/mesa) ----
+  // ---- lista de pedidos ----
   const fetchPedidos = async () => {
     try {
       const sort = showHistory ? 'updatedAt:desc' : 'createdAt:asc';
       const statusFilter = showHistory
         ? `&filters[order_status][$in][0]=served&filters[order_status][$in][1]=paid`
         : `&filters[order_status][$in][0]=pending&filters[order_status][$in][1]=preparing&filters[order_status][$in][2]=served`;
-      // Traemos sólo lo necesario, y populamos la relación para obtener el número de mesa
+
       const listQS =
         `?filters[restaurante][slug][$eq]=${encodeURIComponent(slug)}` +
         statusFilter +
@@ -164,15 +162,10 @@ export default function Mostrador() {
       const res = await api.get(`/pedidos${listQS}`);
       const base = res?.data?.data ?? [];
 
-      // Aplanar
       const planos = base.map(mapPedidoRow);
+      const planosFilled = await Promise.all(planos.map(hydrateMesaSesionIfMissing));
 
-      // Re-hidratar puntualmente los que (por timing) vinieron sin mesa_sesion
-      const planosFilled = await Promise.all(
-        planos.map((p) => hydrateMesaSesionIfMissing(p))
-      );
-
-      // quitar ids que ya no aparecen desde el servidor
+      // limpiar ids que ya no están
       servingIdsRef.current.forEach((id) => {
         const found = planosFilled.find((p) => p.id === id);
         if (!found || !isActive(found.order_status)) {
@@ -180,19 +173,14 @@ export default function Mostrador() {
         }
       });
 
-      // snapshot previo por key (para no perder items si una consulta viene sin populate)
       const prevByKey = new Map(pedidosRef.current.map((p) => [keyOf(p), p]));
 
-      // Si el pedido está activo, traemos ítems; sino los omitimos
+      // cargar items solo para activos
       const conItems = await Promise.all(
         planosFilled.map(async (p) => {
           let items = [];
           if (isActive(p.order_status)) {
-            try {
-              items = await fetchItemsDePedido(p.id);
-            } catch {
-              /* ignore fetch errors */
-            }
+            try { items = await fetchItemsDePedido(p.id); } catch {}
           }
           if (!items.length) {
             const prev = prevByKey.get(keyOf(p));
@@ -208,78 +196,50 @@ export default function Mostrador() {
 
       const visibles = showHistory
         ? ordenados.filter((p) => ['served', 'paid'].includes(p.order_status))
-        : ordenados.filter(
-            (p) => isActive(p.order_status) && !servingIdsRef.current.has(p.id)
-          );
+        : ordenados.filter((p) => isActive(p.order_status) && !servingIdsRef.current.has(p.id));
 
       pedidosRef.current = visibles;
       setPedidos(visibles);
 
-       // ---- agrupar pedidos en cuentas (mesa/sesión) ----
+      // agrupar en cuentas
       const grupos = new Map();
       ordenados.forEach((p) => {
-        // usar el número de mesa para evitar cuentas duplicadas visuales
-        // Agrupar pedidos en cuentas:
-         // Agrupar pedidos en cuentas:
-        // - vista activa: por número de mesa (evita duplicados)
-        // - historial: por sesión de mesa (separa cada cliente)
         const mesaNum = p.mesa_sesion?.mesa?.number;
         const key = showHistory
           ? p.mesa_sesion?.id != null
             ? `sesion:${p.mesa_sesion.id}`
-            : mesaNum != null
-            ? `mesa:${mesaNum}`
-            : `pedido:${p.id}`
+            : mesaNum != null ? `mesa:${mesaNum}` : `pedido:${p.id}`
           : mesaNum != null
-          ? `mesa:${mesaNum}`
-          : p.mesa_sesion?.id != null
-          ? `sesion:${p.mesa_sesion.id}`
-          : `pedido:${p.id}`;
-
+            ? `mesa:${mesaNum}`
+            : p.mesa_sesion?.id != null
+              ? `sesion:${p.mesa_sesion.id}`
+              : `pedido:${p.id}`;
         const arr = grupos.get(key) || [];
         arr.push(p);
         grupos.set(key, arr);
       });
 
-       // En historial, si algún pedido carece de sesión pero comparte mesa,
-      // únelo a la sesión existente más reciente para esa mesa.
+      // (historial) re-asignar pedidos sin sesión a la sesión más reciente de su mesa
       if (showHistory) {
         for (const [key, arr] of Array.from(grupos.entries())) {
-          if (key.startsWith('mesa:')) {
-            const mesaNum = key.slice(5);
-            let targetKey = null;
-            let latest = 0;
-            for (const [k, otros] of grupos.entries()) {
-              if (k.startsWith('sesion:')) {
-                const coincide = otros.some(
-                  (o) => o.mesa_sesion?.mesa?.number == mesaNum
-                );
-                if (coincide) {
-                  const last = otros.reduce(
-                    (max, it) =>
-                      Math.max(max, new Date(it.updatedAt).getTime()),
-                    0
-                  );
-                  if (last >= latest) {
-                    latest = last;
-                    targetKey = k;
-                  }
-                }
-              }
-            }
-            if (targetKey) {
-              const destino = grupos.get(targetKey);
-              destino.push(...arr);
-              grupos.delete(key);
-            }
+          if (!key.startsWith('mesa:')) continue;
+          const mesaNum = key.slice(5);
+          let targetKey = null; let latest = 0;
+          for (const [k, otros] of grupos.entries()) {
+            if (!k.startsWith('sesion:')) continue;
+            const coincide = otros.some((o) => o.mesa_sesion?.mesa?.number == mesaNum);
+            if (!coincide) continue;
+            const last = otros.reduce((max, it) => Math.max(max, new Date(it.updatedAt).getTime()), 0);
+            if (last >= latest) { latest = last; targetKey = k; }
+          }
+          if (targetKey) {
+            grupos.get(targetKey).push(...arr);
+            grupos.delete(key);
           }
         }
       }
 
-      // En historial pueden existir sesiones duplicadas para la misma mesa
-      // (p.ej. cuando el backend crea más de una sesión para un mismo cliente).
-      // Si esas sesiones se cierran casi al mismo tiempo, fusiónalas para que
-      // se muestren como una sola cuenta en el historial.
+      // (historial) fusionar sesiones casi simultáneas por mesa
       if (showHistory) {
         const porMesa = new Map();
         for (const [key, arr] of grupos.entries()) {
@@ -288,31 +248,19 @@ export default function Mostrador() {
           if (!porMesa.has(mesa)) porMesa.set(mesa, []);
           porMesa.get(mesa).push({ key, arr });
         }
-        const THRESHOLD_MS = 2 * 60 * 1000; // 2 minutos
+        const THRESHOLD_MS = 2 * 60 * 1000;
         for (const lista of porMesa.values()) {
           if (lista.length < 2) continue;
           lista.sort((a, b) => {
-            const aTime = a.arr.reduce(
-              (min, it) => Math.min(min, new Date(it.createdAt).getTime()),
-              Infinity
-            );
-            const bTime = b.arr.reduce(
-              (min, it) => Math.min(min, new Date(it.createdAt).getTime()),
-              Infinity
-            );
+            const aTime = a.arr.reduce((min, it) => Math.min(min, new Date(it.createdAt).getTime()), Infinity);
+            const bTime = b.arr.reduce((min, it) => Math.min(min, new Date(it.createdAt).getTime()), Infinity);
             return aTime - bTime;
           });
           let actual = lista[0];
           for (let i = 1; i < lista.length; i++) {
             const sig = lista[i];
-            const finActual = actual.arr.reduce(
-              (max, it) => Math.max(max, new Date(it.updatedAt).getTime()),
-              0
-            );
-            const inicioSig = sig.arr.reduce(
-              (min, it) => Math.min(min, new Date(it.createdAt).getTime()),
-              Infinity
-            );
+            const finActual = actual.arr.reduce((max, it) => Math.max(max, new Date(it.updatedAt).getTime()), 0);
+            const inicioSig = sig.arr.reduce((min, it) => Math.min(min, new Date(it.createdAt).getTime()), Infinity);
             if (inicioSig - finActual <= THRESHOLD_MS) {
               actual.arr.push(...sig.arr);
               grupos.delete(sig.key);
@@ -323,18 +271,12 @@ export default function Mostrador() {
         }
       }
 
-
-
       const cuentasArr = Array.from(grupos, ([groupKey, arr]) => {
         const hasUnpaid = arr.some((o) => o.order_status !== 'paid');
         const lista = hasUnpaid ? arr.filter((o) => o.order_status !== 'paid') : arr;
         const total = lista.reduce((sum, it) => sum + Number(it.total || 0), 0);
-        const lastUpdated = arr.reduce(
-          (max, it) => Math.max(max, new Date(it.updatedAt).getTime()),
-          0
-        );
+        const lastUpdated = arr.reduce((max, it) => Math.max(max, new Date(it.updatedAt).getTime()), 0);
 
-        // Mostrar número de mesa si existe en alguno
         const mesaNumber =
           arr.find((x) => Number.isFinite(Number(x.mesa_sesion?.mesa?.number)))?.mesa_sesion?.mesa?.number ?? null;
         const sesId = arr.find((x) => x.mesa_sesion?.id)?.mesa_sesion.id ?? null;
@@ -347,6 +289,7 @@ export default function Mostrador() {
           total,
           hasUnpaid,
           lastUpdated,
+          mesaSesionCode: arr.find((x) => x?.mesa_sesion?.code)?.mesa_sesion?.code ?? null,
         };
       });
 
@@ -371,10 +314,10 @@ export default function Mostrador() {
     fetchPedidos();
     const interval = setInterval(fetchPedidos, 3000);
     return () => clearInterval(interval);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [slug, showHistory]);
 
-  // ---- actualizar estado por ID numérico (más robusto que documentId) ----
+  // ---- acciones ----
   const putEstado = async (id, estado) => {
     await api.put(`/pedidos/${id}`, { data: { order_status: estado } });
   };
@@ -389,9 +332,7 @@ export default function Mostrador() {
           return next;
         });
       }
-    } catch (e) {
-      console.warn('No se pudieron refrescar items del pedido:', e?.response?.data || e);
-    }
+    } catch {}
   };
 
   const marcarComoRecibido = async (pedido) => {
@@ -403,7 +344,6 @@ export default function Mostrador() {
         pedidosRef.current = next;
         return next;
       });
-
       triggerFlash(pedido.documentId);
       await putEstado(pedido.id, 'preparing');
       await refreshItemsDe(pedido.id);
@@ -446,12 +386,82 @@ export default function Mostrador() {
     }
   };
 
+  /* =================== 🔎 FILTRO POR Nº DE MESA (PARCIAL) =================== */
+  const mesaTokens = useMemo(() => {
+    const tokens = (searchQuery.match(/\d+/g) || []).map((s) => s.trim()).filter(Boolean);
+    return tokens;
+  }, [searchQuery]);
+
+  const pedidoMatchesMesaPartial = (p) => {
+    if (mesaTokens.length === 0) return true;
+    const mesaNum = p?.mesa_sesion?.mesa?.number;
+    if (mesaNum == null) return false;
+    const mesaStr = String(mesaNum);
+    return mesaTokens.some((t) => mesaStr.includes(t));
+  };
+
+  const cuentaMatchesMesaPartial = (c) => {
+    if (mesaTokens.length === 0) return true;
+    const mesaNum = c?.mesaNumber;
+    if (mesaNum == null) return false;
+    const mesaStr = String(mesaNum);
+    return mesaTokens.some((t) => mesaStr.includes(t));
+  };
+
+  const pedidosFiltrados = useMemo(
+    () => pedidos.filter(pedidoMatchesMesaPartial),
+    [pedidos, mesaTokens]
+  );
+  const cuentasFiltradas = useMemo(
+    () => cuentas.filter(cuentaMatchesMesaPartial),
+    [cuentas, mesaTokens]
+  );
+
+  const noResultsPedidos =
+    !error && pedidos.length > 0 && pedidosFiltrados.length === 0 && mesaTokens.length > 0;
+  const noResultsCuentas =
+    cuentas.length > 0 && cuentasFiltradas.length === 0 && mesaTokens.length > 0;
+
   return (
     <Box sx={{ p: 3 }}>
-      <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+      {/* =================== BARRA SUPERIOR =================== */}
+      <Box
+        sx={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: 2,
+          flexWrap: 'wrap',
+          mb: 1,
+        }}
+      >
         <Typography variant="h4" gutterBottom sx={{ flexGrow: 1 }}>
           Mostrador - {slug?.toUpperCase?.()} {showHistory ? '(Historial)' : ''}
         </Typography>
+
+        {/* Buscador en la barra superior (a la derecha del título) */}
+        <TextField
+          size="small"
+          label="Buscar por Nº de mesa"
+          value={searchQuery}
+          onChange={(e) => setSearchQuery(e.target.value)}
+          sx={{ minWidth: 320 }}
+          InputProps={{
+            startAdornment: <InputAdornment position="start">🔎</InputAdornment>,
+            endAdornment: searchQuery ? (
+              <InputAdornment
+                position="end"
+                sx={{ cursor: 'pointer' }}
+                onClick={() => setSearchQuery('')}
+                title="Limpiar búsqueda"
+              >
+                ×
+              </InputAdornment>
+            ) : null,
+          }}
+          placeholder="Ej: 3  |  12  |  12 33"
+        />
+
+        {/* Botón a la derecha del buscador */}
         <Button variant="outlined" onClick={() => setShowHistory((s) => !s)}>
           {showHistory ? 'Ver activos' : 'Ver historial'}
         </Button>
@@ -460,7 +470,7 @@ export default function Mostrador() {
       {error && <Typography color="error">{error}</Typography>}
 
       <Grid container spacing={2}>
-        {/* Columna de pedidos */}
+        {/* =================== COL: PEDIDOS =================== */}
         <Grid item xs={12} md={8}>
           {!error && pedidos.length === 0 && (
             <Typography>
@@ -468,8 +478,14 @@ export default function Mostrador() {
             </Typography>
           )}
 
+          {noResultsPedidos && (
+            <Typography sx={{ mb: 1 }}>
+              No hay pedidos para las mesas que coinciden con tu búsqueda.
+            </Typography>
+          )}
+
           <Grid container spacing={2}>
-            {pedidos.map((pedido) => {
+            {pedidosFiltrados.map((pedido) => {
               const {
                 id,
                 documentId,
@@ -499,9 +515,13 @@ export default function Mostrador() {
                     <CardContent sx={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
                       <Typography variant="h6">{tituloMesa}</Typography>
 
+                      {/* ⚠️ Ocultado: Sesión */}
+                      {/* <Typography variant="caption" color="text.secondary">Sesión: ...</Typography> */}
+
                       <Typography
                         variant="subtitle2"
                         sx={{
+                          mt: 0.5,
                           color:
                             order_status === 'pending'
                               ? 'error.main'
@@ -569,16 +589,30 @@ export default function Mostrador() {
           </Grid>
         </Grid>
 
-        {/* Columna de cuentas */}
+        {/* =================== COL: CUENTAS =================== */}
         <Grid item xs={12} md={4}>
           <Typography variant="h5" gutterBottom>
             {showHistory ? 'Cuentas pagadas' : 'Cuentas'}
           </Typography>
 
-          {cuentas.map((c) => (
+          {noResultsCuentas && (
+            <Typography sx={{ mb: 1 }}>
+              No hay cuentas para las mesas que coinciden con tu búsqueda.
+            </Typography>
+          )}
+
+          {cuentasFiltradas.map((c) => (
             <Card key={c.groupKey} sx={{ mb: 2 }}>
               <CardContent>
                 <Typography variant="h6">Mesa {c.mesaNumber ?? 's/n'}</Typography>
+
+                {/* ⚠️ Ocultado: Sesión en cuentas */}
+                {/* {c.mesaSesionCode && (
+                  <Typography variant="caption" color="text.secondary">
+                    Sesión: {c.mesaSesionCode}
+                  </Typography>
+                )} */}
+
                 <List>
                   {c.pedidos.map((p) => (
                     <ListItem key={p.documentId || p.id}>

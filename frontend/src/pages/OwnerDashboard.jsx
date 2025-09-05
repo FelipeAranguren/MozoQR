@@ -1,7 +1,35 @@
 // src/pages/OwnerDashboard.jsx
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState, Suspense } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import SalesByDayChart from '../components/SalesByDayChart';
+
+// ⬇️ Import perezoso con fallback: si el archivo o sus deps rompen (dev server 500),
+// mostramos un placeholder y NO cae todo el Dashboard.
+const SalesByDayChart = React.lazy(() =>
+  import('../components/SalesByDayChart')
+    .then((m) => ({ default: m.default }))
+    .catch(() => ({
+      default: function ChartFallback() {
+        return (
+          <div
+            style={{
+              height: 320,
+              border: '1px dashed #e5e7eb',
+              borderRadius: 12,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              color: '#b91c1c',
+              padding: 16,
+              background: '#fff',
+            }}
+          >
+            No se pudo cargar el gráfico. (Revisá chart.js / react-chartjs-2)
+          </div>
+        );
+      },
+    }))
+);
+
 import {
   getPaidOrders,
   getTotalOrdersCount,
@@ -11,8 +39,11 @@ import {
 } from '../api/analytics';
 
 const money = (n) =>
-  new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS', maximumFractionDigits: 0 })
-    .format(Number(n) || 0);
+  new Intl.NumberFormat('es-AR', {
+    style: 'currency',
+    currency: 'ARS',
+    maximumFractionDigits: 0,
+  }).format(Number(n) || 0);
 
 const PERIODS = [
   { key: '7d',  label: '7 días',   computeStart: (end) => addDays(end, -6) }, // incluye hoy
@@ -31,7 +62,7 @@ function addMonths(base, m) {
   return x;
 }
 
-const prettyName = (s='') => s.replaceAll('-', ' ').toUpperCase();
+const prettyName = (s = '') => s.replaceAll('-', ' ').toUpperCase();
 
 export default function OwnerDashboard() {
   const { slug } = useParams();
@@ -43,7 +74,7 @@ export default function OwnerDashboard() {
   // end se fija por período para evitar renders infinitos
   const end = useMemo(() => new Date(), [periodKey]);
   const periodDef = useMemo(
-    () => PERIODS.find(p => p.key === periodKey) || PERIODS[0],
+    () => PERIODS.find((p) => p.key === periodKey) || PERIODS[0],
     [periodKey]
   );
   const start = useMemo(() => periodDef.computeStart(end), [periodDef, end]);
@@ -162,7 +193,7 @@ export default function OwnerDashboard() {
         && a.getDate() === today.getDate();
     };
     return periodOrders
-      .filter(o => o.createdAt && sameLocalDay(o.createdAt))
+      .filter((o) => o.createdAt && sameLocalDay(o.createdAt))
       .reduce((s, o) => s + (Number(o.total) || 0), 0);
   }, [periodOrders]);
 
@@ -189,7 +220,7 @@ export default function OwnerDashboard() {
 
         {/* Selector de período */}
         <div style={{ marginLeft: 'auto', display: 'flex', gap: 8 }}>
-          {PERIODS.map(p => (
+          {PERIODS.map((p) => (
             <button
               key={p.key}
               onClick={() => setPeriodKey(p.key)}
@@ -221,13 +252,15 @@ export default function OwnerDashboard() {
       >
         {/* Gráfico */}
         <div style={{ border: '1px solid #e5e7eb', borderRadius: 12, padding: 16, background: '#fff' }}>
-          <SalesByDayChart
-            slug={slug}
-            start={new Date(startMs)}
-            end={new Date(endMs)}
-            periodKey={periodKey}
-            onTotalChange={setPeriodTotal}
-          />
+          <Suspense fallback={<div style={{ height: 320, display: 'grid', placeItems: 'center' }}>Cargando gráfico…</div>}>
+            <SalesByDayChart
+              slug={slug}
+              start={new Date(startMs)}
+              end={new Date(endMs)}
+              periodKey={periodKey}
+              onTotalChange={setPeriodTotal}
+            />
+          </Suspense>
         </div>
 
         {/* KPIs (2x2) */}
@@ -289,17 +322,19 @@ export default function OwnerDashboard() {
 function KpiBox({ title, value }) {
   const isIngresos = title === 'Ingresos del Día';
   return (
-    <div style={{
-      border: '1px solid #f0f0f0',
-      borderRadius: 12,
-      padding: 16,
-      display: 'flex',
-      flexDirection: 'column',
-      justifyContent: 'center',
-      minWidth: 0,
-      overflow: 'visible',
-      background: '#fff'
-    }}>
+    <div
+      style={{
+        border: '1px solid #f0f0f0',
+        borderRadius: 12,
+        padding: 16,
+        display: 'flex',
+        flexDirection: 'column',
+        justifyContent: 'center',
+        minWidth: 0,
+        overflow: 'visible',
+        background: '#fff',
+      }}
+    >
       <div style={{ color: '#6b7280', fontWeight: 600, marginBottom: 8 }}>{title}</div>
       <div
         style={{
@@ -316,8 +351,6 @@ function KpiBox({ title, value }) {
     </div>
   );
 }
-
-/* ===================== NUEVOS COMPONENTES ===================== */
 
 function OrdersTable({ rows }) {
   if (!rows?.length) {
