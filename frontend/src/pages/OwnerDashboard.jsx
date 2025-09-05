@@ -1,34 +1,7 @@
 // src/pages/OwnerDashboard.jsx
-import React, { useEffect, useMemo, useState, Suspense } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-
-// ⬇️ Import perezoso con fallback: si el archivo o sus deps rompen (dev server 500),
-// mostramos un placeholder y NO cae todo el Dashboard.
-const SalesByDayChart = React.lazy(() =>
-  import('../components/SalesByDayChart')
-    .then((m) => ({ default: m.default }))
-    .catch(() => ({
-      default: function ChartFallback() {
-        return (
-          <div
-            style={{
-              height: 320,
-              border: '1px dashed #e5e7eb',
-              borderRadius: 12,
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              color: '#b91c1c',
-              padding: 16,
-              background: '#fff',
-            }}
-          >
-            No se pudo cargar el gráfico. (Revisá chart.js / react-chartjs-2)
-          </div>
-        );
-      },
-    }))
-);
+import SalesByDayChart from '../components/SalesByDayChart';
 
 import {
   getPaidOrders,
@@ -46,7 +19,7 @@ const money = (n) =>
   }).format(Number(n) || 0);
 
 const PERIODS = [
-  { key: '7d',  label: '7 días',   computeStart: (end) => addDays(end, -6) }, // incluye hoy
+  { key: '7d',  label: '7 días',   computeStart: (end) => addDays(end, -6) },
   { key: '15d', label: '15 días',  computeStart: (end) => addDays(end, -14) },
   { key: '30d', label: '30 días',  computeStart: (end) => addDays(end, -29) },
   { key: '6m',  label: '6 meses',  computeStart: (end) => addMonths(end, -6) },
@@ -68,37 +41,33 @@ export default function OwnerDashboard() {
   const { slug } = useParams();
   const navigate = useNavigate();
 
-  const [periodKey, setPeriodKey] = useState('7d'); // por defecto 7d
-  const [periodTotal, setPeriodTotal] = useState(0); // total del período (desde el gráfico)
+  const [periodKey, setPeriodKey] = useState('7d');
+  const [periodTotal, setPeriodTotal] = useState(0);
 
-  // end se fija por período para evitar renders infinitos
   const end = useMemo(() => new Date(), [periodKey]);
-  const periodDef = useMemo(
-    () => PERIODS.find((p) => p.key === periodKey) || PERIODS[0],
-    [periodKey]
-  );
+  const periodDef = useMemo(() => PERIODS.find(p => p.key === periodKey) || PERIODS[0], [periodKey]);
   const start = useMemo(() => periodDef.computeStart(end), [periodDef, end]);
 
-  // Para deps estables
-  const startMs = start.getTime();
-  const endMs = end.getTime();
+  // Fechas estables para pasar al chart
+  const startStable = useMemo(() => new Date(start.getTime()), [start]);
+  const endStable   = useMemo(() => new Date(end.getTime()),   [end]);
 
-  // KPIs
-  const [periodOrders, setPeriodOrders] = useState([]);     // pedidos del rango
-  const [lifetimeOrders, setLifetimeOrders] = useState(0);  // total histórico
-  const [sessionsCount, setSessionsCount] = useState(0);    // sesiones del rango (clientes)
+  const startMs = startStable.getTime();
+  const endMs   = endStable.getTime();
 
-  // Listas nuevas
+  const [periodOrders, setPeriodOrders] = useState([]);
+  const [lifetimeOrders, setLifetimeOrders] = useState(0);
+  const [sessionsCount, setSessionsCount] = useState(0);
+
   const [recentOrders, setRecentOrders] = useState([]);
   const [topProducts, setTopProducts] = useState([]);
 
-  // Carga pedidos del período — POR RESTAURANTE
   useEffect(() => {
     if (!slug) return;
     let cancelled = false;
     (async () => {
       try {
-        const list = await getPaidOrders({ slug, from: new Date(startMs), to: new Date(endMs) });
+        const list = await getPaidOrders({ slug, from: startStable, to: endStable });
         if (!cancelled) setPeriodOrders(list || []);
       } catch {
         if (!cancelled) setPeriodOrders([]);
@@ -107,7 +76,6 @@ export default function OwnerDashboard() {
     return () => { cancelled = true; };
   }, [slug, startMs, endMs]);
 
-  // Carga total histórico (lifetime) — POR RESTAURANTE
   useEffect(() => {
     if (!slug) return;
     let cancelled = false;
@@ -122,13 +90,12 @@ export default function OwnerDashboard() {
     return () => { cancelled = true; };
   }, [slug]);
 
-  // Carga cantidad de sesiones (clientes atendidos) del período — POR RESTAURANTE
   useEffect(() => {
     if (!slug) return;
     let cancelled = false;
     (async () => {
       try {
-        const total = await getSessionsCount({ slug, from: new Date(startMs), to: new Date(endMs) });
+        const total = await getSessionsCount({ slug, from: startStable, to: endStable });
         if (!cancelled) setSessionsCount(total);
       } catch {
         if (!cancelled) setSessionsCount(0);
@@ -137,7 +104,6 @@ export default function OwnerDashboard() {
     return () => { cancelled = true; };
   }, [slug, startMs, endMs]);
 
-  // Carga “Últimos pedidos” — POR RESTAURANTE, con fallback a período
   useEffect(() => {
     if (!slug) return;
     let cancelled = false;
@@ -145,17 +111,15 @@ export default function OwnerDashboard() {
       try {
         const rows = await fetchRecentPaidOrders({ slug, limit: 5 });
         if (!cancelled) {
-          if (rows && rows.length) {
-            setRecentOrders(rows);
-          } else {
-            // Fallback: tomo los del período, ordeno desc y corto a 5
+          if (rows && rows.length) setRecentOrders(rows);
+          else {
             const fallback = [...periodOrders]
               .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))
               .slice(0, 5)
               .map((a) => ({
                 id: a.id,
                 total: a.total,
-                mesa: a.tableNumber ?? a.table?.number ?? a.tableSessionId ?? '—',
+                mesa: a.tableNumber ?? (a.table && a.table.number) ?? a.tableSessionId ?? '—',
                 createdAt: a.createdAt,
               }));
             setRecentOrders(fallback);
@@ -168,13 +132,12 @@ export default function OwnerDashboard() {
     return () => { cancelled = true; };
   }, [slug, periodOrders]);
 
-  // Carga “Top productos” — POR RESTAURANTE y PERÍODO
   useEffect(() => {
     if (!slug) return;
     let cancelled = false;
     (async () => {
       try {
-        const rows = await fetchTopProducts({ slug, from: new Date(startMs), to: new Date(endMs), limit: 5 });
+        const rows = await fetchTopProducts({ slug, from: startStable, to: endStable, limit: 5 });
         if (!cancelled) setTopProducts(rows || []);
       } catch {
         if (!cancelled) setTopProducts([]);
@@ -183,7 +146,6 @@ export default function OwnerDashboard() {
     return () => { cancelled = true; };
   }, [slug, startMs, endMs]);
 
-  // === Derivados (basado en createdAt) ===
   const ingresosHoy = useMemo(() => {
     const today = new Date();
     const sameLocalDay = (d) => {
@@ -218,7 +180,6 @@ export default function OwnerDashboard() {
         </h2>
         <div style={{ opacity: 0.7 }}>({prettyName(slug)})</div>
 
-        {/* Selector de período */}
         <div style={{ marginLeft: 'auto', display: 'flex', gap: 8 }}>
           {PERIODS.map((p) => (
             <button
@@ -239,7 +200,7 @@ export default function OwnerDashboard() {
         </div>
       </div>
 
-      {/* FILA 1: izquierda gráfico, derecha KPIs */}
+      {/* Fila 1 */}
       <div
         style={{
           display: 'grid',
@@ -250,20 +211,18 @@ export default function OwnerDashboard() {
           marginBottom: 16,
         }}
       >
-        {/* Gráfico */}
+        {/* Gráfico (safe) */}
         <div style={{ border: '1px solid #e5e7eb', borderRadius: 12, padding: 16, background: '#fff' }}>
-          <Suspense fallback={<div style={{ height: 320, display: 'grid', placeItems: 'center' }}>Cargando gráfico…</div>}>
-            <SalesByDayChart
-              slug={slug}
-              start={new Date(startMs)}
-              end={new Date(endMs)}
-              periodKey={periodKey}
-              onTotalChange={setPeriodTotal}
-            />
-          </Suspense>
+          <SalesByDayChart
+            slug={slug}
+            start={startStable}
+            end={endStable}
+            periodKey={periodKey}
+            onTotalChange={setPeriodTotal}
+          />
         </div>
 
-        {/* KPIs (2x2) */}
+        {/* KPIs */}
         <div
           style={{
             border: '1px solid #e5e7eb',
@@ -285,7 +244,7 @@ export default function OwnerDashboard() {
         </div>
       </div>
 
-      {/* FILA 2: izquierda últimos pedidos, derecha top productos */}
+      {/* Fila 2 */}
       <div
         style={{
           display: 'grid',
@@ -295,30 +254,20 @@ export default function OwnerDashboard() {
           alignItems: 'stretch',
         }}
       >
-        {/* Últimos pedidos */}
         <div style={{ border: '1px solid #e5e7eb', borderRadius: 12, background: '#fff', padding: 16 }}>
           <h3 style={{ marginTop: 0, marginBottom: 12 }}>Últimos pedidos</h3>
           <OrdersTable rows={recentOrders} />
         </div>
 
-        {/* Top productos */}
         <div style={{ border: '1px solid #e5e7eb', borderRadius: 12, background: '#fff', padding: 16 }}>
           <h3 style={{ marginTop: 0, marginBottom: 12 }}>Top productos del período</h3>
           <TopProductsList rows={topProducts} />
-          {!topProducts?.length && (
-            <div style={{ marginTop: 8, color: '#6b7280', fontSize: 13 }}>
-              Para ver este ranking, la API debe devolver los ítems del pedido
-              (<code>items</code> / <code>lineItems</code>) con <code>product</code> y <code>quantity</code>,
-              o bien la colección <code>item-pedidos</code> con <code>product</code> y el <code>order</code>.
-            </div>
-          )}
         </div>
       </div>
     </div>
   );
 }
 
-/** Caja simple para KPI con tipografía responsiva */
 function KpiBox({ title, value }) {
   const isIngresos = title === 'Ingresos del Día';
   return (
@@ -353,7 +302,7 @@ function KpiBox({ title, value }) {
 }
 
 function OrdersTable({ rows }) {
-  if (!rows?.length) {
+  if (!rows || !rows.length) {
     return <div style={{ color: '#6b7280' }}>Sin pedidos recientes.</div>;
   }
   return (
@@ -370,7 +319,7 @@ function OrdersTable({ rows }) {
           {rows.map((r) => (
             <tr key={r.id}>
               <td style={{ padding: '10px 6px', borderBottom: '1px solid #f1f5f9' }}>{r.id}</td>
-              <td style={{ padding: '10px 6px', borderBottom: '1px solid #f1f5f9' }}>{r.mesa ?? '—'}</td>
+              <td style={{ padding: '10px 6px', borderBottom: '1px solid #f1f5f9' }}>{r.mesa || '—'}</td>
               <td style={{ padding: '10px 6px', borderBottom: '1px solid #f1f5f9', fontWeight: 700 }}>
                 {money(r.total)}
               </td>
@@ -383,7 +332,7 @@ function OrdersTable({ rows }) {
 }
 
 function TopProductsList({ rows }) {
-  if (!rows?.length) {
+  if (!rows || !rows.length) {
     return <div style={{ color: '#6b7280' }}>Sin datos de productos en este período.</div>;
   }
   return (
@@ -397,7 +346,7 @@ function TopProductsList({ rows }) {
         </thead>
         <tbody>
           {rows.map((r, i) => (
-            <tr key={`${r.name}-${i}`}>
+            <tr key={(r.name || 'producto') + '-' + i}>
               <td style={{ padding: '10px 6px', borderBottom: '1px solid #f1f5f9' }}>{r.name}</td>
               <td style={{ padding: '10px 6px', borderBottom: '1px solid #f1f5f9', fontWeight: 700 }}>
                 {r.qty}
