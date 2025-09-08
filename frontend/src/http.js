@@ -8,6 +8,13 @@ export const http = axios.create({
   headers: { 'Content-Type': 'application/json' },
 });
 
+/** 👉 Interceptor: agrega JWT si existe en localStorage */
+http.interceptors.request.use((config) => {
+  const token = localStorage.getItem('jwt'); // ajustá la key según tu login
+  if (token) config.headers.Authorization = `Bearer ${token}`;
+  return config;
+});
+
 /** Helper to unwrap Strapi { data } */
 function unwrap(res) {
   return res?.data?.data ?? res?.data;
@@ -20,7 +27,10 @@ export async function fetchMenus(slug) {
 }
 
 /** PUBLIC: Create order */
-export async function createOrder(slug, { table, tableSessionId, items, notes, clientRequestId }) {
+export async function createOrder(
+  slug,
+  { table, tableSessionId, items, notes, clientRequestId }
+) {
   const res = await http.post(`/restaurants/${slug}/orders`, {
     data: { table, tableSessionId, items, notes, clientRequestId },
   });
@@ -28,7 +38,10 @@ export async function createOrder(slug, { table, tableSessionId, items, notes, c
 }
 
 /** PUBLIC: Payments (mock) */
-export async function postPayment(slug, { orderId, status = 'approved', amount, provider, externalRef }) {
+export async function postPayment(
+  slug,
+  { orderId, status = 'approved', amount, provider, externalRef }
+) {
   const res = await http.post(`/restaurants/${slug}/payments`, {
     data: { orderId, status, amount, provider, externalRef },
   });
@@ -41,7 +54,9 @@ export async function listOrders(slug, { status, table, since } = {}) {
   if (status) params.set('status', status);
   if (table) params.set('table', String(table));
   if (since) params.set('since', since);
-  const res = await http.get(`/restaurants/${slug}/orders?` + params.toString());
+  const res = await http.get(
+    `/restaurants/${slug}/orders?` + params.toString()
+  );
   return unwrap(res);
 }
 

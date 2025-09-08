@@ -323,7 +323,8 @@ export default function SalesByDayChart({ slug, start, end, periodKey = '30d', o
                       fontSize: 12, fontWeight: t.p === 1 ? 600 : 500, color: t.p === 1 ? COLORS.text : COLORS.textMuted,
                       transform: 'translateY(-50%)'
                     }}>
-                      {money(t.value)}
+                      {moneyNoCents(t.value)}
+
                     </div>
                     {!isZero && (<div style={{ marginLeft: 70, height: 0, borderTop: `1px dashed ${COLORS.grid}` }} />)}
                   </div>
