@@ -224,7 +224,7 @@ export default {
 
     // Pedidos NO pagados de esa sesión
     const pedidos = await strapi.entityService.findMany('api::pedido.pedido', {
-      filters: { mesa_sesion: sesion.id, order_status: { $ne: 'paid' } },
+      filters: { mesa_sesion: { id: Number(sesion.id) }, order_status: { $ne: 'paid' } },
       fields: ['id'],
       limit: 1000,
     });

@@ -7,25 +7,24 @@ import {
 } from '@mui/material';
 import { useParams } from 'react-router-dom';
 import { useCart } from '../context/CartContext';
-import { createOrder, postPayment } from '../http'; // ⬅️ http.js
+import { createOrder, closeAccount, hasOpenAccount } from '../api/tenant'; // ✅ usa tus APIs que funcionaban
 import QtyStepper from './QtyStepper';
 
 const money = (n) =>
   new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS' }).format(Number(n) || 0);
 
-// === Keys ===
-const lastOrderKey = (slug, table) => `LAST_ORDER_${slug}_${table}`;                // legacy (1 solo id)
-const lastOrderTotalKey = (slug, table) => `LAST_ORDER_TOTAL_${slug}_${table}`;     // legacy (1 solo total)
-const openOrdersKey = (slug, table) => `OPEN_ORDERS_${slug}_${table}`;              // nuevo: lista [{id,total}]
+// --- Claves de storage (para acumular totales de pedidos abiertos por mesa y restaurante)
+const openOrdersKey = (slug, table) => `OPEN_ORDERS_${slug}_${table}`; // lista [{id,total}]
 
-// Helpers de storage
 const readOpenOrders = (slug, table) => {
   try {
     const raw = localStorage.getItem(openOrdersKey(slug, table));
     if (!raw) return [];
     const arr = JSON.parse(raw);
     return Array.isArray(arr) ? arr : [];
-  } catch { return []; }
+  } catch {
+    return [];
+  }
 };
 const writeOpenOrders = (slug, table, arr) => {
   localStorage.setItem(openOrdersKey(slug, table), JSON.stringify(arr || []));
@@ -34,25 +33,12 @@ const clearOpenOrders = (slug, table) => {
   localStorage.removeItem(openOrdersKey(slug, table));
 };
 
-// Migra desde el esquema legacy (si existiera) a la nueva lista
-const migrateLegacyToList = (slug, table) => {
-  const legacyId = localStorage.getItem(lastOrderKey(slug, table));
-  const legacyTot = localStorage.getItem(lastOrderTotalKey(slug, table));
-  if (legacyId && !localStorage.getItem(openOrdersKey(slug, table))) {
-    const id = Number(legacyId);
-    const total = Number(legacyTot || 0);
-    writeOpenOrders(slug, table, id ? [{ id, total }] : []);
-  }
-  localStorage.removeItem(lastOrderKey(slug, table));
-  localStorage.removeItem(lastOrderTotalKey(slug, table));
-};
-
 export default function StickyFooter({ table, tableSessionId }) {
   const { items, subtotal, addItem, removeItem, clearCart } = useCart();
   const { slug } = useParams();
 
-  const [open, setOpen] = useState(false);
-  const [loading, setLoading] = useState(false);
+  const [confirmOpen, setConfirmOpen] = useState(false);
+  const [sending, setSending] = useState(false);
 
   const [payOpen, setPayOpen] = useState(false);
   const [payLoading, setPayLoading] = useState(false);
@@ -60,20 +46,41 @@ export default function StickyFooter({ table, tableSessionId }) {
 
   const [snack, setSnack] = useState({ open: false, msg: '', severity: 'success' });
 
-  // Lista de pedidos abiertos en esta mesa: [{id,total}]
+  // Estado "oficial" de si hay cuenta abierta (desde backend)
+  const [backendHasAccount, setBackendHasAccount] = useState(false);
+
+  // Registro local de pedidos abiertos y sus totales (sólo para mostrar el total en UI)
   const [openOrders, setOpenOrders] = useState([]);
 
-  // Carga inicial (y migración si venís del esquema viejo)
+  // Carga inicial de estado local y consulta al backend
   useEffect(() => {
+    let cancelled = false;
+
+    // Cargar lista local de pedidos abiertos (para total)
     if (!slug || !table) {
       setOpenOrders([]);
-      return;
+    } else {
+      setOpenOrders(readOpenOrders(slug, table));
     }
-    migrateLegacyToList(slug, table);
-    setOpenOrders(readOpenOrders(slug, table));
-  }, [slug, table]);
 
-  const hasAccount = openOrders.length > 0;
+    // Consultar al backend si hay cuenta abierta (para mostrar botón pagar)
+    (async () => {
+      if (!slug || !table) {
+        if (!cancelled) setBackendHasAccount(false);
+        return;
+      }
+      try {
+        const exists = await hasOpenAccount(slug, { table, tableSessionId });
+        if (!cancelled) setBackendHasAccount(Boolean(exists));
+      } catch {
+        if (!cancelled) setBackendHasAccount(false);
+      }
+    })();
+
+    return () => { cancelled = true; };
+  }, [slug, table, tableSessionId]);
+
+  // Total mostrado en el modal de pago (suma de pedidos registrados localmente)
   const accountTotal = useMemo(
     () => openOrders.reduce((acc, o) => acc + (Number(o.total) || 0), 0),
     [openOrders]
@@ -81,46 +88,49 @@ export default function StickyFooter({ table, tableSessionId }) {
 
   const showOrderBtn = items.length > 0;
 
-  // ========== Enviar pedido ==========
+  // ---------- Enviar pedido ----------
   const handleSendOrder = async () => {
     if (!table) {
       setSnack({ open: true, msg: 'Falta el número de mesa (parámetro t).', severity: 'error' });
       return;
     }
     try {
-      setLoading(true);
+      setSending(true);
 
-      // Shape requerido por el backend
+      // ✅ Usa la forma que funcionaba en tu backend (del archivo "viejo")
       const payloadItems = items.map(i => ({
         productId: i.id,
-        quantity: i.qty,
         qty: i.qty,
         price: i.precio,
-        UnitPrice: i.precio,
-        notes: i.notes || null,
+        notes: i.notes || ''
       }));
 
       const res = await createOrder(slug, { table, items: payloadItems });
 
-      // id del pedido creado
-      const createdId = res?.id || res?.data?.id;
-      if (createdId) {
-        // Si el backend devolvió total, lo usamos; si no, usamos el subtotal local
-        const t =
-          res?.total ??
-          res?.data?.total ??
-          res?.attributes?.total ??
-          res?.data?.attributes?.total ??
-          subtotal;
+      // Intentamos rescatar id/total si vinieran en la respuesta (soporta varios shapes)
+      const createdId =
+        res?.id ?? res?.data?.id ?? res?.data?.data?.id ?? res?.orderId ?? null;
+      const totalFromRes =
+        res?.total ??
+        res?.data?.total ??
+        res?.attributes?.total ??
+        res?.data?.attributes?.total ??
+        null;
 
-        const next = [...openOrders, { id: createdId, total: Number(t) || 0 }];
+      // Si no viene total del backend, usamos el subtotal local del carrito
+      const recordedTotal = Number(totalFromRes ?? subtotal) || 0;
+
+      // Guardamos en el storage local para poder mostrar el total acumulado al pagar
+      if (slug && table) {
+        const next = [...readOpenOrders(slug, table), { id: createdId, total: recordedTotal }];
         setOpenOrders(next);
         writeOpenOrders(slug, table, next);
       }
 
       clearCart();
       setSnack({ open: true, msg: 'Pedido enviado con éxito ✅', severity: 'success' });
-      setOpen(false);
+      setConfirmOpen(false);
+      setBackendHasAccount(true); // probablemente ahora haya cuenta abierta
     } catch (err) {
       console.error(err);
       const apiMsg =
@@ -132,11 +142,11 @@ export default function StickyFooter({ table, tableSessionId }) {
         'Error al enviar el pedido ❌';
       setSnack({ open: true, msg: apiMsg, severity: 'error' });
     } finally {
-      setLoading(false);
+      setSending(false);
     }
   };
 
-  // Inputs tarjeta (mock UI)
+  // ---------- Inputs de tarjeta (mock UI) ----------
   const handleCardNumber = (e) => {
     const v = e.target.value.replace(/\D/g, '').slice(0, 16);
     const parts = v.match(/.{1,4}/g) || [];
@@ -153,7 +163,7 @@ export default function StickyFooter({ table, tableSessionId }) {
   };
   const handleName = (e) => setCard((c) => ({ ...c, name: e.target.value }));
 
-  // ========== Pagar cuenta (todos los pedidos abiertos) ==========
+  // ---------- Pagar cuenta completa ----------
   const handlePay = async () => {
     const { number, expiry, cvv, name } = card;
     const numOk = /^\d{4} \d{4} \d{4} \d{4}$/.test(number);
@@ -164,31 +174,22 @@ export default function StickyFooter({ table, tableSessionId }) {
       setSnack({ open: true, msg: 'Datos de tarjeta inválidos', severity: 'error' });
       return;
     }
-    if (openOrders.length === 0) {
-      setSnack({ open: true, msg: 'No hay pedidos abiertos para pagar.', severity: 'error' });
-      return;
-    }
 
     try {
       setPayLoading(true);
 
-      // Pagar en secuencia cada pedido abierto
-      for (const o of openOrders) {
-        await postPayment(slug, {
-          orderId: o.id,
-          status: 'approved',
-          amount: undefined, // el backend usa el total del pedido
-          provider: 'mock',
-          externalRef: null,
-        });
-      }
+      // ✅ Usa el cierre de cuenta de tu backend que ya funcionaba
+      await closeAccount(slug, { table, tableSessionId });
 
-      // Ok ⇒ limpiar cuenta abierta
-      clearOpenOrders(slug, table);
-      setOpenOrders([]);
+      // Limpiamos la lista local (ya no hay pedidos abiertos)
+      if (slug && table) {
+        clearOpenOrders(slug, table);
+        setOpenOrders([]);
+      }
 
       setSnack({ open: true, msg: 'Cuenta pagada con éxito ✅', severity: 'success' });
       setPayOpen(false);
+      setBackendHasAccount(false);
     } catch (err) {
       console.error(err);
       const apiMsg =
@@ -222,10 +223,10 @@ export default function StickyFooter({ table, tableSessionId }) {
           borderTop: 1,
           borderColor: 'divider',
           zIndex: 1300,
-          justifyContent: items.length > 0 ? 'flex-start' : 'flex-end',
+          justifyContent: showOrderBtn ? 'flex-start' : 'flex-end',
         }}
       >
-        {items.length > 0 && (
+        {showOrderBtn && (
           <>
             <Typography variant="h6" sx={{ flex: 1 }}>
               Subtotal: {money(subtotal)}
@@ -233,14 +234,14 @@ export default function StickyFooter({ table, tableSessionId }) {
             <Button
               variant="contained"
               size="large"
-              onClick={() => setOpen(true)}
+              onClick={() => setConfirmOpen(true)}
               sx={{ width: { xs: '100%', sm: 'auto' } }}
             >
               Enviar pedido
             </Button>
           </>
         )}
-        {hasAccount && (
+        {backendHasAccount && (
           <Button
             variant="outlined"
             size="large"
@@ -254,8 +255,8 @@ export default function StickyFooter({ table, tableSessionId }) {
 
       {/* Confirmación de pedido */}
       <Dialog
-        open={open}
-        onClose={() => !loading && setOpen(false)}
+        open={confirmOpen}
+        onClose={() => !sending && setConfirmOpen(false)}
         fullWidth
         aria-labelledby="confirm-order-title"
       >
@@ -282,13 +283,13 @@ export default function StickyFooter({ table, tableSessionId }) {
           </List>
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setOpen(false)} disabled={loading}>Cancelar</Button>
+          <Button onClick={() => setConfirmOpen(false)} disabled={sending}>Cancelar</Button>
           <Button
             variant="contained"
             onClick={handleSendOrder}
-            disabled={loading || items.length === 0}
+            disabled={sending || items.length === 0}
           >
-            {loading ? 'Enviando…' : 'Confirmar pedido'}
+            {sending ? 'Enviando…' : 'Confirmar pedido'}
           </Button>
         </DialogActions>
       </Dialog>
@@ -317,7 +318,7 @@ export default function StickyFooter({ table, tableSessionId }) {
       >
         <DialogTitle id="pay-account-title">Pagar cuenta</DialogTitle>
         <DialogContent dividers>
-          {/* Total de la cuenta (suma de todos los pedidos abiertos) */}
+          {/* Total de la cuenta (suma local de pedidos abiertos) */}
           <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 1 }}>
             <Typography variant="subtitle1">Total</Typography>
             <Typography variant="subtitle1" sx={{ textAlign: 'right', fontWeight: 600 }}>
@@ -356,7 +357,7 @@ export default function StickyFooter({ table, tableSessionId }) {
             fullWidth
             margin="dense"
             value={card.name}
-            onChange={handleName}
+            onChange={e => setCard(c => ({ ...c, name: e.target.value }))}
           />
         </DialogContent>
         <DialogActions>
