@@ -11,6 +11,11 @@
   },
   "pluginOptions": {},
   "attributes": {
+    "plan": {
+      "type": "enumeration",
+      "enum": ["BASIC","PLUS","PRO"],
+      "default": "BASIC"
+    },
     "name": {
       "type": "string",
       "required": true

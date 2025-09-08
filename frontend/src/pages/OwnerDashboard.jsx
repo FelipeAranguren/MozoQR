@@ -76,6 +76,7 @@ export default function OwnerDashboard() {
     return () => { cancelled = true; };
   }, [slug, startMs, endMs]);
 
+  // (Se mantiene por si querés mostrar el total histórico en otro lado)
   useEffect(() => {
     if (!slug) return;
     let cancelled = false;
@@ -243,9 +244,10 @@ export default function OwnerDashboard() {
             formatter={money}
             resetKey={periodKey}
           />
+          {/* ✅ Ahora cuenta solo los pedidos del período seleccionado */}
           <KpiBox
             title="Pedidos Completados"
-            value={Number(lifetimeOrders) || 0}
+            value={Number(pedidosPeriodo) || 0}
             formatter={(n) => String(Math.round(n))}
             resetKey={periodKey}
           />

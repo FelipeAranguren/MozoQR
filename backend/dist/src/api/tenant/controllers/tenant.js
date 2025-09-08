@@ -1,221 +1,204 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-/**
- * Custom tenant controller
- * Endpoints:
- *  - POST /api/restaurants/:slug/orders
- *  - POST|PUT /api/restaurants/:slug/close-account
- */
+// backend/src/api/tenant/controllers/tenant.ts
+/* eslint-disable @typescript-eslint/no-explicit-any */
 const utils_1 = require("@strapi/utils");
-const { ValidationError, NotFoundError } = utils_1.errors;
-function getPayload(raw) {
-    // Acepta { data: {...} } o {...}
-    return raw && typeof raw === 'object' && 'data' in raw ? raw.data : raw;
-}
-/* -------------------------------------------------------
- * Helpers (REST-safe: usamos ids planos)
- * ----------------------------------------------------- */
-/** Busca restaurante por slug y devuelve { id, name } */
-async function getRestaurantBySlug(slug) {
-    const rows = await strapi.entityService.findMany('api::restaurante.restaurante', {
-        filters: { slug },
-        fields: ['id', 'name'],
-        limit: 1,
-    });
+const { ValidationError, NotFoundError, ForbiddenError } = utils_1.errors;
+// --- helper: obtener restaurante + plan ---
+async function getRestaurant(idOrSlug) {
+    const q = idOrSlug.id
+        ? { filters: { id: idOrSlug.id }, fields: ['id', 'name', 'slug', 'plan'], limit: 1 }
+        : { filters: { slug: idOrSlug.slug }, fields: ['id', 'name', 'slug', 'plan'], limit: 1 };
+    const rows = await strapi.entityService.findMany('api::restaurante.restaurante', q);
     const r = rows === null || rows === void 0 ? void 0 : rows[0];
     if (!(r === null || r === void 0 ? void 0 : r.id))
         throw new NotFoundError('Restaurante no encontrado');
-    return { id: r.id, name: r.name };
+    return r;
 }
-/** Crea (si no existe) o devuelve la Mesa (por restaurante + number) */
-async function getOrCreateMesa(restauranteId, number) {
-    var _a;
-    const found = await strapi.entityService.findMany('api::mesa.mesa', {
-        filters: { restaurante: { id: Number(restauranteId) }, number },
-        fields: ['id', 'number'],
-        limit: 1,
-    });
-    if ((_a = found === null || found === void 0 ? void 0 : found[0]) === null || _a === void 0 ? void 0 : _a.id)
-        return found[0];
-    return await strapi.entityService.create('api::mesa.mesa', {
-        data: {
-            number,
-            isActive: true,
-            restaurante: restauranteId,
-            publishedAt: new Date(),
-        },
-    });
-}
-/**
- * Devuelve la sesión ABIERTA para esa mesa.
- * Estrategia: primero buscar una 'open' por (restaurante, mesa).
- * Si no hay, crear una nueva (code autogenerado).
- * Ignoramos 'code' para reutilizar por robustez (evita “primer pedido sin sesión”).
- */
-async function getOrCreateOpenSession(opts) {
-    var _a;
-    const { restauranteId, mesaId } = opts;
-    // 1) Buscar sesión abierta existente (única por mesa)
-    const existingOpen = await strapi.entityService.findMany('api::mesa-sesion.mesa-sesion', {
-        filters: {
-            restaurante: { id: Number(restauranteId) },
-            mesa: { id: Number(mesaId) },
-            session_status: 'open',
-        },
-        fields: ['id', 'code', 'session_status', 'openedAt'],
-        sort: ['openedAt:desc', 'createdAt:desc'],
-        limit: 1,
-    });
-    if ((_a = existingOpen === null || existingOpen === void 0 ? void 0 : existingOpen[0]) === null || _a === void 0 ? void 0 : _a.id)
-        return existingOpen[0];
-    // 2) Crear una nueva
-    const newCode = Math.random().toString(36).slice(2, 8) + '-' + Date.now().toString(36).slice(-4);
-    return await strapi.entityService.create('api::mesa-sesion.mesa-sesion', {
-        data: {
-            code: newCode,
-            session_status: 'open',
-            openedAt: new Date(),
-            restaurante: { id: Number(restauranteId) }, // <= así
-            mesa: { id: Number(mesaId) }, // <= así
-            publishedAt: new Date(),
-        },
-    });
-}
-/** Crea los ítems de un pedido (ids planos) */
-async function createItems(pedidoId, items) {
-    await Promise.all((items || []).map((it) => {
-        var _a, _b, _c, _d, _e;
-        const quantity = Number((_b = (_a = it === null || it === void 0 ? void 0 : it.qty) !== null && _a !== void 0 ? _a : it === null || it === void 0 ? void 0 : it.quantity) !== null && _b !== void 0 ? _b : 0);
-        const unitPrice = Number((_d = (_c = it === null || it === void 0 ? void 0 : it.unitPrice) !== null && _c !== void 0 ? _c : it === null || it === void 0 ? void 0 : it.price) !== null && _d !== void 0 ? _d : 0);
-        const total = Number.isFinite(quantity * unitPrice) ? quantity * unitPrice : 0;
-        const productId = Number((_e = it === null || it === void 0 ? void 0 : it.productId) !== null && _e !== void 0 ? _e : it === null || it === void 0 ? void 0 : it.id);
-        if (!productId)
-            throw new ValidationError('Item sin productId');
-        return strapi.entityService.create('api::item-pedido.item-pedido', {
-            data: {
-                quantity,
-                notes: (it === null || it === void 0 ? void 0 : it.notes) || '',
-                UnitPrice: Number.isFinite(unitPrice) ? unitPrice : 0,
-                totalPrice: total,
-                order: pedidoId,
-                product: productId,
-                publishedAt: new Date(),
+// --- GET /restaurants/:slug/menus ---
+async function menus(ctx) {
+    const restaurantId = ctx.state.restaurantId;
+    const r = await getRestaurant({ id: restaurantId });
+    const plan = r.plan || 'BASIC';
+    const cats = await strapi.entityService.findMany('api::categoria.categoria', {
+        filters: { restaurante: { id: restaurantId } },
+        fields: ['id', 'name', 'order'],
+        sort: ['order:asc', 'name:asc'],
+        populate: {
+            productos: {
+                filters: { isAvailable: true },
+                fields: ['id', 'name', 'price'],
+                populate: plan === 'PRO' ? { image: { fields: ['url', 'formats'] } } : {},
             },
-        });
+        },
+    });
+    // Gate de imagen si plan !== PRO
+    const categories = (cats || []).map(c => ({
+        id: c.id, name: c.name,
+        products: (c.productos || []).map(p => ({
+            id: p.id, name: p.name, price: p.price,
+            image: plan === 'PRO' ? (p.image || null) : null,
+        })),
     }));
+    ctx.body = { data: { name: r.name, categories } };
 }
-/* -------------------------------------------------------
- * Controller
- * ----------------------------------------------------- */
-exports.default = {
-    /**
-     * POST /restaurants/:slug/orders
-     * Body esperado: { table: number, items: [...], total?: number, customerNotes?: string }
-     */
-    async createOrder(ctx) {
-        var _a, _b;
-        const { slug } = ctx.params || {};
-        if (!slug)
-            throw new ValidationError('Missing restaurant slug');
-        const data = getPayload(ctx.request.body);
-        const table = data === null || data === void 0 ? void 0 : data.table;
-        const items = Array.isArray(data === null || data === void 0 ? void 0 : data.items) ? data.items : [];
-        const customerNotes = (_b = (_a = data === null || data === void 0 ? void 0 : data.customerNotes) !== null && _a !== void 0 ? _a : data === null || data === void 0 ? void 0 : data.notes) !== null && _b !== void 0 ? _b : '';
-        if (table === undefined || table === null || table === '') {
-            throw new ValidationError('Missing table');
-        }
-        if (!Array.isArray(items) || items.length === 0) {
-            throw new ValidationError('Empty items');
-        }
-        // Restaurante
-        const restaurante = await getRestaurantBySlug(String(slug));
-        // Mesa & Sesión (única sesión "open" por mesa)
-        const mesa = await getOrCreateMesa(restaurante.id, Number(table));
-        const sesion = await getOrCreateOpenSession({
-            restauranteId: restaurante.id,
-            mesaId: mesa.id,
+// --- POST /restaurants/:slug/orders --- (CALCULO EN SERVER + VALIDACIONES + IDEMPOTENCIA)
+async function createOrder(ctx) {
+    var _a, _b;
+    const restaurantId = ctx.state.restaurantId;
+    const { table, tableSessionId, items, notes, clientRequestId } = ctx.request.body || {};
+    if (!Number.isFinite(Number(table)))
+        throw new ValidationError('Mesa inválida');
+    if (!Array.isArray(items) || items.length === 0)
+        throw new ValidationError('Items requeridos');
+    // Validar productos y calcular subtotal del lado servidor
+    const productIds = items.map(it => Number(it.id || it.productId)).filter(Boolean);
+    const prods = await strapi.entityService.findMany('api::producto.producto', {
+        filters: { id: { $in: productIds }, restaurante: { id: restaurantId }, isAvailable: true },
+        fields: ['id', 'price'],
+        limit: 1000,
+    });
+    const byId = new Map(prods.map((p) => [Number(p.id), { id: Number(p.id), price: Number(p.price) }]));
+    let subtotal = 0;
+    const saneItems = items.map(it => {
+        const pid = Number(it.id || it.productId);
+        const qty = Number(it.qty || it.quantity || 0);
+        if (!pid || !qty || qty <= 0)
+            throw new ValidationError('qty>0 requerido');
+        const p = byId.get(pid);
+        if (!p)
+            throw new ValidationError(`Producto ${pid} no disponible`);
+        const line = qty * Number(p.price || 0);
+        subtotal += line;
+        return { product: pid, quantity: qty, unitPrice: Number(p.price || 0) };
+    });
+    // idempotencia simple: si llega clientRequestId, buscar Payment/Order con ese token
+    if (clientRequestId) {
+        const existing = await strapi.db.query('api::pedido.pedido').findOne({
+            where: { clientRequestId, restaurante: restaurantId },
+            select: ['id', 'documentId'],
         });
-        // Total (del cliente o calculado)
-        const total = (data === null || data === void 0 ? void 0 : data.total) !== undefined && (data === null || data === void 0 ? void 0 : data.total) !== null && (data === null || data === void 0 ? void 0 : data.total) !== ''
-            ? Number(data.total)
-            : items.reduce((s, it) => {
-                var _a, _b, _c, _d;
-                const q = Number((_b = (_a = it === null || it === void 0 ? void 0 : it.qty) !== null && _a !== void 0 ? _a : it === null || it === void 0 ? void 0 : it.quantity) !== null && _b !== void 0 ? _b : 0);
-                const p = Number((_d = (_c = it === null || it === void 0 ? void 0 : it.unitPrice) !== null && _c !== void 0 ? _c : it === null || it === void 0 ? void 0 : it.price) !== null && _d !== void 0 ? _d : 0);
-                const line = q * p;
-                return s + (Number.isFinite(line) ? line : 0);
-            }, 0);
-        // Crear pedido vinculado a la sesión (usar objeto { id } para la relación)
-        const pedido = await strapi.entityService.create('api::pedido.pedido', {
-            data: {
-                order_status: 'pending',
-                customerNotes,
-                total,
-                restaurante: { id: Number(restaurante.id) },
-                mesa_sesion: { id: Number(sesion.id) },
-                publishedAt: new Date(),
-            },
-        });
-        // Ítems
-        await createItems(pedido.id, items);
-        ctx.body = { data: { id: pedido.id } };
-    },
-    /**
-     * POST|PUT /restaurants/:slug/close-account
-     * Body: { table: number }
-     * Marca como 'paid' los pedidos de la sesión abierta para esa mesa
-     * y cierra la sesión. Limpia mesa.currentSession (si lo usás).
-     */
-    async closeAccount(ctx) {
-        const { slug } = ctx.params || {};
-        if (!slug)
-            throw new ValidationError('Missing restaurant slug');
-        const data = getPayload(ctx.request.body);
-        const table = data === null || data === void 0 ? void 0 : data.table;
-        if (table === undefined || table === null || table === '') {
-            throw new ValidationError('Missing table');
-        }
-        // Restaurante, mesa y sesión abierta actual
-        const restaurante = await getRestaurantBySlug(String(slug));
-        const mesa = await getOrCreateMesa(restaurante.id, Number(table));
-        const openList = await strapi.entityService.findMany('api::mesa-sesion.mesa-sesion', {
-            filters: {
-                restaurante: { id: Number(restaurante.id) },
-                mesa: { id: Number(mesa.id) },
-                session_status: 'open',
-            },
-            fields: ['id'],
-            sort: ['openedAt:desc', 'createdAt:desc'],
-            limit: 1,
-        });
-        const sesion = (openList === null || openList === void 0 ? void 0 : openList[0]) || null;
-        if (!(sesion === null || sesion === void 0 ? void 0 : sesion.id)) {
-            ctx.body = { data: { paidOrders: 0 } };
+        if (existing === null || existing === void 0 ? void 0 : existing.id) {
+            ctx.body = { data: { id: existing.documentId || existing.id }, meta: { idempotent: true } };
             return;
         }
-        // Pedidos NO pagados de esa sesión
-        const pedidos = await strapi.entityService.findMany('api::pedido.pedido', {
-            filters: { mesa_sesion: sesion.id, order_status: { $ne: 'paid' } },
-            fields: ['id'],
-            limit: 1000,
-        });
-        const ids = (pedidos || []).map((p) => p.id);
-        await Promise.all(ids.map((id) => strapi.entityService.update('api::pedido.pedido', id, {
-            data: { order_status: 'paid' },
-        })));
-        // Cerrar la sesión (marcar como 'paid' y poner closedAt)
-        await strapi.entityService.update('api::mesa-sesion.mesa-sesion', sesion.id, {
-            data: { session_status: 'paid', closedAt: new Date() },
-        });
-        // Limpia la referencia de sesión actual en la mesa (si la usás)
-        try {
-            await strapi.entityService.update('api::mesa.mesa', mesa.id, {
-                data: { currentSession: null },
-            });
-        }
-        catch {
-            // opcional: si no existe el campo, ignorar
-        }
-        ctx.body = { data: { paidOrders: ids.length } };
-    },
+    }
+    // Mesa + Sesión abierta (o crear)
+    const mesa = (_a = await strapi.entityService.findMany('api::mesa.mesa', {
+        filters: { restaurante: { id: restaurantId }, number: Number(table) },
+        fields: ['id', 'number'],
+        limit: 1,
+    }).then(rows => rows === null || rows === void 0 ? void 0 : rows[0])) !== null && _a !== void 0 ? _a : await strapi.entityService.create('api::mesa.mesa', {
+        data: { number: Number(table), restaurante: restaurantId, publishedAt: new Date() },
+    });
+    const open = (_b = await strapi.entityService.findMany('api::mesa-sesion.mesa-sesion', {
+        filters: { restaurante: { id: restaurantId }, mesa: { id: mesa.id }, session_status: 'open' },
+        fields: ['id', 'code'],
+        limit: 1,
+    }).then(rows => rows === null || rows === void 0 ? void 0 : rows[0])) !== null && _b !== void 0 ? _b : await strapi.entityService.create('api::mesa-sesion.mesa-sesion', {
+        data: { code: tableSessionId || `sess-${Date.now()}`, session_status: 'open', restaurante: restaurantId, mesa: mesa.id, publishedAt: new Date() },
+    });
+    const pedido = await strapi.entityService.create('api::pedido.pedido', {
+        data: {
+            order_status: 'pending', // NEW
+            customerNotes: notes || '',
+            total: subtotal,
+            restaurante: restaurantId,
+            mesa_sesion: open.id,
+            clientRequestId: clientRequestId || null,
+            items: saneItems, // si usás componente repeatable o relation intermedia, adaptar
+            publishedAt: new Date(),
+        },
+    });
+    ctx.body = { data: { id: pedido.documentId || pedido.id, total: subtotal } };
+}
+// --- GET /restaurants/:slug/orders?status&table&since ---
+async function listOrders(ctx) {
+    const restaurantId = ctx.state.restaurantId;
+    const q = ctx.request.query || {};
+    const filters = { restaurante: { id: restaurantId } };
+    if (q.status) {
+        const arr = Array.isArray(q.status) ? q.status : String(q.status).split(',');
+        filters.order_status = { $in: arr };
+    }
+    if (q.table) {
+        filters.mesa_sesion = {
+            mesa: { number: Number(q.table) },
+        };
+    }
+    if (q.since) {
+        const sinceDate = new Date(isNaN(Number(q.since)) ? String(q.since) : Number(q.since));
+        filters.updatedAt = { $gt: sinceDate.toISOString() };
+    }
+    const rows = await strapi.entityService.findMany('api::pedido.pedido', {
+        filters,
+        sort: ['createdAt:desc'],
+        fields: ['id', 'order_status', 'total', 'createdAt', 'updatedAt', 'documentId'],
+        populate: {
+            mesa_sesion: { fields: ['id', 'code'], populate: { mesa: { fields: ['number'] } } },
+        },
+        limit: 200,
+    });
+    ctx.body = { data: rows };
+}
+// --- PATCH /restaurants/:slug/orders/:id/status ---
+const LEGAL = {
+    pending: ['preparing', 'cancelled'],
+    preparing: ['ready', 'cancelled'],
+    ready: ['paid', 'cancelled'],
+    paid: [],
+    cancelled: [],
 };
+async function updateOrderStatus(ctx) {
+    var _a, _b;
+    const restaurantId = ctx.state.restaurantId;
+    const idParam = (_a = ctx.params) === null || _a === void 0 ? void 0 : _a.id;
+    const { status } = ctx.request.body || {};
+    if (!status)
+        throw new ValidationError('status requerido');
+    // Resolver id real por id o documentId
+    const idNum = Number(idParam);
+    const pedido = Number.isFinite(idNum)
+        ? await strapi.entityService.findOne('api::pedido.pedido', idNum, { fields: ['id', 'order_status', 'restaurante'] })
+        : await strapi.db.query('api::pedido.pedido').findOne({ where: { documentId: idParam }, select: ['id', 'order_status', 'restaurante'] });
+    if (!(pedido === null || pedido === void 0 ? void 0 : pedido.id))
+        throw new NotFoundError('Pedido no encontrado');
+    if (Number(((_b = pedido.restaurante) === null || _b === void 0 ? void 0 : _b.id) || pedido.restaurante) !== Number(restaurantId)) {
+        throw new ForbiddenError('Pedido de otro restaurante');
+    }
+    const from = String(pedido.order_status);
+    const allowed = LEGAL[from] || [];
+    if (!allowed.includes(String(status))) {
+        throw new ValidationError(`Transición inválida ${from} → ${status}`);
+    }
+    const updated = await strapi.entityService.update('api::pedido.pedido', pedido.id, {
+        data: { order_status: status },
+    });
+    ctx.body = { data: { id: updated.documentId || updated.id, order_status: status } };
+}
+// --- POST /restaurants/:slug/payments (mock) ---
+async function createPaymentMock(ctx) {
+    var _a;
+    const restaurantId = ctx.state.restaurantId;
+    const { orderId, status } = ctx.request.body || {};
+    if (!orderId)
+        throw new ValidationError('orderId requerido');
+    // Resolver id real por id/documentId
+    const idNum = Number(orderId);
+    const pedido = Number.isFinite(idNum)
+        ? await strapi.entityService.findOne('api::pedido.pedido', idNum, { fields: ['id', 'order_status', 'restaurante'] })
+        : await strapi.db.query('api::pedido.pedido').findOne({ where: { documentId: orderId }, select: ['id', 'order_status', 'restaurante'] });
+    if (!(pedido === null || pedido === void 0 ? void 0 : pedido.id))
+        throw new NotFoundError('Pedido no encontrado');
+    if (Number(((_a = pedido.restaurante) === null || _a === void 0 ? void 0 : _a.id) || pedido.restaurante) !== Number(restaurantId)) {
+        throw new ForbiddenError('Pedido de otro restaurante');
+    }
+    const pay = await strapi.entityService.create('api::payments.payment', {
+        data: { restaurante: restaurantId, pedido: pedido.id, status: status || 'APPROVED', publishedAt: new Date() },
+    });
+    if ((status || 'APPROVED') === 'APPROVED') {
+        await strapi.entityService.update('api::pedido.pedido', pedido.id, { data: { order_status: 'paid' } });
+    }
+    ctx.body = { data: { paymentId: pay.id, status: status || 'APPROVED' } };
+}
+exports.default = { menus, createOrder, listOrders, updateOrderStatus, createPaymentMock };

@@ -1,4 +1,3 @@
-// src/components/StickyFooter.jsx
 import React, { useState, useEffect, useMemo } from 'react';
 import {
   Paper, Typography, Button, Dialog, DialogTitle, DialogContent,
@@ -7,45 +6,17 @@ import {
 } from '@mui/material';
 import { useParams } from 'react-router-dom';
 import { useCart } from '../context/CartContext';
-import { createOrder, postPayment } from '../http'; // ⬅️ http.js
+import { createOrder } from '../api/tenant';  // 👈 usar el que acabás de corregir
+import { postPayment } from '../http';        // si tu pago mock está en ../http, dejalo así
+import { api } from '../api';
 import QtyStepper from './QtyStepper';
+
 
 const money = (n) =>
   new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS' }).format(Number(n) || 0);
 
-// === Keys ===
-const lastOrderKey = (slug, table) => `LAST_ORDER_${slug}_${table}`;                // legacy (1 solo id)
-const lastOrderTotalKey = (slug, table) => `LAST_ORDER_TOTAL_${slug}_${table}`;     // legacy (1 solo total)
-const openOrdersKey = (slug, table) => `OPEN_ORDERS_${slug}_${table}`;              // nuevo: lista [{id,total}]
-
-// Helpers de storage
-const readOpenOrders = (slug, table) => {
-  try {
-    const raw = localStorage.getItem(openOrdersKey(slug, table));
-    if (!raw) return [];
-    const arr = JSON.parse(raw);
-    return Array.isArray(arr) ? arr : [];
-  } catch { return []; }
-};
-const writeOpenOrders = (slug, table, arr) => {
-  localStorage.setItem(openOrdersKey(slug, table), JSON.stringify(arr || []));
-};
-const clearOpenOrders = (slug, table) => {
-  localStorage.removeItem(openOrdersKey(slug, table));
-};
-
-// Migra desde el esquema legacy (si existiera) a la nueva lista
-const migrateLegacyToList = (slug, table) => {
-  const legacyId = localStorage.getItem(lastOrderKey(slug, table));
-  const legacyTot = localStorage.getItem(lastOrderTotalKey(slug, table));
-  if (legacyId && !localStorage.getItem(openOrdersKey(slug, table))) {
-    const id = Number(legacyId);
-    const total = Number(legacyTot || 0);
-    writeOpenOrders(slug, table, id ? [{ id, total }] : []);
-  }
-  localStorage.removeItem(lastOrderKey(slug, table));
-  localStorage.removeItem(lastOrderTotalKey(slug, table));
-};
+// ---- legacy helpers (por si quedó 1 solo id guardado de versiones anteriores)
+const legacyOrderKey = (slug, table) => `LAST_ORDER_${slug}_${table}`;
 
 export default function StickyFooter({ table, tableSessionId }) {
   const { items, subtotal, addItem, removeItem, clearCart } = useCart();
@@ -60,81 +31,124 @@ export default function StickyFooter({ table, tableSessionId }) {
 
   const [snack, setSnack] = useState({ open: false, msg: '', severity: 'success' });
 
-  // Lista de pedidos abiertos en esta mesa: [{id,total}]
+  // Lista de pedidos NO pagados de esta mesa/sesión: [{ id, total }]
   const [openOrders, setOpenOrders] = useState([]);
 
-  // Carga inicial (y migración si venís del esquema viejo)
-  useEffect(() => {
-    if (!slug || !table) {
-      setOpenOrders([]);
-      return;
-    }
-    migrateLegacyToList(slug, table);
-    setOpenOrders(readOpenOrders(slug, table));
-  }, [slug, table]);
-
-  const hasAccount = openOrders.length > 0;
+  // ===== Cuenta (igual criterio que Mostrador): suma de todos los pedidos no pagados =====
   const accountTotal = useMemo(
     () => openOrders.reduce((acc, o) => acc + (Number(o.total) || 0), 0),
     [openOrders]
   );
 
+  // Si existe un id legacy en localStorage, consideramos que hay cuenta (para no ocultar el botón)
+  const legacyHasAccount = useMemo(() => {
+    if (!slug || table == null) return false;
+    try { return !!localStorage.getItem(legacyOrderKey(slug, table)); } catch { return false; }
+  }, [slug, table]);
+
+  const hasAccount = legacyHasAccount || openOrders.length > 0;
   const showOrderBtn = items.length > 0;
+
+  // === Cargar cuenta desde Strapi (misma fuente que Mostrador) ===
+  const fetchAccountFromBackend = async () => {
+    try {
+      if (!slug) return;
+
+      const statusFilter =
+        `&filters[order_status][$in][0]=pending` +
+        `&filters[order_status][$in][1]=preparing` +
+        `&filters[order_status][$in][2]=served`; // todo lo NO pagado
+
+      const qs =
+        `?filters[restaurante][slug][$eq]=${encodeURIComponent(slug)}` +
+        statusFilter +
+        `&publicationState=preview` +
+        `&fields[0]=id&fields[1]=total` +
+        `&populate[mesa_sesion][fields][0]=id` +
+        `&populate[mesa_sesion][populate][mesa][fields][0]=number` +
+        `&pagination[pageSize]=100`;
+
+      const res = await api.get(`/pedidos${qs}`);
+      const raw = res?.data?.data ?? [];
+
+      const pedidos = raw.map((row) => {
+        const a = row.attributes || row;
+        const ses = a.mesa_sesion?.data || a.mesa_sesion || null;
+        const sesAttrs = ses?.attributes || ses || {};
+        const mesa = sesAttrs?.mesa?.data || sesAttrs?.mesa || null;
+        const mesaAttrs = mesa?.attributes || mesa || {};
+        return {
+          id: row.id || a.id,
+          total: a.total,
+          mesaSesionId: ses?.id ?? null,
+          mesaNumber: mesaAttrs?.number ?? null,
+        };
+      });
+
+      const relevantes = pedidos.filter((p) => {
+        if (tableSessionId) return p.mesaSesionId === Number(tableSessionId);
+        if (table != null) return String(p.mesaNumber) === String(table);
+        return false;
+      });
+
+      setOpenOrders(relevantes.map((p) => ({ id: p.id, total: Number(p.total) || 0 })));
+    } catch {
+      setOpenOrders([]); // no rompas la UI si falla
+    }
+  };
+
+  // Carga inicial y cada cambio de mesa/sesión; además polling suave
+  useEffect(() => { fetchAccountFromBackend(); /* eslint-disable-next-line */ }, [slug, table, tableSessionId]);
+  useEffect(() => {
+    const id = setInterval(fetchAccountFromBackend, 4000);
+    return () => clearInterval(id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [slug, table, tableSessionId]);
 
   // ========== Enviar pedido ==========
   const handleSendOrder = async () => {
-    if (!table) {
-      setSnack({ open: true, msg: 'Falta el número de mesa (parámetro t).', severity: 'error' });
-      return;
-    }
-    try {
-      setLoading(true);
+  if (!table) {
+    setSnack({ open: true, msg: 'Falta el número de mesa (parámetro t).', severity: 'error' });
+    return;
+  }
+  if (!tableSessionId) {
+    setSnack({ open: true, msg: 'No se encontró la sesión de mesa activa.', severity: 'error' });
+    return;
+  }
 
-      // Shape requerido por el backend
-      const payloadItems = items.map(i => ({
-        productId: i.id,
-        quantity: i.qty,
+  try {
+    setLoading(true);
+    await createOrder(slug, {
+      table: Number(table),          // 👈 clave correcta
+      tableSessionId,                // 👈 guardamos la sesión en el pedido
+      items: items.map(i => ({
+        id: i.id,                    // normPrice/normQty lo aceptan
         qty: i.qty,
-        price: i.precio,
-        UnitPrice: i.precio,
-        notes: i.notes || null,
-      }));
+        precio: i.precio,
+        notes: i.notes || '',
+      })),
+    });
 
-      const res = await createOrder(slug, { table, items: payloadItems });
+    clearCart();
+    await fetchAccountFromBackend(); // refresca los pedidos abiertos
+    setSnack({ open: true, msg: 'Pedido enviado con éxito ✅', severity: 'success' });
+    setOpen(false);
+  } catch (err) {
+    console.error(err);
+    const apiMsg =
+      err?.response?.data?.error?.message ||
+      (Array.isArray(err?.response?.data?.message)
+        ? err.response.data.message.join(' | ')
+        : err?.response?.data?.message) ||
+      err?.message ||
+      'Error al enviar el pedido ❌';
 
-      // id del pedido creado
-      const createdId = res?.id || res?.data?.id;
-      if (createdId) {
-        // Si el backend devolvió total, lo usamos; si no, usamos el subtotal local
-        const t =
-          res?.total ??
-          res?.data?.total ??
-          res?.attributes?.total ??
-          res?.data?.attributes?.total ??
-          subtotal;
+    setSnack({ open: true, msg: apiMsg, severity: 'error' });
+  } finally {
+    setLoading(false);
+  }
+};
 
-        const next = [...openOrders, { id: createdId, total: Number(t) || 0 }];
-        setOpenOrders(next);
-        writeOpenOrders(slug, table, next);
-      }
-
-      clearCart();
-      setSnack({ open: true, msg: 'Pedido enviado con éxito ✅', severity: 'success' });
-      setOpen(false);
-    } catch (err) {
-      console.error(err);
-      const apiMsg =
-        err?.response?.data?.error?.message ||
-        (Array.isArray(err?.response?.data?.message)
-          ? err.response.data.message.join(' | ')
-          : err?.response?.data?.message) ||
-        err?.message ||
-        'Error al enviar el pedido ❌';
-      setSnack({ open: true, msg: apiMsg, severity: 'error' });
-    } finally {
-      setLoading(false);
-    }
-  };
 
   // Inputs tarjeta (mock UI)
   const handleCardNumber = (e) => {
@@ -153,7 +167,7 @@ export default function StickyFooter({ table, tableSessionId }) {
   };
   const handleName = (e) => setCard((c) => ({ ...c, name: e.target.value }));
 
-  // ========== Pagar cuenta (todos los pedidos abiertos) ==========
+  // ========== Pagar cuenta: paga TODOS los pedidos abiertos ==========
   const handlePay = async () => {
     const { number, expiry, cvv, name } = card;
     const numOk = /^\d{4} \d{4} \d{4} \d{4}$/.test(number);
@@ -172,20 +186,20 @@ export default function StickyFooter({ table, tableSessionId }) {
     try {
       setPayLoading(true);
 
-      // Pagar en secuencia cada pedido abierto
       for (const o of openOrders) {
         await postPayment(slug, {
           orderId: o.id,
           status: 'approved',
-          amount: undefined, // el backend usa el total del pedido
+          amount: undefined,  // el backend usa el total del pedido
           provider: 'mock',
-          externalRef: null,
+          externalRef: null
         });
       }
 
-      // Ok ⇒ limpiar cuenta abierta
-      clearOpenOrders(slug, table);
-      setOpenOrders([]);
+      // limpiar legacy si existiera
+      try { localStorage.removeItem(legacyOrderKey(slug, table)); } catch {}
+
+      await fetchAccountFromBackend(); // debería quedar en 0
 
       setSnack({ open: true, msg: 'Cuenta pagada con éxito ✅', severity: 'success' });
       setPayOpen(false);
@@ -222,10 +236,10 @@ export default function StickyFooter({ table, tableSessionId }) {
           borderTop: 1,
           borderColor: 'divider',
           zIndex: 1300,
-          justifyContent: items.length > 0 ? 'flex-start' : 'flex-end',
+          justifyContent: showOrderBtn ? 'flex-start' : 'flex-end',
         }}
       >
-        {items.length > 0 && (
+        {showOrderBtn && (
           <>
             <Typography variant="h6" sx={{ flex: 1 }}>
               Subtotal: {money(subtotal)}
@@ -240,11 +254,15 @@ export default function StickyFooter({ table, tableSessionId }) {
             </Button>
           </>
         )}
+
         {hasAccount && (
           <Button
             variant="outlined"
             size="large"
-            onClick={() => setPayOpen(true)}
+            onClick={async () => {
+              await fetchAccountFromBackend(); // fuerza refresco antes de abrir
+              setPayOpen(true);
+            }}
             sx={{ width: { xs: '100%', sm: 'auto' } }}
           >
             Cerrar y pagar cuenta
@@ -317,7 +335,7 @@ export default function StickyFooter({ table, tableSessionId }) {
       >
         <DialogTitle id="pay-account-title">Pagar cuenta</DialogTitle>
         <DialogContent dividers>
-          {/* Total de la cuenta (suma de todos los pedidos abiertos) */}
+          {/* Total de la CUENTA (suma de TODOS los pedidos no pagados) */}
           <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 1 }}>
             <Typography variant="subtitle1">Total</Typography>
             <Typography variant="subtitle1" sx={{ textAlign: 'right', fontWeight: 600 }}>

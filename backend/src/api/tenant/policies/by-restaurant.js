@@ -1,19 +1,19 @@
-// backend/src/policies/by-restaurant.js
 'use strict';
 
 /**
- * Global policy to scope requests by :slug (restaurant slug).
- * - Ensures the restaurant exists and is published.
- * - Attaches ctx.state.restauranteId and ctx.state.restaurantePlan
- * Usage in routes: config: { policies: ['global::by-restaurant'] }
+ * Policy local del API tenant para scoping por :slug (restaurant slug).
+ * Uso en rutas: config: { policies: ['api::tenant.by-restaurant'] }
  */
 module.exports = async (policyContext, config, { strapi }) => {
   const ctx = policyContext;
-  const slug = ctx.params?.slug;
-  if (!slug) {
+  const rawSlug = ctx.params?.slug;
+
+  if (!rawSlug) {
     ctx.unauthorized('Missing restaurant slug');
     return false;
   }
+
+  const slug = String(rawSlug).trim().toLowerCase();
 
   const [restaurante] = await strapi.entityService.findMany('api::restaurante.restaurante', {
     filters: { slug },
@@ -27,8 +27,10 @@ module.exports = async (policyContext, config, { strapi }) => {
     return false;
   }
 
-  // Attach to ctx.state so controllers can reuse
-  ctx.state.restauranteId = restaurante.id;
+  // Dejo ambos nombres por compatibilidad con distintos handlers
+  ctx.state.restauranteId   = restaurante.id;
+  ctx.state.restaurantId    = restaurante.id;
   ctx.state.restaurantePlan = restaurante.plan || 'BASIC';
+
   return true;
 };

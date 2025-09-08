@@ -653,6 +653,8 @@ export interface ApiRestauranteRestaurante extends Struct.CollectionTypeSchema {
     mp_public_key: Schema.Attribute.String & Schema.Attribute.Private;
     name: Schema.Attribute.String & Schema.Attribute.Required;
     pedidos: Schema.Attribute.Relation<'oneToMany', 'api::pedido.pedido'>;
+    plan: Schema.Attribute.Enumeration<['BASIC', 'PLUS', 'PRO']> &
+      Schema.Attribute.DefaultTo<'BASIC'>;
     primaryColoraccentColor: Schema.Attribute.String;
     productos: Schema.Attribute.Relation<'oneToMany', 'api::producto.producto'>;
     publishedAt: Schema.Attribute.DateTime;

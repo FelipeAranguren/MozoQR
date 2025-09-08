@@ -80,29 +80,54 @@ export async function fetchMenus(slug) {
 }
 
 /* ---------------- PEDIDOS ---------------- */
+/* ---------------- PEDIDOS ---------------- */
 export async function createOrder(slug, payload) {
   const { table, tableSessionId, items = [], notes } = payload || {};
   if (!table) throw new Error('Falta número de mesa');
   if (!Array.isArray(items) || items.length === 0) throw new Error('El carrito está vacío');
 
+  // 1) Buscar el restaurante por slug (necesitamos el id para relacionar el pedido)
+  const qsRest =
+    `?filters[slug][$eq]=${encodeURIComponent(slug)}` +
+    `&fields[0]=id`;
+  const restRes = await http.get(`/restaurantes${qsRest}`);
+  const restaurante = restRes?.data?.data?.[0];
+  if (!restaurante?.id) throw new Error('Restaurante no encontrado');
+
+  // 2) Calcular total del carrito
   const total = calcCartTotal(items);
 
-  // ✅ namespaced endpoint: crea pedido + ítems y asocia a mesa_sesion
-  const res = await http.post(`/restaurants/${slug}/orders`, {
+  // 3) Crear el pedido en /pedidos (Strapi v4)
+  const pedidoRes = await http.post('/pedidos', {
     data: {
-      table: Number(table),
+      restaurante: restaurante.id,          // relación al restaurante
+      mesa_sesion: tableSessionId || null,  // si la tenés, la guardamos
+      order_status: 'pending',
       customerNotes: notes || '',
       total,
-      items: items.map((i) => ({
-        productId: i.productId ?? i.id,
-        qty: normQty(i),
-        price: normPrice(i),
-        notes: i.notes || '',
-      })),
     },
   });
 
-  return res.data; // { data: { id, documentId, ... } }
+  const pedidoId = pedidoRes?.data?.data?.id || pedidoRes?.data?.id;
+  if (!pedidoId) throw new Error('No se pudo crear el pedido');
+
+  // 4) Crear los ítems en /item-pedidos, relacionándolos al pedido
+  const lines = items.map(i => ({
+    product: i.productId ?? i.id,
+    qty: normQty(i),
+    unit_price: normPrice(i),
+    notes: i.notes || '',
+  }));
+
+  await Promise.all(
+    lines.map(line =>
+      http.post('/item-pedidos', {
+        data: { ...line, pedido: pedidoId },
+      })
+    )
+  );
+
+  return { data: { id: pedidoId } };
 }
 
 export async function closeAccount(slug, payload) {
