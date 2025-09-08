@@ -237,10 +237,30 @@ export default function OwnerDashboard() {
             overflow: 'visible',
           }}
         >
-          <KpiBox title="Ingresos del Día" value={money(ingresosHoy)} />
-          <KpiBox title="Pedidos Completados" value={String(lifetimeOrders)} />
-          <KpiBox title="Ticket Promedio" value={money(ticketPromedio)} />
-          <KpiBox title="Clientes Atendidos" value={String(sessionsCount)} />
+          <KpiBox
+            title="Ingresos del Día"
+            value={Number(ingresosHoy) || 0}
+            formatter={money}
+            resetKey={periodKey}
+          />
+          <KpiBox
+            title="Pedidos Completados"
+            value={Number(lifetimeOrders) || 0}
+            formatter={(n) => String(Math.round(n))}
+            resetKey={periodKey}
+          />
+          <KpiBox
+            title="Ticket Promedio"
+            value={Number(ticketPromedio) || 0}
+            formatter={money}
+            resetKey={periodKey}
+          />
+          <KpiBox
+            title="Clientes Atendidos"
+            value={Number(sessionsCount) || 0}
+            formatter={(n) => String(Math.round(n))}
+            resetKey={periodKey}
+          />
         </div>
       </div>
 
@@ -268,8 +288,35 @@ export default function OwnerDashboard() {
   );
 }
 
-function KpiBox({ title, value }) {
+/** KPI con “counter up” */
+function KpiBox({ title, value, formatter, resetKey }) {
   const isIngresos = title === 'Ingresos del Día';
+  const [display, setDisplay] = useState(0);
+
+  // Animación de 0 -> value con easing suave
+  useEffect(() => {
+    const target = Number(value) || 0;
+    const duration = 900; // ms
+    const start = performance.now();
+    let raf;
+
+    const easeOutCubic = (t) => 1 - Math.pow(1 - t, 3);
+
+    const tick = (now) => {
+      const p = Math.min(1, (now - start) / duration);
+      const eased = easeOutCubic(p);
+      setDisplay(target * eased);
+      if (p < 1) raf = requestAnimationFrame(tick);
+    };
+
+    setDisplay(0);
+    raf = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(raf);
+    // resetKey permite reiniciar al cambiar período
+  }, [value, resetKey]);
+
+  const show = formatter ? formatter(display) : String(Math.round(display));
+
   return (
     <div
       style={{
@@ -293,9 +340,9 @@ function KpiBox({ title, value }) {
           wordBreak: 'break-word',
           whiteSpace: 'normal',
         }}
-        title={value}
+        title={formatter ? formatter(value) : String(value)}
       >
-        {value}
+        {show}
       </div>
     </div>
   );

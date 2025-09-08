@@ -52,17 +52,33 @@ export default function Mostrador() {
   };
 
   // helpers
-  const keyOf = (p) => p?.documentId || String(p?.id);
-  const isActive = (st) => !['served', 'paid'].includes(st);
-  const ordenar = (arr) => {
-    const orden = { pending: 0, preparing: 1 };
-    return [...arr].sort((a, b) => {
-      const pa = orden[a.order_status] ?? 2;
-      const pb = orden[b.order_status] ?? 2;
-      if (pa !== pb) return pa - pb;
-      return new Date(a.createdAt) - new Date(b.createdAt);
-    });
-  };
+const keyOf = (p) => p?.documentId || String(p?.id);
+const isActive = (st) => !['served', 'paid'].includes(st);
+
+// Genérico que varios lugares del archivo todavía usan (no lo borres)
+// Ordena por estado: pending(0) -> preparing(1) -> resto(2), y dentro por createdAt ASC
+const ordenar = (arr) => {
+  const orden = { pending: 0, preparing: 1 };
+  return [...arr].sort((a, b) => {
+    const pa = orden[a.order_status] ?? 2;
+    const pb = orden[b.order_status] ?? 2;
+    if (pa !== pb) return pa - pb;
+    return new Date(a.createdAt) - new Date(b.createdAt);
+  });
+};
+
+// Específico para MOSTRADOR ACTIVO:
+// Primero NO-preparing por createdAt DESC; al final los preparing (también por createdAt DESC)
+const ordenarActivos = (arr) => {
+  return [...arr].sort((a, b) => {
+    const wa = a.order_status === 'preparing' ? 1 : 0;
+    const wb = b.order_status === 'preparing' ? 1 : 0;
+    if (wa !== wb) return wa - wb;                        // preparing al final
+    return new Date(b.createdAt) - new Date(a.createdAt); // más nuevo primero
+  });
+};
+
+
 
   // --------- mapeos/rehidratación ----------
   const mapPedidoRow = (row) => {
@@ -191,8 +207,9 @@ export default function Mostrador() {
       );
 
       const ordenados = showHistory
-        ? [...conItems].sort((a, b) => new Date(b.updatedAt) - new Date(a.updatedAt))
-        : ordenar(conItems);
+  ? [...conItems].sort((a, b) => new Date(b.updatedAt) - new Date(a.updatedAt)) // historial
+  : ordenarActivos(conItems); // activos
+
 
       const visibles = showHistory
         ? ordenados.filter((p) => ['served', 'paid'].includes(p.order_status))

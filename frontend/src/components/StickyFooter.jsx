@@ -150,6 +150,7 @@ export default function StickyFooter({ table, tableSessionId }) {
           borderTop: 1,
           borderColor: 'divider',
           zIndex: 1300,
+          justifyContent: showOrderBtn ? 'flex-start' : 'flex-end',
         }}
       >
         {showOrderBtn && (
