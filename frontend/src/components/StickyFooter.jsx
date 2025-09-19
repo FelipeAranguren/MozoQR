@@ -39,7 +39,7 @@ export default function StickyFooter({ table, tableSessionId }) {
 
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [sending, setSending] = useState(false);
-
+  const [orderNotes, setOrderNotes] = useState('');
   const [payOpen, setPayOpen] = useState(false);
   const [payLoading, setPayLoading] = useState(false);
   const [card, setCard] = useState({ number: '', expiry: '', cvv: '', name: '' });
@@ -105,8 +105,13 @@ export default function StickyFooter({ table, tableSessionId }) {
         notes: i.notes || ''
       }));
 
-      const res = await createOrder(slug, { table, items: payloadItems });
-
+      const trimmedNotes = orderNotes.trim();
+      const res = await createOrder(slug, {
+        table,
+        tableSessionId,
+        items: payloadItems,
+        notes: trimmedNotes,
+      });
       // Intentamos rescatar id/total si vinieran en la respuesta (soporta varios shapes)
       const createdId =
         res?.id ?? res?.data?.id ?? res?.data?.data?.id ?? res?.orderId ?? null;
@@ -145,6 +150,12 @@ export default function StickyFooter({ table, tableSessionId }) {
       setSending(false);
     }
   };
+
+  useEffect(() => {
+    if (!confirmOpen) {
+      setOrderNotes('');
+    }
+  }, [confirmOpen]);
 
   // ---------- Inputs de tarjeta (mock UI) ----------
   const handleCardNumber = (e) => {
@@ -281,6 +292,17 @@ export default function StickyFooter({ table, tableSessionId }) {
               </ListItem>
             ))}
           </List>
+          <TextField
+            label="Comentario para el mostrador (opcional)"
+            placeholder="¿Querés avisar algo sobre tu pedido?"
+            fullWidth
+            multiline
+            minRows={2}
+            margin="normal"
+            value={orderNotes}
+            onChange={e => setOrderNotes(e.target.value)}
+            helperText="Se enviará junto con el pedido"
+          />
         </DialogContent>
         <DialogActions>
           <Button onClick={() => setConfirmOpen(false)} disabled={sending}>Cancelar</Button>

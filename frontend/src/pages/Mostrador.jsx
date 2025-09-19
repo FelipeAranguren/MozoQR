@@ -27,7 +27,12 @@ export default function Mostrador() {
   const pedidosRef = useRef([]);
   const servingIdsRef = useRef(new Set());
   const hasLoadedRef = useRef(false);          // para no avisar en 1ª carga
-  const seenIdsRef = useRef(new Set());        // ids ya vistos (no avisar por cambios de estado)
+  const seenIdsRef = useRef(new Set());
+  const pendingBeforeHistoryRef = useRef(new Set());
+  const cachedViewsRef = useRef({
+    active: { pedidos: [], cuentas: [] },
+    history: { pedidos: [], cuentas: [] },
+  });
   const audioCtxRef = useRef(null);            // beep
 
   const playBeep = () => {
@@ -62,6 +67,16 @@ export default function Mostrador() {
         return next;
       });
     }, 1200);
+  };
+
+  const updateCachedView = (nextPedidos, nextCuentas = null) => {
+    const modeKey = showHistory ? 'history' : 'active';
+    const cuentasForCache =
+      nextCuentas ?? cachedViewsRef.current[modeKey]?.cuentas ?? cuentas;
+    cachedViewsRef.current[modeKey] = {
+      pedidos: nextPedidos,
+      cuentas: cuentasForCache,
+    };
   };
 
   // ---- helpers
@@ -202,17 +217,25 @@ export default function Mostrador() {
       const planos = base.map(mapPedidoRow);
       const planosFilled = await Promise.all(planos.map(hydrateMesaSesionIfMissing));
 
-      // cargar items sólo para activos
+      // cargar items (siempre en activos; en historial sólo si faltan)
       const prevByKey = new Map(pedidosRef.current.map((p) => [keyOf(p), p]));
       const conItems = await Promise.all(
         planosFilled.map(async (p) => {
-          let items = [];
-          if (isActive(p.order_status)) {
-            try { items = await fetchItemsDePedido(p.id); } catch {}
-          }
-          if (!items.length) {
-            const prev = prevByKey.get(keyOf(p));
-            items = prev?.items ?? [];
+          const prev = prevByKey.get(keyOf(p));
+          const prevItems = prev?.items ?? [];
+          let items = prevItems;
+
+          const shouldFetchItems =
+            isActive(p.order_status) ||
+            (showHistory && ['served', 'paid'].includes(p.order_status) && prevItems.length === 0);
+
+          if (shouldFetchItems) {
+            try {
+              const fetched = await fetchItemsDePedido(p.id);
+              if (fetched?.length) {
+                items = fetched;
+              }
+            } catch {}
           }
           return { ...p, items };
         })
@@ -227,10 +250,16 @@ export default function Mostrador() {
         ? ordenados.filter((p) => ['served', 'paid'].includes(p.order_status))
         : ordenados.filter((p) => isActive(p.order_status) && !servingIdsRef.current.has(p.id));
 
+        if (!showHistory && pendingBeforeHistoryRef.current.size > 0) {
+        pendingBeforeHistoryRef.current.forEach((id) => seenIdsRef.current.add(id));
+        pendingBeforeHistoryRef.current = new Set();
+      }
+
       // ---- avisos SOLO por pedidos nuevos (ID no visto) y que pasan el filtro de mesa
-     const nuevosVisibles = visibles.filter(
-     p => !seenIdsRef.current.has(p.id) && p.order_status === 'pending'
-   );
+      const nuevosVisibles = visibles.filter(
+        (p) => !seenIdsRef.current.has(p.id) && p.order_status === 'pending'
+      );
+   
       const nuevosFiltrados = nuevosVisibles.filter(pedidoMatchesMesaPartial);
       if (!showHistory && hasLoadedRef.current && nuevosFiltrados.length > 0) {
         try { playBeep(); } catch {}
@@ -338,6 +367,8 @@ export default function Mostrador() {
             return am - bm;
           });
 
+        updateCachedView(visibles, filtradas);
+
       setCuentas(filtradas);
       setError(null);
     } catch (err) {
@@ -348,8 +379,33 @@ export default function Mostrador() {
 
   // ----- polling -----
   useEffect(() => {
-    pedidosRef.current = [];
-    seenIdsRef.current = new Set(); // reset de vistos al cambiar vista/restaurante
+    seenIdsRef.current = new Set(); // reset de vistos al cambiar de restaurante
+    cachedViewsRef.current = {
+      active: { pedidos: [], cuentas: [] },
+      history: { pedidos: [], cuentas: [] },
+    };
+  }, [slug]);
+
+  const prevShowHistoryRef = useRef(showHistory);
+  useEffect(() => {
+    if (!prevShowHistoryRef.current && showHistory) {
+      pendingBeforeHistoryRef.current = new Set(
+        pedidosRef.current
+          .filter((p) => p.order_status === 'pending')
+          .map((p) => p.id)
+      );
+    }
+    prevShowHistoryRef.current = showHistory;
+  }, [showHistory]);
+
+  useEffect(() => {
+    const modeKey = showHistory ? 'history' : 'active';
+    const cached = cachedViewsRef.current[modeKey] ?? { pedidos: [], cuentas: [] };
+    const nextPedidos = Array.isArray(cached.pedidos) ? [...cached.pedidos] : [];
+    const nextCuentas = Array.isArray(cached.cuentas) ? [...cached.cuentas] : [];
+    pedidosRef.current = nextPedidos;
+    setPedidos(nextPedidos);
+    setCuentas(nextCuentas);
     fetchPedidos();
     const interval = setInterval(fetchPedidos, 3000);
     return () => clearInterval(interval);
@@ -360,9 +416,26 @@ export default function Mostrador() {
   useEffect(() => { hasLoadedRef.current = true; }, []);
 
   // ---- acciones ----
-  const putEstado = async (id, estado) => {
-    await api.put(`/pedidos/${id}`, { data: { order_status: estado } });
-  };
+    const putEstado = async (pedido, estado) => {
+    const id = typeof pedido === 'object' ? pedido?.id : pedido;
+    const itemIds =
+      typeof pedido === 'object'
+        ? (pedido?.items || []).map((it) => it?.id).filter(Boolean)
+        : [];
+
+    if (id == null) throw new Error('Pedido sin id');
+
+    try {
+      await api.patch(`/pedidos/${id}`, { data: { order_status: estado } });
+    } catch (err) {
+      if (err?.response?.status === 405) {
+        const data = { order_status: estado };
+        if (itemIds.length > 0) data.items = itemIds;
+        await api.put(`/pedidos/${id}`, { data });
+        return;
+      }
+      throw err;
+    }  };
 
   const refreshItemsDe = async (orderId) => {
     try {
@@ -371,6 +444,7 @@ export default function Mostrador() {
         setPedidos((prev) => {
           const next = prev.map((p) => (p.id === orderId ? { ...p, items } : p));
           pedidosRef.current = next;
+          updateCachedView(next);
           return next;
         });
       }
@@ -384,10 +458,11 @@ export default function Mostrador() {
           keyOf(p) === keyOf(pedido) ? { ...p, order_status: 'preparing' } : p
         );
         pedidosRef.current = next;
+         updateCachedView(next);
         return next;
       });
       triggerFlash(pedido.documentId);
-      await putEstado(pedido.id, 'preparing');
+      await putEstado(pedido, 'preparing');
       await refreshItemsDe(pedido.id);
     } catch (err) {
       console.error('Error al marcar como Recibido:', err?.response?.data || err);
@@ -397,6 +472,7 @@ export default function Mostrador() {
           keyOf(p) === keyOf(pedido) ? { ...p, order_status: 'pending' } : p
         );
         pedidosRef.current = next;
+        updateCachedView(next);
         return next;
       });
     }
@@ -411,7 +487,7 @@ export default function Mostrador() {
         pedidosRef.current = next;
         return next;
       });
-      await putEstado(pedido.id, 'served');
+      await putEstado(pedido, 'served');
       await fetchPedidos();
     } catch (err) {
       console.error('Error al marcar como servido:', err?.response?.data || err);
@@ -421,6 +497,7 @@ export default function Mostrador() {
         if (prev.some((p) => keyOf(p) === keyOf(pedido))) return prev;
         const next = [pedido, ...prev];
         pedidosRef.current = next;
+        updateCachedView(next);
         return next;
       });
     }
