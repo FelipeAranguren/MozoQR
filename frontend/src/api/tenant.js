@@ -2,6 +2,7 @@
 import axios from 'axios';
 
 const baseURL = import.meta.env?.VITE_API_URL || 'http://localhost:1337/api';
+const IDEM_ON = String(import.meta.env?.VITE_IDEMPOTENCY || '').toLowerCase() === 'on';
 
 export const http = axios.create({
   baseURL,
@@ -31,6 +32,27 @@ function calcCartTotal(items = []) {
   }, 0);
 }
 
+/* --- Seguridad (helpers locales, sin renombrar nada) --- */
+function sanitizeNotes(s) {
+  if (!s) return s;
+  return String(s)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+}
+
+function makeIdempotencyKey(payload) {
+  // hash simple y determinístico sobre el contenido del pedido
+  const data = JSON.stringify(payload);
+  let hash = 0;
+  for (let i = 0; i < data.length; i++) {
+    hash = ((hash << 5) - hash) + data.charCodeAt(i);
+    hash |= 0; // 32-bit
+  }
+  return `ik-${Math.abs(hash)}`;
+}
+
 /* ---------------- MENÚS ---------------- */
 export async function fetchMenus(slug) {
   // 1) Intento namespaced (si no existe, 404 -> seguimos al fallback)
@@ -51,7 +73,6 @@ export async function fetchMenus(slug) {
       return { restaurantName: data?.data?.name || slug, products };
     }
   } catch (e) {
-    // útil para entender si es 404 (endpoint no existe) o 403 (permisos)
     console.warn('menus namespaced error:', e?.response?.status, e?.response?.data || e?.message);
   }
 
@@ -85,22 +106,40 @@ export async function createOrder(slug, payload) {
   if (!table) throw new Error('Falta número de mesa');
   if (!Array.isArray(items) || items.length === 0) throw new Error('El carrito está vacío');
 
+  // Sanitizar notas antes de enviar (defensivo; el servidor también debe sanitizar)
+  const safeNotes = sanitizeNotes(notes || '');
+  const safeItems = items.map((i) => ({
+    productId: i.productId ?? i.id,
+    qty: normQty(i),
+    price: normPrice(i),
+    notes: sanitizeNotes(i.notes || ''),
+  }));
+
   const total = calcCartTotal(items);
 
+  // Clave idempotente (solo si está habilitada por env para evitar CORS hasta configurar backend)
+  const idemKey = IDEM_ON
+    ? makeIdempotencyKey({
+        slug,
+        table: Number(table),
+        tableSessionId: tableSessionId || null,
+        items: safeItems.map(({ productId, qty, price, notes }) => ({ productId, qty, price, notes })),
+      })
+    : null;
+
   // ✅ namespaced endpoint: crea pedido + ítems y asocia a mesa_sesion
-  const res = await http.post(`/restaurants/${slug}/orders`, {
-    data: {
-      table: Number(table),
-      customerNotes: notes || '',
-      total,
-      items: items.map((i) => ({
-        productId: i.productId ?? i.id,
-        qty: normQty(i),
-        price: normPrice(i),
-        notes: i.notes || '',
-      })),
+  const res = await http.post(
+    `/restaurants/${slug}/orders`,
+    {
+      data: {
+        table: Number(table),
+        customerNotes: safeNotes,
+        total, // el servidor recalcula/valida; se envía por compatibilidad con el contrato actual
+        items: safeItems,
+      },
     },
-  });
+    IDEM_ON ? { headers: { 'Idempotency-Key': idemKey } } : undefined
+  );
 
   return res.data; // { data: { id, documentId, ... } }
 }
