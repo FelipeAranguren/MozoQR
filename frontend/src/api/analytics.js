@@ -45,19 +45,14 @@ function unwrapEntity(e) {
 /** Convierte items v4 (objeto con .data) en array plano [{quantity, product}, ...] */
 function normalizeItemsField(field) {
   if (!field) return null;
-
-  // Si ya es array plano
   if (Array.isArray(field)) return field;
 
-  // Strapi v4: { data: [ { id, attributes: { quantity, product: { data: { ... } } } } ] }
   const arr = Array.isArray(field?.data) ? field.data : null;
   if (!arr) return null;
 
   return arr.map((node) => {
     const a = node?.attributes ?? node ?? {};
     const qty = Number(a.quantity ?? a.qty ?? 0);
-
-    // producto puede venir como relation v4 o plano
     const prodRaw =
       a?.product?.data ??
       a?.product ??
@@ -69,31 +64,123 @@ function normalizeItemsField(field) {
     return {
       id: node?.id ?? a?.id ?? null,
       quantity: qty,
-      product: prod, // prod?.name / prod?.nombre
+      product: prod,
     };
   });
 }
 
 /* ------------------------- fetchers de pedidos ------------------------ */
 
-/** Paginador general para /pedidos (soporta attributes o plano) */
+function pickMesaNumberFromOrderAttrs(a) {
+  // 1) Campos directos
+  const direct =
+    a?.tableNumber ??
+    a?.mesaNumber ??
+    a?.mesa?.number ??
+    a?.mesa?.numero ??
+    a?.mesa?.name ??
+    a?.mesa?.nombre ??
+    a?.mesa?.data?.attributes?.number ??
+    a?.mesa?.data?.attributes?.numero ??
+    a?.mesa?.data?.attributes?.name ??
+    a?.mesa?.data?.attributes?.nombre;
+
+  if (direct) return direct;
+
+  // 2) mesa_sesion (snake) → mesa.number / mesa.nombre
+  const ms = a?.mesa_sesion;
+  const msMesaNumber =
+    ms?.mesa?.number ??
+    ms?.mesa?.numero ??
+    ms?.mesa?.name ??
+    ms?.mesa?.nombre ??
+    ms?.mesa?.data?.attributes?.number ??
+    ms?.mesa?.data?.attributes?.numero ??
+    ms?.mesa?.data?.attributes?.name ??
+    ms?.mesa?.data?.attributes?.nombre;
+  if (msMesaNumber) return msMesaNumber;
+
+  // 3) mesaSesion (camel) → mesa.number / mesa.nombre
+  const ms2 = a?.mesaSesion;
+  const ms2MesaNumber =
+    ms2?.mesa?.number ??
+    ms2?.mesa?.numero ??
+    ms2?.mesa?.name ??
+    ms2?.mesa?.nombre ??
+    ms2?.mesa?.data?.attributes?.number ??
+    ms2?.mesa?.data?.attributes?.numero ??
+    ms2?.mesa?.data?.attributes?.name ??
+    ms2?.mesa?.data?.attributes?.nombre;
+  if (ms2MesaNumber) return ms2MesaNumber;
+
+  // 4) Último recurso: códigos de sesión (no deseable, pero informativo)
+  const code =
+    ms?.code ??
+    ms?.mesa_code ??
+    ms2?.code ??
+    ms2?.mesa_code ??
+    a?.tableSessionId ??
+    a?.mesaSessionId ??
+    a?.mesa_sesion_id ??
+    null;
+
+  return code || '—';
+}
+
+/**
+ * Paginador general para /pedidos con populate tolerante:
+ * 1) populate explícito
+ * 2) si falla -> populate=*
+ * 3) si falla -> sin populate
+ */
 async function fetchAllPedidos(qsBase) {
   let page = 1;
   const pageSize = 100;
   const out = [];
+
+  const populateExplicit =
+    'populate[mesa]=true&' +
+    // ambas variantes de mesa_sesion
+    'populate[mesa_sesion][populate]=mesa&' +
+    'populate[mesaSesion][populate]=mesa&' +
+    'populate[items][populate]=product,producto&' +
+    'populate[lineItems][populate]=product,producto';
+
+  const populateAll = 'populate=*';
+
+  const makeUrl = (populateParams) =>
+    `/pedidos?${qsBase}${populateParams ? `&${populateParams}` : ''}` +
+    `&pagination[page]=${page}&pagination[pageSize]=${pageSize}`;
+
+  let populateMode = 'explicit';
+
   while (true) {
-    const url = `/pedidos?${qsBase}&pagination[page]=${page}&pagination[pageSize]=${pageSize}`;
-    const res = await api.get(url);
+    let url = makeUrl(
+      populateMode === 'explicit' ? populateExplicit : (populateMode === 'all' ? populateAll : '')
+    );
+    let res;
+    try {
+      res = await api.get(url);
+    } catch (e1) {
+      if (populateMode === 'explicit') {
+        populateMode = 'all';
+        continue;
+      }
+      if (populateMode === 'all') {
+        populateMode = 'none';
+        continue;
+      }
+      throw e1;
+    }
 
     const rows = res?.data?.data ?? [];
     for (const row of rows) {
       const a = row.attributes ? row.attributes : row;
 
-      // Normalizamos items embebidos (puede ser items o lineItems)
       const rawItems = a.items ?? a.lineItems ?? null;
-      const itemsNorm =
-        normalizeItemsField(rawItems) ??
-        null;
+      const itemsNorm = normalizeItemsField(rawItems) ?? null;
+
+      const mesaNumber = pickMesaNumberFromOrderAttrs(a);
 
       out.push({
         id: row.id ?? a.id,
@@ -102,12 +189,10 @@ async function fetchAllPedidos(qsBase) {
         createdAt: a.createdAt,
         updatedAt: a.updatedAt,
 
-        // relaciones útiles para "últimos pedidos"
-        mesa: a.mesa ?? null,
-        mesa_sesion: a.mesa_sesion ?? null,
-        tableNumber: a.tableNumber ?? a.mesaNumber ?? null,
+        mesa: mesaNumber,               // 👈 número si existe; code solo si no hay número
+        mesa_sesion: a.mesa_sesion ?? a.mesaSesion ?? null,
+        tableNumber: mesaNumber,        // compat vieja UI
 
-        // ítems embebidos ya normalizados (array plano o null)
         items: itemsNorm,
       });
     }
@@ -133,7 +218,6 @@ async function fetchAllItemPedidos(qsBase) {
     for (const row of rows) {
       const a = row.attributes ? row.attributes : row;
 
-      // product puede venir como relation v4 o plano
       const prodRaw =
         a?.product?.data ??
         a?.product ??
@@ -142,7 +226,6 @@ async function fetchAllItemPedidos(qsBase) {
         null;
       const prod = unwrapEntity(prodRaw);
 
-      // order puede venir como relation v4 o id plano
       const orderId =
         a?.order?.data?.id ??
         (typeof a.order === 'number' ? a.order : null) ??
@@ -224,7 +307,6 @@ export async function getPaidOrders({ slug, from, to }) {
   return await fetchAllPedidos(qs);
 }
 
-/** Igual que getPaidOrders, pero pidiendo items/lineItems+product */
 async function getPaidOrdersWithItems({ slug, from, to }) {
   if (!slug) throw new Error('slug requerido');
 
@@ -234,9 +316,6 @@ async function getPaidOrdersWithItems({ slug, from, to }) {
     'filters[createdAt][$gte]': new Date(from).toISOString(),
     'filters[createdAt][$lte]': endOfDayLocalISO(to),
     'sort[0]': 'createdAt:asc',
-    // populate robusto: items y su product
-    'populate[items][populate]': 'product,producto',
-    'populate[lineItems][populate]': 'product,producto',
   });
 
   return await fetchAllPedidos(qs);
@@ -274,7 +353,6 @@ export async function getSessionsCount({ slug, from, to }) {
 
 /* ----------------------------- listados UI ---------------------------- */
 
-/** Últimos N pedidos pagados: por defecto N=5 */
 export async function fetchRecentPaidOrders({ slug, limit = 5 }) {
   if (!slug) throw new Error('slug requerido');
 
@@ -283,24 +361,43 @@ export async function fetchRecentPaidOrders({ slug, limit = 5 }) {
   p.set('filters[order_status][$eq]', 'paid');
   p.set('pagination[pageSize]', String(limit));
   p.set('sort[0]', 'createdAt:desc');
-  // v4 populate
-  p.set('populate[mesa_sesion][populate]', 'mesa');
 
-  const url = `/pedidos?${p.toString()}`;
-  const res = await api.get(url);
-  const rows = res?.data?.data ?? [];
+  // populate para ambas variantes
+  p.set('populate[mesa]', 'true');
+  p.set('populate[mesa_sesion][populate]', 'mesa');
+  p.set('populate[mesaSesion][populate]', 'mesa');
+
+  let rows = [];
+  try {
+    const url = `/pedidos?${p.toString()}`;
+    const res = await api.get(url);
+    rows = res?.data?.data ?? [];
+  } catch {
+    try {
+      const q2 = new URLSearchParams(p);
+      q2.set('populate', '*');
+      q2.delete('populate[mesa]');
+      q2.delete('populate[mesa_sesion][populate]');
+      q2.delete('populate[mesaSesion][populate]');
+      const url2 = `/pedidos?${q2.toString()}`;
+      const res2 = await api.get(url2);
+      rows = res2?.data?.data ?? [];
+    } catch {
+      const q3 = new URLSearchParams(p);
+      q3.delete('populate[mesa]');
+      q3.delete('populate[mesa_sesion][populate]');
+      q3.delete('populate[mesaSesion][populate]');
+      const url3 = `/pedidos?${q3.toString()}`;
+      const res3 = await api.get(url3);
+      rows = res3?.data?.data ?? [];
+    }
+  }
 
   return rows.map((row) => {
     const id = row.id ?? row?.attributes?.id;
     const a  = row.attributes ? row.attributes : row;
 
-    const mesaNumber =
-      a?.mesa?.number ??
-      a?.mesa_sesion?.mesa?.number ??
-      a?.mesa_sesion?.code ??
-      a?.tableNumber ??
-      a?.mesaNumber ??
-      '—';
+    const mesaNumber = pickMesaNumberFromOrderAttrs(a);
 
     return {
       id,
@@ -313,23 +410,12 @@ export async function fetchRecentPaidOrders({ slug, limit = 5 }) {
 
 /* ---------------------- Top productos (3 estrategias) ----------------- */
 
-/**
- * Top productos del período por CANTIDAD vendida (top 5 por defecto).
- *
- * A) Intenta /item-pedidos filtrando por la RELACIÓN `order`:
- *    - order.restaurante.slug, order.order_status (paid), order.createdAt (rango)
- * B) Si no hay `order` seteado en los items, cae a /item-pedidos filtrando por:
- *    - product.restaurante.slug, item.createdAt (rango)
- *    (Limitación: aquí no podemos filtrar por `paid` ya que no hay `order`)
- * C) Último fallback: sumar desde ítems embebidos en /pedidos (si existieran)
- */
 export async function fetchTopProducts({ slug, from, to, limit = 5 }) {
   if (!slug) throw new Error('slug requerido');
 
   const startISO = new Date(from).toISOString();
   const endISO   = endOfDayLocalISO(new Date(to));
 
-  /* -------- Estrategia A: /item-pedidos filtrando por `order` -------- */
   {
     const qsA = buildQS({
       'filters[order][restaurante][slug][$eq]': slug,
@@ -343,35 +429,23 @@ export async function fetchTopProducts({ slug, from, to, limit = 5 }) {
 
     const itemsA = await fetchAllItemPedidos(qsA);
     const countsA = sumByProduct(itemsA);
-    if (countsA.size > 0) {
-      return toTopArray(countsA, limit);
-    }
-    // Si no hay resultados, seguimos con B
+    if (countsA.size > 0) return toTopArray(countsA, limit);
   }
 
-  /* --- Estrategia B: /item-pedidos filtrando por `product.restaurante` --- */
   {
     const qsB = buildQS({
       'filters[product][restaurante][slug][$eq]': slug,
       'filters[createdAt][$gte]': startISO,
       'filters[createdAt][$lte]': endISO,
       'populate[product]': 'true',
-      // no tenemos `order`, por eso no podemos filtrar `paid` aquí
       'sort[0]': 'createdAt:desc',
     });
 
     const itemsB = await fetchAllItemPedidos(qsB);
     const countsB = sumByProduct(itemsB);
-    if (countsB.size > 0) {
-      if (typeof window !== 'undefined' && window?.console) {
-        console.warn('[TopProducts] Fallback B: sumando por product.restaurante (sin garantizar solo pedidos paid). Recomendado: asegurar item.order seteado.');
-      }
-      return toTopArray(countsB, limit);
-    }
-    // Si tampoco hay resultados, vamos a C
+    if (countsB.size > 0) return toTopArray(countsB, limit);
   }
 
-  /* --- Estrategia C: ítems embebidos en /pedidos (si existen) --------- */
   {
     const ordersWithItems = await getPaidOrdersWithItems({ slug, from, to });
     const countsC = new Map();
@@ -389,15 +463,9 @@ export async function fetchTopProducts({ slug, from, to, limit = 5 }) {
         countsC.set(name, (countsC.get(name) || 0) + qty);
       }
     }
-    if (countsC.size > 0) {
-      if (typeof window !== 'undefined' && window?.console) {
-        console.warn('[TopProducts] Fallback C: sumando desde items embebidos en pedidos.');
-      }
-      return toTopArray(countsC, limit);
-    }
+    if (countsC.size > 0) return toTopArray(countsC, limit);
   }
 
-  // Sin datos
   return [];
 }
 

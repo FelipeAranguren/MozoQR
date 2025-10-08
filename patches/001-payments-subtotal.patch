@@ -1,0 +1,76 @@
+diff --git a/backend/src/api/payments/controllers/payments.js b/backend/src/api/payments/controllers/payments.js
+index 58f5f6e..055e14f 100644
+--- a/backend/src/api/payments/controllers/payments.js
++++ b/backend/src/api/payments/controllers/payments.js
+@@ -32,45 +32,32 @@ module.exports = {
+       return ctx.unauthorized('Pedido de otro restaurante');
+     }
+ 
+-    // 2) Recalcular subtotal en servidor (sin confiar en el cliente)
+-    //    Intentamos sumar qty*price desde item-pedido. Si no hay items (o CT distinto),
+-    //    caemos de forma segura a order.total para no romper contrato actual.
+-    let serverSubtotal = 0;
+-    try {
+-      // Primer intento: CT plural común
+-      const itemsA = await strapi.entityService.findMany('api::item-pedido.item-pedido', {
+-        filters: { pedido: order.id },
+-        fields: ['qty', 'price'],
+-        limit: 500,
+-      });
+-      if (Array.isArray(itemsA) && itemsA.length) {
+-        serverSubtotal = itemsA.reduce((s, it) => {
+-          const q = Number(it?.qty || 0);
+-          const p = Number(it?.price || 0);
+-          const line = q * p;
+-          return s + (Number.isFinite(line) ? line : 0);
+-        }, 0);
+-      } else {
+-        // Segundo intento: algunos proyectos usan singular en el UID
+-        const itemsB = await strapi.entityService.findMany('api::item-pedido.item-pedido', {
+-          filters: { pedido: order.id },
+-          fields: ['qty', 'price'],
+-          limit: 500,
+-        });
+-        if (Array.isArray(itemsB) && itemsB.length) {
+-          serverSubtotal = itemsB.reduce((s, it) => {
+-            const q = Number(it?.qty || 0);
+-            const p = Number(it?.price || 0);
+-            const line = q * p;
+-            return s + (Number.isFinite(line) ? line : 0);
+-          }, 0);
+-        }
+-      }
+-    } catch (e) {
+-      // Si el CT difiere en tu repo, no rompas flujo: caé a order.total
+-      strapi.log.debug('No se pudo leer item-pedido, se usa order.total como fallback');
+-    }
+-
++    // 2) Recalcular subtotal en servidor (sin confiar en el cliente)
++    //    Intentamos sumar usando los campos reales del CT (quantity, UnitPrice, totalPrice).
++    //    Si no hay items (o CT distinto), caemos de forma segura a order.total.
++    let serverSubtotal = 0;
++    try {
++      const items = await strapi.entityService.findMany('api::item-pedido.item-pedido', {
++        filters: { pedido: order.id },
++        fields: ['quantity', 'UnitPrice', 'totalPrice'],
++        limit: 500,
++      });
++      if (Array.isArray(items) && items.length) {
++        serverSubtotal = items.reduce((sum, it) => {
++          const rawTotal = Number(it?.totalPrice ?? 0);
++          const hasRawTotal = Number.isFinite(rawTotal) && rawTotal > 0;
++          const qty = Number(it?.quantity ?? it?.qty ?? 0);
++          const unit = Number(it?.UnitPrice ?? it?.unitPrice ?? it?.price ?? 0);
++          const line = hasRawTotal ? rawTotal : qty * unit;
++          const safeLine = Number.isFinite(line) ? line : 0;
++          return sum + Math.max(safeLine, 0);
++        }, 0);
++      }
++    } catch (e) {
++      // Si el CT difiere en tu repo, no rompas flujo: caé a order.total
++      strapi.log.debug('No se pudo leer item-pedido, se usa order.total como fallback');
++    }
++
+     if (!Number.isFinite(serverSubtotal) || serverSubtotal <= 0) {
+       serverSubtotal = Number(order.total || 0) || 0;
+     }
