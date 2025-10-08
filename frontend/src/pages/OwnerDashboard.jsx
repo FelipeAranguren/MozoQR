@@ -73,49 +73,47 @@ function makeFallbackSessionKey(o) {
   const ymd = d.toISOString().slice(0,10);
   return `fallback:${mesaGuess}|${ymd}`;
 }
-/** Lector robusto de mesa: prioriza Mesa.number y evita devolver ids/sesiones */
+/** Lector robusto de mesa: prioriza Mesa.number y evita devolver slugs de sesión */
 function readTableLabelFromOrder(o, sessionKey) {
-  // 1) intentos directos de número (tu schema primero)
+  // 1) intentar leer explícitamente un número de mesa
   const pickNumber = () => {
     if (o?.mesa?.number != null) return String(o.mesa.number);
     if (o?.mesa?.data?.attributes?.number != null) return String(o.mesa.data.attributes.number);
     if (o?.meta?.mesa?.number != null) return String(o.meta.mesa.number);
     if (o?.meta?.mesaNumber != null) return String(o.meta.mesaNumber);
 
-    // compat con otros nombres usados en el código
     if (o?.table?.number != null) return String(o.table.number);
     if (o?.table?.data?.attributes?.number != null) return String(o.table.data.attributes.number);
     if (o?.tableNumber != null) return String(o.tableNumber);
     if (o?.mesaNumero != null) return String(o.mesaNumero);
-
     return null;
   };
 
   let label = pickNumber();
 
-  // 2) si no hay número, intentá algún nombre legible (pero nunca el id crudo)
+  // 2) si vino un string plano (mesa/table) que NO sea slug, usarlo (o extraer dígitos)
   if (!label) {
-    label =
-      o?.mesa?.name ||
-      o?.mesa?.data?.attributes?.name ||
-      o?.table?.name ||
-      o?.table?.data?.attributes?.name ||
-      o?.table_name || o?.tableName || o?.meta?.tableName || null;
+    const cand =
+      (typeof o?.mesa === 'string' && o.mesa) ||
+      (typeof o?.table === 'string' && o.table) ||
+      o?.table_name || o?.tableName || null;
+
+    if (cand && !looksLikeSessionSlug(cand)) {
+      const n = String(cand).match(/\d+/)?.[0];
+      label = n || String(cand);
+    }
   }
 
-  // 3) fallback: si usamos sessionKey "fallback:mesa|YYYY-MM-DD", tomá la "mesa" solo si no parece un id
+  // 3) fallback de sessionKey, pero evitando slugs
   if (!label && typeof sessionKey === 'string' && sessionKey.startsWith('fallback:')) {
     const maybeMesa = sessionKey.slice('fallback:'.length).split('|')[0];
-    // evita ids/slug con patrón alfanumérico con guiones (p. ej. g19epw-k33i)
-    const looksLikeId = /^[a-z0-9]{4,}(?:-[a-z0-9]{3,})+$/i.test(maybeMesa);
-    if (!looksLikeId) label = maybeMesa;
+    if (maybeMesa && !looksLikeSessionSlug(maybeMesa)) label = maybeMesa;
   }
 
-  // 4) último recurso: no mostrar el id de session; mejor em-dash
-  if (!label && o.tableSessionId) label = '—';
-
+  // 4) último recurso: no mostrar ids ni slugs
   return label || '—';
 }
+
 
 function pickPaymentMethodFromOrder(o) {
   return (

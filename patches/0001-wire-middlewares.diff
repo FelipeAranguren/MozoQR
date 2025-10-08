@@ -1,0 +1,24 @@
+*** Begin Patch
+*** Update File: backend/config/middlewares.js
+@@
+ module.exports = [
+@@
+-  },
+-...
++  },
++
++  // ✅ Cabeceras de seguridad estrictas (X-Frame-Options: DENY, CSP frame-ancestors 'none', HSTS si HTTPS)
++  { name: 'global::secure-headers' },
++
++  // ✅ Logging básico sin PII (método, ruta, status, slug y tableSessionId)
++  { name: 'global::audit-log' },
++
++  // ✅ Rate limit simple (por IP+ruta) ~60 req/min para evitar abuso en endpoints públicos
++  { name: 'global::rate-limit' },
++
++  // ✅ Idempotencia para POST /restaurants/:slug/orders (ventana ~90s)
++  { name: 'global::idempotency-orders' },
++
++  // Helmet ya estaba configurado arriba (CSP, etc.)
++  // --- Middlewares core de Strapi ---
+*** End Patch
