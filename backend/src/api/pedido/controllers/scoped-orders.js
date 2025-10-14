@@ -1,5 +1,15 @@
 // backend/src/api/pedido/controllers/scoped-orders.js
 'use strict';
+// Sanitizador mínimo anti-XSS para notas/comentarios
+function sanitizeText(s) {
+  if (s == null) return s;
+  return String(s)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+}
+
 
 const ALLOWED_NEXT = {
   pending: ['preparing', 'served', 'paid'],
@@ -102,7 +112,8 @@ module.exports = {
     for (const it of items) {
       const pid = it.productId || it.product || it.id;
       const qty = Number(it.quantity || it.qty || 0);
-      const note = it.notes || null;
+      customerNotes: sanitizeText(notes || null);
+
       if (!pid || qty <= 0) return ctx.badRequest('Producto o cantidad inválida');
 
       const prod = await strapi.entityService.findOne('api::producto.producto', pid, {

@@ -617,6 +617,45 @@ export interface ApiProductoProducto extends Struct.CollectionTypeSchema {
   };
 }
 
+export interface ApiRestaurantMemberRestaurantMember
+  extends Struct.CollectionTypeSchema {
+  collectionName: 'restaurant_members';
+  info: {
+    displayName: 'Restaurant Member';
+    pluralName: 'restaurant-members';
+    singularName: 'restaurant-member';
+  };
+  options: {
+    draftAndPublish: false;
+  };
+  attributes: {
+    createdAt: Schema.Attribute.DateTime;
+    createdBy: Schema.Attribute.Relation<'oneToOne', 'admin::user'> &
+      Schema.Attribute.Private;
+    locale: Schema.Attribute.String & Schema.Attribute.Private;
+    localizations: Schema.Attribute.Relation<
+      'oneToMany',
+      'api::restaurant-member.restaurant-member'
+    > &
+      Schema.Attribute.Private;
+    publishedAt: Schema.Attribute.DateTime;
+    restaurante: Schema.Attribute.Relation<
+      'manyToOne',
+      'api::restaurante.restaurante'
+    >;
+    role: Schema.Attribute.Enumeration<['owner', 'staff']> &
+      Schema.Attribute.Required &
+      Schema.Attribute.DefaultTo<'staff'>;
+    updatedAt: Schema.Attribute.DateTime;
+    updatedBy: Schema.Attribute.Relation<'oneToOne', 'admin::user'> &
+      Schema.Attribute.Private;
+    users_permissions_user: Schema.Attribute.Relation<
+      'oneToOne',
+      'plugin::users-permissions.user'
+    >;
+  };
+}
+
 export interface ApiRestauranteRestaurante extends Struct.CollectionTypeSchema {
   collectionName: 'restaurantes';
   info: {
@@ -656,6 +695,10 @@ export interface ApiRestauranteRestaurante extends Struct.CollectionTypeSchema {
     primaryColoraccentColor: Schema.Attribute.String;
     productos: Schema.Attribute.Relation<'oneToMany', 'api::producto.producto'>;
     publishedAt: Schema.Attribute.DateTime;
+    restaurant_members: Schema.Attribute.Relation<
+      'oneToMany',
+      'api::restaurant-member.restaurant-member'
+    >;
     slug: Schema.Attribute.UID<'name'>;
     tipografia: Schema.Attribute.String;
     updatedAt: Schema.Attribute.DateTime;
@@ -1179,6 +1222,7 @@ declare module '@strapi/strapi' {
       'api::mesa.mesa': ApiMesaMesa;
       'api::pedido.pedido': ApiPedidoPedido;
       'api::producto.producto': ApiProductoProducto;
+      'api::restaurant-member.restaurant-member': ApiRestaurantMemberRestaurantMember;
       'api::restaurante.restaurante': ApiRestauranteRestaurante;
       'plugin::content-releases.release': PluginContentReleasesRelease;
       'plugin::content-releases.release-action': PluginContentReleasesReleaseAction;

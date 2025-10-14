@@ -78,6 +78,12 @@
             "relation": "oneToMany",
             "target": "api::mesa-sesion.mesa-sesion",
             "mappedBy": "restaurante"
+        },
+        "restaurant_members": {
+            "type": "relation",
+            "relation": "oneToMany",
+            "target": "api::restaurant-member.restaurant-member",
+            "mappedBy": "restaurante"
         }
     }
 }
