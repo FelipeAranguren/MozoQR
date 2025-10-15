@@ -10,7 +10,7 @@ export const http = axios.create({
 
 /** 👉 Interceptor: agrega JWT si existe en localStorage */
 http.interceptors.request.use((config) => {
-  const token = localStorage.getItem('jwt'); // ajustá la key según tu login
+  const token = localStorage.getItem('strapi_jwt');
   if (token) config.headers.Authorization = `Bearer ${token}`;
   return config;
 });

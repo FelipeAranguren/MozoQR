@@ -544,7 +544,7 @@ export default function Mostrador() {
               </InputAdornment>
             ) : null,
           }}
-          placeholder="Ej: 3  |  12  |  12 33"
+          placeholder="Ej: 3  |  12  |  3 12"
         />
 
         <Button variant="outlined" onClick={() => setShowHistory((s) => !s)}>

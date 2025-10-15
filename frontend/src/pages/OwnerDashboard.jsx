@@ -1,6 +1,8 @@
 // src/pages/OwnerDashboard.jsx
 import React, { useEffect, useMemo, useState, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
+import { useAuth } from '../context/AuthContext';
+import { useRestaurantAccess } from '../hooks/useRestaurantAccess';
 import SalesByDayChart from '../components/SalesByDayChart';
 import {
   getPaidOrders,
@@ -20,7 +22,6 @@ const fmtDate     = new Intl.DateTimeFormat('es-AR', { dateStyle: 'short' });
 const fmtTime     = new Intl.DateTimeFormat('es-AR', { timeStyle: 'short' });
 const fmtDateTime = new Intl.DateTimeFormat('es-AR', { dateStyle: 'short', timeStyle: 'short' });
 
-/* ========== Períodos ========== */
 const PERIODS = [
   { key: '7d',  label: '7 días',   computeStart: (end) => addDays(end, -6) },
   { key: '15d', label: '15 días',  computeStart: (end) => addDays(end, -14) },
@@ -29,6 +30,27 @@ const PERIODS = [
   { key: '1y',  label: '12 meses', computeStart: (end) => addMonths(end, -12) },
   { key: 'custom', label: 'Personalizado', computeStart: (end) => end },
 ];
+
+const GATE_PRIMARY_BTN_STYLE = {
+  padding: '10px 18px',
+  borderRadius: 10,
+  border: 'none',
+  background: '#0ea5e9',
+  color: '#fff',
+  fontWeight: 600,
+  cursor: 'pointer',
+  boxShadow: '0 12px 24px rgba(14, 165, 233, 0.25)',
+};
+
+const GATE_SECONDARY_BTN_STYLE = {
+  padding: '10px 18px',
+  borderRadius: 10,
+  border: '1px solid #cbd5f5',
+  background: '#f8fafc',
+  color: '#0f172a',
+  fontWeight: 600,
+  cursor: 'pointer',
+};
 
 function addDays(base, d) { const x = new Date(base); x.setDate(x.getDate() + d); x.setHours(0,0,0,0); return x; }
 function addMonths(base, m) {
@@ -192,6 +214,11 @@ function groupOrdersToInvoices(orders = []) {
 export default function OwnerDashboard() {
   const { slug } = useParams();
   const navigate = useNavigate();
+  const { isAuthenticated, user } = useAuth();
+
+  const access = useRestaurantAccess(slug, isAuthenticated ? user : null);
+  const restaurantTitle = access.restaurantName || prettyName(slug);
+  const canViewDashboard = access.status === 'allowed';
 
   const [periodKey, setPeriodKey] = useState('30d');
   const [periodTotal, setPeriodTotal] = useState(0);
@@ -222,11 +249,11 @@ export default function OwnerDashboard() {
     return startOfDay(def.computeStart(end));
   }, [periodKey, end, customStart, isCustom]);
 
-  useEffect(() => {
-    if (!slug) return;
+   useEffect(() => {
+    if (!slug || !canViewDashboard) return;
     setIsLoading(true);
 
-    // 👉 rango en ISO + to exclusivo
+    // 👉 rango en ISO + to exclusivo␊
     const { fromIso, toIso } = buildRangeForApi(start, end);
 
     Promise.all([
@@ -243,9 +270,10 @@ export default function OwnerDashboard() {
         setTopProducts(topProd || []);
         setInvoices(groupOrdersToInvoices(list));
       })
-      .catch(() => { setPeriodOrders([]); setInvoices([]); setTopProducts([]); })
+        .catch(() => { setPeriodOrders([]); setInvoices([]); setTopProducts([]); })
       .finally(() => setIsLoading(false));
-  }, [slug, periodKey, start.getTime(), end.getTime()]);
+  }, [slug, canViewDashboard, periodKey, start.getTime(), end.getTime()]);
+
 
   const derivedKpis = useMemo(() => {
     const today = new Date();
@@ -311,19 +339,102 @@ export default function OwnerDashboard() {
     URL.revokeObjectURL(url);
   }, [filteredInvoices, slug]);
 
-  useEffect(() => {
+   useEffect(() => {
     const onKey = (e) => { if (e.key === 'Escape') setOpenDrawer(false); };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
   }, []);
 
+  let gate = null;
+
   if (!slug) {
-    return (
-      <div style={{ padding: 24 }}>
-        <h2>Seleccioná un restaurante</h2>
-        <button onClick={() => navigate('/owner/mcdonalds/dashboard')}>Ir a McDonalds (ejemplo)</button>
-      </div>
-    );
+    gate = {
+      title: 'Seleccioná un restaurante',
+      description: 'Elegí un restaurante válido para acceder al panel de control.',
+      actions: (
+        <button
+          style={GATE_PRIMARY_BTN_STYLE}
+          onClick={() => navigate('/restaurantes')}
+        >
+          Ver restaurantes
+        </button>
+      ),
+    };
+  } else if (!isAuthenticated) {
+    gate = {
+      title: 'Iniciá sesión',
+      description: 'Necesitás iniciar sesión con una cuenta habilitada como owner o staff para ver este panel.',
+      actions: (
+        <button
+          style={GATE_PRIMARY_BTN_STYLE}
+          onClick={() => navigate('/login')}
+        >
+          Ir al login
+        </button>
+      ),
+    };
+  } else if (access.status === 'idle' || access.status === 'loading') {
+    gate = {
+      title: 'Verificando permisos…',
+      description: `Estamos comprobando tu acceso a ${restaurantTitle}.`,
+      isLoading: true,
+    };
+  } else if (access.status === 'unauthorized') {
+    gate = {
+      title: 'Sesión expirada',
+      description: 'Tu sesión ya no es válida. Volvé a iniciar sesión para continuar.',
+      actions: (
+        <button
+          style={GATE_PRIMARY_BTN_STYLE}
+          onClick={() => navigate('/login')}
+        >
+          Iniciar sesión
+        </button>
+      ),
+    };
+  } else if (access.status === 'forbidden') {
+    gate = {
+      title: 'Acceso restringido',
+      description: `Tu usuario no tiene rol de owner o staff en ${restaurantTitle}. Pedile acceso al administrador del restaurante.`,
+      actions: (
+        <button
+          style={GATE_PRIMARY_BTN_STYLE}
+          onClick={() => navigate('/restaurantes')}
+        >
+          Elegir otro restaurante
+        </button>
+      ),
+    };
+  } else if (access.status === 'error') {
+    gate = {
+      title: 'No pudimos verificar tus permisos',
+      description: 'Ocurrió un problema al validar tu acceso. Actualizá la página o volvé a intentarlo en unos instantes.',
+      actions: [
+        <button
+          key="back"
+          style={GATE_SECONDARY_BTN_STYLE}
+          onClick={() => navigate('/restaurantes')}
+        >
+          Ir al listado
+        </button>,
+        <button
+          key="retry"
+          style={GATE_PRIMARY_BTN_STYLE}
+          onClick={() => window.location.reload()}
+        >
+          Reintentar
+        </button>,
+      ],
+    };
+  } else if (!canViewDashboard) {
+    gate = {
+      title: 'Acceso restringido',
+      description: 'No contás con los permisos necesarios para ver este restaurante.',
+    };
+  }
+
+  if (gate) {
+    return <AccessGateMessage {...gate} />;
   }
 
   const paymentMixString = Object.entries(derivedKpis.paymentMix).map(([k,v]) => `${k}: ${v}`).join(' / ');
@@ -332,7 +443,7 @@ export default function OwnerDashboard() {
     <div style={{ padding: 24, background: '#f8fafc', minHeight: '100vh' }}>
       {/* Header + períodos */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 16, marginBottom: 16, flexWrap: 'wrap' }}>
-        <h2 style={{ margin: 0 }}>Dashboard — {prettyName(slug)}</h2>
+        <h2 style={{ margin: 0 }}>Dashboard — {restaurantTitle}</h2>
         <div style={{ marginLeft: 'auto', display: 'flex', gap: 8, alignItems: 'center', flexWrap:'wrap' }}>
           {PERIODS.filter(p => p.key !== 'custom').map((p) => (
             <button
@@ -432,12 +543,65 @@ export default function OwnerDashboard() {
 }
 
 /* ========== UI Aux ========== */
+function AccessGateMessage({ title, description, actions, isLoading }) {
+  const actionItems = Array.isArray(actions)
+    ? actions.filter(Boolean)
+    : actions
+    ? [actions]
+    : [];
+
+  return (
+    <div
+      style={{
+        padding: 24,
+        background: '#f8fafc',
+        minHeight: '100vh',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+      }}
+    >
+      <div
+        style={{
+          width: '100%',
+          maxWidth: 480,
+          background: '#fff',
+          border: '1px solid #e2e8f0',
+          borderRadius: 18,
+          padding: '32px 28px',
+          textAlign: 'center',
+          boxShadow: '0 24px 48px rgba(15, 23, 42, 0.12)',
+        }}
+      >
+        <h2 style={{ marginTop: 0, marginBottom: 12 }}>{title}</h2>
+        {description && (
+          <p style={{ margin: '0 0 24px', color: '#475569', lineHeight: 1.5 }}>{description}</p>
+        )}
+        {isLoading && (
+          <div style={{ marginBottom: actionItems.length ? 24 : 0, color: '#0ea5e9', fontWeight: 600 }}>
+            Verificando…
+          </div>
+        )}
+        {actionItems.length > 0 && (
+          <div style={{ display: 'flex', justifyContent: 'center', gap: 12, flexWrap: 'wrap' }}>
+            {actionItems.map((node, idx) => (
+              <span key={idx} style={{ display: 'inline-flex' }}>
+                {node}
+              </span>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 function FiltersBar({ filters, onFiltersChange, onExport, paymentMethods }) {
   const handleInputChange = (e) => {
     const { name, value } = e.target;
     onFiltersChange(prev => ({ ...prev, [name]: value }));
   };
-  return (
+    return (
     <div style={{ display: 'flex', gap: 12, marginBottom: 16, flexWrap: 'wrap', alignItems: 'center' }}>
       <input type="text" name="query" placeholder="Buscar por ID o mesa…" value={filters.query}
         onChange={handleInputChange}
