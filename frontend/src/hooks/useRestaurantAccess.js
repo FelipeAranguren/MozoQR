@@ -1,121 +1,93 @@
-import { useEffect, useMemo, useState } from 'react';
+// frontend/src/hooks/useRestaurantAccess.js
+import { useEffect, useState } from 'react';
 import { api } from '../api';
 
-const ALLOWED_ROLES = new Set(['owner', 'staff']);
-const INITIAL_STATE = {
-  status: 'idle',
-  role: null,
-  restaurantName: null,
-  error: null,
-};
-
-function extractRestaurantName(raw) {
-  if (!raw) return null;
-  if (typeof raw === 'string') return raw;
-  const data = raw.data ?? raw;
-  const attrs = data.attributes ?? data;
-  return attrs?.name ?? null;
-}
-
-function normalizeIdentifier(value) {
-  if (value === undefined || value === null) return null;
-  const str = String(value).trim();
-  return str.length ? str : null;
-}
-
 export function useRestaurantAccess(slug, user) {
-  const [state, setState] = useState(INITIAL_STATE);
-
-  const identityFilters = useMemo(() => {
-    if (!user) return [];
-
-    const entries = [];
-    const seen = new Set();
-
-    const add = (path, op, rawValue) => {
-      const value = normalizeIdentifier(rawValue);
-      if (!value) return;
-      const key = `${path}:${op}:${value}`;
-      if (seen.has(key)) return;
-      seen.add(key);
-      entries.push({ path, op, value });
-    };
-
-    add('id', '$eq', user.id);
-    add('id', '$eq', user._id);
-    add('documentId', '$eq', user.documentId);
-    add('document_id', '$eq', user.document_id);
-    add('email', '$eq', user.email);
-    add('email', '$eqi', user.email);
-    add('username', '$eq', user.username);
-    add('username', '$eqi', user.username);
-
-    return entries;
-  }, [user]);
+  const [state, setState] = useState({
+    status: 'idle',
+    role: null,
+    restaurantName: null,
+    error: null,
+  });
 
   useEffect(() => {
-    if (!slug || !user) {
-      setState(INITIAL_STATE);
-      return;
-    }
+    if (!slug || !user) return;
 
-    if (!identityFilters.length) {
-      setState({ status: 'error', role: null, restaurantName: null, error: new Error('missing_user_identity') });
-      return;
-    }
+    // ————— reemplazá tu bloque de "const token = ..." por esto —————
+function sniffJWT() {
+  // 1) de AuthContext
+  if (user?.jwt)   return user.jwt;
+  if (user?.token) return user.token;
 
-    let isActive = true;
-    setState({ status: 'loading', role: null, restaurantName: null, error: null });
+  // 2) localStorage: keys comunes
+  const common = ['jwt','token','authToken','strapi_jwt','access_token'];
+  for (const k of common) {
+    const v = typeof localStorage !== 'undefined' ? localStorage.getItem(k) : null;
+    if (v && v.length > 20) return v;
+  }
+
+  // 3) escaneo completo de localStorage (por si quedó con otro nombre)
+  if (typeof localStorage !== 'undefined') {
+    for (let i = 0; i < localStorage.length; i++) {
+      const k = localStorage.key(i);
+      const v = localStorage.getItem(k);
+      if (v && /^eyJ[A-Za-z0-9-_]+\./.test(v)) return v; // parece JWT
+      // a veces guardan objetos JSON con { jwt: "..." }
+      try {
+        const obj = JSON.parse(v);
+        if (obj?.jwt && typeof obj.jwt === 'string') return obj.jwt;
+        if (obj?.token && typeof obj.token === 'string') return obj.token;
+      } catch {}
+    }
+  }
+
+  // 4) cookies (por si lo guardan ahí)
+  if (typeof document !== 'undefined') {
+    const m = document.cookie.match(/(?:^|;\s*)(jwt|token|authToken|strapi_jwt)=([^;]+)/);
+    if (m) return decodeURIComponent(m[2]);
+  }
+  return null;
+}
+
+const token = sniffJWT();
+const headers = token
+  ? { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` }
+  : { 'Content-Type': 'application/json' };
+// ————— fin del reemplazo —————
+
 
     const params = new URLSearchParams();
     params.set('filters[restaurante][slug][$eq]', slug);
-    params.set('populate[restaurante][fields][0]', 'name');
-    params.set('fields[0]', 'role');
-    params.set('pagination[pageSize]', '1');
+params.set('filters[user][id][$eq]', String(user.id));  // ← usa "user"
+params.set('populate', 'restaurante');
+params.set('pagination[pageSize]', '1');
 
-    identityFilters.forEach((filter, index) => {
-      params.set(
-        `filters[$or][${index}][users_permissions_user][${filter.path}][${filter.op}]`,
-        filter.value,
-      );
-    });
+
+    setState({ status: 'loading', role: null, restaurantName: null, error: null });
 
     api
-      .get(`/restaurant-members?${params.toString()}`)
+      .get(`/restaurant-members?${params.toString()}`, { headers })
       .then((res) => {
-        if (!isActive) return;
-        const node = Array.isArray(res?.data?.data) ? res.data.data[0] : null;
+        const node = res?.data?.data?.[0];
         if (!node) {
           setState({ status: 'forbidden', role: null, restaurantName: null, error: null });
           return;
         }
-        const attributes = node.attributes ?? node;
-        const role = attributes?.role ?? null;
-        const restaurantName = extractRestaurantName(attributes?.restaurante);
-        if (!role || !ALLOWED_ROLES.has(String(role).toLowerCase())) {
-          setState({ status: 'forbidden', role, restaurantName, error: null });
-          return;
-        }
+        const attrs = node.attributes;
+        const role = attrs?.role ?? null;
+        const restaurantName = attrs?.restaurante?.data?.attributes?.name ?? null;
         setState({ status: 'allowed', role, restaurantName, error: null });
       })
       .catch((err) => {
-        if (!isActive) return;
         const status = err?.response?.status;
-        if (status === 401) {
+        if (status === 401)
           setState({ status: 'unauthorized', role: null, restaurantName: null, error: null });
-          return;
-        }
-        if (status === 403) {
+        else if (status === 403)
           setState({ status: 'forbidden', role: null, restaurantName: null, error: null });
-          return;
-        }
-        setState({ status: 'error', role: null, restaurantName: null, error: err });
+        else
+          setState({ status: 'error', role: null, restaurantName: null, error: err });
       });
-
-    return () => {
-      isActive = false;
-    };
-  }, [slug, user, identityFilters]);
+  }, [slug, user]);
 
   return state;
 }

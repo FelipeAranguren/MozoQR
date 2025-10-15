@@ -8,8 +8,8 @@ import {
   getPaidOrders,
   getTotalOrdersCount,
   getSessionsCount,
-  fetchTopProducts,
 } from '../api/analytics';
+
 
 /* ========== Formatos ========== */
 const money = (n) =>
@@ -210,6 +210,41 @@ function groupOrdersToInvoices(orders = []) {
   return Array.from(byKey.values()).sort((a,b) => b.closedAt - a.closedAt);
 }
 
+function buildTopProductsFromOrders(orders = [], limit = 5) {
+  const counts = new Map();
+  for (const order of orders) {
+    const items = Array.isArray(order?.items) ? order.items : [];
+    for (const item of items) {
+      const product = item?.product || item;
+      const name =
+        product?.name ||
+        product?.nombre ||
+        product?.title ||
+        item?.name ||
+        'Sin nombre';
+      let qty = Number(
+        item?.quantity ??
+        item?.qty ??
+        item?.cantidad ??
+        product?.quantity ??
+        0
+      );
+      if (!qty || !Number.isFinite(qty)) {
+        const hasAmount = Number(item?.total ?? item?.unitPrice ?? product?.price ?? 0) > 0;
+        qty = hasAmount ? 1 : 0;
+      }
+      if (!qty || !name) continue;
+      counts.set(name, (counts.get(name) || 0) + qty);
+    }
+  }
+
+  return Array.from(counts.entries())
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, limit)
+    .map(([name, qty]) => ({ name, qty }));
+}
+
+
 /* ========== Componente ========== */
 export default function OwnerDashboard() {
   const { slug } = useParams();
@@ -260,17 +295,16 @@ export default function OwnerDashboard() {
       getPaidOrders({ slug, from: fromIso, to: toIso }),
       getTotalOrdersCount({ slug }),
       getSessionsCount({ slug, from: fromIso, to: toIso }),
-      fetchTopProducts({ slug, from: fromIso, to: toIso, limit: 5 }),
     ])
-      .then(([orders, totalOrd, sessions, topProd]) => {
+      .then(([orders, totalOrd, sessions]) => {
         const list = Array.isArray(orders) ? orders : [];
         setPeriodOrders(list);
         setLifetimeOrders(Number(totalOrd) || 0);
         setSessionsCount(Number(sessions) || 0);
-        setTopProducts(topProd || []);
+        setTopProducts(buildTopProductsFromOrders(list, 5));
         setInvoices(groupOrdersToInvoices(list));
       })
-        .catch(() => { setPeriodOrders([]); setInvoices([]); setTopProducts([]); })
+      .catch(() => { setPeriodOrders([]); setInvoices([]); setTopProducts([]); })
       .finally(() => setIsLoading(false));
   }, [slug, canViewDashboard, periodKey, start.getTime(), end.getTime()]);
 

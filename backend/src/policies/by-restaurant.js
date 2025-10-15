@@ -53,7 +53,16 @@ function mergeTenantFilter(existingFilters, restauranteId) {
 module.exports = async (ctx, _config, { strapi }) => {
   try {
     // 1) Resolver slug desde params/body/query
-    const slug = ctx.params?.slug || ctx.request?.body?.slug || ctx.query?.slug;
+    // aceptar alias comunes de slug en params
+const paramSlug =
+  ctx.params?.slug ??
+  ctx.params?.restaurantSlug ??
+  ctx.params?.restauranteSlug ??
+  null;
+
+const slug = ctx.params?.slug || ctx.request?.body?.slug || ctx.query?.slug;
+
+
     if (!slug) {
       ctx.badRequest('Falta :slug del restaurante');
       return false;
