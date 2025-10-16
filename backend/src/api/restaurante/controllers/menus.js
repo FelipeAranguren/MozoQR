@@ -6,6 +6,9 @@
  * Returns categories with available products. Hides product image unless plan === 'PRO'.
  */
 module.exports = {
+
+
+  
   async find(ctx) {
     const restauranteId = ctx.state.restauranteId;
     const plan = (ctx.state.restaurantePlan || 'BASIC').toUpperCase();
@@ -52,6 +55,8 @@ module.exports = {
           out.image = null;
         }
         return out;
+
+        
       });
       return {
         id: cat.id || c.id,

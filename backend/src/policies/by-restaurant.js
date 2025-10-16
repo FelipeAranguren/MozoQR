@@ -35,6 +35,13 @@ const isPublicPath = (path, method) => {
   return false;
 };
 
+const isMembershipPath = (path, method) => {
+  const p = String(path || '').toLowerCase();
+  const m = UPPER(method);
+  return m === 'GET' && /\/membership(\/|$)/.test(p);
+};
+
+
 // Combina filtros existentes con el filtro de restaurante usando $and
 function mergeTenantFilter(existingFilters, restauranteId) {
   const tenant = { restaurante: { id: restauranteId } };
@@ -54,14 +61,19 @@ module.exports = async (ctx, _config, { strapi }) => {
   try {
     // 1) Resolver slug desde params/body/query
     // aceptar alias comunes de slug en params
-const paramSlug =
-  ctx.params?.slug ??
-  ctx.params?.restaurantSlug ??
-  ctx.params?.restauranteSlug ??
-  null;
+// 1) Resolver slug desde params/body/query
+    // aceptar alias comunes de slug en params
+    const paramSlug =
+      ctx.params?.slug ??
+      ctx.params?.restaurantSlug ??
+      ctx.params?.restauranteSlug ??
+      null;
 
-const slug = ctx.params?.slug || ctx.request?.body?.slug || ctx.query?.slug;
-
+    const slug =
+      paramSlug ||
+      ctx.request?.body?.slug ||
+      ctx.request?.body?.data?.slug ||
+      ctx.query?.slug;
 
     if (!slug) {
       ctx.badRequest('Falta :slug del restaurante');

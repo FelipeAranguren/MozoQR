@@ -1,6 +1,6 @@
 // frontend/src/hooks/useRestaurantAccess.js
 import { useEffect, useState } from 'react';
-import { api } from '../api';
+import { api, withSlug } from '../api';
 
 export function useRestaurantAccess(slug, user) {
   const [state, setState] = useState({
@@ -56,24 +56,16 @@ const headers = token
 // ————— fin del reemplazo —————
 
 
-    const params = new URLSearchParams();
-    params.set('filters[restaurante][slug][$eq]', slug);
-params.set('filters[user][id][$eq]', String(user.id));  // ← usa "user"
-params.set('populate', 'restaurante');
-params.set('pagination[pageSize]', '1');
-
-
-    setState({ status: 'loading', role: null, restaurantName: null, error: null });
+     setState({ status: 'loading', role: null, restaurantName: null, error: null });
 
     api
-      .get(`/restaurant-members?${params.toString()}`, { headers })
+      .get(withSlug(slug, '/membership'), { headers })
       .then((res) => {
-        const node = res?.data?.data?.[0];
+        const node = res?.data?.data;
         if (!node) {
           setState({ status: 'forbidden', role: null, restaurantName: null, error: null });
           return;
         }
-        const attrs = node.attributes;
         const role = attrs?.role ?? null;
         const restaurantName = attrs?.restaurante?.data?.attributes?.name ?? null;
         setState({ status: 'allowed', role, restaurantName, error: null });
