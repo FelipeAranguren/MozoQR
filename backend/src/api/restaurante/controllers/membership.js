@@ -1,3 +1,4 @@
+//backend/src/api/restaurante/controllers/membership.js
 'use strict';
 
 module.exports = {
@@ -16,7 +17,7 @@ module.exports = {
     const rows = await strapi.entityService.findMany(UID, {
       filters: {
         restaurante: { slug },
-        users_permissions_user: { id: userId },
+        user: { id: userId },
       },
       populate: { restaurante: true },
       limit: 1,

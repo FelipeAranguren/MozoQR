@@ -1,6 +1,5 @@
-'use strict';
-
-module.exports = {
+// backend/src/api/restaurante/routes/membership.ts
+export default {
   routes: [
     // ping sin auth para verificar carga
     {
