@@ -71,6 +71,12 @@
             "relation": "oneToMany",
             "target": "api::pedido.pedido",
             "mappedBy": "users_permissions_user"
+        },
+        "restaurant_members": {
+            "type": "relation",
+            "relation": "oneToMany",
+            "target": "api::restaurant-member.restaurant-member",
+            "mappedBy": "users_permissions_user"
         }
     }
 }

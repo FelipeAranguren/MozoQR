@@ -1,2 +1,18 @@
 node_modules/
 .env
+dist/
+build/
+# Archivos temporales
+*.log
+*.tmp
+*.bak
+*.swp
+*.orig
+
+# Cache y reportes
+.cache/
+coverage/
+*.zip
+*.tar
+*.tgz
+*.rar
