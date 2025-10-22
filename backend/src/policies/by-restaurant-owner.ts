@@ -1,7 +1,5 @@
-// backend/src/policies/by-restaurant-owner.js
-'use strict';
-
-module.exports = {
+// backend/src/policies/by-restaurant-owner.ts
+export default {
   name: 'by-restaurant-owner',
 
   async policy(ctx, _config, { strapi }) {
@@ -17,13 +15,13 @@ module.exports = {
       return false;
     }
 
-    // ⚠ Ajustá 'Slug' -> 'slug' si tu campo es minúscula
-    const restaurant = await strapi.db
+    // 1) validar que exista algún restaurante con ese slug (opcional, pero útil)
+    const [restaurant] = await strapi.db
       .query('api::restaurante.restaurante')
-      .findFirst({
+      .findMany({
         where: { slug },
-       select: ['id', 'slug'],
-
+        select: ['id', 'slug'],
+        limit: 1,
       });
 
     if (!restaurant) {
@@ -31,16 +29,19 @@ module.exports = {
       return false;
     }
 
-    const membership = await strapi.db
+    // 2) chequear membership por SLUG + USER (soporta slugs duplicados)
+    const [membership] = await strapi.db
       .query('api::restaurant-member.restaurant-member')
-      .findFirst({
+      .findMany({
         where: {
-          restaurante: restaurant.id,
-          users_permissions_user: user.id,
+          restaurante: { slug },                 // 👈 clave
+          users_permissions_user: { id: user.id },
+          role: 'owner',
           active: true,
-          role: 'owner', // usa { $in: ['owner','manager'] } si querés permitir managers
         },
+        populate: { restaurante: { select: ['id', 'slug'] } },
         select: ['id'],
+        limit: 1,
       });
 
     if (!membership) {
@@ -48,7 +49,8 @@ module.exports = {
       return false;
     }
 
-    ctx.state.restauranteId = restaurant.id;
+    // Usamos el restaurante real de la membership (por si hay duplicados)
+    ctx.state.restauranteId = membership.restaurante.id;
     return true;
   },
 };

@@ -1,7 +1,8 @@
-//backend/src/api/restaurante/controllers/owner.js
-'use strict';
-module.exports = {
-  async ownerAuthzCheck(ctx) {
+// backend/src/api/restaurante/controllers/owner.ts
+import type { Context } from 'koa';
+
+export default {
+  async ownerAuthzCheck(ctx: Context) {
     ctx.body = {
       ok: true,
       slug: ctx.params.slug,
