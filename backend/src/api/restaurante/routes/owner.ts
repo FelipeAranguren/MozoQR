@@ -1,4 +1,3 @@
-// backend/src/api/restaurante/routes/owner.ts
 export default {
   routes: [
     {
@@ -6,12 +5,9 @@ export default {
       path: '/owner/:slug/authz-check',
       handler: 'api::restaurante.owner.ownerAuthzCheck',
       config: {
-  auth: {
-    scope: ['authenticated'], // o ['api::restaurante.ownerAuthzCheck'] si querés granularidad
-  },
-  policies: ['global::by-restaurant-owner'],
-},
-
+        auth: {},                               // requiere login
+        policies: ['global::by-restaurant-owner'], // usa la policy
+      },
     },
   ],
 };

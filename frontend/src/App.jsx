@@ -14,6 +14,9 @@ import PagoSuccess from './pages/PagoSuccess';
 import PagoFailure from './pages/PagoFailure';
 import PagoPending from './pages/PagoPending';
 import OwnerDashboard from './pages/OwnerDashboard';
+import OwnerRouteGuard from './guards/OwnerRouteGuard';
+import NoAccess from './pages/NoAccess';     // 👈 faltaba este import
+import DevLogin from './pages/DevLogin'; // import
 
 // Redirige rutas viejas /restaurantes/:slug -> /:slug/menu?t=1
 function LegacyRestaurantesRoute() {
@@ -46,10 +49,23 @@ export default function App() {
           <Route path="/pago/success" element={<PagoSuccess />} />
           <Route path="/pago/failure" element={<PagoFailure />} />
           <Route path="/pago/pending" element={<PagoPending />} />
-          <Route path="/owner/:slug/dashboard" element={<OwnerDashboard />} />
+
+          {/* 👇 Ruta protegida del owner */}
+          <Route
+            path="/owner/:slug/dashboard"
+            element={
+              <OwnerRouteGuard>
+                <OwnerDashboard />
+              </OwnerRouteGuard>
+            }
+          />
+
+          {/* Página de acceso denegado */}
+          <Route path="/no-access" element={<NoAccess />} />
 
           {/* 404 simple: redirige al home */}
           <Route path="*" element={<Navigate to="/" replace />} />
+          <Route path="/dev-login" element={<DevLogin />} />
         </Routes>
       </AuthProvider>
     </BrowserRouter>
