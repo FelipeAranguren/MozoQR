@@ -16,7 +16,7 @@ import PagoPending from './pages/PagoPending';
 import OwnerDashboard from './pages/OwnerDashboard';
 import OwnerRouteGuard from './guards/OwnerRouteGuard';
 import NoAccess from './pages/NoAccess';     // 👈 faltaba este import
-import DevLogin from './pages/DevLogin'; // import
+
 
 // Redirige rutas viejas /restaurantes/:slug -> /:slug/menu?t=1
 function LegacyRestaurantesRoute() {
@@ -43,7 +43,6 @@ export default function App() {
           <Route path="/owner/:slug/dashboard"element={<OwnerRouteGuard><OwnerDashboard /></OwnerRouteGuard>}/>
           <Route path="/no-access" element={<NoAccess />} />
           <Route path="*" element={<Navigate to="/" replace />} />
-          <Route path="/dev-login" element={<DevLogin />} />
         </Routes>
       </AuthProvider>
     </BrowserRouter>
