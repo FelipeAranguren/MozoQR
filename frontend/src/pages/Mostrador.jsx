@@ -34,8 +34,7 @@ export default function Mostrador() {
     history: { pedidos: [], cuentas: [] },
   });
   const audioCtxRef = useRef(null);            // beep
-  const itemsFetchingRef = useRef(new Set());
-  
+
   const playBeep = () => {
     try {
       const AudioContext = window.AudioContext || window.webkitAudioContext;
@@ -103,37 +102,12 @@ export default function Mostrador() {
     });
   };
 
-    const mapItemPedidoRow = (row) => {
-    if (!row) return null;
-    const a = row.attributes || row;
-    const prodData = a.product?.data || a.product || {};
-    const prodAttrs = prodData.attributes || prodData || {};
-    const productPresent = prodData && Object.keys(prodData).length > 0;
-    return {
-      id: row.id || a.id,
-      quantity: a.quantity,
-      notes: a.notes,
-      UnitPrice: a.UnitPrice,
-      totalPrice: a.totalPrice,
-      product: productPresent ? { id: prodData.id, name: prodAttrs.name } : null,
-    };
-  };
-
-
   const mapPedidoRow = (row) => {
     const a = row.attributes || row;
     const ses = a.mesa_sesion?.data || a.mesa_sesion || null;
     const sesAttrs = ses?.attributes || ses || {};
     const mesa = sesAttrs?.mesa?.data || sesAttrs?.mesa || null;
     const mesaAttrs = mesa?.attributes || mesa || {};
-
-  const itemsRaw = a.items?.data || a.items || [];
-    const items = Array.isArray(itemsRaw)
-      ? itemsRaw
-          .map(mapItemPedidoRow)
-          .filter((it) => it && it.id != null)
-      : [];
-
     return {
       id: row.id || a.id,
       documentId: a.documentId,
@@ -150,7 +124,6 @@ export default function Mostrador() {
             mesa: mesa ? { id: mesa.id, number: mesaAttrs.number } : null,
           }
         : null,
-        items,
     };
   };
 
@@ -162,13 +135,7 @@ export default function Mostrador() {
         `&fields[0]=id&fields[1]=documentId&fields[2]=order_status&fields[3]=customerNotes&fields[4]=total&fields[5]=createdAt&fields[6]=updatedAt` +
         `&populate[mesa_sesion][fields][0]=session_status` +
         `&populate[mesa_sesion][fields][1]=code` +
-        `&populate[mesa_sesion][populate][mesa][fields][0]=number` +
-        `&populate[items][fields][0]=id` +
-        `&populate[items][fields][1]=quantity` +
-        `&populate[items][fields][2]=notes` +
-        `&populate[items][fields][3]=UnitPrice` +
-        `&populate[items][fields][4]=totalPrice` +
-        `&populate[items][populate][product][fields][0]=name`;
+        `&populate[mesa_sesion][populate][mesa][fields][0]=number`;
       const r = await api.get(`/pedidos/${pedido.id}${qs}`);
       const data = r?.data?.data;
       if (!data) return pedido;
@@ -188,9 +155,19 @@ export default function Mostrador() {
       `&pagination[pageSize]=100`;
     const r = await api.get(qs);
     const raw = r?.data?.data ?? [];
-    return raw
-      .map(mapItemPedidoRow)
-      .filter((it) => it && it.id != null);
+    return raw.map((it) => {
+      const a = it.attributes || it;
+      const prodData = a.product?.data || a.product || {};
+      const prodAttrs = prodData.attributes || prodData;
+      return {
+        id: it.id || a.id,
+        quantity: a.quantity,
+        notes: a.notes,
+        UnitPrice: a.UnitPrice,
+        totalPrice: a.totalPrice,
+        product: { id: prodData.id, name: prodAttrs.name },
+      };
+    });
   };
 
   // =================== búsqueda por mesa (parcial) ===================
@@ -223,15 +200,6 @@ export default function Mostrador() {
         ? `&filters[order_status][$in][0]=served&filters[order_status][$in][1]=paid`
         : `&filters[order_status][$in][0]=pending&filters[order_status][$in][1]=preparing&filters[order_status][$in][2]=served`;
 
-     const itemsPopulateQS =
-        `&populate[items][fields][0]=id` +
-        `&populate[items][fields][1]=quantity` +
-        `&populate[items][fields][2]=notes` +
-        `&populate[items][fields][3]=UnitPrice` +
-        `&populate[items][fields][4]=totalPrice` +
-        `&populate[items][populate][product][fields][0]=name`;
-
-
       const listQS =
         `?filters[restaurante][slug][$eq]=${encodeURIComponent(slug)}` +
         statusFilter +
@@ -240,7 +208,6 @@ export default function Mostrador() {
         `&populate[mesa_sesion][fields][0]=session_status` +
         `&populate[mesa_sesion][fields][1]=code` +
         `&populate[mesa_sesion][populate][mesa][fields][0]=number` +
-        itemsPopulateQS +
         `&sort[0]=${encodeURIComponent(sort)}` +
         `&pagination[pageSize]=100`;
 
@@ -256,13 +223,11 @@ export default function Mostrador() {
         planosFilled.map(async (p) => {
           const prev = prevByKey.get(keyOf(p));
           const prevItems = prev?.items ?? [];
-          const inlineItems = Array.isArray(p.items) ? p.items : [];
-          let items = inlineItems.length > 0 ? inlineItems : prevItems;
+          let items = prevItems;
 
           const shouldFetchItems =
-            items.length === 0 &&
-            (isActive(p.order_status) ||
-              (showHistory && ['served', 'paid'].includes(p.order_status)));
+            isActive(p.order_status) ||
+            (showHistory && ['served', 'paid'].includes(p.order_status) && prevItems.length === 0);
 
           if (shouldFetchItems) {
             try {
@@ -485,27 +450,6 @@ export default function Mostrador() {
       }
     } catch {}
   };
-
-   useEffect(() => {
-    if (!showHistory) return;
-    const faltantes = pedidos
-      .filter((p) => p?.id != null)
-      .filter((p) => !Array.isArray(p.items) || p.items.length === 0);
-    if (faltantes.length === 0) return;
-    faltantes.forEach((p) => {
-      const id = p.id;
-      if (id == null) return;
-      if (itemsFetchingRef.current.has(id)) return;
-      itemsFetchingRef.current.add(id);
-      refreshItemsDe(id)
-        .catch(() => {})
-        .finally(() => {
-          itemsFetchingRef.current.delete(id);
-        });
-    });
-  }, [showHistory, pedidos]);
-
-
 
   const marcarComoRecibido = async (pedido) => {
     try {
