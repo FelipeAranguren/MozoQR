@@ -79,10 +79,16 @@ export async function fetchMenus(slug) {
   // 2) Fallback directo a Strapi (v4)
   try {
     const qs =
-      `?filters[slug][$eq]=${encodeURIComponent(slug)}` +
-      `&publicationState=preview` +
-      `&populate[productos][populate][image]=true` +
-      `&fields[0]=id&fields[1]=name`;
+  `?filters[slug][$eq]=${encodeURIComponent(slug)}` +
+  `&publicationState=preview` +
+  `&populate[productos][fields][0]=id` +
+  `&populate[productos][fields][1]=name` +
+  `&populate[productos][fields][2]=price` +
+  `&populate[productos][fields][3]=description` +
+  `&populate[productos][populate][image][fields][0]=url` +
+  `&fields[0]=id&fields[1]=name`;
+
+
 
     const res = await http.get(`/restaurantes${qs}`);
     const restaurante = res?.data?.data?.[0];

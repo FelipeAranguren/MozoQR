@@ -519,18 +519,46 @@ export default function Mostrador() {
 
   // ---- UI ----
   return (
-    <Box sx={{ p: 3 }}>
+    <Box sx={{ p: { xs: 2, md: 3 } }}>
+      {/* Encabezado minimal + barrita */}
       <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, flexWrap: 'wrap', mb: 1 }}>
-        <Typography variant="h4" gutterBottom sx={{ flexGrow: 1 }}>
-          Mostrador - {slug?.toUpperCase?.()} {showHistory ? '(Historial)' : ''}
-        </Typography>
+        <Box sx={{ flexGrow: 1 }}>
+          <Typography
+            component="h1"
+            sx={(theme) => ({
+              fontSize: { xs: 26, sm: 32 },
+              fontWeight: 600,
+              lineHeight: 1.2,
+              letterSpacing: 0.5,
+              fontFamily: theme.typography.fontFamily,
+              color: 'text.primary',
+              mb: 0.5,
+            })}
+          >
+            Mostrador — {slug?.toUpperCase?.()} {showHistory ? '(Historial)' : ''}
+          </Typography>
+          <Box sx={{ height: 2, width: 120, bgcolor: 'divider', borderRadius: 1, position: 'relative' }}>
+            <Box
+              sx={(theme) => ({
+                position: 'absolute',
+                left: 0,
+                top: -1,
+                width: 44,
+                height: 4,
+                borderRadius: 999,
+                backgroundColor: theme.palette.primary.main,
+                boxShadow: '0 2px 8px rgba(0,0,0,0.10)',
+              })}
+            />
+          </Box>
+        </Box>
 
         <TextField
           size="small"
           label="Buscar por Nº de mesa"
           value={searchQuery}
           onChange={(e) => setSearchQuery(e.target.value)}
-          sx={{ minWidth: 320 }}
+          sx={{ minWidth: { xs: '100%', sm: 320 }, borderRadius: 2 }}
           InputProps={{
             startAdornment: <InputAdornment position="start">🔎</InputAdornment>,
             endAdornment: searchQuery ? (
@@ -547,7 +575,11 @@ export default function Mostrador() {
           placeholder="Ej: 3  |  12  |  12 33"
         />
 
-        <Button variant="outlined" onClick={() => setShowHistory((s) => !s)}>
+        <Button
+          variant="outlined"
+          onClick={() => setShowHistory((s) => !s)}
+          sx={{ borderRadius: 2, px: 2.5 }}
+        >
           {showHistory ? 'Ver activos' : 'Ver historial'}
         </Button>
       </Box>
@@ -573,6 +605,28 @@ export default function Mostrador() {
               const flashing = flashIds.has(documentId);
               const tituloMesa = `Mesa ${mesaNumero ?? 's/n'}`;
 
+              // chip de estado (colores suaves)
+              const estadoSx = {
+                px: 1,
+                py: 0.25,
+                borderRadius: 2,
+                fontSize: 12,
+                fontWeight: 600,
+                width: 'fit-content',
+                color:
+                  order_status === 'pending'
+                    ? 'error.main'
+                    : order_status === 'preparing'
+                    ? 'warning.main'
+                    : 'success.main',
+                bgcolor:
+                  order_status === 'pending'
+                    ? 'rgba(244, 67, 54, 0.08)'
+                    : order_status === 'preparing'
+                    ? 'rgba(255, 193, 7, 0.12)'
+                    : 'rgba(76, 175, 80, 0.10)',
+              };
+
               return (
                 <Grid item key={documentId || id} xs={12} sm={6} md={6} lg={4}>
                   <Card
@@ -588,41 +642,62 @@ export default function Mostrador() {
                     }}
                   >
                     <CardContent sx={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
-                      <Typography variant="h6">{tituloMesa}</Typography>
-                      <Typography
-                        variant="subtitle2"
-                        sx={{
-                          mt: 0.5,
-                          color:
-                            order_status === 'pending'
-                              ? 'error.main'
-                              : order_status === 'preparing'
-                              ? 'warning.main'
-                              : 'text.secondary',
-                          fontWeight: 600,
-                        }}
-                      >
-                        Estado: {order_status || 'No definido'}
-                      </Typography>
+                      {/* Encabezado de la tarjeta: título + estado a la derecha */}
+<Box sx={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', mb: 1 }}>
+  <Typography variant="h6" sx={{ fontWeight: 600 }}>
+    {tituloMesa}
+  </Typography>
+
+  <Box
+    sx={{
+      ...estadoSx,
+      px: 1.5,
+      py: 0.5,
+      fontSize: 13,
+      borderRadius: 10,
+      textTransform: 'capitalize',
+      display: 'inline-flex',
+      alignItems: 'center',
+      justifyContent: 'center',
+      whiteSpace: 'nowrap',
+    }}
+  >
+    {order_status || 'No definido'}
+  </Box>
+</Box>
+
+
                       {customerNotes && (
-                        <Typography variant="body2" sx={{ mt: 1 }}>
+                        <Typography variant="body2" sx={{ mt: 1.25 }}>
                           <strong>Notas:</strong> {customerNotes}
                         </Typography>
                       )}
-                      <Divider sx={{ my: 1 }} />
-                      <List sx={{ flexGrow: 1 }}>
+
+                      <Divider sx={{ my: 1.25 }} />
+
+                      <List sx={{ flexGrow: 1, py: 0 }}>
                         {items.map((item) => {
                           const prod = item?.product;
                           return (
-                            <ListItem key={item.id}>
-                              {prod?.name ? `${prod.name} x${item.quantity}` : 'Producto sin datos'}
+                            <ListItem key={item.id} sx={{ px: 0, py: 0.5 }}>
+                              <Typography variant="body2">
+                                {prod?.name ? prod.name : 'Producto sin datos'}{' '}
+                                <Box component="span" sx={{ color: 'text.secondary' }}>
+                                  ×{item.quantity}
+                                </Box>
+                              </Typography>
                             </ListItem>
                           );
                         })}
                       </List>
-                      <Typography variant="subtitle1" sx={{ textAlign: 'right', mb: 1 }}>
+
+                      <Typography
+                        variant="subtitle1"
+                        sx={{ textAlign: 'right', mb: 1, fontWeight: 600, letterSpacing: 0.2 }}
+                      >
                         Total: {money(total)}
                       </Typography>
+
                       {!showHistory && (
                         <Box sx={{ display: 'flex', gap: 1 }}>
                           {order_status !== 'preparing' && (
@@ -631,6 +706,7 @@ export default function Mostrador() {
                               color="info"
                               onClick={() => marcarComoRecibido(pedido)}
                               fullWidth
+                              sx={{ borderRadius: 2 }}
                             >
                               Recibido
                             </Button>
@@ -641,6 +717,7 @@ export default function Mostrador() {
                               color="success"
                               onClick={() => marcarComoServido(pedido)}
                               fullWidth
+                              sx={{ borderRadius: 2 }}
                             >
                               Completado
                             </Button>
@@ -656,27 +733,34 @@ export default function Mostrador() {
         </Grid>
 
         <Grid item xs={12} md={4}>
-          <Typography variant="h5" gutterBottom>
-            {showHistory ? 'Cuentas pagadas' : 'Cuentas'}
-          </Typography>
+          <Box sx={{ mb: 1 }}>
+            <Typography variant="h5" sx={{ fontWeight: 600 }}>
+              {showHistory ? 'Cuentas pagadas' : 'Cuentas'}
+            </Typography>
+            <Box sx={{ height: 2, width: 80, bgcolor: 'divider', borderRadius: 1, mt: 0.5 }} />
+          </Box>
+
           {noResultsCuentas && (
             <Typography sx={{ mb: 1 }}>
               No hay cuentas para las mesas que coinciden con tu búsqueda.
             </Typography>
           )}
           {cuentasFiltradas.map((c) => (
-            <Card key={c.groupKey} sx={{ mb: 2 }}>
+            <Card key={c.groupKey} sx={{ mb: 2, borderRadius: 3 }}>
               <CardContent>
-                <Typography variant="h6">Mesa {c.mesaNumber ?? 's/n'}</Typography>
-                <List>
+                <Typography variant="h6" sx={{ fontWeight: 600 }}>
+                  Mesa {c.mesaNumber ?? 's/n'}
+                </Typography>
+                <Box sx={{ height: 2, width: 36, bgcolor: 'divider', borderRadius: 1, my: 0.5 }} />
+                <List sx={{ py: 0 }}>
                   {c.pedidos.map((p) => (
-                    <ListItem key={p.documentId || p.id}>
-                      Pedido {p.id} - {money(p.total)}
+                    <ListItem key={p.documentId || p.id} sx={{ px: 0, py: 0.5 }}>
+                      <Typography variant="body2">Pedido {p.id} — {money(p.total)}</Typography>
                     </ListItem>
                   ))}
                 </List>
                 <Divider sx={{ my: 1 }} />
-                <Typography variant="subtitle1" sx={{ textAlign: 'right' }}>
+                <Typography variant="subtitle1" sx={{ textAlign: 'right', fontWeight: 600 }}>
                   Total: {money(c.total)}
                 </Typography>
               </CardContent>

@@ -19,14 +19,14 @@
             "type": "decimal",
             "required": true
         },
+        "description": {
+            "type": "blocks"
+        },
         "restaurante": {
             "type": "relation",
             "relation": "manyToOne",
             "target": "api::restaurante.restaurante",
             "inversedBy": "productos"
-        },
-        "description": {
-            "type": "blocks"
         },
         "image": {
             "type": "media",
