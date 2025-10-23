@@ -16,7 +16,7 @@ export default async (policyContext, _config, { strapi }) => {
     where: {
       restaurante: { slug },
       users_permissions_user: { id: user.id },
-      role: 'owner',
+      role: { $in: ['owner', 'staff'] },
       active: true,
     },
     populate: { restaurante: { select: ['id','slug'] } },

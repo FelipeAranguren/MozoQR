@@ -1,14 +1,20 @@
-import React from 'react'
-import { AppBar, Toolbar, Typography, Button, Link } from '@mui/material'
-import { Link as RouterLink } from 'react-router-dom'
+import React from 'react';
+import { AppBar, Toolbar, Typography, Button, Link } from '@mui/material';
+import { Link as RouterLink } from 'react-router-dom';
 
-// ⬇️ botón Google
-import LoginWithGoogleButton from './LoginWithGoogleButton'
-// ⬇️ auth hook
-import { useAuth } from '../context/AuthContext'
+// botón Google
+import LoginWithGoogleButton from './LoginWithGoogleButton';
+// auth hook
+import { useAuth } from '../context/AuthContext';
 
 export default function Header() {
   const { isAuthenticated, user, logout } = useAuth();
+
+  const handleLogout = () => {
+    logout();
+    // Opcional: fuerza recarga para limpiar cualquier estado remanente
+    window.location.replace('/');
+  };
 
   return (
     <AppBar position="static">
@@ -26,9 +32,9 @@ export default function Header() {
         {isAuthenticated ? (
           <>
             <Typography sx={{ mr: 2 }}>
-              {user?.username || user?.email || 'Usuario'}
+              {user?.alias || user?.username || user?.email || 'Usuario'}
             </Typography>
-            <Button color="inherit" onClick={logout}>
+            <Button color="inherit" onClick={handleLogout}>
               Salir
             </Button>
           </>
@@ -37,5 +43,5 @@ export default function Header() {
         )}
       </Toolbar>
     </AppBar>
-  )
+  );
 }

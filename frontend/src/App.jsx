@@ -30,40 +30,18 @@ export default function App() {
       <AuthProvider>
         <Header />
         <Routes>
-          {/* Home */}
           <Route path="/" element={<Home />} />
-
-          {/* NUEVA ruta multi-tenant para menú por slug + ?t=<mesa> */}
           <Route path="/:slug/menu" element={<RestaurantMenu />} />
-
-          {/* Listado de restaurantes (tu ruta existente) */}
           <Route path="/restaurantes" element={<Restaurants />} />
-
-          {/* LEGACY: compatibilidad con /restaurantes/:slug */}
           <Route path="/restaurantes/:slug" element={<LegacyRestaurantesRoute />} />
-
-          {/* Otras rutas existentes */}
-          <Route path="/mostrador/:slug" element={<Mostrador />} />
-          <Route path="/cargarproductos/:slug" element={<CargarProductos />} />
+          <Route path="/mostrador/:slug" element={ <OwnerRouteGuard> <Mostrador /></OwnerRouteGuard>  }/>
+          <Route path="/cargarproductos/:slug"element={<OwnerRouteGuard><CargarProductos /></OwnerRouteGuard>}/>
           <Route path="/connect/google/redirect" element={<GoogleRedirect />} />
           <Route path="/pago/success" element={<PagoSuccess />} />
           <Route path="/pago/failure" element={<PagoFailure />} />
           <Route path="/pago/pending" element={<PagoPending />} />
-
-          {/* 👇 Ruta protegida del owner */}
-          <Route
-            path="/owner/:slug/dashboard"
-            element={
-              <OwnerRouteGuard>
-                <OwnerDashboard />
-              </OwnerRouteGuard>
-            }
-          />
-
-          {/* Página de acceso denegado */}
+          <Route path="/owner/:slug/dashboard"element={<OwnerRouteGuard><OwnerDashboard /></OwnerRouteGuard>}/>
           <Route path="/no-access" element={<NoAccess />} />
-
-          {/* 404 simple: redirige al home */}
           <Route path="*" element={<Navigate to="/" replace />} />
           <Route path="/dev-login" element={<DevLogin />} />
         </Routes>
