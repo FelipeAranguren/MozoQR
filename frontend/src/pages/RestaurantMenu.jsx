@@ -2,7 +2,14 @@
 import React, { useEffect, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import {
-  Box, Container, Typography, Card, CardMedia, CircularProgress
+  Box,
+  Container,
+  Typography,
+  Card,
+  CardMedia,
+  CircularProgress,
+  CardContent,
+  CardActions,
 } from '@mui/material';
 
 import { useCart } from '../context/CartContext';
@@ -19,12 +26,28 @@ const money = (n) =>
 const blocksToText = (blocks) => {
   if (!Array.isArray(blocks)) return '';
   const walk = (nodes) =>
-    nodes.map((n) => {
-      if (typeof n?.text === 'string') return n.text;
-      if (Array.isArray(n?.children)) return walk(n.children);
-      return '';
-    }).join('');
+    nodes
+      .map((n) => {
+        if (typeof n?.text === 'string') return n.text;
+        if (Array.isArray(n?.children)) return walk(n.children);
+        return '';
+      })
+      .join('');
   return walk(blocks).replace(/\s+/g, ' ').trim();
+};
+
+// ---- Helper: normaliza una media url de Strapi (string | {url} | {data:{attributes:{url}}})
+const getMediaUrl = (img, base) => {
+  const url =
+    typeof img === 'string'
+      ? img
+      : img?.url
+      ? img.url
+      : img?.data?.attributes?.url
+      ? img.data.attributes.url
+      : null;
+  if (!url) return null;
+  return String(url).startsWith('http') ? url : (base ? base + url : url);
 };
 
 export default function RestaurantMenu() {
@@ -40,59 +63,35 @@ export default function RestaurantMenu() {
     async function loadMenu() {
       try {
         const menus = await fetchMenus(slug);
-
         if (menus?.restaurantName) setNombreRestaurante(menus.restaurantName);
 
         const baseApi = (import.meta.env?.VITE_API_URL || '').replace('/api', '');
+
         // lista de productos (soporta products/productos y respuesta plana o con attributes)
-const list =
-  Array.isArray(menus)
-    ? menus.flatMap(m => (m.products || m.productos || []))
-    : (menus?.products || menus?.productos || []);
+        const list = Array.isArray(menus)
+          ? menus.flatMap((m) => m.products || m.productos || [])
+          : menus?.products || menus?.productos || [];
 
-// helper: arma URL de imagen desde string, {url} o {data:{attributes:{url}}}
-const getMediaUrl = (img, base) => {
-  const url =
-    typeof img === 'string' ? img
-    : img?.url ? img.url
-    : img?.data?.attributes?.url ? img.data.attributes.url
-    : null;
-  if (!url) return null;
-  return String(url).startsWith('http') ? url : (base ? base + url : url);
-};
+        const productosProcesados = list.map((raw) => {
+          // normaliza producto (Strapi puede devolver {id,attributes:{...}} o plano)
+          const p = raw?.attributes ? { id: raw.id, ...raw.attributes } : (raw || {});
+          const img = getMediaUrl(p.image, baseApi) || PLACEHOLDER;
+          const descripcion = Array.isArray(p.description)
+            ? blocksToText(p.description)
+            : typeof p.description === 'string'
+            ? p.description
+            : '';
 
-// convierte Rich Text (Blocks) a texto plano
-const blocksToTextLocal = (blocks) => {
-  if (!Array.isArray(blocks)) return '';
-  const read = (nodes) =>
-    nodes.map(n => {
-      if (typeof n?.text === 'string') return n.text;
-      if (Array.isArray(n?.children)) return read(n.children);
-      return '';
-    }).join('');
-  return read(blocks).replace(/\s+/g, ' ').trim();
-};
+          return {
+            id: p.id,
+            nombre: p.name,
+            precio: p.price,
+            imagen: img,
+            descripcion,
+          };
+        });
 
-const productosProcesados = list.map(raw => {
-  // normaliza producto (Strapi puede devolver {id,attributes:{...}} o plano)
-  const p = raw?.attributes ? { id: raw.id, ...raw.attributes } : (raw || {});
-  const img = getMediaUrl(p.image, baseApi) || PLACEHOLDER;
-
-  const descripcion =
-    Array.isArray(p.description) ? blocksToTextLocal(p.description)
-    : (typeof p.description === 'string' ? p.description : '');
-
-  return {
-    id: p.id,
-    nombre: p.name,
-    precio: p.price,
-    imagen: img,
-    descripcion,
-  };
-});
-
-setProductos(productosProcesados);
-
+        setProductos(productosProcesados);
       } catch (err) {
         console.error('Error cargando menú:', err);
         setProductos([]);
@@ -102,6 +101,7 @@ setProductos(productosProcesados);
     loadMenu();
   }, [slug]);
 
+  // --------- Estados de carga / vacío
   if (productos === null) {
     return (
       <Container sx={{ textAlign: 'center', mt: 8 }}>
@@ -120,29 +120,27 @@ setProductos(productosProcesados);
     );
   }
 
+  // --------- UI
   return (
-    <Container sx={{ py: { xs: 4, md: 7 } }}>
-      {/* Encabezado minimal elegante */}
+    <Container sx={{ py: { xs: 3, sm: 4 }, px: { xs: 1, sm: 2 }, maxWidth: '100vw' }}>
+      {/* Header */}
       <Box sx={{ textAlign: 'center' }}>
         <Typography
           component="h1"
-          sx={(theme) => ({
-            fontSize: { xs: 26, sm: 32, md: 42 },
-            fontWeight: 600,
+          sx={{
+            fontWeight: 700,
             lineHeight: 1.15,
             letterSpacing: 0.5,
-            fontFamily: theme.typography.fontFamily,
-            color: 'text.primary',
             mb: 1,
-          })}
+            fontSize: 'clamp(22px, 4.2vw, 36px)',
+          }}
         >
           Menú de{' '}
-          <Box component="span" sx={{ fontWeight: 700 }}>
+          <Box component="span" sx={{ fontWeight: 800 }}>
             {nombreRestaurante || slug}
           </Box>
         </Typography>
 
-        {/* Divisor hairline + pill corto */}
         <Box
           sx={(theme) => ({
             width: 120,
@@ -150,9 +148,7 @@ setProductos(productosProcesados);
             mx: 'auto',
             borderRadius: 999,
             background:
-              theme.palette.mode === 'light'
-                ? 'rgba(0,0,0,0.12)'
-                : 'rgba(255,255,255,0.24)',
+              theme.palette.mode === 'light' ? 'rgba(0,0,0,0.12)' : 'rgba(255,255,255,0.24)',
             position: 'relative',
             mb: 0.5,
             '&::after': {
@@ -180,64 +176,74 @@ setProductos(productosProcesados);
 
       {/* Lista de productos */}
       <Box
-        sx={{
-          display: 'flex',
-          flexDirection: 'column',
-          alignItems: 'center',
-          gap: 2,
-          maxWidth: 520,
-          mx: 'auto',
-          mt: 3,
-        }}
-      >
-        {productos.map((plato) => (
-          <Card
-            key={plato.id}
-            sx={{
-              width: '100%',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'space-between',
-              gap: 2,
-              p: 2.25,
-              borderRadius: 3,
-              boxShadow: 3,
-              bgcolor: 'background.paper',
-            }}
-          >
-            <Box
+  sx={{
+    display: 'grid',
+    gap: { xs: 1.25, sm: 1.75 },
+    maxWidth: 560,
+    width: '100%',        // 👈 evita recortes por cálculo de ancho
+    mx: 'auto',
+    mt: { xs: 2.5, sm: 3 },
+    overflow: 'visible',  // 👈 que no recorte sombras/redondeos
+  }}
+>
+
+        {productos.map((plato) => {
+          const qty = items.find((i) => i.id === plato.id)?.qty || 0;
+          return (
+            <Card
+              key={plato.id}
+              elevation={3}
               sx={{
                 display: 'flex',
-                alignItems: 'center',
-                gap: 2,
-                flex: 1,
-                minWidth: 0,
+                alignItems: 'stretch',
+                gap: { xs: 1, sm: 1.5 },
+                p: { xs: 1, sm: 1.5 },
+                borderRadius: 3,
+                bgcolor: 'background.paper',
               }}
             >
-              <CardMedia
-                component="img"
-                image={plato.imagen}
-                alt={plato.nombre}
+              {/* Imagen (no se deforma ni empuja) */}
+              <Box
                 sx={{
-                  width: 88,
-                  height: 88,
-                  borderRadius: 2,
-                  objectFit: 'cover',
+                  width: { xs: 76, sm: 92 },
                   flexShrink: 0,
+                  borderRadius: 2,
+                  overflow: 'hidden',
                 }}
-              />
+              >
+                <CardMedia
+                  component="img"
+                  image={plato.imagen}
+                  alt={plato.nombre}
+                  loading="lazy"
+                  sx={{
+                    width: '100%',
+                    height: '100%',
+                    aspectRatio: '1 / 1',
+                    objectFit: 'cover',
+                    display: 'block',
+                  }}
+                />
+              </Box>
 
-              <Box sx={{ minWidth: 0 }}>
-                {/* Nombre + precio en la misma línea */}
+              {/* Texto (ocupa todo el espacio flexible) */}
+              <CardContent sx={{ p: 0, flex: 1, minWidth: 0 }}>
                 <Box
                   sx={{
                     display: 'flex',
                     alignItems: 'baseline',
-                    gap: 1,
+                    gap: 0.75,
                     flexWrap: 'wrap',
+                    mb: 0.5,
+                    minWidth: 0,
                   }}
                 >
-                  <Typography variant="subtitle1" sx={{ fontWeight: 600 }}>
+                  <Typography
+                    variant="subtitle1"
+                    noWrap
+                    sx={{ fontWeight: 700, fontSize: { xs: 16, sm: 18 }, minWidth: 0 }}
+                    title={plato.nombre}
+                  >
                     {plato.nombre}
                   </Typography>
                   <Typography variant="body2" sx={{ color: 'text.secondary' }}>
@@ -245,10 +251,8 @@ setProductos(productosProcesados);
                   </Typography>
                 </Box>
 
-                {/* Separador fino */}
-                <Box sx={{ height: 2, width: 36, bgcolor: 'divider', borderRadius: 1, my: 0.5 }} />
+                <Box sx={{ height: 2, width: 36, bgcolor: 'divider', borderRadius: 1, mb: 0.5 }} />
 
-                {/* Descripción breve */}
                 <Typography
                   variant="body2"
                   sx={{
@@ -258,23 +262,37 @@ setProductos(productosProcesados);
                     WebkitBoxOrient: 'vertical',
                     overflow: 'hidden',
                   }}
+                  title={plato.descripcion}
                 >
-                  {plato.descripcion || null}
+                  {plato.descripcion || ''}
                 </Typography>
-              </Box>
-            </Box>
+              </CardContent>
 
-            {/* Stepper */}
-            <QtyStepper
-              value={(items.find((i) => i.id === plato.id)?.qty) || 0}
-              onAdd={() =>
-                addItem({ id: plato.id, nombre: plato.nombre, precio: plato.precio })
-              }
-              onSub={() => removeItem(plato.id)}
-            />
-          </Card>
-        ))}
+              {/* Stepper (columna fija, no rompe el layout) */}
+              <CardActions
+                sx={{
+                  p: 0,
+                  ml: { xs: 0.5, sm: 1 },
+                  flexDirection: 'column',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: 0.5,
+                  flexShrink: 0,
+                }}
+              >
+                <QtyStepper
+                  value={qty}
+                  onAdd={() => addItem({ id: plato.id, nombre: plato.nombre, precio: plato.precio })}
+                  onSub={() => removeItem(plato.id)}
+                />
+              </CardActions>
+            </Card>
+          );
+        })}
       </Box>
+
+      {/* espacio para que el StickyFooter no tape contenido */}
+      <Box height={{ xs: 64, sm: 80 }} />
 
       {/* Footer con resumen y confirmación */}
       <StickyFooter table={table} tableSessionId={tableSessionId} />

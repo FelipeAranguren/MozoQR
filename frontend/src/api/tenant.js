@@ -66,6 +66,7 @@ export async function fetchMenus(slug) {
           name: p.name,
           price: p.price,
           image: p?.image?.url ? buildMediaURL(p.image.url) : null,
+          description: p?.description ?? null,
         });
       });
     });
@@ -96,8 +97,17 @@ export async function fetchMenus(slug) {
       (restaurante?.productos || []).map((p) => {
         const fm = p?.image?.formats;
         const rel = fm?.small?.url || fm?.thumbnail?.url || p?.image?.url || null;
-        return { id: p.id, name: p.name, price: p.price, image: buildMediaURL(rel) };
+        const description =
+          p?.description ?? p?.attributes?.description ?? null;
+        return {
+          id: p.id,
+          name: p.name,
+          price: p.price,
+          image: buildMediaURL(rel),
+          description,
+        };
       }) || [];
+
 
     return { restaurantName: restaurante?.name || slug, products };
   } catch (err) {
