@@ -54,7 +54,8 @@
             "type": "uid"
         },
         "available": {
-            "type": "boolean"
+            "type": "boolean",
+            "default": true
         },
         "sku": {
             "type": "string"

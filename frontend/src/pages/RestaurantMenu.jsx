@@ -3,7 +3,6 @@ import React, { useEffect, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import {
   Box,
-  Container,
   Typography,
   Card,
   CardMedia,
@@ -104,25 +103,34 @@ export default function RestaurantMenu() {
   // --------- Estados de carga / vacío
   if (productos === null) {
     return (
-      <Container sx={{ textAlign: 'center', mt: 8 }}>
+      <Box sx={{ minHeight: '60vh', display: 'grid', placeItems: 'center', width: '100vw' }}>
         <CircularProgress />
-      </Container>
+      </Box>
     );
   }
 
   if (productos.length === 0) {
     return (
-      <Container sx={{ textAlign: 'center', mt: 8 }}>
+      <Box sx={{ textAlign: 'center', mt: 8, px: 2, width: '100vw' }}>
         <Typography variant="h6">
           No se encontró el restaurante o no tiene productos disponibles.
         </Typography>
-      </Container>
+      </Box>
     );
   }
 
-  // --------- UI
+  // --------- UI (sin Container; full viewport width)
   return (
-    <Container sx={{ py: { xs: 3, sm: 4 }, px: { xs: 1, sm: 2 }, maxWidth: '100vw' }}>
+    <Box
+      component="main"
+      sx={{
+        width: '100vw',        // 👈 ocupa todo el viewport siempre
+        maxWidth: '100vw',
+        px: { xs: 1, sm: 2 },  // gutters responsivos
+        py: { xs: 3, sm: 4 },
+        mx: 'auto',
+      }}
+    >
       {/* Header */}
       <Box sx={{ textAlign: 'center' }}>
         <Typography
@@ -176,17 +184,14 @@ export default function RestaurantMenu() {
 
       {/* Lista de productos */}
       <Box
-  sx={{
-    display: 'grid',
-    gap: { xs: 1.25, sm: 1.75 },
-    maxWidth: 560,
-    width: '100%',        // 👈 evita recortes por cálculo de ancho
-    mx: 'auto',
-    mt: { xs: 2.5, sm: 3 },
-    overflow: 'visible',  // 👈 que no recorte sombras/redondeos
-  }}
->
-
+        sx={{
+          display: 'grid',
+          gap: { xs: 1.25, sm: 1.75 },
+          width: '100%',       // 👈 100% del viewport (no de un contenedor limitado)
+          mt: { xs: 2.5, sm: 3 },
+          overflow: 'visible',
+        }}
+      >
         {productos.map((plato) => {
           const qty = items.find((i) => i.id === plato.id)?.qty || 0;
           return (
@@ -200,12 +205,13 @@ export default function RestaurantMenu() {
                 p: { xs: 1, sm: 1.5 },
                 borderRadius: 3,
                 bgcolor: 'background.paper',
+                flexDirection: 'row',
               }}
             >
-              {/* Imagen (no se deforma ni empuja) */}
+              {/* Imagen */}
               <Box
                 sx={{
-                  width: { xs: 76, sm: 92 },
+                  width: { xs: 76, sm: 92, md: 110 },
                   flexShrink: 0,
                   borderRadius: 2,
                   overflow: 'hidden',
@@ -216,17 +222,11 @@ export default function RestaurantMenu() {
                   image={plato.imagen}
                   alt={plato.nombre}
                   loading="lazy"
-                  sx={{
-                    width: '100%',
-                    height: '100%',
-                    aspectRatio: '1 / 1',
-                    objectFit: 'cover',
-                    display: 'block',
-                  }}
+                  sx={{ width: '100%', height: '100%', aspectRatio: '1 / 1', objectFit: 'cover', display: 'block' }}
                 />
               </Box>
 
-              {/* Texto (ocupa todo el espacio flexible) */}
+              {/* Texto */}
               <CardContent sx={{ p: 0, flex: 1, minWidth: 0 }}>
                 <Box
                   sx={{
@@ -268,7 +268,7 @@ export default function RestaurantMenu() {
                 </Typography>
               </CardContent>
 
-              {/* Stepper (columna fija, no rompe el layout) */}
+              {/* Stepper */}
               <CardActions
                 sx={{
                   p: 0,
@@ -278,6 +278,7 @@ export default function RestaurantMenu() {
                   justifyContent: 'center',
                   gap: 0.5,
                   flexShrink: 0,
+                  minWidth: { xs: 88, sm: 100 },
                 }}
               >
                 <QtyStepper
@@ -296,6 +297,6 @@ export default function RestaurantMenu() {
 
       {/* Footer con resumen y confirmación */}
       <StickyFooter table={table} tableSessionId={tableSessionId} />
-    </Container>
+    </Box>
   );
 }
