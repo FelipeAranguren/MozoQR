@@ -120,40 +120,22 @@ export default function RestaurantMenu() {
     );
   }
 
-  // --------- UI
+  // --------- UI principal
   return (
-   <Container
-  component="main"
-  maxWidth="sm"
-  disableGutters
-  sx={(theme) => ({
-    px: { xs: 1.25, sm: 2 },
-    py: { xs: 3, sm: 4 },
-    position: 'relative',
-    borderRadius: { xs: 0, sm: 3 },
-    // color base del fondo del container
-    backgroundColor: theme.palette.background.default,
-    // sombra difusa para que no se corte tan brusco contra el fondo
-    boxShadow:
-      theme.palette.mode === 'light'
-        ? '0 0 30px 10px rgba(0,0,0,0.04)'
-        : '0 0 40px 15px rgba(0,0,0,0.3)',
-    // degradado muy sutil que simula una “luz” o “niebla” alrededor
-    '&::before': {
-      content: '""',
-      position: 'absolute',
-      inset: '-40px',
-      zIndex: -1,
-      borderRadius: 'inherit',
-      background:
-        theme.palette.mode === 'light'
-          ? 'radial-gradient(circle at 50% 0%, rgba(255,255,255,0.9) 0%, rgba(255,255,255,0.4) 50%, rgba(255,255,255,0) 100%)'
-          : 'radial-gradient(circle at 50% 0%, rgba(0,0,0,0.6) 0%, rgba(0,0,0,0.2) 60%, transparent 100%)',
-      pointerEvents: 'none',
-    },
-  })}
->
-
+    <Container
+      component="main"
+      maxWidth="sm"
+      disableGutters
+      sx={{
+        px: { xs: 1.25, sm: 2 },
+        py: { xs: 3, sm: 4 },
+        position: 'relative',
+        borderRadius: 0,
+        bgcolor: 'transparent',
+        boxShadow: 'none',
+        '&::before': { display: 'none' }, // sin halo ni degradado
+      }}
+    >
       {/* Header */}
       <Box sx={{ textAlign: 'center' }}>
         <Typography
@@ -219,7 +201,7 @@ export default function RestaurantMenu() {
           gap: { xs: 1.25, sm: 1.75 },
           width: '100%',
           mt: { xs: 2.5, sm: 3 },
-          overflowX: 'hidden', // cinturón de seguridad
+          overflowX: 'hidden',
         }}
       >
         {productos.map((plato) => {
@@ -227,7 +209,7 @@ export default function RestaurantMenu() {
           return (
             <Card
               key={plato.id}
-              elevation={0} // bajamos la dureza de la sombra por defecto
+              elevation={0}
               sx={(theme) => ({
                 position: 'relative',
                 display: 'flex',
@@ -235,7 +217,6 @@ export default function RestaurantMenu() {
                 gap: { xs: 1, sm: 1.25 },
                 p: { xs: 1, sm: 1.25 },
                 borderRadius: 3,
-                // Fondo con leve degradado para suavizar el corte con el blanco
                 background:
                   theme.palette.mode === 'light'
                     ? `linear-gradient(180deg, ${theme.palette.common.white} 0%, ${alpha(
@@ -246,14 +227,12 @@ export default function RestaurantMenu() {
                         '#1e1e1e',
                         0.92
                       )} 100%)`,
-                // Contorno MUY tenue + sombra blanda y expandida (sin “borde” marcado)
                 border: `1px solid ${alpha(theme.palette.common.black, 0.06)}`,
                 boxShadow:
                   theme.palette.mode === 'light'
                     ? '0 6px 24px rgba(0,0,0,0.06), 0 1px 0 rgba(0,0,0,0.02)'
                     : '0 8px 28px rgba(0,0,0,0.35)',
                 flexDirection: 'row',
-                // Halo alrededor del card (gradiente hacia fuera) para una transición aún más suave
                 '&::before': {
                   content: '""',
                   position: 'absolute',

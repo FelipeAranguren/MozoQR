@@ -21,6 +21,16 @@ function endOfDayLocalISO(date) {
   return d.toISOString();
 }
 
+/** Convierte un límite exclusivo en ISO inclusivo (último ms dentro del rango) */
+function toInclusiveEndISO(exclusiveDate) {
+  if (!exclusiveDate) return null;
+  const d = new Date(exclusiveDate);
+  const time = d.getTime();
+  if (!Number.isFinite(time)) return null;
+  d.setTime(time - 1);
+  return d.toISOString();
+}
+
 /** QS helper */
 function buildQS(paramsObj) {
   const p = new URLSearchParams();
@@ -42,6 +52,60 @@ function unwrapEntity(e) {
   return e;
 }
 
+function ensurePlainText(value, fallback = null) {
+  if (value == null) return fallback;
+  if (typeof value === 'string') {
+    const trimmed = value.trim();
+    return trimmed ? trimmed : fallback;
+  }
+  if (typeof value === 'number' || typeof value === 'boolean') {
+    return String(value);
+  }
+  if (typeof value === 'object') {
+    for (const candidate of Object.values(value)) {
+      const text = ensurePlainText(candidate, null);
+      if (text) return text;
+    }
+  }
+  return fallback;
+}
+
+function readProductName(product) {
+  if (!product) return null;
+  const candidates = [
+    product?.name,
+    product?.nombre,
+    product?.title,
+    product?.titulo,
+    product?.label,
+  ];
+  for (const cand of candidates) {
+    const text = ensurePlainText(cand, null);
+    if (text) return text;
+  }
+  if (product?.data?.attributes) return readProductName(product.data.attributes);
+  return null;
+}
+
+function readItemName(it) {
+  if (!it) return null;
+  const directCandidates = [
+    it?.name,
+    it?.nombre,
+    it?.productName,
+    it?.product_name,
+    it?.title,
+  ];
+  for (const cand of directCandidates) {
+    const text = ensurePlainText(cand, null);
+    if (text) return text;
+  }
+  const product = unwrapEntity(it?.product ?? it?.producto ?? null);
+  const fromProduct = readProductName(product);
+  if (fromProduct) return fromProduct;
+  return null;
+}
+
 /** Convierte items v4 (objeto con .data) en array plano [{quantity, product}, ...] */
 function normalizeItemsField(field) {
   if (!field) return null;
@@ -61,10 +125,23 @@ function normalizeItemsField(field) {
       null;
     const prod = unwrapEntity(prodRaw);
 
+    const nameDirect =
+      a?.name ??
+      a?.nombre ??
+      a?.productName ??
+      a?.product_name ??
+      a?.title ??
+      a?.titulo ??
+      a?.label ??
+      null;
+
     return {
       id: node?.id ?? a?.id ?? null,
       quantity: qty,
       product: prod,
+      name: nameDirect ?? undefined,
+      productName: a?.productName ?? a?.product_name ?? undefined,
+      nombre: a?.nombre ?? undefined,
     };
   });
 }
@@ -234,12 +311,25 @@ async function fetchAllItemPedidos(qsBase) {
         (typeof a.pedido === 'number' ? a.pedido : null) ??
         null;
 
+      const nameDirect =
+        a?.name ??
+        a?.nombre ??
+        a?.productName ??
+        a?.product_name ??
+        a?.title ??
+        a?.titulo ??
+        a?.label ??
+        null;
+
       out.push({
         id: row.id ?? a.id,
         quantity: Number(a.quantity ?? a.qty ?? 0),
         createdAt: a.createdAt,
         product: prod,
         orderId,
+        name: nameDirect ?? undefined,
+        productName: a?.productName ?? a?.product_name ?? undefined,
+        nombre: a?.nombre ?? undefined,
       });
     }
 
@@ -413,8 +503,9 @@ export async function fetchRecentPaidOrders({ slug, limit = 5 }) {
 export async function fetchTopProducts({ slug, from, to, limit = 5 }) {
   if (!slug) throw new Error('slug requerido');
 
-  const startISO = new Date(from).toISOString();
-  const endISO   = endOfDayLocalISO(new Date(to));
+  const startDate = new Date(from);
+  const startISO = Number.isFinite(startDate.getTime()) ? startDate.toISOString() : new Date().toISOString();
+  const endISO = toInclusiveEndISO(new Date(to)) || startISO;
 
   {
     const qsA = buildQS({
@@ -453,11 +544,7 @@ export async function fetchTopProducts({ slug, from, to, limit = 5 }) {
       const list = Array.isArray(o.items) ? o.items : [];
       for (const it of list) {
         const prod = it?.product ? unwrapEntity(it.product) : null;
-        const name =
-          prod?.name ??
-          prod?.nombre ??
-          prod?.title ??
-          'Sin nombre';
+        const name = readItemName({ ...it, product: prod }) || 'Sin nombre';
         const qty = Number(it?.quantity ?? it?.qty ?? 0);
         if (!qty) continue;
         countsC.set(name, (countsC.get(name) || 0) + qty);
@@ -474,12 +561,8 @@ export async function fetchTopProducts({ slug, from, to, limit = 5 }) {
 function sumByProduct(items) {
   const counts = new Map();
   for (const it of items || []) {
-    const name =
-      it?.product?.name ??
-      it?.product?.nombre ??
-      it?.product?.title ??
-      'Sin nombre';
-    const qty = Number(it?.quantity ?? 0);
+    const name = readItemName(it) || 'Sin nombre';
+    const qty = Number(it?.quantity ?? it?.qty ?? 0);
     if (!qty) continue;
     counts.set(name, (counts.get(name) || 0) + qty);
   }
