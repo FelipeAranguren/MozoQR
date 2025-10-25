@@ -3,6 +3,7 @@ import React, { useEffect, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import {
   Box,
+  Container,
   Typography,
   Card,
   CardMedia,
@@ -10,6 +11,7 @@ import {
   CardContent,
   CardActions,
 } from '@mui/material';
+import { alpha } from '@mui/material/styles';
 
 import { useCart } from '../context/CartContext';
 import { fetchMenus } from '../api/tenant';
@@ -72,7 +74,6 @@ export default function RestaurantMenu() {
           : menus?.products || menus?.productos || [];
 
         const productosProcesados = list.map((raw) => {
-          // normaliza producto (Strapi puede devolver {id,attributes:{...}} o plano)
           const p = raw?.attributes ? { id: raw.id, ...raw.attributes } : (raw || {});
           const img = getMediaUrl(p.image, baseApi) || PLACEHOLDER;
           const descripcion = Array.isArray(p.description)
@@ -103,7 +104,7 @@ export default function RestaurantMenu() {
   // --------- Estados de carga / vacío
   if (productos === null) {
     return (
-      <Box sx={{ minHeight: '60vh', display: 'grid', placeItems: 'center', width: '100vw' }}>
+      <Box sx={{ minHeight: '60vh', display: 'grid', placeItems: 'center', width: '100%' }}>
         <CircularProgress />
       </Box>
     );
@@ -111,7 +112,7 @@ export default function RestaurantMenu() {
 
   if (productos.length === 0) {
     return (
-      <Box sx={{ textAlign: 'center', mt: 8, px: 2, width: '100vw' }}>
+      <Box sx={{ textAlign: 'center', mt: 8, px: 2, width: '100%' }}>
         <Typography variant="h6">
           No se encontró el restaurante o no tiene productos disponibles.
         </Typography>
@@ -119,18 +120,40 @@ export default function RestaurantMenu() {
     );
   }
 
-  // --------- UI (sin Container; full viewport width)
+  // --------- UI
   return (
-    <Box
-      component="main"
-      sx={{
-        width: '100vw',        // 👈 ocupa todo el viewport siempre
-        maxWidth: '100vw',
-        px: { xs: 1, sm: 2 },  // gutters responsivos
-        py: { xs: 3, sm: 4 },
-        mx: 'auto',
-      }}
-    >
+   <Container
+  component="main"
+  maxWidth="sm"
+  disableGutters
+  sx={(theme) => ({
+    px: { xs: 1.25, sm: 2 },
+    py: { xs: 3, sm: 4 },
+    position: 'relative',
+    borderRadius: { xs: 0, sm: 3 },
+    // color base del fondo del container
+    backgroundColor: theme.palette.background.default,
+    // sombra difusa para que no se corte tan brusco contra el fondo
+    boxShadow:
+      theme.palette.mode === 'light'
+        ? '0 0 30px 10px rgba(0,0,0,0.04)'
+        : '0 0 40px 15px rgba(0,0,0,0.3)',
+    // degradado muy sutil que simula una “luz” o “niebla” alrededor
+    '&::before': {
+      content: '""',
+      position: 'absolute',
+      inset: '-40px',
+      zIndex: -1,
+      borderRadius: 'inherit',
+      background:
+        theme.palette.mode === 'light'
+          ? 'radial-gradient(circle at 50% 0%, rgba(255,255,255,0.9) 0%, rgba(255,255,255,0.4) 50%, rgba(255,255,255,0) 100%)'
+          : 'radial-gradient(circle at 50% 0%, rgba(0,0,0,0.6) 0%, rgba(0,0,0,0.2) 60%, transparent 100%)',
+      pointerEvents: 'none',
+    },
+  })}
+>
+
       {/* Header */}
       <Box sx={{ textAlign: 'center' }}>
         <Typography
@@ -140,7 +163,8 @@ export default function RestaurantMenu() {
             lineHeight: 1.15,
             letterSpacing: 0.5,
             mb: 1,
-            fontSize: 'clamp(22px, 4.2vw, 36px)',
+            fontSize: 'clamp(22px, 4.2vw, 32px)',
+            wordBreak: 'break-word',
           }}
         >
           Menú de{' '}
@@ -176,7 +200,13 @@ export default function RestaurantMenu() {
 
         <Typography
           variant="caption"
-          sx={{ color: 'text.secondary', letterSpacing: 1, textTransform: 'uppercase', mt: 1.5 }}
+          sx={{
+            color: 'text.secondary',
+            letterSpacing: 1,
+            textTransform: 'uppercase',
+            mt: 1.5,
+            display: 'block',
+          }}
         >
           Elegí tus platos favoritos
         </Typography>
@@ -187,9 +217,9 @@ export default function RestaurantMenu() {
         sx={{
           display: 'grid',
           gap: { xs: 1.25, sm: 1.75 },
-          width: '100%',       // 👈 100% del viewport (no de un contenedor limitado)
+          width: '100%',
           mt: { xs: 2.5, sm: 3 },
-          overflow: 'visible',
+          overflowX: 'hidden', // cinturón de seguridad
         }}
       >
         {productos.map((plato) => {
@@ -197,21 +227,56 @@ export default function RestaurantMenu() {
           return (
             <Card
               key={plato.id}
-              elevation={3}
-              sx={{
+              elevation={0} // bajamos la dureza de la sombra por defecto
+              sx={(theme) => ({
+                position: 'relative',
                 display: 'flex',
                 alignItems: 'stretch',
-                gap: { xs: 1, sm: 1.5 },
-                p: { xs: 1, sm: 1.5 },
+                gap: { xs: 1, sm: 1.25 },
+                p: { xs: 1, sm: 1.25 },
                 borderRadius: 3,
-                bgcolor: 'background.paper',
+                // Fondo con leve degradado para suavizar el corte con el blanco
+                background:
+                  theme.palette.mode === 'light'
+                    ? `linear-gradient(180deg, ${theme.palette.common.white} 0%, ${alpha(
+                        theme.palette.common.white,
+                        0.94
+                      )} 100%)`
+                    : `linear-gradient(180deg, ${alpha('#1e1e1e', 1)} 0%, ${alpha(
+                        '#1e1e1e',
+                        0.92
+                      )} 100%)`,
+                // Contorno MUY tenue + sombra blanda y expandida (sin “borde” marcado)
+                border: `1px solid ${alpha(theme.palette.common.black, 0.06)}`,
+                boxShadow:
+                  theme.palette.mode === 'light'
+                    ? '0 6px 24px rgba(0,0,0,0.06), 0 1px 0 rgba(0,0,0,0.02)'
+                    : '0 8px 28px rgba(0,0,0,0.35)',
                 flexDirection: 'row',
-              }}
+                // Halo alrededor del card (gradiente hacia fuera) para una transición aún más suave
+                '&::before': {
+                  content: '""',
+                  position: 'absolute',
+                  inset: -2,
+                  borderRadius: 'inherit',
+                  pointerEvents: 'none',
+                  background:
+                    theme.palette.mode === 'light'
+                      ? `radial-gradient(120% 100% at 50% -10%, ${alpha(
+                          theme.palette.primary.main,
+                          0.06
+                        )} 0%, rgba(0,0,0,0) 60%)`
+                      : `radial-gradient(120% 100% at 50% -10%, ${alpha(
+                          theme.palette.primary.light,
+                          0.12
+                        )} 0%, rgba(0,0,0,0) 60%)`,
+                },
+              })}
             >
               {/* Imagen */}
               <Box
                 sx={{
-                  width: { xs: 76, sm: 92, md: 110 },
+                  width: { xs: 76, sm: 92 },
                   flexShrink: 0,
                   borderRadius: 2,
                   overflow: 'hidden',
@@ -222,7 +287,13 @@ export default function RestaurantMenu() {
                   image={plato.imagen}
                   alt={plato.nombre}
                   loading="lazy"
-                  sx={{ width: '100%', height: '100%', aspectRatio: '1 / 1', objectFit: 'cover', display: 'block' }}
+                  sx={{
+                    width: '100%',
+                    height: '100%',
+                    aspectRatio: '1 / 1',
+                    objectFit: 'cover',
+                    display: 'block',
+                  }}
                 />
               </Box>
 
@@ -278,12 +349,14 @@ export default function RestaurantMenu() {
                   justifyContent: 'center',
                   gap: 0.5,
                   flexShrink: 0,
-                  minWidth: { xs: 88, sm: 100 },
+                  minWidth: { xs: 80, sm: 96 },
                 }}
               >
                 <QtyStepper
                   value={qty}
-                  onAdd={() => addItem({ id: plato.id, nombre: plato.nombre, precio: plato.precio })}
+                  onAdd={() =>
+                    addItem({ id: plato.id, nombre: plato.nombre, precio: plato.precio })
+                  }
                   onSub={() => removeItem(plato.id)}
                 />
               </CardActions>
@@ -297,6 +370,6 @@ export default function RestaurantMenu() {
 
       {/* Footer con resumen y confirmación */}
       <StickyFooter table={table} tableSessionId={tableSessionId} />
-    </Box>
+    </Container>
   );
 }
