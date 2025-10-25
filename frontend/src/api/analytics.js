@@ -539,18 +539,14 @@ export async function fetchTopProducts({ slug, from, to, limit = 5 }) {
 
   {
     const ordersWithItems = await getPaidOrdersWithItems({ slug, from, to });
-    const countsC = new Map();
+    const aggregatedItems = [];
     for (const o of ordersWithItems) {
       const list = Array.isArray(o.items) ? o.items : [];
-      for (const it of list) {
-        const prod = it?.product ? unwrapEntity(it.product) : null;
-        const name = readItemName({ ...it, product: prod }) || 'Sin nombre';
-        const qty = Number(it?.quantity ?? it?.qty ?? 0);
-        if (!qty) continue;
-        countsC.set(name, (countsC.get(name) || 0) + qty);
-      }
+      aggregatedItems.push(...list);
     }
+    const countsC = sumByProduct(aggregatedItems);
     if (countsC.size > 0) return toTopArray(countsC, limit);
+  
   }
 
   return [];
@@ -560,20 +556,43 @@ export async function fetchTopProducts({ slug, from, to, limit = 5 }) {
 
 function sumByProduct(items) {
   const counts = new Map();
+  let unknownIndex = 0;
+
   for (const it of items || []) {
-    const name = readItemName(it) || 'Sin nombre';
     const qty = Number(it?.quantity ?? it?.qty ?? 0);
     if (!qty) continue;
-    counts.set(name, (counts.get(name) || 0) + qty);
+
+    const product = unwrapEntity(it?.product ?? it?.producto ?? null);
+    const productId = product?.id ?? it?.productId ?? it?.productoId ?? null;
+    const nameCandidate = readItemName({ ...it, product }) || null;
+
+    let key;
+    if (productId != null) key = `id:${productId}`;
+    else if (nameCandidate) key = `name:${nameCandidate}`;
+    else if (it?.id != null) key = `item:${it.id}`;
+    else key = `unknown:${unknownIndex++}`;
+
+    const entry = counts.get(key) || { qty: 0, name: null, productId: productId ?? null, product: null };
+    entry.qty += qty;
+    if (!entry.product && product) entry.product = product;
+    if (!entry.name && nameCandidate) entry.name = nameCandidate;
+    if (!entry.productId && productId != null) entry.productId = productId;
+    counts.set(key, entry);
   }
+
+  for (const entry of counts.values()) {
+    if (!entry.name && entry.product) entry.name = readProductName(entry.product);
+    if (!entry.name) entry.name = 'Sin nombre';
+  }
+
   return counts;
 }
 
 function toTopArray(mapCounts, limit) {
-  return Array.from(mapCounts.entries())
-    .sort((a, b) => b[1] - a[1])
+  return Array.from(mapCounts.values())
+    .sort((a, b) => b.qty - a.qty)
     .slice(0, limit)
-    .map(([name, qty]) => ({ name, qty }));
+    .map(({ name, qty }) => ({ name, qty }));
 }
 
 export default {

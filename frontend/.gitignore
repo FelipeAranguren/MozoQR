@@ -16,3 +16,34 @@ coverage/
 *.tar
 *.tgz
 *.rar
+# Node
+node_modules/
+**/node_modules/
+
+# Env & secrets
+.env
+**/.env
+backend/.env
+frontend/.env
+
+# Build artifacts
+dist/
+build/
+**/dist/
+**/build/
+
+# Backend dev DB / tmp
+backend/.tmp/
+backend/.tmp/*.db
+*.sqlite
+*.db
+
+# IDE / OS
+.vscode/
+.DS_Store
+.idea/
+
+# Logs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
