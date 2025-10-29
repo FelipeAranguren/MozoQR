@@ -1,24 +1,42 @@
 // frontend/vite.config.js
-import { defineConfig } from 'vite'
-import react from '@vitejs/plugin-react'
+import { defineConfig } from 'vite';
+import react from '@vitejs/plugin-react';
+
+// Activá HTTPS solo cuando lo necesites:
+//   VITE_DEV_HTTPS=1 npm run dev
+const USE_HTTPS = process.env.VITE_DEV_HTTPS === '1';
+
+let plugins = [react()];
+let server = {
+  host: '127.0.0.1',   // evita [::1]
+  port: 5173,
+  strictPort: true,
+  // sin HMR forzado: Vite decide lo mejor para tu entorno
+  proxy: {
+    '/api': {
+      target: 'http://127.0.0.1:1337', // Strapi
+      changeOrigin: true,
+      rewrite: (p) => p.replace(/^\/api/, ''),
+    },
+  },
+};
+
+// Solo si pedís HTTPS (para Mercado Pago con auto_return)
+if (USE_HTTPS) {
+  // cargamos el plugin solo en modo HTTPS
+  const basicSsl = (await import('@vitejs/plugin-basic-ssl')).default;
+  plugins.push(basicSsl());
+  server.https = true;
+
+  // HMR: solo tocar si usás túnel/Live Share y lo necesitás.
+  // Comentado por defecto para no degradar performance.
+  // server.hmr = {
+  //   protocol: 'wss',
+  //   clientPort: 443,
+  // };
+}
 
 export default defineConfig({
-  plugins: [react()],
-  server: {
-    host: '127.0.0.1',       // evita [::1] que rompe con túneles
-    port: 5173,
-    strictPort: true,
-    hmr: {
-      protocol: 'wss',       // Live Share expone https → HMR por wss
-      clientPort: 443        // usa el puerto 443 del túnel
-      // sin "host": toma el hostname de la URL del túnel
-    },
-    proxy: {
-      '/api': {
-        target: 'http://127.0.0.1:1337', // mejor IPv4 que "localhost"
-        changeOrigin: true,
-        rewrite: p => p.replace(/^\/api/, '')
-      }
-    }
-  }
-})
+  plugins,
+  server,
+});
