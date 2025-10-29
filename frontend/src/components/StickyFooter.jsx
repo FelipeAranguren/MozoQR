@@ -1,20 +1,21 @@
-// src/components/StickyFooter.jsx
+// frontend/src/components/StickyFooter.jsx
 import React, { useState, useEffect, useMemo } from 'react';
 import {
   Paper, Typography, Button, Dialog, DialogTitle, DialogContent,
   DialogActions, List, ListItem, ListItemText, Box, Snackbar, Alert,
-  TextField
+  TextField, Tabs, Tab
 } from '@mui/material';
 import { useParams } from 'react-router-dom';
 import { useCart } from '../context/CartContext';
-import { createOrder, closeAccount, hasOpenAccount } from '../api/tenant'; // ✅ usa tus APIs que funcionaban
+import { createOrder, closeAccount, hasOpenAccount } from '../api/tenant';
 import QtyStepper from './QtyStepper';
+import PayWithMercadoPago from './PayWithMercadoPago';
 
 const money = (n) =>
   new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS' }).format(Number(n) || 0);
 
 // --- Claves de storage (para acumular totales de pedidos abiertos por mesa y restaurante)
-const openOrdersKey = (slug, table) => `OPEN_ORDERS_${slug}_${table}`; // lista [{id,total}]
+const openOrdersKey = (slug, table) => `OPEN_ORDERS_${slug}_${table}`;
 
 const readOpenOrders = (slug, table) => {
   try {
@@ -26,9 +27,11 @@ const readOpenOrders = (slug, table) => {
     return [];
   }
 };
+
 const writeOpenOrders = (slug, table, arr) => {
   localStorage.setItem(openOrdersKey(slug, table), JSON.stringify(arr || []));
 };
+
 const clearOpenOrders = (slug, table) => {
   localStorage.removeItem(openOrdersKey(slug, table));
 };
@@ -40,7 +43,9 @@ export default function StickyFooter({ table, tableSessionId }) {
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [sending, setSending] = useState(false);
   const [orderNotes, setOrderNotes] = useState('');
+
   const [payOpen, setPayOpen] = useState(false);
+  const [payMethod, setPayMethod] = useState('mp'); // 'mp' | 'card'
   const [payLoading, setPayLoading] = useState(false);
   const [card, setCard] = useState({ number: '', expiry: '', cvv: '', name: '' });
 
@@ -86,6 +91,12 @@ export default function StickyFooter({ table, tableSessionId }) {
     [openOrders]
   );
 
+  // Tomamos el ÚLTIMO pedido abierto como referencia (orderId) para la preferencia
+  const lastOrderId = useMemo(
+    () => (openOrders.length ? openOrders[openOrders.length - 1].id : null),
+    [openOrders]
+  );
+
   const showOrderBtn = items.length > 0;
 
   // ---------- Enviar pedido ----------
@@ -97,7 +108,6 @@ export default function StickyFooter({ table, tableSessionId }) {
     try {
       setSending(true);
 
-      // ✅ Usa la forma que funcionaba en tu backend (del archivo "viejo")
       const payloadItems = items.map(i => ({
         productId: i.id,
         qty: i.qty,
@@ -112,7 +122,7 @@ export default function StickyFooter({ table, tableSessionId }) {
         items: payloadItems,
         notes: trimmedNotes,
       });
-      // Intentamos rescatar id/total si vinieran en la respuesta (soporta varios shapes)
+
       const createdId =
         res?.id ?? res?.data?.id ?? res?.data?.data?.id ?? res?.orderId ?? null;
       const totalFromRes =
@@ -157,7 +167,7 @@ export default function StickyFooter({ table, tableSessionId }) {
     }
   }, [confirmOpen]);
 
-  // ---------- Inputs de tarjeta (mock UI) ----------
+  // ---------- Inputs de tarjeta ----------
   const handleCardNumber = (e) => {
     const v = e.target.value.replace(/\D/g, '').slice(0, 16);
     const parts = v.match(/.{1,4}/g) || [];
@@ -174,8 +184,8 @@ export default function StickyFooter({ table, tableSessionId }) {
   };
   const handleName = (e) => setCard((c) => ({ ...c, name: e.target.value }));
 
-  // ---------- Pagar cuenta completa ----------
-  const handlePay = async () => {
+  // ---------- Pagar con tarjeta (flujo local) ----------
+  const handlePayCard = async () => {
     const { number, expiry, cvv, name } = card;
     const numOk = /^\d{4} \d{4} \d{4} \d{4}$/.test(number);
     const expOk = /^(0[1-9]|1[0-2])\/\d{2}$/.test(expiry);
@@ -189,7 +199,7 @@ export default function StickyFooter({ table, tableSessionId }) {
     try {
       setPayLoading(true);
 
-      // ✅ Usa el cierre de cuenta de tu backend que ya funcionaba
+      // Cierre local de cuenta (tu endpoint actual)
       await closeAccount(slug, { table, tableSessionId });
 
       // Limpiamos la lista local (ya no hay pedidos abiertos)
@@ -198,7 +208,7 @@ export default function StickyFooter({ table, tableSessionId }) {
         setOpenOrders([]);
       }
 
-      setSnack({ open: true, msg: 'Cuenta pagada con éxito ✅', severity: 'success' });
+      setSnack({ open: true, msg: 'Cuenta pagada con tarjeta ✅', severity: 'success' });
       setPayOpen(false);
       setBackendHasAccount(false);
     } catch (err) {
@@ -340,56 +350,92 @@ export default function StickyFooter({ table, tableSessionId }) {
       >
         <DialogTitle id="pay-account-title">Pagar cuenta</DialogTitle>
         <DialogContent dividers>
-          {/* Total de la cuenta (suma local de pedidos abiertos) */}
-          <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 1 }}>
+          {/* Total de la cuenta */}
+          <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 2 }}>
             <Typography variant="subtitle1">Total</Typography>
             <Typography variant="subtitle1" sx={{ textAlign: 'right', fontWeight: 600 }}>
               {money(accountTotal)}
             </Typography>
           </Box>
 
-          <TextField
-            label="Número de tarjeta"
-            fullWidth
-            margin="dense"
-            value={card.number}
-            onChange={handleCardNumber}
-            placeholder="1234 5678 9012 3456"
-          />
-          <Box sx={{ display: 'flex', gap: 2 }}>
-            <TextField
-              label="CVV"
-              margin="dense"
-              value={card.cvv}
-              onChange={handleCvv}
-              placeholder="123"
-              sx={{ flex: 1 }}
-            />
-            <TextField
-              label="Vencimiento"
-              margin="dense"
-              value={card.expiry}
-              onChange={handleExpiry}
-              placeholder="MM/AA"
-              sx={{ flex: 1 }}
-            />
-          </Box>
-          <TextField
-            label="Nombre del titular"
-            fullWidth
-            margin="dense"
-            value={card.name}
-            onChange={e => setCard(c => ({ ...c, name: e.target.value }))}
-          />
+          {/* Tabs de método de pago */}
+          <Tabs
+            value={payMethod}
+            onChange={(_, v) => setPayMethod(v)}
+            variant="fullWidth"
+            sx={{ mb: 2 }}
+          >
+            <Tab label="Tarjeta" value="card" />
+            <Tab label="Mercado Pago" value="mp" />
+          </Tabs>
+
+          {/* Contenido según método */}
+          {payMethod === 'card' && (
+            <Box>
+              <TextField
+                label="Número de tarjeta"
+                fullWidth
+                margin="dense"
+                value={card.number}
+                onChange={handleCardNumber}
+                placeholder="1234 5678 9012 3456"
+              />
+              <Box sx={{ display: 'flex', gap: 2 }}>
+                <TextField
+                  label="CVV"
+                  margin="dense"
+                  value={card.cvv}
+                  onChange={handleCvv}
+                  placeholder="123"
+                  sx={{ flex: 1 }}
+                />
+                <TextField
+                  label="Vencimiento"
+                  margin="dense"
+                  value={card.expiry}
+                  onChange={handleExpiry}
+                  placeholder="MM/AA"
+                  sx={{ flex: 1 }}
+                />
+              </Box>
+              <TextField
+                label="Nombre del titular"
+                fullWidth
+                margin="dense"
+                value={card.name}
+                onChange={handleName}
+              />
+
+              <Box sx={{ mt: 2, display: 'flex', gap: 1, justifyContent: 'flex-end' }}>
+                <Button onClick={() => setPayOpen(false)} disabled={payLoading}>
+                  Cancelar
+                </Button>
+                <Button variant="contained" onClick={handlePayCard} disabled={payLoading}>
+                  {payLoading ? 'Pagando…' : 'Pagar con tarjeta'}
+                </Button>
+              </Box>
+            </Box>
+          )}
+
+          {payMethod === 'mp' && (
+            <Box>
+              <PayWithMercadoPago
+                orderId={lastOrderId}
+                amount={accountTotal}
+                label={lastOrderId ? 'Pagar con Mercado Pago' : 'No hay pedido para pagar'}
+                fullWidth
+              />
+              {!lastOrderId && (
+                <Typography variant="caption" color="text.secondary" sx={{ mt: 1, display: 'block' }}>
+                  Enviá al menos un pedido para generar un número de pedido y poder pagar.
+                </Typography>
+              )}
+              <Box sx={{ mt: 2, display: 'flex', justifyContent: 'flex-end' }}>
+                <Button onClick={() => setPayOpen(false)}>Cerrar</Button>
+              </Box>
+            </Box>
+          )}
         </DialogContent>
-        <DialogActions>
-          <Button onClick={() => setPayOpen(false)} disabled={payLoading}>
-            Cancelar
-          </Button>
-          <Button variant="contained" onClick={handlePay} disabled={payLoading}>
-            {payLoading ? 'Pagando…' : 'Pagar'}
-          </Button>
-        </DialogActions>
       </Dialog>
     </>
   );

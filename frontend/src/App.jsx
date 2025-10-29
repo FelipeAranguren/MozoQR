@@ -1,7 +1,7 @@
-// src/App.jsx
+// frontend/src/App.jsx
 import React from 'react';
 import { BrowserRouter, Routes, Route, Navigate, useParams } from 'react-router-dom';
-import { CssBaseline } from '@mui/material';             // 👈 agrega esto
+import { CssBaseline } from '@mui/material';
 import Header from './components/Header';
 import Home from './pages/Home';
 import Restaurants from './pages/Restaurants';
@@ -27,20 +27,32 @@ export default function App() {
   return (
     <BrowserRouter>
       <AuthProvider>
-        <CssBaseline /> {/* 👈 reset MUI para tamaños y tipografías responsivas */}
+        <CssBaseline />
         <Header />
         <Routes>
+          {/* Cliente público - rutas simplificadas */}
           <Route path="/" element={<Home />} />
+          <Route path="/:slug" element={<RestaurantMenu />} />
           <Route path="/:slug/menu" element={<RestaurantMenu />} />
+          
+          {/* Staff autenticado */}
+          <Route path="/staff/:slug/orders" element={<OwnerRouteGuard><Mostrador /></OwnerRouteGuard>} />
+          <Route path="/staff/:slug/products" element={<OwnerRouteGuard><CargarProductos /></OwnerRouteGuard>} />
+          
+          {/* Owner autenticado */}
+          <Route path="/owner/:slug/dashboard" element={<OwnerRouteGuard><OwnerDashboard /></OwnerRouteGuard>} />
+          
+          {/* Rutas legacy para compatibilidad */}
           <Route path="/restaurantes" element={<Restaurants />} />
           <Route path="/restaurantes/:slug" element={<LegacyRestaurantesRoute />} />
           <Route path="/mostrador/:slug" element={<OwnerRouteGuard><Mostrador /></OwnerRouteGuard>} />
           <Route path="/cargarproductos/:slug" element={<OwnerRouteGuard><CargarProductos /></OwnerRouteGuard>} />
+          
+          {/* Páginas de pago */}
           <Route path="/connect/google/redirect" element={<GoogleRedirect />} />
           <Route path="/pago/success" element={<PagoSuccess />} />
           <Route path="/pago/failure" element={<PagoFailure />} />
           <Route path="/pago/pending" element={<PagoPending />} />
-          <Route path="/owner/:slug/dashboard" element={<OwnerRouteGuard><OwnerDashboard /></OwnerRouteGuard>} />
           <Route path="/no-access" element={<NoAccess />} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>

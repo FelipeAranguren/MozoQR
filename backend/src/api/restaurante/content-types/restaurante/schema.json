@@ -84,6 +84,16 @@
       "relation": "oneToMany",
       "target": "api::restaurant-member.restaurant-member",
       "mappedBy": "restaurante"
+    },
+    "Suscripcion": {
+      "type": "enumeration",
+      "required": true,
+      "default": "basic",
+      "enum": [
+        "basic",
+        "pro",
+        "ultra"
+      ]
     }
   }
 }

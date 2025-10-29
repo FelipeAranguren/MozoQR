@@ -520,7 +520,7 @@ export async function fetchTopProducts({ slug, from, to, limit = 5 }) {
 
     const itemsA = await fetchAllItemPedidos(qsA);
     const countsA = sumByProduct(itemsA);
-    if (countsA.size > 0) return toTopArray(countsA, limit);
+    if (countsA.size > 0) return finalizeTopProducts(countsA, limit);
   }
 
   {
@@ -534,7 +534,7 @@ export async function fetchTopProducts({ slug, from, to, limit = 5 }) {
 
     const itemsB = await fetchAllItemPedidos(qsB);
     const countsB = sumByProduct(itemsB);
-    if (countsB.size > 0) return toTopArray(countsB, limit);
+    if (countsB.size > 0) return finalizeTopProducts(countsB, limit);
   }
 
   {
@@ -545,13 +545,12 @@ export async function fetchTopProducts({ slug, from, to, limit = 5 }) {
       aggregatedItems.push(...list);
     }
     const countsC = sumByProduct(aggregatedItems);
-    if (countsC.size > 0) return toTopArray(countsC, limit);
-  
+    if (countsC.size > 0) return finalizeTopProducts(countsC, limit);
+
   }
 
   return [];
 }
-
 /* ------------------------------- utils -------------------------------- */
 
 function sumByProduct(items) {
@@ -592,7 +591,80 @@ function toTopArray(mapCounts, limit) {
   return Array.from(mapCounts.values())
     .sort((a, b) => b.qty - a.qty)
     .slice(0, limit)
-    .map(({ name, qty }) => ({ name, qty }));
+    .map(({ name, qty, productId }) => ({ name, qty, productId }));
+}
+
+async function finalizeTopProducts(countsMap, limit) {
+  const list = toTopArray(countsMap, limit);
+  await hydrateProductNames(list);
+  return list.map(({ name, qty }) => ({ name, qty }));
+}
+
+async function hydrateProductNames(list) {
+  // Buscar los que todavía no tienen nombre pero sí productId
+  const missing = list.filter(
+    (entry) => (!entry.name || entry.name === 'Sin nombre') && entry.productId != null
+  );
+  if (!missing.length) return list;
+
+  const uniqueIds = Array.from(new Set(missing.map((entry) => entry.productId))).filter(
+    (id) => id != null
+  );
+  if (!uniqueIds.length) return list;
+
+  // Pedimos múltiples variantes de nombre (casos español/inglés)
+  const params = new URLSearchParams();
+  uniqueIds.forEach((id, idx) => {
+    params.append(`filters[id][$in][${idx}]`, id);
+  });
+  params.append('fields[0]', 'id');
+  params.append('fields[1]', 'name');
+  params.append('fields[2]', 'nombre');
+  params.append('fields[3]', 'title');
+  params.append('fields[4]', 'titulo');
+  params.append('fields[5]', 'label');
+  params.append('pagination[pageSize]', String(uniqueIds.length));
+
+  let products = [];
+  try {
+    const res = await api.get(`/productos?${params.toString()}`);
+    const data = res?.data;
+    if (Array.isArray(data?.data)) products = data.data;
+    else if (Array.isArray(data)) products = data;
+  } catch {
+    // si falla la petición, devolvemos sin romper
+    return list;
+  }
+
+  const idToName = new Map();
+  for (const raw of products) {
+    if (!raw) continue;
+    const product = raw?.attributes ? { id: raw.id, ...raw.attributes } : raw;
+    const id = product?.id ?? null;
+    if (id == null) continue;
+
+    const name =
+      ensurePlainText(
+        product?.name ??
+          product?.nombre ??
+          product?.title ??
+          product?.titulo ??
+          product?.label,
+        null
+      );
+
+    if (name) idToName.set(Number(id), name);
+  }
+
+  list.forEach((entry) => {
+    if (!entry) return;
+    if (!entry.name || entry.name === 'Sin nombre') {
+      const name = idToName.get(Number(entry.productId));
+      if (name) entry.name = name;
+    }
+  });
+
+  return list;
 }
 
 export default {

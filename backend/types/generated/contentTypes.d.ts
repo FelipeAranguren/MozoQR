@@ -521,6 +521,47 @@ export interface ApiMesaMesa extends Struct.CollectionTypeSchema {
   };
 }
 
+export interface ApiPaymentsPayment extends Struct.CollectionTypeSchema {
+  collectionName: 'payments';
+  info: {
+    description: 'Pagos Mercado Pago vinculados a pedidos';
+    displayName: 'Payment';
+    pluralName: 'payments';
+    singularName: 'payment';
+  };
+  options: {
+    draftAndPublish: false;
+  };
+  attributes: {
+    amount: Schema.Attribute.Decimal;
+    createdAt: Schema.Attribute.DateTime;
+    createdBy: Schema.Attribute.Relation<'oneToOne', 'admin::user'> &
+      Schema.Attribute.Private;
+    currency_id: Schema.Attribute.String;
+    external_reference: Schema.Attribute.String;
+    init_point: Schema.Attribute.Text;
+    locale: Schema.Attribute.String & Schema.Attribute.Private;
+    localizations: Schema.Attribute.Relation<
+      'oneToMany',
+      'api::payments.payment'
+    > &
+      Schema.Attribute.Private;
+    mp_payment_id: Schema.Attribute.String;
+    mp_preference_id: Schema.Attribute.String;
+    order: Schema.Attribute.Relation<'manyToOne', 'api::pedido.pedido'>;
+    paid_at: Schema.Attribute.DateTime;
+    publishedAt: Schema.Attribute.DateTime;
+    raw_notification: Schema.Attribute.JSON;
+    raw_payment: Schema.Attribute.JSON;
+    raw_preference: Schema.Attribute.JSON;
+    sandbox_init_point: Schema.Attribute.Text;
+    status: Schema.Attribute.String;
+    updatedAt: Schema.Attribute.DateTime;
+    updatedBy: Schema.Attribute.Relation<'oneToOne', 'admin::user'> &
+      Schema.Attribute.Private;
+  };
+}
+
 export interface ApiPedidoPedido extends Struct.CollectionTypeSchema {
   collectionName: 'pedidos';
   info: {
@@ -700,6 +741,9 @@ export interface ApiRestauranteRestaurante extends Struct.CollectionTypeSchema {
       'api::restaurant-member.restaurant-member'
     >;
     slug: Schema.Attribute.UID<'name'>;
+    Suscripcion: Schema.Attribute.Enumeration<['basic', 'pro', 'ultra']> &
+      Schema.Attribute.Required &
+      Schema.Attribute.DefaultTo<'basic'>;
     tipografia: Schema.Attribute.String;
     updatedAt: Schema.Attribute.DateTime;
     updatedBy: Schema.Attribute.Relation<'oneToOne', 'admin::user'> &
@@ -1224,6 +1268,7 @@ declare module '@strapi/strapi' {
       'api::item-pedido.item-pedido': ApiItemPedidoItemPedido;
       'api::mesa-sesion.mesa-sesion': ApiMesaSesionMesaSesion;
       'api::mesa.mesa': ApiMesaMesa;
+      'api::payments.payment': ApiPaymentsPayment;
       'api::pedido.pedido': ApiPedidoPedido;
       'api::producto.producto': ApiProductoProducto;
       'api::restaurant-member.restaurant-member': ApiRestaurantMemberRestaurantMember;
