@@ -2,7 +2,7 @@
 const BASE_URL = import.meta.env.VITE_STRAPI_URL || 'http://localhost:1337';
 
 export async function createMpPreference({ orderId, amount, items, payer_email, back_urls }) {
-  const res = await fetch(`${BASE_URL}/api/mercadopago/create-preference`, {
+  const res = await fetch(`${BASE_URL}/api/payments/create-preference`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ orderId, amount, items, payer_email, back_urls })

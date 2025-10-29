@@ -1,6 +1,7 @@
 //frontend/src/components/PayWithMercadoPago.jsx
 import React, { useState } from "react";
 import { Button, CircularProgress } from "@mui/material";
+import { createMpPreference } from "../api/payments";
 
 /**
  * Props:
@@ -25,8 +26,6 @@ export default function PayWithMercadoPago({
 }) {
   const [loading, setLoading] = useState(false);
 
-const STRAPI_URL = import.meta.env.VITE_STRAPI_URL || "http://localhost:1337";
-const endpoint = `${STRAPI_URL}/api/mercadopago/create-preference`;
 
 
   async function handlePay() {
@@ -37,25 +36,15 @@ const endpoint = `${STRAPI_URL}/api/mercadopago/create-preference`;
       }
 
       setLoading(true);
-      const res = await fetch(endpoint, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          orderId,
-          amount,
-          items,
-          payer_email: payerEmail,
-          back_urls: backUrls,
-        }),
+      const data = await createMpPreference({
+        orderId,
+        amount,
+        items,
+        payer_email: payerEmail,
+        back_urls: backUrls,
       });
 
-      if (!res.ok) {
-        const txt = await res.text().catch(() => "");
-        throw new Error(`Error creando preferencia: ${res.status} ${txt}`);
-      }
-
-      const data = await res.json();
-      // backend responde { ok, preference_id, init_point, sandbox_init_point, payment_id }
+      
       const url = data?.sandbox_init_point || data?.init_point;
       if (!url) throw new Error("No se recibió init_point de Mercado Pago.");
 
