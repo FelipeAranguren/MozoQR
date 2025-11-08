@@ -17,7 +17,7 @@ module.exports = async (policyContext, config, { strapi }) => {
 
   const [restaurante] = await strapi.entityService.findMany('api::restaurante.restaurante', {
     filters: { slug },
-    fields: ['id', 'slug', 'plan'],
+    fields: ['id', 'slug', 'Suscripcion'],
     publicationState: 'live',
     limit: 1,
   });
@@ -29,6 +29,8 @@ module.exports = async (policyContext, config, { strapi }) => {
 
   // Attach to ctx.state so controllers can reuse
   ctx.state.restauranteId = restaurante.id;
-  ctx.state.restaurantePlan = restaurante.plan || 'BASIC';
+  // Normalizar Suscripcion a mayúsculas para compatibilidad (basic -> BASIC, pro -> PRO, ultra -> ULTRA)
+  const suscripcion = restaurante.Suscripcion || restaurante.suscripcion || 'basic';
+  ctx.state.restaurantePlan = suscripcion.toUpperCase();
   return true;
 };

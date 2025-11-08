@@ -10,6 +10,22 @@ module.exports = {
     const restauranteId = ctx.state.restauranteId;
     const plan = (ctx.state.restaurantePlan || 'BASIC').toUpperCase();
 
+    // Obtener información del restaurante (nombre, slug)
+    const restaurante = await strapi.entityService.findOne('api::restaurante.restaurante', restauranteId, {
+      fields: ['id', 'name', 'slug'],
+      publicationState: 'live',
+    });
+
+    // URL base para imágenes (desde configuración de Strapi)
+    const publicUrl = strapi.config.get('server.url', 'http://localhost:1337');
+    const buildImageUrl = (relativeUrl) => {
+      if (!relativeUrl) return null;
+      if (typeof relativeUrl === 'string' && relativeUrl.startsWith('http')) return relativeUrl;
+      // Remover leading slash si existe y construir URL absoluta
+      const cleanUrl = String(relativeUrl).replace(/^\/+/, '');
+      return `${publicUrl}/${cleanUrl}`;
+    };
+
     // Categorías del restaurante + productos disponibles
     const categorias = await strapi.entityService.findMany('api::categoria.categoria', {
       filters: { restaurante: restauranteId },
@@ -46,7 +62,9 @@ module.exports = {
           const img = a.image?.data || a.image;
           if (img) {
             const url = img.attributes?.url || img.url;
-            out.image = url || null;
+            out.image = buildImageUrl(url);
+          } else {
+            out.image = null;
           }
         } else {
           out.image = null;
@@ -61,6 +79,16 @@ module.exports = {
       };
     });
 
-    ctx.body = { data: { categories: sanitized } };
+    ctx.body = {
+      data: {
+        restaurant: {
+          id: restaurante?.id || restauranteId,
+          name: restaurante?.name || null,
+          slug: restaurante?.slug || ctx.params?.slug || null,
+          plan: plan,
+        },
+        categories: sanitized,
+      },
+    };
   },
 };

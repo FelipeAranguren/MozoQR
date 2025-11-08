@@ -1,6 +1,6 @@
 // frontend/src/App.jsx
 import React from 'react';
-import { BrowserRouter, Routes, Route, Navigate, useParams } from 'react-router-dom';
+import { BrowserRouter, Routes, Route, Navigate, useParams, useLocation } from 'react-router-dom';
 import { CssBaseline } from '@mui/material';
 import Header from './components/Header';
 import Home from './pages/Home';
@@ -14,8 +14,16 @@ import PagoSuccess from './pages/PagoSuccess';
 import PagoFailure from './pages/PagoFailure';
 import PagoPending from './pages/PagoPending';
 import OwnerDashboard from './pages/OwnerDashboard';
+import OwnerDashboardList from './pages/OwnerDashboardList';
 import OwnerRouteGuard from './guards/OwnerRouteGuard';
+import AuthGuard from './guards/AuthGuard';
 import NoAccess from './pages/NoAccess';
+import OwnerLayout from './layouts/OwnerLayout';
+import MenuManagement from './pages/owner/menu/MenuManagement';
+import TablesList from './pages/owner/tables/TablesList';
+import RestaurantSettings from './pages/owner/settings/RestaurantSettings';
+import PlanManagement from './pages/owner/plan/PlanManagement';
+import AdvancedPanel from './pages/owner/advanced/AdvancedPanel';
 
 // Redirige rutas viejas /restaurantes/:slug -> /:slug/menu?t=1
 function LegacyRestaurantesRoute() {
@@ -23,12 +31,19 @@ function LegacyRestaurantesRoute() {
   return <Navigate to={`/${slug}/menu?t=1`} replace />;
 }
 
+// Componente que muestra el Header solo en rutas públicas
+function ConditionalHeader() {
+  const location = useLocation();
+  const isOwnerRoute = location.pathname.startsWith('/owner/') && location.pathname !== '/owner';
+  return !isOwnerRoute ? <Header /> : null;
+}
+
 export default function App() {
   return (
     <BrowserRouter>
       <AuthProvider>
         <CssBaseline />
-        <Header />
+        <ConditionalHeader />
         <Routes>
           {/* Cliente público - rutas simplificadas */}
           <Route path="/" element={<Home />} />
@@ -40,7 +55,17 @@ export default function App() {
           <Route path="/staff/:slug/products" element={<OwnerRouteGuard><CargarProductos /></OwnerRouteGuard>} />
           
           {/* Owner autenticado */}
-          <Route path="/owner/:slug/dashboard" element={<OwnerRouteGuard><OwnerDashboard /></OwnerRouteGuard>} />
+          <Route path="/owner" element={<AuthGuard><OwnerDashboardList /></AuthGuard>} />
+          
+          {/* Rutas del owner con layout */}
+          <Route path="/owner/:slug" element={<OwnerRouteGuard><OwnerLayout /></OwnerRouteGuard>}>
+            <Route path="dashboard" element={<OwnerDashboard />} />
+            <Route path="menu" element={<MenuManagement />} />
+            <Route path="tables" element={<TablesList />} />
+            <Route path="settings" element={<RestaurantSettings />} />
+            <Route path="plan" element={<PlanManagement />} />
+            <Route path="advanced" element={<AdvancedPanel />} />
+          </Route>
           
           {/* Rutas legacy para compatibilidad */}
           <Route path="/restaurantes" element={<Restaurants />} />

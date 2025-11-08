@@ -2,9 +2,11 @@
 import React, { useEffect, useRef, useState, useMemo } from 'react';
 import { useParams } from 'react-router-dom';
 import { api } from '../api';
+import { closeAccount } from '../api/tenant';
 import {
   Box, Typography, Card, CardContent, List, ListItem, Button,
-  Divider, Grid, TextField, InputAdornment, Snackbar, Alert
+  Divider, Grid, TextField, InputAdornment, Snackbar, Alert,
+  Dialog, DialogTitle, DialogContent, DialogContentText, DialogActions
 } from '@mui/material';
 
 const money = (n) =>
@@ -22,6 +24,7 @@ export default function Mostrador() {
   const [searchQuery, setSearchQuery] = useState('');
   const [flashIds, setFlashIds] = useState(new Set());
   const [snack, setSnack] = useState({ open: false, msg: '', severity: 'info' });
+  const [payDialog, setPayDialog] = useState({ open: false, cuenta: null, loading: false });
 
   // ----- refs auxiliares (SOLO AQUÍ ARRIBA; no dentro de funciones) -----
   const pedidosRef = useRef([]);
@@ -503,6 +506,45 @@ export default function Mostrador() {
     }
   };
 
+  const handleOpenPayDialog = (cuenta) => {
+    setPayDialog({ open: true, cuenta, loading: false });
+  };
+
+  const handleClosePayDialog = () => {
+    setPayDialog({ open: false, cuenta: null, loading: false });
+  };
+
+  const marcarCuentaComoPagada = async () => {
+    const { cuenta } = payDialog;
+    if (!cuenta) return;
+
+    setPayDialog((prev) => ({ ...prev, loading: true }));
+
+    try {
+      if (cuenta.mesaNumber != null) {
+        const payload = { table: cuenta.mesaNumber };
+        if (cuenta.mesaSesionId) payload.tableSessionId = cuenta.mesaSesionId;
+        await closeAccount(slug, payload);
+      } else {
+        const pendientes = (cuenta.pedidos || []).filter((p) => p.order_status !== 'paid');
+        await Promise.all(pendientes.map((pedido) => putEstado(pedido, 'paid')));
+      }
+
+      setSnack({ open: true, msg: 'Cuenta marcada como pagada ✅', severity: 'success' });
+      handleClosePayDialog();
+      await fetchPedidos();
+    } catch (err) {
+      console.error('Error al marcar cuenta como pagada:', err?.response?.data || err);
+      setSnack({
+        open: true,
+        msg: 'No se pudo marcar la cuenta como pagada ❌',
+        severity: 'error',
+      });
+      setPayDialog((prev) => ({ ...prev, loading: false }));
+    }
+  };
+
+
   // ---- memos de filtro ----
   const pedidosFiltrados = useMemo(
     () => pedidos.filter(pedidoMatchesMesaPartial),
@@ -763,6 +805,20 @@ export default function Mostrador() {
                 <Typography variant="subtitle1" sx={{ textAlign: 'right', fontWeight: 600 }}>
                   Total: {money(c.total)}
                 </Typography>
+                {!showHistory && c.hasUnpaid && (
+                 /* Botón de pago de borde a borde en la base de la tarjeta */
+                  <Box sx={{ mt: 1, mx: -2, mb: -2 }}>
+                    <Button
+                      variant="contained"
+                      color="success"
+                      onClick={() => handleOpenPayDialog(c)}
+                      fullWidth
+                      sx={{ borderRadius: 2, py: 1.25 }}
+                    >
+                      Pagar
+                    </Button>
+                  </Box>
+                )}
               </CardContent>
             </Card>
           ))}
@@ -782,6 +838,31 @@ export default function Mostrador() {
           {snack.msg}
         </Alert>
       </Snackbar>
+       <Dialog
+        open={payDialog.open}
+        onClose={() => (!payDialog.loading ? handleClosePayDialog() : null)}
+        aria-labelledby="confirm-pay-title"
+      >
+        <DialogTitle id="confirm-pay-title">Confirmar pago</DialogTitle>
+        <DialogContent>
+          <DialogContentText>
+            ¿Estás seguro que deseas marcar como pagada esta cuenta?
+          </DialogContentText>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={handleClosePayDialog} disabled={payDialog.loading}>
+            Cancelar
+          </Button>
+          <Button
+            variant="contained"
+            color="success"
+            onClick={marcarCuentaComoPagada}
+            disabled={payDialog.loading}
+          >
+            {payDialog.loading ? 'Confirmando...' : 'Confirmar'}
+          </Button>
+        </DialogActions>
+      </Dialog>
     </Box>
   );
 }
