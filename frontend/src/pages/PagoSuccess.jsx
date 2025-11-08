@@ -1,3 +1,4 @@
+//frontend/src/pages/PagoSuccess.jsx
 import React, { useEffect, useState } from "react";
 import { useCart } from "../context/CartContext";
 

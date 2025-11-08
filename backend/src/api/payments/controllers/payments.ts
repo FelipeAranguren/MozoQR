@@ -1,4 +1,4 @@
-//backend/src/api/payments/controllers/payments.ts
+// backend/src/api/payments/controllers/payments.ts
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { MercadoPagoConfig, Preference, Payment } from 'mercadopago';
 
@@ -11,8 +11,11 @@ function ensureHttpUrl(u?: string | null, fallback = 'http://localhost:5173'): s
   return s;
 }
 
+function isHttps(u?: string | null) {
+  return typeof u === 'string' && /^https:\/\//i.test(u.trim());
+}
+
 function resolvePaymentUID(): string | null {
-  // Soporta ambos UIDs según cómo hayas creado el CT
   const uid1 = 'api::payment.payment';
   const uid2 = 'api::payments.payment';
   // @ts-ignore
@@ -24,6 +27,72 @@ function resolvePaymentUID(): string | null {
   return null;
 }
 
+// Intenta marcar el pedido como "paid" con el campo que exista
+async function markOrderPaid(orderPk: number) {
+  const ORDER_UID = 'api::pedido.pedido';
+  const tries = [
+    { data: { order_status: 'paid' } },
+    { data: { status: 'paid' } },
+    { data: { estado: 'paid' } },
+    { data: { paid: true } },
+  ];
+  for (const t of tries) {
+    try {
+      await strapi.entityService.update(ORDER_UID, orderPk, t as any);
+      return true;
+    } catch (_err) {
+      /* sigue intentando */
+    }
+  }
+  strapi?.log?.error?.(`[payments] No pude marcar pedido ${orderPk} como pagado. Ningún campo coincidió (order_status/status/estado/paid).`);
+  return false;
+}
+
+// Busca el pedido por varios caminos
+async function resolveOrderPk(ref: string | number | null) {
+  if (ref == null) return null;
+  const ORDER_UID = 'api::pedido.pedido';
+  const refStr = String(ref).trim();
+  // 1) id numérico
+  if (/^\d+$/.test(refStr)) {
+    try {
+      const existing = await strapi.entityService.findOne(ORDER_UID, Number(refStr), { fields: ['id'] });
+      if (existing?.id) return existing.id;
+    } catch {}
+  }
+  // 2) documentId (Strapi v4 uid de documento)
+  try {
+    const byDocument = await strapi.db.query(ORDER_UID).findOne({
+      where: { documentId: refStr },
+      select: ['id'],
+    });
+    if (byDocument?.id) return byDocument.id;
+  } catch {}
+  return null;
+}
+
+// Construye back_urls que pasan por el backend y le envían también orderRef
+function buildBackendBackUrls(orderId?: string | number | null) {
+  const baseFront = ensureHttpUrl(process.env.FRONTEND_URL || 'http://127.0.0.1:5173').replace(/\/*$/, '');
+  const baseBack = ensureHttpUrl(process.env.BACKEND_URL || process.env.STRAPI_URL || 'http://127.0.0.1:1337')
+    .replace(/\/*$/, '');
+  const encOrder = encodeURIComponent(orderId ?? '');
+
+  const successFront = `${baseFront}/pago/success?orderId=${encOrder}`;
+  const failureFront = `${baseFront}/pago/failure?orderId=${encOrder}`;
+  const pendingFront = `${baseFront}/pago/pending?orderId=${encOrder}`;
+
+  const wrap = (destFront: string) =>
+    // Agrego orderRef para fallback si MP no me da external_reference
+    `${baseBack}/api/payments/confirm?redirect=${encodeURIComponent(destFront)}&orderRef=${encOrder}`;
+
+  return {
+    success: wrap(successFront),
+    failure: wrap(failureFront),
+    pending: wrap(pendingFront),
+  };
+}
+
 export default {
   async ping(ctx: any) {
     ctx.body = { ok: true, msg: 'payments api up' };
@@ -31,7 +100,7 @@ export default {
 
   async createPreference(ctx: any) {
     try {
-      const { items, orderId, amount, payer_email, back_urls } = ctx.request.body || {};
+      const { items, orderId, amount } = ctx.request.body || {};
 
       const accessToken = process.env.MP_ACCESS_TOKEN;
       if (!accessToken) {
@@ -73,30 +142,27 @@ export default {
         0,
       );
 
-      // ---- back_urls en HTTP local (sin auto_return)
-      const baseFront = ensureHttpUrl(process.env.FRONTEND_URL || 'http://127.0.0.1:5173').replace(/\/+$/, '');
-      const provided = (back_urls && typeof back_urls === 'object') ? back_urls : {};
-      const success = ensureHttpUrl(provided.success || `${baseFront}/pago/success`) + `?orderId=${encodeURIComponent(orderId ?? '')}`;
-      const failure = ensureHttpUrl(provided.failure || `${baseFront}/pago/failure`) + `?orderId=${encodeURIComponent(orderId ?? '')}`;
-      const pending = ensureHttpUrl(provided.pending || `${baseFront}/pago/pending`) + `?orderId=${encodeURIComponent(orderId ?? '')}`;
-      const backUrls = { success, failure, pending };
+      // ---- back_urls: forzamos a pasar por el backend (confirm) y le mandamos orderRef
+      const backUrls = buildBackendBackUrls(orderId);
 
       // ---- Crear preferencia
       const client = new MercadoPagoConfig({ accessToken });
       const preference = new Preference(client);
-      const mpPref: any = await preference.create({
-        body: {
-          items: saneItems.map((it: any, i: number) => ({ id: String(i + 1), ...it })),
-          external_reference: orderId ? String(orderId) : undefined,
-          back_urls: backUrls,
-          // auto_return: 'approved',  // activalo si servís el front por HTTPS
-        },
-      });
 
-      // ---- Persistencia best-effort (no romper si falla)
+      const baseBack = process.env.BACKEND_URL || process.env.STRAPI_URL || '';
+      const body: any = {
+        items: saneItems.map((it: any, i: number) => ({ id: String(i + 1), ...it })),
+        external_reference: orderId ? String(orderId) : undefined,
+        back_urls: backUrls,
+      };
+      if (isHttps(baseBack)) body.auto_return = 'approved';
+
+      const mpPref: any = await preference.create({ body });
+
+      // ---- Persistencia best-effort
       let paymentId: number | null = null;
       try {
-        const paymentUID = resolvePaymentUID(); // <- detecta el UID correcto
+        const paymentUID = resolvePaymentUID();
         if (paymentUID) {
           const orderPk =
             orderId !== undefined && orderId !== null && orderId !== '' && !Number.isNaN(Number(orderId))
@@ -178,67 +244,108 @@ export default {
     }
   },
 
-// Confirmar pago al volver del redirect (sin webhook)
-async confirm(ctx: any) {
-  try {
-    const { preference_id, payment_id } = ctx.request.query || {};
-    const accessToken = process.env.MP_ACCESS_TOKEN;
-    if (!accessToken) { ctx.status = 500; ctx.body = { ok:false, error:'Falta MP_ACCESS_TOKEN' }; return; }
-
-    // 1) Obtener el pago o merchant_order y recuperar external_reference (== orderId)
-    // Usamos SDK v2:
-    const client = new MercadoPagoConfig({ accessToken });
-    let orderId: string | number | null = null;
-    let status: string | null = null;
-
-    if (payment_id) {
-      const p = new Payment(client);
-      const r: any = await p.get({ id: String(payment_id) });
-      orderId = r?.external_reference ?? r?.metadata?.order_id ?? null;
-      status  = r?.status ?? null;
-    }
-
-    if (!orderId && preference_id) {
-      // fallback: consultá la preferencia y su external_reference
-      const pref = new Preference(client);
-      const pr: any = await pref.get({ preferenceId: String(preference_id) });
-      orderId = pr?.external_reference ?? null;
-      // status lo podríamos buscar listando pagos por preference, pero no hace falta si llegó aquí desde "approved"
-      status = status || 'approved';
-    }
-
-    if (!orderId) {
-      ctx.status = 400;
-      ctx.body = { ok:false, error:'No se pudo determinar orderId (external_reference)' };
-      return;
-    }
-
-    // 2) Marcar el pedido como pagado en tu BD
-    // ADAPTA estas líneas a tu esquema real.
-    // Intento 1: campo booleano "paid"
-    const PUID = 'api::pedido.pedido';
+  // Confirmar pago al volver del redirect (sin webhook)
+  async confirm(ctx: any) {
     try {
-      await strapi.entityService.update(PUID, Number(orderId), {
-        data: { paid: true, payment_status: status || 'approved' },
-      });
-    } catch {
-      // Intento 2: campo "status"
-      try {
-        await strapi.entityService.update(PUID, Number(orderId), {
-          data: { status: 'paid' },
-        });
-      } catch (e) {
-        strapi?.log?.warn?.('[payments.confirm] no pude actualizar el pedido, adaptá los campos a tu esquema');
+      const q = ctx.request.query || {};
+      const paymentIdQ = q.payment_id ?? q.collection_id;
+      const preferenceIdQ = q.preference_id ?? q.preference_id;
+      const statusQ = (q.status ?? q.collection_status ?? '').toString().toLowerCase() || null;
+      const orderRefQ = (q.orderRef ?? '').toString() || null; // <- fallback extra que nosotros pasamos
+
+      const accessToken = process.env.MP_ACCESS_TOKEN;
+      if (!accessToken) {
+        ctx.status = 500;
+        ctx.body = { ok: false, error: 'Falta MP_ACCESS_TOKEN' };
+        return;
       }
+
+      const client = new MercadoPagoConfig({ accessToken });
+      let orderRef: string | number | null = orderRefQ; // start with our own hint
+      let status: string | null = statusQ;
+      let rawPayment: any = null;
+
+      // 1) Si hay payment_id/collection_id, consulto Payment API
+      if (paymentIdQ) {
+        try {
+          const payment = new Payment(client);
+          const mpPayment: any = await payment.get({ id: String(paymentIdQ) });
+          rawPayment = mpPayment;
+          // si MP trae external_reference, pisa nuestro hint
+          orderRef = mpPayment?.external_reference ?? mpPayment?.metadata?.order_id ?? orderRef;
+          status = (mpPayment?.status ?? status)?.toLowerCase() || null;
+        } catch (err: any) {
+          strapi?.log?.warn?.(`[payments.confirm] No pude obtener payment ${paymentIdQ}: ${err?.message}`);
+        }
+      }
+
+      // 2) Fallback por preference_id si aún no tengo orderRef
+      if (!orderRef && preferenceIdQ) {
+        try {
+          const preference = new Preference(client);
+          const mpPref: any = await preference.get({ preferenceId: String(preferenceIdQ) });
+          orderRef = mpPref?.external_reference ?? null;
+          status = status || 'approved';
+        } catch (err: any) {
+          strapi?.log?.warn?.(`[payments.confirm] No pude obtener preference ${preferenceIdQ}: ${err?.message}`);
+        }
+      }
+
+      if (!orderRef) {
+        ctx.status = 400;
+        ctx.body = { ok: false, error: 'No se pudo determinar orderId (external_reference/orderRef)' };
+        return;
+      }
+
+      // 3) Resolver PK del pedido con múltiples estrategias
+      const orderPk = await resolveOrderPk(orderRef);
+      if (!orderPk) {
+        ctx.status = 404;
+        ctx.body = { ok: false, error: `Pedido no encontrado para ref: ${orderRef}` };
+        return;
+      }
+
+      // 4) Marcar como paid si corresponde
+      const normalizedStatus = typeof status === 'string' ? status.toLowerCase() : null;
+      const shouldMarkPaid = normalizedStatus === 'approved';
+      if (shouldMarkPaid) await markOrderPaid(orderPk);
+      else strapi?.log?.info?.(`[payments.confirm] Estado no aprobado (${normalizedStatus}). No marco paid.`);
+
+      // 5) Actualizar registro de payments si existe
+      const paymentUID = resolvePaymentUID();
+      if (paymentUID) {
+        try {
+          const searchFilters: Record<string, any> = { order: orderPk };
+          if (preferenceIdQ) searchFilters.mp_preference_id = String(preferenceIdQ);
+
+          const existing = await strapi.entityService.findMany(paymentUID, { filters: searchFilters, limit: 1 });
+          if (existing && existing.length > 0) {
+            const data: Record<string, any> = {};
+            if (normalizedStatus) data.status = normalizedStatus;
+            if (paymentIdQ) data.mp_payment_id = String(paymentIdQ);
+            if (shouldMarkPaid) data.paid_at = new Date();
+            if (rawPayment) data.raw_payment = rawPayment;
+            if (Object.keys(data).length > 0) await strapi.entityService.update(paymentUID, existing[0].id, { data });
+          }
+        } catch (err) {
+          strapi?.log?.debug?.(`[payments.confirm] No se pudo actualizar registro de pago: ${err?.message || err}`);
+        }
+      }
+
+      // 6) Redirección al front si vino "redirect"
+      const redirect = (ctx.request.query?.redirect as string) || null;
+      if (redirect) {
+        const dest = ensureHttpUrl(redirect);
+        ctx.status = 302;
+        ctx.redirect(dest);
+        return;
+      }
+
+      ctx.body = { ok: true, orderId: orderPk, status: normalizedStatus || status || 'approved' };
+    } catch (e: any) {
+      strapi?.log?.error?.('[payments.confirm] ', e?.response?.data || e?.message);
+      ctx.status = 500;
+      ctx.body = { ok: false, error: e?.message || 'Error confirmando pago' };
     }
-
-    ctx.body = { ok: true, orderId, status: status || 'approved' };
-  } catch (e:any) {
-    strapi?.log?.error?.('[payments.confirm] ', e?.response?.data || e?.message);
-    ctx.status = 500;
-    ctx.body = { ok:false, error: e?.message || 'Error confirmando pago' };
-  }
-},
-
-
+  },
 };
