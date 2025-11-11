@@ -24,6 +24,7 @@ import TablesList from './pages/owner/tables/TablesList';
 import RestaurantSettings from './pages/owner/settings/RestaurantSettings';
 import PlanManagement from './pages/owner/plan/PlanManagement';
 import AdvancedPanel from './pages/owner/advanced/AdvancedPanel';
+import AdminDashboard from './pages/AdminDashboard';
 
 // Redirige rutas viejas /restaurantes/:slug -> /:slug/menu?t=1
 function LegacyRestaurantesRoute() {
@@ -35,7 +36,8 @@ function LegacyRestaurantesRoute() {
 function ConditionalHeader() {
   const location = useLocation();
   const isOwnerRoute = location.pathname.startsWith('/owner/') && location.pathname !== '/owner';
-  return !isOwnerRoute ? <Header /> : null;
+  const isAdminRoute = location.pathname.startsWith('/admin/');
+  return !isOwnerRoute && !isAdminRoute ? <Header /> : null;
 }
 
 export default function App() {
@@ -56,6 +58,9 @@ export default function App() {
           
           {/* Owner autenticado */}
           <Route path="/owner" element={<AuthGuard><OwnerDashboardList /></AuthGuard>} />
+          
+          {/* Admin Dashboard - Dashboard de administración */}
+          <Route path="/admin/dashboard" element={<AuthGuard><AdminDashboard /></AuthGuard>} />
           
           {/* Rutas del owner con layout */}
           <Route path="/owner/:slug" element={<OwnerRouteGuard><OwnerLayout /></OwnerRouteGuard>}>
