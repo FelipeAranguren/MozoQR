@@ -1,12 +1,13 @@
 // frontend/vite.config.js
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
+import tailwindcss from '@tailwindcss/vite';
 
 // Activá HTTPS solo cuando lo necesites:
 //   VITE_DEV_HTTPS=1 npm run dev
 const USE_HTTPS = process.env.VITE_DEV_HTTPS === '1';
 
-let plugins = [react()];
+let plugins = [react(), tailwindcss()];
 let server = {
   host: '127.0.0.1',   // evita [::1]
   port: 5173,
