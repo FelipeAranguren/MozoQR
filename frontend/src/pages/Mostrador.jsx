@@ -111,6 +111,31 @@ export default function Mostrador() {
     const sesAttrs = ses?.attributes || ses || {};
     const mesa = sesAttrs?.mesa?.data || sesAttrs?.mesa || null;
     const mesaAttrs = mesa?.attributes || mesa || {};
+    
+    // Extraer items si vienen en la respuesta del backend
+    let items = [];
+    if (a.items) {
+      const itemsData = Array.isArray(a.items?.data) ? a.items.data : Array.isArray(a.items) ? a.items : [];
+      items = itemsData.map((it) => {
+        const itemAttrs = it.attributes || it;
+        const prodData = itemAttrs.product?.data || itemAttrs.product || {};
+        const prodAttrs = prodData.attributes || prodData;
+        return {
+          id: it.id || itemAttrs.id,
+          quantity: itemAttrs.quantity,
+          notes: itemAttrs.notes,
+          UnitPrice: itemAttrs.UnitPrice,
+          totalPrice: itemAttrs.totalPrice,
+          product: prodData.id
+            ? {
+                id: prodData.id,
+                name: prodAttrs.name || prodAttrs.nombre || null,
+              }
+            : null,
+        };
+      }).filter((it) => it.id); // Filtrar items sin ID válido
+    }
+    
     return {
       id: row.id || a.id,
       documentId: a.documentId,
@@ -119,6 +144,7 @@ export default function Mostrador() {
       createdAt: a.createdAt,
       updatedAt: a.updatedAt,
       total: a.total,
+      items: items, // Incluir items si vienen del backend
       mesa_sesion: ses
         ? {
             id: ses.id,
@@ -136,9 +162,11 @@ export default function Mostrador() {
       const qs =
         `?publicationState=preview` +
         `&fields[0]=id&fields[1]=documentId&fields[2]=order_status&fields[3]=customerNotes&fields[4]=total&fields[5]=createdAt&fields[6]=updatedAt` +
-        `&populate[mesa_sesion][fields][0]=session_status` +
-        `&populate[mesa_sesion][fields][1]=code` +
-        `&populate[mesa_sesion][populate][mesa][fields][0]=number`;
+        `&populate[mesa_sesion][fields][0]=id` +
+        `&populate[mesa_sesion][fields][1]=session_status` +
+        `&populate[mesa_sesion][fields][2]=code` +
+        `&populate[mesa_sesion][populate][mesa][fields][0]=id` +
+        `&populate[mesa_sesion][populate][mesa][fields][1]=number`;
       const r = await api.get(`/pedidos/${pedido.id}${qs}`);
       const data = r?.data?.data;
       if (!data) return pedido;
@@ -208,9 +236,11 @@ export default function Mostrador() {
         statusFilter +
         `&publicationState=preview` +
         `&fields[0]=id&fields[1]=documentId&fields[2]=order_status&fields[3]=customerNotes&fields[4]=total&fields[5]=createdAt&fields[6]=updatedAt` +
-        `&populate[mesa_sesion][fields][0]=session_status` +
-        `&populate[mesa_sesion][fields][1]=code` +
-        `&populate[mesa_sesion][populate][mesa][fields][0]=number` +
+        `&populate[mesa_sesion][fields][0]=id` +
+        `&populate[mesa_sesion][fields][1]=session_status` +
+        `&populate[mesa_sesion][fields][2]=code` +
+        `&populate[mesa_sesion][populate][mesa][fields][0]=id` +
+        `&populate[mesa_sesion][populate][mesa][fields][1]=number` +
         `&sort[0]=${encodeURIComponent(sort)}` +
         `&pagination[pageSize]=100`;
 
@@ -220,27 +250,48 @@ export default function Mostrador() {
       const planos = base.map(mapPedidoRow);
       const planosFilled = await Promise.all(planos.map(hydrateMesaSesionIfMissing));
 
-      // cargar items (siempre en activos; en historial sólo si faltan)
+      // cargar items (priorizar items del backend, luego intentar cargar si faltan)
       const prevByKey = new Map(pedidosRef.current.map((p) => [keyOf(p), p]));
       const conItems = await Promise.all(
         planosFilled.map(async (p) => {
           const prev = prevByKey.get(keyOf(p));
           const prevItems = prev?.items ?? [];
-          let items = prevItems;
+          
+          // Priorizar: 1) items del backend, 2) items previos del caché, 3) cargar desde API
+          let items = p.items && Array.isArray(p.items) && p.items.length > 0
+            ? p.items // Items ya vienen del backend
+            : prevItems.length > 0
+            ? prevItems // Usar items previos como fallback
+            : []; // Array vacío por defecto
 
+          // Si no hay items (ni del backend ni previos), intentar cargar
           const shouldFetchItems =
-            isActive(p.order_status) ||
-            (showHistory && ['served', 'paid'].includes(p.order_status) && prevItems.length === 0);
+            items.length === 0 &&
+            (isActive(p.order_status) ||
+              (showHistory && ['served', 'paid'].includes(p.order_status)));
 
           if (shouldFetchItems) {
             try {
               const fetched = await fetchItemsDePedido(p.id);
-              if (fetched?.length) {
+              // Si la carga es exitosa y hay items, usarlos
+              if (fetched && Array.isArray(fetched) && fetched.length > 0) {
                 items = fetched;
+                console.log(`[Mostrador] Items cargados para pedido ${p.id}: ${fetched.length} items`);
+              } else if (fetched && Array.isArray(fetched)) {
+                // Array vacío es válido, significa que el pedido no tiene items
+                items = [];
               }
-            } catch {}
+            } catch (err) {
+              // Si falla la carga y no hay items previos, dejar array vacío
+              console.warn(`[Mostrador] No se pudieron cargar items del pedido ${p.id}:`, err);
+              // Si hay items previos, mantenerlos (ya están en items)
+            }
+          } else if (p.items && Array.isArray(p.items) && p.items.length > 0) {
+            // Items ya vienen del backend, usarlos directamente
+            console.log(`[Mostrador] Items del backend para pedido ${p.id}: ${p.items.length} items`);
           }
-          return { ...p, items };
+          
+          return { ...p, items: items || [] };
         })
       );
 
@@ -277,74 +328,51 @@ export default function Mostrador() {
       pedidosRef.current = visibles;
       setPedidos(visibles);
 
-      // ---- agrupar cuentas (tu lógica original)
+      // ---- agrupar cuentas
+      // En historial: cada mesa_sesion cerrada es una cuenta única e inmutable
+      // En activos: agrupar por mesa para mostrar cuentas abiertas
       const grupos = new Map();
       ordenados.forEach((p) => {
-        const mesaNum = p.mesa_sesion?.mesa?.number;
-        const key = showHistory
-          ? p.mesa_sesion?.id != null
-            ? `sesion:${p.mesa_sesion.id}`
-            : mesaNum != null ? `mesa:${mesaNum}` : `pedido:${p.id}`
-          : mesaNum != null
-            ? `mesa:${mesaNum}`
-            : p.mesa_sesion?.id != null
-              ? `sesion:${p.mesa_sesion.id}`
-              : `pedido:${p.id}`;
+        let key;
+        if (showHistory) {
+          // En historial: usar mesa_sesion.id como clave única si existe
+          // Esto asegura que cada sesión cerrada tenga su propio grupo
+          // Si no hay mesa_sesion.id, usar pedido.id como clave única (fallback)
+          if (p.mesa_sesion?.id != null) {
+            key = `sesion:${p.mesa_sesion.id}`;
+          } else {
+            // Fallback: usar pedido.id como clave única para pedidos sin sesión
+            key = `pedido:${p.id}`;
+          }
+        } else {
+          // En activos: agrupar por mesa para mostrar cuentas abiertas
+          const mesaNum = p.mesa_sesion?.mesa?.number;
+          if (mesaNum != null) {
+            key = `mesa:${mesaNum}`;
+          } else if (p.mesa_sesion?.id != null) {
+            key = `sesion:${p.mesa_sesion.id}`;
+          } else {
+            key = `pedido:${p.id}`;
+          }
+        }
         const arr = grupos.get(key) || [];
         arr.push(p);
         grupos.set(key, arr);
       });
 
-      if (showHistory) {
-        for (const [key, arr] of Array.from(grupos.entries())) {
-          if (!key.startsWith('mesa:')) continue;
-          const mesaNum = key.slice(5);
-          let targetKey = null; let latest = 0;
-          for (const [k, otros] of grupos.entries()) {
-            if (!k.startsWith('sesion:')) continue;
-            const coincide = otros.some((o) => o.mesa_sesion?.mesa?.number == mesaNum);
-            if (!coincide) continue;
-            const last = otros.reduce((max, it) => Math.max(max, new Date(it.updatedAt).getTime()), 0);
-            if (last >= latest) { latest = last; targetKey = k; }
-          }
-          if (targetKey) {
-            grupos.get(targetKey).push(...arr);
-            grupos.delete(key);
-          }
-        }
-        const porMesa = new Map();
-        for (const [key, arr] of grupos.entries()) {
-          const mesa = arr.find((o) => o.mesa_sesion?.mesa?.number != null)?.mesa_sesion?.mesa?.number;
-          if (mesa == null) continue;
-          if (!porMesa.has(mesa)) porMesa.set(mesa, []);
-          porMesa.get(mesa).push({ key, arr });
-        }
-        const THRESHOLD_MS = 2 * 60 * 1000;
-        for (const lista of porMesa.values()) {
-          if (lista.length < 2) continue;
-          lista.sort((a, b) => {
-            const aTime = a.arr.reduce((min, it) => Math.min(min, new Date(it.createdAt).getTime()), Infinity);
-            const bTime = b.arr.reduce((min, it) => Math.min(min, new Date(it.createdAt).getTime()), Infinity);
-            return aTime - bTime;
-          });
-          let actual = lista[0];
-          for (let i = 1; i < lista.length; i++) {
-            const sig = lista[i];
-            const finActual = actual.arr.reduce((max, it) => Math.max(max, new Date(it.updatedAt).getTime()), 0);
-            const inicioSig = sig.arr.reduce((min, it) => Math.min(min, new Date(it.createdAt).getTime()), Infinity);
-            if (inicioSig - finActual <= THRESHOLD_MS) {
-              actual.arr.push(...sig.arr);
-              grupos.delete(sig.key);
-            } else {
-              actual = sig;
-            }
-          }
-        }
-      }
+      // En historial: NO fusionar grupos por mesa ni tiempo
+      // Cada sesión cerrada (mesa_sesion con status 'paid') debe mantener su identidad única
+      // Esto evita que cuentas cerradas por separado se agrupen incorrectamente
 
       const cuentasArr = Array.from(grupos, ([groupKey, arr]) => {
         const hasUnpaid = arr.some((o) => o.order_status !== 'paid');
-        const lista = hasUnpaid ? arr.filter((o) => o.order_status !== 'paid') : arr;
+        // En historial: mostrar todos los pedidos de la sesión
+        // En activos: mostrar solo pedidos no pagados para la cuenta abierta
+        const lista = showHistory
+          ? arr // En historial, mostrar todos los pedidos de la sesión
+          : hasUnpaid
+            ? arr.filter((o) => o.order_status !== 'paid') // En activos, solo no pagados
+            : arr;
         const total = lista.reduce((sum, it) => sum + Number(it.total || 0), 0);
         const lastUpdated = arr.reduce((max, it) => Math.max(max, new Date(it.updatedAt).getTime()), 0);
         const mesaNumber =
@@ -846,7 +874,7 @@ export default function Mostrador() {
         <DialogTitle id="confirm-pay-title">Confirmar pago</DialogTitle>
         <DialogContent>
           <DialogContentText>
-            ¿Estás seguro que deseas marcar como pagada esta cuenta?
+            ¿Estás seguro que deseas marcar como pagada esta cuenta? Esta acción es irreversible.
           </DialogContentText>
         </DialogContent>
         <DialogActions>

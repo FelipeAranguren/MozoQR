@@ -64,6 +64,15 @@ function buildRangeForApi(start, end) {
 
 /* ========== Helpers de facturas/mesa ========== */
 function safeDate(x) { const d = new Date(x); return isNaN(d.getTime()) ? new Date() : d; }
+
+/** Detecta si un string parece un slug de sesión (ej: "hdz08q-otw1") */
+function looksLikeSessionSlug(str) {
+  if (!str || typeof str !== 'string') return false;
+  // Los slugs de sesión suelen tener guiones y letras mezcladas con números
+  // Ejemplos: "hdz08q-otw1", "ts_abc123_1234567890", "sess_restaurant_1_1234567890"
+  return /^[a-z0-9]+[-_][a-z0-9]+/i.test(str) || str.includes('_') || str.length > 20;
+}
+
 function makeFallbackSessionKey(o) {
   const mesaGuess =
     o.tableNumber ?? o.table_name ?? o.tableName ??
@@ -73,45 +82,115 @@ function makeFallbackSessionKey(o) {
   const ymd = d.toISOString().slice(0,10);
   return `fallback:${mesaGuess}|${ymd}`;
 }
-/** Lector robusto de mesa: prioriza Mesa.number y evita devolver slugs de sesión */
-function readTableLabelFromOrder(o, sessionKey) {
-  // 1) intentar leer explícitamente un número de mesa
-  const pickNumber = () => {
-    if (o?.mesa?.number != null) return String(o.mesa.number);
-    if (o?.mesa?.data?.attributes?.number != null) return String(o.mesa.data.attributes.number);
-    if (o?.meta?.mesa?.number != null) return String(o.meta.mesa.number);
-    if (o?.meta?.mesaNumber != null) return String(o.meta.mesaNumber);
 
-    if (o?.table?.number != null) return String(o.table.number);
-    if (o?.table?.data?.attributes?.number != null) return String(o.table.data.attributes.number);
-    if (o?.tableNumber != null) return String(o.tableNumber);
-    if (o?.mesaNumero != null) return String(o.mesaNumero);
-    return null;
+/** Lector robusto de mesa: prioriza mesa_sesion.mesa.number (estructura anidada) y luego campo mesa procesado */
+function readTableLabelFromOrder(o, sessionKey) {
+  // 1) PRIMERO: buscar en mesa_sesion.mesa.number (estructura anidada como en Mostrador.jsx)
+  // Procesar estructura Strapi v4 (data/attributes) o estructura plana
+  const processMesaSesion = (ms) => {
+    if (!ms) return null;
+    // Procesar sesión: puede venir como ms.data o ms directamente
+    const ses = ms?.data || ms;
+    const sesAttrs = ses?.attributes || ses || {};
+    // Procesar mesa: puede venir como sesAttrs.mesa.data o sesAttrs.mesa directamente
+    const mesa = sesAttrs?.mesa?.data || sesAttrs?.mesa || null;
+    const mesaAttrs = mesa?.attributes || mesa || {};
+    // Extraer número de mesa
+    return mesaAttrs?.number ?? mesaAttrs?.numero ?? mesa?.number ?? mesa?.numero ?? null;
   };
 
-  let label = pickNumber();
+  // Buscar en ambas variantes (snake_case y camelCase)
+  const mesaSesionNumber = processMesaSesion(o?.mesa_sesion) ?? processMesaSesion(o?.mesaSesion);
+  if (mesaSesionNumber != null) {
+    return String(mesaSesionNumber);
+  }
 
-  // 2) si vino un string plano (mesa/table) que NO sea slug, usarlo (o extraer dígitos)
-  if (!label) {
-    const cand =
-      (typeof o?.mesa === 'string' && o.mesa) ||
-      (typeof o?.table === 'string' && o.table) ||
-      o?.table_name || o?.tableName || null;
+  // También buscar en estructuras planas (por si ya fueron procesadas)
+  const flatMesaSesionNumber =
+    o?.mesa_sesion?.mesa?.number ??
+    o?.mesa_sesion?.mesa?.numero ??
+    o?.mesa_sesion?.mesa?.data?.attributes?.number ??
+    o?.mesa_sesion?.mesa?.data?.attributes?.numero ??
+    o?.mesa_sesion?.mesa?.data?.number ??
+    o?.mesa_sesion?.attributes?.mesa?.number ??
+    o?.mesa_sesion?.attributes?.mesa?.data?.attributes?.number ??
+    o?.mesaSesion?.mesa?.number ??
+    o?.mesaSesion?.mesa?.numero ??
+    o?.mesaSesion?.mesa?.data?.attributes?.number ??
+    o?.mesaSesion?.mesa?.data?.attributes?.numero ??
+    o?.mesaSesion?.mesa?.data?.number ??
+    o?.mesaSesion?.attributes?.mesa?.number ??
+    o?.mesaSesion?.attributes?.mesa?.data?.attributes?.number;
+  if (flatMesaSesionNumber != null) {
+    return String(flatMesaSesionNumber);
+  }
 
+  // 2) SEGUNDO: usar el campo 'mesa' que viene procesado de getPaidOrders (analytics.js)
+  // Este campo ya contiene el número de mesa extraído por pickMesaNumberFromOrderAttrs
+  if (o?.mesa != null) {
+    const mesaValue = o.mesa;
+    // Si es un número, usarlo directamente
+    if (typeof mesaValue === 'number' || (typeof mesaValue === 'string' && /^\d+$/.test(mesaValue))) {
+      return String(mesaValue);
+    }
+    // Si es un string que no parece un slug, intentar extraer número o usarlo
+    if (typeof mesaValue === 'string' && mesaValue !== '—' && !looksLikeSessionSlug(mesaValue)) {
+      const numMatch = mesaValue.match(/\d+/);
+      if (numMatch) return numMatch[0];
+      // Si no tiene números pero no es un slug, puede ser un nombre válido
+      if (mesaValue.length < 20 && !mesaValue.includes('-') && !mesaValue.includes('_')) {
+        return mesaValue;
+      }
+    }
+    // Si es '—' o un slug, continuar buscando en otras estructuras
+  }
+
+  // 3) Buscar en estructuras anidadas directas (mesa.number, table.number, etc.)
+  const nestedNumber =
+    o?.mesa?.number ??
+    o?.mesa?.data?.attributes?.number ??
+    o?.mesa?.data?.number ??
+    o?.meta?.mesa?.number ??
+    o?.meta?.mesaNumber ??
+    o?.table?.number ??
+    o?.table?.data?.attributes?.number ??
+    o?.table?.data?.number ??
+    o?.tableNumber ??
+    o?.mesaNumero;
+  if (nestedNumber != null) {
+    return String(nestedNumber);
+  }
+
+  // 4) Buscar en strings directos que no sean slugs
+  const stringCandidates = [
+    (typeof o?.mesa === 'string' && o.mesa) ||
+    (typeof o?.table === 'string' && o.table) ||
+    o?.table_name || o?.tableName || null
+  ].filter(Boolean);
+
+  for (const cand of stringCandidates) {
     if (cand && !looksLikeSessionSlug(cand)) {
-      const n = String(cand).match(/\d+/)?.[0];
-      label = n || String(cand);
+      const numMatch = String(cand).match(/\d+/);
+      if (numMatch) return numMatch[0];
+      // Si no tiene números pero no es un slug, puede ser válido
+      if (cand.length < 20 && !cand.includes('-') && !cand.includes('_')) {
+        return String(cand);
+      }
     }
   }
 
-  // 3) fallback de sessionKey, pero evitando slugs
-  if (!label && typeof sessionKey === 'string' && sessionKey.startsWith('fallback:')) {
+  // 5) Fallback de sessionKey, pero evitando slugs
+  if (typeof sessionKey === 'string' && sessionKey.startsWith('fallback:')) {
     const maybeMesa = sessionKey.slice('fallback:'.length).split('|')[0];
-    if (maybeMesa && !looksLikeSessionSlug(maybeMesa)) label = maybeMesa;
+    if (maybeMesa && !looksLikeSessionSlug(maybeMesa)) {
+      const numMatch = maybeMesa.match(/\d+/);
+      if (numMatch) return numMatch[0];
+      return maybeMesa;
+    }
   }
 
-  // 4) último recurso: no mostrar ids ni slugs
-  return label || '—';
+  // 6) Último recurso: no mostrar ids ni slugs
+  return '—';
 }
 
 
@@ -147,10 +226,25 @@ function extractItemsFromOrder(order) {
   }
   return out;
 }
+// 👉 reemplaza TODO el bloque de groupOrdersToInvoices por esto
 function groupOrdersToInvoices(orders = []) {
   const byKey = new Map();
+
+  // lector robusto de id de mesa_sesión
+  const readMesaSesionId = (o) =>
+    o?.mesa_sesion?.data?.id ??
+    o?.mesa_sesion?.id ??
+    o?.mesaSesion?.data?.id ??
+    o?.mesaSesion?.id ??
+    o?.mesa_sesion_id ??
+    o?.mesaSessionId ??
+    null;
+
   for (const o of orders) {
-    const sessionKey = o.tableSessionId || makeFallbackSessionKey(o);
+    // preferimos mesa_sesión; si no hay, una “factura” por pedido
+    const msId = readMesaSesionId(o);
+    const sessionKey = msId ? `ms:${msId}` : `order:${o.id}`;
+
     const created = safeDate(o.createdAt || o.updatedAt);
     const updated = safeDate(o.updatedAt || o.createdAt);
     const payMethod = pickPaymentMethodFromOrder(o);
@@ -185,8 +279,10 @@ function groupOrdersToInvoices(orders = []) {
     if (payMethod !== '—') inv.paymentMethod = payMethod;
     if ((inv.table === '—' || inv.table === 'mesa?') && tableLabel && tableLabel !== '—') inv.table = tableLabel;
   }
+
   return Array.from(byKey.values()).sort((a,b) => b.closedAt - a.closedAt);
 }
+
 
 /* ========== Componente ========== */
 export default function OwnerDashboard() {

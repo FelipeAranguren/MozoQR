@@ -148,61 +148,49 @@ function normalizeItemsField(field) {
 
 /* ------------------------- fetchers de pedidos ------------------------ */
 
+/**
+ * Lee **número o nombre de mesa** desde múltiples estructuras posibles del pedido.
+ * Importante: **NO** devuelve códigos/slug de sesión como fallback. Si no hay mesa, devuelve '—'.
+ */
 function pickMesaNumberFromOrderAttrs(a) {
-  // 1) Campos directos
+  // 👉 1) Buscar mesa directamente en el pedido
   const direct =
-    a?.tableNumber ??
-    a?.mesaNumber ??
+    a?.mesa?.data?.attributes?.number ??
+    a?.mesa?.data?.attributes?.numero ??
+    a?.mesa?.data?.attributes?.name ??
+    a?.mesa?.data?.attributes?.nombre ??
     a?.mesa?.number ??
     a?.mesa?.numero ??
     a?.mesa?.name ??
     a?.mesa?.nombre ??
-    a?.mesa?.data?.attributes?.number ??
-    a?.mesa?.data?.attributes?.numero ??
-    a?.mesa?.data?.attributes?.name ??
-    a?.mesa?.data?.attributes?.nombre;
-
-  if (direct) return direct;
-
-  // 2) mesa_sesion (snake) → mesa.number / mesa.nombre
-  const ms = a?.mesa_sesion;
-  const msMesaNumber =
-    ms?.mesa?.number ??
-    ms?.mesa?.numero ??
-    ms?.mesa?.name ??
-    ms?.mesa?.nombre ??
-    ms?.mesa?.data?.attributes?.number ??
-    ms?.mesa?.data?.attributes?.numero ??
-    ms?.mesa?.data?.attributes?.name ??
-    ms?.mesa?.data?.attributes?.nombre;
-  if (msMesaNumber) return msMesaNumber;
-
-  // 3) mesaSesion (camel) → mesa.number / mesa.nombre
-  const ms2 = a?.mesaSesion;
-  const ms2MesaNumber =
-    ms2?.mesa?.number ??
-    ms2?.mesa?.numero ??
-    ms2?.mesa?.name ??
-    ms2?.mesa?.nombre ??
-    ms2?.mesa?.data?.attributes?.number ??
-    ms2?.mesa?.data?.attributes?.numero ??
-    ms2?.mesa?.data?.attributes?.name ??
-    ms2?.mesa?.data?.attributes?.nombre;
-  if (ms2MesaNumber) return ms2MesaNumber;
-
-  // 4) Último recurso: códigos de sesión (no deseable, pero informativo)
-  const code =
-    ms?.code ??
-    ms?.mesa_code ??
-    ms2?.code ??
-    ms2?.mesa_code ??
-    a?.tableSessionId ??
-    a?.mesaSessionId ??
-    a?.mesa_sesion_id ??
+    a?.tableNumber ??
+    a?.mesaNumber ??
     null;
+  if (direct != null) return direct;
 
-  return code || '—';
+  // 👉 2) Buscar en mesa_sesion o mesaSesion (ambas variantes)
+  const unwrap = (x) => (x?.attributes ? { id: x.id, ...x.attributes } : x) || null;
+  const msRaw = a?.mesa_sesion ?? a?.mesaSesion ?? null;
+  const ms = unwrap(msRaw?.data ?? msRaw);
+  const mesaR = ms?.mesa ? (ms.mesa?.data ?? ms.mesa) : null;
+  const mesa = unwrap(mesaR);
+
+  const num =
+    mesa?.number ??
+    mesa?.numero ??
+    mesa?.name ??
+    mesa?.nombre ??
+    mesa?.label ??
+    null;
+  if (num != null) return num;
+
+  // 👉 3) Buscar en mesa_sesion.mesa.id como último recurso (para debug)
+  if (mesa?.id) return `#${mesa.id}`;
+
+  // 👉 4) No hay mesa asociada
+  return '—';
 }
+
 
 /**
  * Paginador general para /pedidos con populate tolerante:
@@ -266,7 +254,7 @@ async function fetchAllPedidos(qsBase) {
         createdAt: a.createdAt,
         updatedAt: a.updatedAt,
 
-        mesa: mesaNumber,               // 👈 número si existe; code solo si no hay número
+        mesa: mesaNumber,               // 👈 número/nombre si existe; '—' si no hay
         mesa_sesion: a.mesa_sesion ?? a.mesaSesion ?? null,
         tableNumber: mesaNumber,        // compat vieja UI
 

@@ -205,14 +205,13 @@ export default function SalesByDayChart({ slug, start, end, periodKey = '30d', o
     barTop: '#bfdbfe', barBottom: '#93c5fd', barHover: '#60a5fa', panelBg: '#ffffff'
   };
   const LEFT_GUTTER = 70, BAR_AREA_H = 240;
-  const SAFE_TOP_PAD = 2;       // px
   const INNER_PAD = 8;          // separa la 1ª barra del eje Y
 
-  // Altura usando área útil
-  const AREA_USABLE = BAR_AREA_H - SAFE_TOP_PAD;
+  // Altura usando el área completa para que coincida con el eje Y
+  // Usamos BAR_AREA_H directamente para que las barras se alineen con las líneas de la grilla
   const valueToHeight = (val) => {
     const ratio = Math.max(0, Math.min(1, (Number(val) || 0) / yMax));
-    return Math.floor(ratio * AREA_USABLE);
+    return ratio * BAR_AREA_H;
   };
 
   // ANIMACIÓN (rAF + easing + stagger) de barras
@@ -251,7 +250,7 @@ export default function SalesByDayChart({ slug, start, end, periodKey = '30d', o
         const eased = easeOutBack(p);
         const from = fromHeights[i] || 0;
         const val = from + (target - from) * eased;
-        return Math.min(val, AREA_USABLE);
+        return Math.min(val, BAR_AREA_H);
       });
 
       setAnimatedHeights(next);
@@ -333,13 +332,24 @@ export default function SalesByDayChart({ slug, start, end, periodKey = '30d', o
             </div>
 
             {/* Barras + tooltip */}
-            <div style={{ display: 'flex', gap: 6, alignItems: 'end', height: 240, marginTop: 12, marginLeft: 70, paddingRight: 8, paddingLeft: 8 }}>
+            <div style={{ 
+              position: 'absolute', 
+              left: 78, 
+              right: 8, 
+              top: 12, 
+              height: BAR_AREA_H, 
+              display: 'flex', 
+              gap: 6, 
+              alignItems: 'flex-end', 
+              paddingRight: 0, 
+              paddingLeft: 0 
+            }}>
               {plot.bars.map((b, idx) => {
                 const total = Number(b?.total) || 0;
                 const hTarget = valueToHeight(total);
-                const h = Math.floor(
-                  animatedHeights[idx] != null ? Math.min(animatedHeights[idx], AREA_USABLE) : hTarget
-                );
+                const h = animatedHeights[idx] != null 
+                  ? Math.min(animatedHeights[idx], BAR_AREA_H) 
+                  : hTarget;
 
                 return (
                   <div key={idx} style={{ flex: 1, minWidth: 6, position: 'relative' }}>
@@ -404,7 +414,13 @@ export default function SalesByDayChart({ slug, start, end, periodKey = '30d', o
 
             {/* Meses arriba */}
             {plot.monthSpans?.length > 0 && (
-              <div style={{ position: 'relative', height: 24, marginTop: 8, marginLeft: 70 }}>
+              <div style={{ 
+                position: 'absolute', 
+                left: 78, 
+                right: 8, 
+                top: BAR_AREA_H + 12 + 8, 
+                height: 24 
+              }}>
                 {plot.monthSpans.map((s, i) => (
                   <div key={i} style={{
                     position: 'absolute', left: `${s.leftPct}%`, width: `${s.widthPct}%`,
@@ -418,7 +434,15 @@ export default function SalesByDayChart({ slug, start, end, periodKey = '30d', o
             )}
 
             {/* Etiquetas X */}
-            <div style={{ display: 'flex', gap: 6, alignItems: 'start', marginTop: 8, marginLeft: 70, paddingRight: 8, paddingLeft: 8 }}>
+            <div style={{ 
+              position: 'absolute',
+              left: 78,
+              right: 8,
+              top: BAR_AREA_H + 12 + (plot.monthSpans?.length > 0 ? 32 : 8),
+              display: 'flex', 
+              gap: 6, 
+              alignItems: 'start'
+            }}>
               {plot.bars.map((b, idx) => {
                 const txt = is12m
                   ? (b?.xLabel || (b?.dateRef ? fmtMonthShort.format(b.dateRef) : ''))
