@@ -4,7 +4,7 @@
     "info": {
         "singularName": "categoria",
         "pluralName": "categorias",
-        "displayName": "Categoría"
+        "displayName": "Categoria"
     },
     "options": {
         "draftAndPublish": true
@@ -12,14 +12,10 @@
     "pluginOptions": {},
     "attributes": {
         "name": {
-            "type": "string",
-            "required": true
+            "type": "string"
         },
-        "restaurante": {
-            "type": "relation",
-            "relation": "manyToOne",
-            "target": "api::restaurante.restaurante",
-            "inversedBy": "categorias"
+        "slug": {
+            "type": "uid"
         },
         "productos": {
             "type": "relation",
@@ -27,8 +23,11 @@
             "target": "api::producto.producto",
             "mappedBy": "categoria"
         },
-        "Slug": {
-            "type": "uid"
+        "restaurante": {
+            "type": "relation",
+            "relation": "manyToOne",
+            "target": "api::restaurante.restaurante",
+            "inversedBy": "categorias"
         }
     }
 }

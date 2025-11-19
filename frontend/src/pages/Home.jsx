@@ -53,20 +53,20 @@ export default function Home() {
 
   const testimonials = [
     {
-      name: 'María González',
-      role: 'Dueña de La Parrilla del Sur',
+      name: 'Javier Taussig',
+      role: 'Dueño de La Parrilla Tuvi',
       content: 'MozoQR transformó nuestro restaurante. Los clientes están más contentos y nuestras ventas aumentaron un 40% en el primer mes.',
       rating: 5
     },
     {
-      name: 'Carlos Ramírez',
+      name: 'Francisco Godino',
       role: 'Gerente de Pizzería Italiana',
       content: 'La mejor inversión que hemos hecho. El tiempo de servicio se redujo a la mitad y el personal puede enfocarse en la calidad.',
       rating: 5
     },
     {
-      name: 'Ana Martínez',
-      role: 'Fundadora de Café & Más',
+      name: 'Javier Basombrio',
+      role: 'Fundador de Cafe Prime',
       content: 'Increíblemente fácil de usar. Nuestros clientes aman la experiencia y nosotros amamos los datos que obtenemos.',
       rating: 5
     }

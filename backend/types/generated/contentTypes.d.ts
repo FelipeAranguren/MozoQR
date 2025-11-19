@@ -376,7 +376,7 @@ export interface AdminUser extends Struct.CollectionTypeSchema {
 export interface ApiCategoriaCategoria extends Struct.CollectionTypeSchema {
   collectionName: 'categorias';
   info: {
-    displayName: 'Categor\u00EDa';
+    displayName: 'Categoria';
     pluralName: 'categorias';
     singularName: 'categoria';
   };
@@ -393,14 +393,14 @@ export interface ApiCategoriaCategoria extends Struct.CollectionTypeSchema {
       'api::categoria.categoria'
     > &
       Schema.Attribute.Private;
-    name: Schema.Attribute.String & Schema.Attribute.Required;
+    name: Schema.Attribute.String;
     productos: Schema.Attribute.Relation<'oneToMany', 'api::producto.producto'>;
     publishedAt: Schema.Attribute.DateTime;
     restaurante: Schema.Attribute.Relation<
       'manyToOne',
       'api::restaurante.restaurante'
     >;
-    Slug: Schema.Attribute.UID;
+    slug: Schema.Attribute.UID;
     updatedAt: Schema.Attribute.DateTime;
     updatedBy: Schema.Attribute.Relation<'oneToOne', 'admin::user'> &
       Schema.Attribute.Private;

@@ -38,12 +38,6 @@
                 "audios"
             ]
         },
-        "categoria": {
-            "type": "relation",
-            "relation": "manyToOne",
-            "target": "api::categoria.categoria",
-            "inversedBy": "productos"
-        },
         "item_pedidos": {
             "type": "relation",
             "relation": "oneToMany",
@@ -62,6 +56,12 @@
         },
         "extras": {
             "type": "json"
+        },
+        "categoria": {
+            "type": "relation",
+            "relation": "manyToOne",
+            "target": "api::categoria.categoria",
+            "inversedBy": "productos"
         }
     }
 }
