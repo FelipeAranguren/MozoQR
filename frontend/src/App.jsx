@@ -27,6 +27,7 @@ import RestaurantSettings from './pages/owner/settings/RestaurantSettings';
 import PlanManagement from './pages/owner/plan/PlanManagement';
 import AdvancedPanel from './pages/owner/advanced/AdvancedPanel';
 import AdminDashboard from './pages/AdminDashboard';
+import DemoDashboard from './pages/DemoDashboard';
 
 // Redirige rutas viejas /restaurantes/:slug -> /:slug/menu?t=1
 function LegacyRestaurantesRoute() {
@@ -51,6 +52,8 @@ export default function App() {
         <Routes>
           {/* Cliente público - rutas simplificadas */}
           <Route path="/" element={<Home />} />
+          <Route path="/demo" element={<DemoDashboard />} />
+          <Route path="/demo-dashboard" element={<DemoDashboard />} />
           <Route path="/:slug" element={<RestaurantMenu />} />
           <Route path="/:slug/menu" element={<RestaurantMenu />} />
           
