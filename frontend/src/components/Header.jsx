@@ -1,7 +1,6 @@
 import React from "react";
 import { AppBar, Toolbar, Typography, Button, Link } from "@mui/material";
 import { Link as RouterLink, useNavigate } from "react-router-dom";
-import LoginWithGoogleButton from "./LoginWithGoogleButton";
 import { useAuth } from "../context/AuthContext";
 
 export default function Header() {
@@ -29,7 +28,30 @@ export default function Header() {
             <Button color="inherit" onClick={handleLogout}>Salir</Button>
           </>
         ) : (
-          <LoginWithGoogleButton />
+          <>
+            <Button 
+              color="inherit" 
+              onClick={() => navigate("/login")}
+              sx={{ mr: 1 }}
+            >
+              Iniciar sesión
+            </Button>
+            <Button 
+              color="inherit" 
+              variant="outlined"
+              onClick={() => navigate("/register")}
+              sx={{
+                borderColor: "white",
+                color: "white",
+                "&:hover": {
+                  backgroundColor: "rgba(255,255,255,0.1)",
+                  borderColor: "white",
+                }
+              }}
+            >
+              Registrarse
+            </Button>
+          </>
         )}
       </Toolbar>
     </AppBar>

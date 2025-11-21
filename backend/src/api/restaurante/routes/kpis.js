@@ -21,5 +21,15 @@ module.exports = {
         policies: ['global::by-restaurant'],
       },
     },
+    // Temporal: agregar ruta de menus aquí para debug
+    {
+      method: 'GET',
+      path: '/restaurants/:slug/menus',
+      handler: 'menus.find',
+      config: {
+        auth: false,
+        policies: ['global::by-restaurant'],
+      },
+    },
   ],
 };

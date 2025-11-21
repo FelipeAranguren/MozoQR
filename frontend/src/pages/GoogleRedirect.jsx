@@ -1,7 +1,8 @@
 import React, { useEffect } from "react";
 import { useAuth } from "../context/AuthContext";
 
-const STRAPI_URL = import.meta.env.VITE_STRAPI_URL || "http://localhost:1337/api";
+// El callback de Google está en la base URL bajo /api
+const API_URL = import.meta.env.VITE_API_URL || import.meta.env.VITE_STRAPI_URL || "http://localhost:1337/api";
 
 export default function GoogleRedirect() {
   const { login } = useAuth();
@@ -16,7 +17,7 @@ export default function GoogleRedirect() {
           return;
         }
 
-        const res = await fetch(`${STRAPI_URL}/auth/google/callback?access_token=${access_token}`, {
+        const res = await fetch(`${API_URL}/auth/google/callback?access_token=${access_token}`, {
           method: "GET",
           credentials: "include",
         });
@@ -32,9 +33,12 @@ export default function GoogleRedirect() {
           return;
         }
 
-        // 🧹 limpiar token previo y guardar el nuevo SÍ o SÍ
+        // 🧹 limpiar tokens previos y guardar el nuevo SÍ o SÍ
         localStorage.removeItem("jwt");
-        localStorage.setItem("jwt", data.jwt);
+        localStorage.removeItem("strapi_jwt");
+        localStorage.removeItem("strapi_user");
+        localStorage.setItem("strapi_jwt", data.jwt);
+        localStorage.setItem("jwt", data.jwt); // legacy
 
         // alias opcional
         const alias =

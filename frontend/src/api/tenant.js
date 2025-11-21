@@ -60,18 +60,23 @@ export async function fetchMenus(slug) {
     const { data } = await http.get(`/restaurants/${slug}/menus`);
     const products = [];
     (data?.data?.categories || []).forEach((cat) => {
-      (cat?.products || []).forEach((p) => {
+      // El endpoint namespaced devuelve "productos" no "products"
+      (cat?.productos || cat?.products || []).forEach((p) => {
         products.push({
           id: p.id,
           name: p.name,
           price: p.price,
-          image: p?.image?.url ? buildMediaURL(p.image.url) : null,
+          image: p?.image?.url ? buildMediaURL(p.image.url) : p?.image || null,
           description: p?.description ?? null,
         });
       });
     });
     if (products.length) {
-      return { restaurantName: data?.data?.name || slug, products };
+      return { 
+        restaurantName: data?.data?.restaurant?.name || data?.data?.name || slug, 
+        products,
+        categories: data?.data?.categories || []
+      };
     }
   } catch (e) {
     console.warn('menus namespaced error:', e?.response?.status, e?.response?.data || e?.message);

@@ -10,11 +10,13 @@ import {
   CircularProgress,
   CardContent,
   CardActions,
+  Button,
 } from '@mui/material';
 import { alpha } from '@mui/material/styles';
 
 import { useCart } from '../context/CartContext';
 import { fetchMenus } from '../api/tenant';
+import { http } from '../api/tenant';
 import useTableSession from '../hooks/useTableSession';
 import StickyFooter from '../components/StickyFooter';
 import QtyStepper from '../components/QtyStepper';
@@ -56,26 +58,34 @@ export default function RestaurantMenu() {
   const { table, tableSessionId } = useTableSession();
 
   const [productos, setProductos] = useState(null);
+  const [productosTodos, setProductosTodos] = useState([]);
   const [nombreRestaurante, setNombreRestaurante] = useState('');
+  const [categorias, setCategorias] = useState([]);
+  const [categoriaSeleccionada, setCategoriaSeleccionada] = useState(null);
 
   const { items, addItem, removeItem } = useCart();
 
-  useEffect(() => {
-    async function loadMenu() {
-      try {
-        const menus = await fetchMenus(slug);
-        if (menus?.restaurantName) setNombreRestaurante(menus.restaurantName);
-
-        const baseApi = (import.meta.env?.VITE_API_URL || '').replace('/api', '');
-
-        // lista de productos (soporta products/productos y respuesta plana o con attributes)
-        const list = Array.isArray(menus)
-          ? menus.flatMap((m) => m.products || m.productos || [])
-          : menus?.products || menus?.productos || [];
-
-        const productosProcesados = list.map((raw) => {
-          const p = raw?.attributes ? { id: raw.id, ...raw.attributes } : (raw || {});
-          const img = getMediaUrl(p.image, baseApi) || PLACEHOLDER;
+  // Función para obtener categorías desde Strapi
+  const fetchCategorias = async (restaurantSlug) => {
+    // Primero intentar el endpoint namespaced (público)
+    try {
+      const { data } = await http.get(`/restaurants/${restaurantSlug}/menus`);
+      console.log('✅ Response from /restaurants/menus:', data);
+      
+      const categories = data?.data?.categories || [];
+      console.log('Categories found:', categories.length, categories);
+      
+      if (categories.length === 0) {
+        console.warn('⚠️ No se encontraron categorías en el endpoint namespaced');
+        return [];
+      }
+      
+      // Mapear categorías con sus productos
+      const categoriasMapeadas = categories.map((cat) => {
+        const productosCat = (cat.productos || []).map((p) => {
+          const baseApi = (import.meta.env?.VITE_API_URL || '').replace('/api', '');
+          // El endpoint namespaced ya devuelve la URL completa de la imagen si el plan es PRO
+          const img = p.image || PLACEHOLDER;
           const descripcion = Array.isArray(p.description)
             ? blocksToText(p.description)
             : typeof p.description === 'string'
@@ -88,18 +98,162 @@ export default function RestaurantMenu() {
             precio: p.price,
             imagen: img,
             descripcion,
+            categoriaId: cat.id,
           };
         });
 
-        setProductos(productosProcesados);
+        return {
+          id: cat.id,
+          name: cat.name,
+          slug: cat.slug,
+          productos: productosCat,
+        };
+      });
+
+      console.log('Mapped categories:', categoriasMapeadas);
+      return categoriasMapeadas;
+      } catch (err) {
+        console.error('❌ Error obteniendo categorías desde endpoint namespaced:', err);
+        console.error('Status:', err?.response?.status);
+        console.error('Response:', err?.response?.data);
+        console.error('Message:', err?.message);
+        
+        // No usamos fallback directo a /categorias porque requiere permisos
+        // El endpoint namespaced es el único que debería funcionar
+        console.warn('⚠️ El endpoint /restaurants/:slug/menus debería ser público. Verifica:');
+        console.warn('1. Que el restaurante con slug "' + restaurantSlug + '" exista y esté publicado');
+        console.warn('2. Que las categorías estén asociadas a ese restaurante');
+        console.warn('3. Que las categorías estén publicadas (publishedAt no null)');
+        console.warn('4. URL del endpoint:', `${http.defaults.baseURL}/restaurants/${restaurantSlug}/menus`);
+        
+        return [];
+      }
+  };
+
+  useEffect(() => {
+    async function loadMenu() {
+      try {
+        // Obtener categorías con productos
+        const categoriasData = await fetchCategorias(slug);
+        console.log('Categorías obtenidas:', categoriasData);
+        setCategorias(categoriasData);
+
+        // Obtener nombre del restaurante desde el endpoint de categorías primero
+        let nombreRest = '';
+        try {
+          const { data } = await http.get(`/restaurants/${slug}/menus`);
+          if (data?.data?.restaurant?.name) {
+            nombreRest = data.data.restaurant.name;
+            setNombreRestaurante(nombreRest);
+          }
+        } catch (e) {
+          console.warn('No se pudo obtener nombre desde endpoint namespaced:', e);
+        }
+
+        // Fallback: obtener nombre del restaurante
+        if (!nombreRest) {
+          try {
+            const menus = await fetchMenus(slug);
+            if (menus?.restaurantName) {
+              setNombreRestaurante(menus.restaurantName);
+            }
+          } catch (e) {
+            console.warn('Error obteniendo nombre del restaurante:', e);
+          }
+        }
+
+        // Si hay categorías, seleccionar la primera automáticamente
+        if (categoriasData.length > 0) {
+          const primeraCategoria = categoriasData[0];
+          setCategoriaSeleccionada(primeraCategoria.id);
+          
+          // Establecer productos de la primera categoría
+          const productosPrimera = primeraCategoria.productos || [];
+          setProductosTodos(productosPrimera);
+          setProductos(productosPrimera);
+          console.log('Primera categoría seleccionada:', primeraCategoria.name, 'con', productosPrimera.length, 'productos');
+        } else {
+          // Fallback: usar el método anterior si no hay categorías
+          console.log('No hay categorías, usando fallback de fetchMenus');
+          const menus = await fetchMenus(slug);
+          const baseApi = (import.meta.env?.VITE_API_URL || '').replace('/api', '');
+          const list = Array.isArray(menus)
+            ? menus.flatMap((m) => m.products || m.productos || [])
+            : menus?.products || menus?.productos || [];
+
+          const productosProcesados = list.map((raw) => {
+            const p = raw?.attributes ? { id: raw.id, ...raw.attributes } : (raw || {});
+            const img = getMediaUrl(p.image, baseApi) || PLACEHOLDER;
+            const descripcion = Array.isArray(p.description)
+              ? blocksToText(p.description)
+              : typeof p.description === 'string'
+              ? p.description
+              : '';
+
+            return {
+              id: p.id,
+              nombre: p.name,
+              precio: p.price,
+              imagen: img,
+              descripcion,
+            };
+          });
+
+          console.log('Productos del fallback:', productosProcesados.length);
+          setProductosTodos(productosProcesados);
+          setProductos(productosProcesados);
+        }
       } catch (err) {
         console.error('Error cargando menú:', err);
-        setProductos([]);
+        // Intentar fallback completo
+        try {
+          const menus = await fetchMenus(slug);
+          if (menus?.restaurantName) setNombreRestaurante(menus.restaurantName);
+          
+          const baseApi = (import.meta.env?.VITE_API_URL || '').replace('/api', '');
+          const list = Array.isArray(menus)
+            ? menus.flatMap((m) => m.products || m.productos || [])
+            : menus?.products || menus?.productos || [];
+
+          const productosProcesados = list.map((raw) => {
+            const p = raw?.attributes ? { id: raw.id, ...raw.attributes } : (raw || {});
+            const img = getMediaUrl(p.image, baseApi) || PLACEHOLDER;
+            const descripcion = Array.isArray(p.description)
+              ? blocksToText(p.description)
+              : typeof p.description === 'string'
+              ? p.description
+              : '';
+
+            return {
+              id: p.id,
+              nombre: p.name,
+              precio: p.price,
+              imagen: img,
+              descripcion,
+            };
+          });
+
+          setProductosTodos(productosProcesados);
+          setProductos(productosProcesados);
+        } catch (fallbackErr) {
+          console.error('Error en fallback completo:', fallbackErr);
+          setProductos([]);
+          setProductosTodos([]);
+        }
       }
     }
 
     loadMenu();
   }, [slug]);
+
+  // Manejar cambio de categoría
+  const handleCategoriaClick = (categoriaId) => {
+    setCategoriaSeleccionada(categoriaId);
+    const categoria = categorias.find((c) => c.id === categoriaId);
+    if (categoria) {
+      setProductos(categoria.productos || []);
+    }
+  };
 
   // --------- Estados de carga / vacío
   if (productos === null) {
@@ -193,6 +347,51 @@ export default function RestaurantMenu() {
           Elegí tus platos favoritos
         </Typography>
       </Box>
+
+      {/* Botones de categorías */}
+      {categorias.length > 0 ? (
+        <Box
+          sx={{
+            display: 'flex',
+            gap: 1,
+            flexWrap: 'wrap',
+            justifyContent: 'center',
+            mt: 3,
+            mb: 2,
+            px: { xs: 1, sm: 0 },
+          }}
+        >
+          {categorias.map((categoria) => (
+            <Button
+              key={categoria.id}
+              onClick={() => handleCategoriaClick(categoria.id)}
+              variant={categoriaSeleccionada === categoria.id ? 'contained' : 'outlined'}
+              sx={{
+                minWidth: 'auto',
+                px: 2,
+                py: 0.75,
+                borderRadius: 3,
+                textTransform: 'none',
+                fontWeight: categoriaSeleccionada === categoria.id ? 600 : 500,
+                fontSize: { xs: '0.875rem', sm: '0.9375rem' },
+                boxShadow: categoriaSeleccionada === categoria.id ? 2 : 0,
+                '&:hover': {
+                  boxShadow: categoriaSeleccionada === categoria.id ? 4 : 1,
+                },
+                transition: 'all 0.2s ease-in-out',
+              }}
+            >
+              {categoria.name}
+            </Button>
+          ))}
+        </Box>
+      ) : (
+        <Box sx={{ mt: 2, textAlign: 'center' }}>
+          <Typography variant="body2" color="text.secondary">
+            No hay categorías disponibles
+          </Typography>
+        </Box>
+      )}
 
       {/* Lista de productos */}
       <Box

@@ -10,6 +10,8 @@ import Mostrador from './pages/Mostrador';
 import CargarProductos from './pages/CargarProductos';
 import { AuthProvider } from './context/AuthContext';
 import GoogleRedirect from './pages/GoogleRedirect';
+import Login from './pages/Login';
+import Register from './pages/Register';
 import PagoSuccess from './pages/PagoSuccess';
 import PagoFailure from './pages/PagoFailure';
 import PagoPending from './pages/PagoPending';
@@ -77,6 +79,10 @@ export default function App() {
           <Route path="/restaurantes/:slug" element={<LegacyRestaurantesRoute />} />
           <Route path="/mostrador/:slug" element={<OwnerRouteGuard><Mostrador /></OwnerRouteGuard>} />
           <Route path="/cargarproductos/:slug" element={<OwnerRouteGuard><CargarProductos /></OwnerRouteGuard>} />
+          
+          {/* Autenticación */}
+          <Route path="/login" element={<Login />} />
+          <Route path="/register" element={<Register />} />
           
           {/* Páginas de pago */}
           <Route path="/connect/google/redirect" element={<GoogleRedirect />} />
