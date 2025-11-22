@@ -6,8 +6,14 @@ import { closeAccount } from '../api/tenant';
 import {
   Box, Typography, Card, CardContent, List, ListItem, Button,
   Divider, Grid, TextField, InputAdornment, Snackbar, Alert,
-  Dialog, DialogTitle, DialogContent, DialogContentText, DialogActions
+  Dialog, DialogTitle, DialogContent, DialogContentText, DialogActions,
+  Chip, IconButton, Paper, ToggleButton, ToggleButtonGroup
 } from '@mui/material';
+import RefreshIcon from '@mui/icons-material/Refresh';
+import CheckCircleIcon from '@mui/icons-material/CheckCircle';
+import AccessTimeIcon from '@mui/icons-material/AccessTime';
+import RestaurantIcon from '@mui/icons-material/Restaurant';
+import PaymentsIcon from '@mui/icons-material/Payments';
 
 const money = (n) =>
   new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS' })
@@ -18,25 +24,15 @@ export default function Mostrador() {
 
   // ----- estado principal -----
   const [pedidos, setPedidos] = useState([]);
-  const [cuentas, setCuentas] = useState([]);
   const [error, setError] = useState(null);
-  const [showHistory, setShowHistory] = useState(false);
-  const [searchQuery, setSearchQuery] = useState('');
-  const [flashIds, setFlashIds] = useState(new Set());
+  const [role, setRole] = useState('all'); // all, kitchen, waiter
   const [snack, setSnack] = useState({ open: false, msg: '', severity: 'info' });
-  const [payDialog, setPayDialog] = useState({ open: false, cuenta: null, loading: false });
+  const [loading, setLoading] = useState(true);
 
-  // ----- refs auxiliares (SOLO AQUÍ ARRIBA; no dentro de funciones) -----
+  // ----- refs auxiliares -----
   const pedidosRef = useRef([]);
-  const servingIdsRef = useRef(new Set());
-  const hasLoadedRef = useRef(false);          // para no avisar en 1ª carga
   const seenIdsRef = useRef(new Set());
-  const pendingBeforeHistoryRef = useRef(new Set());
-  const cachedViewsRef = useRef({
-    active: { pedidos: [], cuentas: [] },
-    history: { pedidos: [], cuentas: [] },
-  });
-  const audioCtxRef = useRef(null);            // beep
+  const audioCtxRef = useRef(null);
 
   const playBeep = () => {
     try {
@@ -53,844 +49,232 @@ export default function Mostrador() {
       o.connect(g).connect(ctx.destination);
       o.start();
       o.stop(ctx.currentTime + 0.16);
-    } catch {}
-  };
-
-  const triggerFlash = (documentId) => {
-    if (!documentId) return;
-    setFlashIds((prev) => {
-      const next = new Set(prev);
-      next.add(documentId);
-      return next;
-    });
-    setTimeout(() => {
-      setFlashIds((prev) => {
-        const next = new Set(prev);
-        next.delete(documentId);
-        return next;
-      });
-    }, 1200);
-  };
-
-  const updateCachedView = (nextPedidos, nextCuentas = null) => {
-    const modeKey = showHistory ? 'history' : 'active';
-    const cuentasForCache =
-      nextCuentas ?? cachedViewsRef.current[modeKey]?.cuentas ?? cuentas;
-    cachedViewsRef.current[modeKey] = {
-      pedidos: nextPedidos,
-      cuentas: cuentasForCache,
-    };
-  };
-
-  // ---- helpers
-  const keyOf = (p) => p?.documentId || String(p?.id);
-  const isActive = (st) => !['served', 'paid'].includes(st);
-
-  const ordenar = (arr) => {
-    const orden = { pending: 0, preparing: 1 };
-    return [...arr].sort((a, b) => {
-      const pa = orden[a.order_status] ?? 2;
-      const pb = orden[b.order_status] ?? 2;
-      if (pa !== pb) return pa - pb;
-      return new Date(a.createdAt) - new Date(b.createdAt);
-    });
-  };
-
-  const ordenarActivos = (arr) => {
-    return [...arr].sort((a, b) => {
-      const wa = a.order_status === 'preparing' ? 1 : 0;
-      const wb = b.order_status === 'preparing' ? 1 : 0;
-      if (wa !== wb) return wa - wb;
-      return new Date(b.createdAt) - new Date(a.createdAt);
-    });
-  };
-
-  const mapPedidoRow = (row) => {
-    const a = row.attributes || row;
-    const ses = a.mesa_sesion?.data || a.mesa_sesion || null;
-    const sesAttrs = ses?.attributes || ses || {};
-    const mesa = sesAttrs?.mesa?.data || sesAttrs?.mesa || null;
-    const mesaAttrs = mesa?.attributes || mesa || {};
-    
-    // Extraer items si vienen en la respuesta del backend
-    let items = [];
-    if (a.items) {
-      const itemsData = Array.isArray(a.items?.data) ? a.items.data : Array.isArray(a.items) ? a.items : [];
-      items = itemsData.map((it) => {
-        const itemAttrs = it.attributes || it;
-        const prodData = itemAttrs.product?.data || itemAttrs.product || {};
-        const prodAttrs = prodData.attributes || prodData;
-        return {
-          id: it.id || itemAttrs.id,
-          quantity: itemAttrs.quantity,
-          notes: itemAttrs.notes,
-          UnitPrice: itemAttrs.UnitPrice,
-          totalPrice: itemAttrs.totalPrice,
-          product: prodData.id
-            ? {
-                id: prodData.id,
-                name: prodAttrs.name || prodAttrs.nombre || null,
-              }
-            : null,
-        };
-      }).filter((it) => it.id); // Filtrar items sin ID válido
-    }
-    
-    return {
-      id: row.id || a.id,
-      documentId: a.documentId,
-      order_status: a.order_status,
-      customerNotes: a.customerNotes,
-      createdAt: a.createdAt,
-      updatedAt: a.updatedAt,
-      total: a.total,
-      items: items, // Incluir items si vienen del backend
-      mesa_sesion: ses
-        ? {
-            id: ses.id,
-            session_status: sesAttrs.session_status,
-            code: sesAttrs.code,
-            mesa: mesa ? { id: mesa.id, number: mesaAttrs.number } : null,
-          }
-        : null,
-    };
-  };
-
-  const hydrateMesaSesionIfMissing = async (pedido) => {
-    if (pedido.mesa_sesion) return pedido;
-    try {
-      const qs =
-        `?publicationState=preview` +
-        `&fields[0]=id&fields[1]=documentId&fields[2]=order_status&fields[3]=customerNotes&fields[4]=total&fields[5]=createdAt&fields[6]=updatedAt` +
-        `&populate[mesa_sesion][fields][0]=id` +
-        `&populate[mesa_sesion][fields][1]=session_status` +
-        `&populate[mesa_sesion][fields][2]=code` +
-        `&populate[mesa_sesion][populate][mesa][fields][0]=id` +
-        `&populate[mesa_sesion][populate][mesa][fields][1]=number`;
-      const r = await api.get(`/pedidos/${pedido.id}${qs}`);
-      const data = r?.data?.data;
-      if (!data) return pedido;
-      const filled = mapPedidoRow({ id: data.id, ...(data.attributes ? data : { attributes: data }) });
-      return filled.mesa_sesion ? filled : pedido;
-    } catch {
-      return pedido;
-    }
-  };
-
-  const fetchItemsDePedido = async (orderId) => {
-    const qs =
-      `/item-pedidos?publicationState=preview` +
-      `&filters[order][id][$eq]=${orderId}` +
-      `&populate[product]=true` +
-      `&fields[0]=id&fields[1]=quantity&fields[2]=notes&fields[3]=UnitPrice&fields[4]=totalPrice` +
-      `&pagination[pageSize]=100`;
-    const r = await api.get(qs);
-    const raw = r?.data?.data ?? [];
-    return raw.map((it) => {
-      const a = it.attributes || it;
-      const prodData = a.product?.data || a.product || {};
-      const prodAttrs = prodData.attributes || prodData;
-      return {
-        id: it.id || a.id,
-        quantity: a.quantity,
-        notes: a.notes,
-        UnitPrice: a.UnitPrice,
-        totalPrice: a.totalPrice,
-        product: { id: prodData.id, name: prodAttrs.name },
-      };
-    });
-  };
-
-  // =================== búsqueda por mesa (parcial) ===================
-  const mesaTokens = useMemo(() => {
-    const tokens = (searchQuery.match(/\d+/g) || []).map((s) => s.trim()).filter(Boolean);
-    return tokens;
-  }, [searchQuery]);
-
-  const pedidoMatchesMesaPartial = (p) => {
-    if (mesaTokens.length === 0) return true;
-    const mesaNum = p?.mesa_sesion?.mesa?.number;
-    if (mesaNum == null) return false;
-    const mesaStr = String(mesaNum);
-    return mesaTokens.some((t) => mesaStr.includes(t));
-  };
-
-  const cuentaMatchesMesaPartial = (c) => {
-    if (mesaTokens.length === 0) return true;
-    const mesaNum = c?.mesaNumber;
-    if (mesaNum == null) return false;
-    const mesaStr = String(mesaNum);
-    return mesaTokens.some((t) => mesaStr.includes(t));
+    } catch { }
   };
 
   // =================== carga de pedidos ===================
   const fetchPedidos = async () => {
     try {
-      const sort = showHistory ? 'updatedAt:desc' : 'createdAt:asc';
-      const statusFilter = showHistory
-        ? `&filters[order_status][$in][0]=served&filters[order_status][$in][1]=paid`
-        : `&filters[order_status][$in][0]=pending&filters[order_status][$in][1]=preparing&filters[order_status][$in][2]=served`;
-
       const listQS =
         `?filters[restaurante][slug][$eq]=${encodeURIComponent(slug)}` +
-        statusFilter +
+        `&filters[order_status][$ne]=cancelled` + // Exclude cancelled for now or show in separate column
         `&publicationState=preview` +
-        `&fields[0]=id&fields[1]=documentId&fields[2]=order_status&fields[3]=customerNotes&fields[4]=total&fields[5]=createdAt&fields[6]=updatedAt` +
-        `&populate[mesa_sesion][fields][0]=id` +
-        `&populate[mesa_sesion][fields][1]=session_status` +
-        `&populate[mesa_sesion][fields][2]=code` +
-        `&populate[mesa_sesion][populate][mesa][fields][0]=id` +
-        `&populate[mesa_sesion][populate][mesa][fields][1]=number` +
-        `&sort[0]=${encodeURIComponent(sort)}` +
+        `&populate[mesa_sesion][populate][mesa]=true` +
+        `&populate[items][populate][product]=true` +
+        `&sort[0]=createdAt:desc` +
         `&pagination[pageSize]=100`;
 
       const res = await api.get(`/pedidos${listQS}`);
-      const base = res?.data?.data ?? [];
+      const raw = res?.data?.data ?? [];
 
-      const planos = base.map(mapPedidoRow);
-      const planosFilled = await Promise.all(planos.map(hydrateMesaSesionIfMissing));
-
-      // cargar items (priorizar items del backend, luego intentar cargar si faltan)
-      const prevByKey = new Map(pedidosRef.current.map((p) => [keyOf(p), p]));
-      const conItems = await Promise.all(
-        planosFilled.map(async (p) => {
-          const prev = prevByKey.get(keyOf(p));
-          const prevItems = prev?.items ?? [];
-          
-          // Priorizar: 1) items del backend, 2) items previos del caché, 3) cargar desde API
-          let items = p.items && Array.isArray(p.items) && p.items.length > 0
-            ? p.items // Items ya vienen del backend
-            : prevItems.length > 0
-            ? prevItems // Usar items previos como fallback
-            : []; // Array vacío por defecto
-
-          // Si no hay items (ni del backend ni previos), intentar cargar
-          const shouldFetchItems =
-            items.length === 0 &&
-            (isActive(p.order_status) ||
-              (showHistory && ['served', 'paid'].includes(p.order_status)));
-
-          if (shouldFetchItems) {
-            try {
-              const fetched = await fetchItemsDePedido(p.id);
-              // Si la carga es exitosa y hay items, usarlos
-              if (fetched && Array.isArray(fetched) && fetched.length > 0) {
-                items = fetched;
-                console.log(`[Mostrador] Items cargados para pedido ${p.id}: ${fetched.length} items`);
-              } else if (fetched && Array.isArray(fetched)) {
-                // Array vacío es válido, significa que el pedido no tiene items
-                items = [];
-              }
-            } catch (err) {
-              // Si falla la carga y no hay items previos, dejar array vacío
-              console.warn(`[Mostrador] No se pudieron cargar items del pedido ${p.id}:`, err);
-              // Si hay items previos, mantenerlos (ya están en items)
-            }
-          } else if (p.items && Array.isArray(p.items) && p.items.length > 0) {
-            // Items ya vienen del backend, usarlos directamente
-            console.log(`[Mostrador] Items del backend para pedido ${p.id}: ${p.items.length} items`);
-          }
-          
-          return { ...p, items: items || [] };
-        })
-      );
-
-      const ordenados = showHistory
-        ? [...conItems].sort((a, b) => new Date(b.updatedAt) - new Date(a.updatedAt))
-        : ordenarActivos(conItems);
-
-      // visibles según modo
-      const visibles = showHistory
-        ? ordenados.filter((p) => ['served', 'paid'].includes(p.order_status))
-        : ordenados.filter((p) => isActive(p.order_status) && !servingIdsRef.current.has(p.id));
-
-        if (!showHistory && pendingBeforeHistoryRef.current.size > 0) {
-        pendingBeforeHistoryRef.current.forEach((id) => seenIdsRef.current.add(id));
-        pendingBeforeHistoryRef.current = new Set();
-      }
-
-      // ---- avisos SOLO por pedidos nuevos (ID no visto) y que pasan el filtro de mesa
-      const nuevosVisibles = visibles.filter(
-        (p) => !seenIdsRef.current.has(p.id) && p.order_status === 'pending'
-      );
-   
-      const nuevosFiltrados = nuevosVisibles.filter(pedidoMatchesMesaPartial);
-      if (!showHistory && hasLoadedRef.current && nuevosFiltrados.length > 0) {
-        try { playBeep(); } catch {}
-        setSnack({ open: true, msg: `${nuevosFiltrados.length} pedido(s) nuevo(s)`, severity: 'info' });
-        nuevosFiltrados.forEach((n) => triggerFlash(n.documentId));
-      }
-      // sembrar vistos (en 1ª carga: todos, luego: sólo los nuevos)
-      const idsAAgregar = hasLoadedRef.current ? nuevosVisibles : visibles;
-      idsAAgregar.forEach((p) => seenIdsRef.current.add(p.id));
-
-      // guardar visibles
-      pedidosRef.current = visibles;
-      setPedidos(visibles);
-
-      // ---- agrupar cuentas
-      // En historial: cada mesa_sesion cerrada es una cuenta única e inmutable
-      // En activos: agrupar por mesa para mostrar cuentas abiertas
-      const grupos = new Map();
-      ordenados.forEach((p) => {
-        let key;
-        if (showHistory) {
-          // En historial: usar mesa_sesion.id como clave única si existe
-          // Esto asegura que cada sesión cerrada tenga su propio grupo
-          // Si no hay mesa_sesion.id, usar pedido.id como clave única (fallback)
-          if (p.mesa_sesion?.id != null) {
-            key = `sesion:${p.mesa_sesion.id}`;
-          } else {
-            // Fallback: usar pedido.id como clave única para pedidos sin sesión
-            key = `pedido:${p.id}`;
-          }
-        } else {
-          // En activos: agrupar por mesa para mostrar cuentas abiertas
-          const mesaNum = p.mesa_sesion?.mesa?.number;
-          if (mesaNum != null) {
-            key = `mesa:${mesaNum}`;
-          } else if (p.mesa_sesion?.id != null) {
-            key = `sesion:${p.mesa_sesion.id}`;
-          } else {
-            key = `pedido:${p.id}`;
-          }
-        }
-        const arr = grupos.get(key) || [];
-        arr.push(p);
-        grupos.set(key, arr);
-      });
-
-      // En historial: NO fusionar grupos por mesa ni tiempo
-      // Cada sesión cerrada (mesa_sesion con status 'paid') debe mantener su identidad única
-      // Esto evita que cuentas cerradas por separado se agrupen incorrectamente
-
-      const cuentasArr = Array.from(grupos, ([groupKey, arr]) => {
-        const hasUnpaid = arr.some((o) => o.order_status !== 'paid');
-        // En historial: mostrar todos los pedidos de la sesión
-        // En activos: mostrar solo pedidos no pagados para la cuenta abierta
-        const lista = showHistory
-          ? arr // En historial, mostrar todos los pedidos de la sesión
-          : hasUnpaid
-            ? arr.filter((o) => o.order_status !== 'paid') // En activos, solo no pagados
-            : arr;
-        const total = lista.reduce((sum, it) => sum + Number(it.total || 0), 0);
-        const lastUpdated = arr.reduce((max, it) => Math.max(max, new Date(it.updatedAt).getTime()), 0);
-        const mesaNumber =
-          arr.find((x) => Number.isFinite(Number(x.mesa_sesion?.mesa?.number)))?.mesa_sesion?.mesa?.number ?? null;
-        const sesId = arr.find((x) => x.mesa_sesion?.id)?.mesa_sesion.id ?? null;
+      const mapped = raw.map(p => {
+        const a = p.attributes || p;
         return {
-          groupKey,
-          mesaNumber,
-          mesaSesionId: sesId,
-          pedidos: ordenar(lista),
-          total,
-          hasUnpaid,
-          lastUpdated,
-          mesaSesionCode: arr.find((x) => x?.mesa_sesion?.code)?.mesa_sesion?.code ?? null,
+          id: p.id,
+          documentId: a.documentId,
+          order_status: a.order_status,
+          customerNotes: a.customerNotes,
+          total: a.total,
+          createdAt: a.createdAt,
+          updatedAt: a.updatedAt,
+          items: (a.items?.data || a.items || []).map(it => {
+            const itAttr = it.attributes || it;
+            const prod = itAttr.product?.data?.attributes || itAttr.product || {};
+            return {
+              id: it.id,
+              quantity: itAttr.quantity,
+              name: prod.name || 'Producto',
+              notes: itAttr.notes
+            };
+          }),
+          mesa: a.mesa_sesion?.data?.attributes?.mesa?.data?.attributes?.number ||
+            a.mesa_sesion?.mesa?.number || '?',
+          payment_method: a.payment_method,
+          payment_status: a.payment_status
         };
       });
 
-      const filtradas = showHistory
-        ? cuentasArr.filter((c) => !c.hasUnpaid).sort((a, b) => b.lastUpdated - a.lastUpdated)
-        : cuentasArr.filter((c) => c.hasUnpaid).sort((a, b) => {
-            const am = Number.isFinite(Number(a.mesaNumber)) ? Number(a.mesaNumber) : 999999;
-            const bm = Number.isFinite(Number(b.mesaNumber)) ? Number(b.mesaNumber) : 999999;
-            return am - bm;
-          });
+      // Detect new orders
+      const newOrders = mapped.filter(p => !seenIdsRef.current.has(p.id) && p.order_status === 'pending');
+      if (newOrders.length > 0) {
+        playBeep();
+        setSnack({ open: true, msg: `${newOrders.length} pedido(s) nuevo(s)`, severity: 'info' });
+      }
+      mapped.forEach(p => seenIdsRef.current.add(p.id));
 
-        updateCachedView(visibles, filtradas);
-
-      setCuentas(filtradas);
+      setPedidos(mapped);
+      pedidosRef.current = mapped;
       setError(null);
     } catch (err) {
-      console.error('Error al obtener pedidos:', err?.response?.data || err);
-      setError('No se pudieron cargar los pedidos.');
+      console.error('Error fetching orders:', err);
+      setError('Error al cargar pedidos');
+    } finally {
+      setLoading(false);
     }
   };
 
-  // ----- polling -----
   useEffect(() => {
-    seenIdsRef.current = new Set(); // reset de vistos al cambiar de restaurante
-    cachedViewsRef.current = {
-      active: { pedidos: [], cuentas: [] },
-      history: { pedidos: [], cuentas: [] },
-    };
+    fetchPedidos();
+    const interval = setInterval(fetchPedidos, 5000);
+    return () => clearInterval(interval);
   }, [slug]);
 
-  const prevShowHistoryRef = useRef(showHistory);
-  useEffect(() => {
-    if (!prevShowHistoryRef.current && showHistory) {
-      pendingBeforeHistoryRef.current = new Set(
-        pedidosRef.current
-          .filter((p) => p.order_status === 'pending')
-          .map((p) => p.id)
-      );
-    }
-    prevShowHistoryRef.current = showHistory;
-  }, [showHistory]);
-
-  useEffect(() => {
-    const modeKey = showHistory ? 'history' : 'active';
-    const cached = cachedViewsRef.current[modeKey] ?? { pedidos: [], cuentas: [] };
-    const nextPedidos = Array.isArray(cached.pedidos) ? [...cached.pedidos] : [];
-    const nextCuentas = Array.isArray(cached.cuentas) ? [...cached.cuentas] : [];
-    pedidosRef.current = nextPedidos;
-    setPedidos(nextPedidos);
-    setCuentas(nextCuentas);
-    fetchPedidos();
-    const interval = setInterval(fetchPedidos, 3000);
-    return () => clearInterval(interval);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [slug, showHistory]);
-
-  // marcar que ya hubo al menos una carga
-  useEffect(() => { hasLoadedRef.current = true; }, []);
-
-  // ---- acciones ----
-    const putEstado = async (pedido, estado) => {
-    const id = typeof pedido === 'object' ? pedido?.id : pedido;
-    const itemIds =
-      typeof pedido === 'object'
-        ? (pedido?.items || []).map((it) => it?.id).filter(Boolean)
-        : [];
-
-    if (id == null) throw new Error('Pedido sin id');
-
+  // Actions
+  const updateStatus = async (id, status) => {
     try {
-      await api.patch(`/pedidos/${id}`, { data: { order_status: estado } });
+      await api.put(`/pedidos/${id}`, { data: { order_status: status } });
+      setPedidos(prev => prev.map(p => p.id === id ? { ...p, order_status: status } : p));
+      setSnack({ open: true, msg: `Pedido actualizado a ${status}`, severity: 'success' });
     } catch (err) {
-      if (err?.response?.status === 405) {
-        const data = { order_status: estado };
-        if (itemIds.length > 0) data.items = itemIds;
-        await api.put(`/pedidos/${id}`, { data });
-        return;
+      console.error('Error updating status:', err);
+      setSnack({ open: true, msg: 'Error al actualizar', severity: 'error' });
+    }
+  };
+
+  // Kanban Columns
+  const columns = useMemo(() => {
+    const cols = {
+      pending: { title: 'Nuevos', color: '#ff9800', icon: <AccessTimeIcon />, items: [] },
+      preparing: { title: 'En Cocina', color: '#2196f3', icon: <RestaurantIcon />, items: [] },
+      served: { title: 'Listos / Servidos', color: '#4caf50', icon: <CheckCircleIcon />, items: [] },
+      paid: { title: 'Pagados / Cerrados', color: '#9e9e9e', icon: <PaymentsIcon />, items: [] },
+    };
+
+    pedidos.forEach(p => {
+      if (cols[p.order_status]) {
+        cols[p.order_status].items.push(p);
+      } else if (p.order_status === 'paid') { // Map paid to paid column if status is paid
+        cols.paid.items.push(p);
       }
-      throw err;
-    }  };
+    });
 
-  const refreshItemsDe = async (orderId) => {
-    try {
-      const items = await fetchItemsDePedido(orderId);
-      if (items?.length) {
-        setPedidos((prev) => {
-          const next = prev.map((p) => (p.id === orderId ? { ...p, items } : p));
-          pedidosRef.current = next;
-          updateCachedView(next);
-          return next;
-        });
-      }
-    } catch {}
-  };
+    return cols;
+  }, [pedidos]);
 
-  const marcarComoRecibido = async (pedido) => {
-    try {
-      setPedidos((prev) => {
-        const next = prev.map((p) =>
-          keyOf(p) === keyOf(pedido) ? { ...p, order_status: 'preparing' } : p
-        );
-        pedidosRef.current = next;
-         updateCachedView(next);
-        return next;
-      });
-      triggerFlash(pedido.documentId);
-      await putEstado(pedido, 'preparing');
-      await refreshItemsDe(pedido.id);
-    } catch (err) {
-      console.error('Error al marcar como Recibido:', err?.response?.data || err);
-      setError('No se pudo actualizar el pedido.');
-      setPedidos((prev) => {
-        const next = prev.map((p) =>
-          keyOf(p) === keyOf(pedido) ? { ...p, order_status: 'pending' } : p
-        );
-        pedidosRef.current = next;
-        updateCachedView(next);
-        return next;
-      });
-    }
-  };
+  // Role Filtering
+  const visibleColumns = useMemo(() => {
+    if (role === 'kitchen') return ['pending', 'preparing'];
+    if (role === 'waiter') return ['pending', 'preparing', 'served', 'paid'];
+    return ['pending', 'preparing', 'served', 'paid'];
+  }, [role]);
 
-  const marcarComoServido = async (pedido) => {
-    try {
-      triggerFlash(pedido.documentId);
-      servingIdsRef.current.add(pedido.id);
-      setPedidos((prev) => {
-        const next = prev.filter((p) => keyOf(p) !== keyOf(pedido));
-        pedidosRef.current = next;
-        return next;
-      });
-      await putEstado(pedido, 'served');
-      await fetchPedidos();
-    } catch (err) {
-      console.error('Error al marcar como servido:', err?.response?.data || err);
-      setError('No se pudo actualizar el pedido.');
-      servingIdsRef.current.delete(pedido.id);
-      setPedidos((prev) => {
-        if (prev.some((p) => keyOf(p) === keyOf(pedido))) return prev;
-        const next = [pedido, ...prev];
-        pedidosRef.current = next;
-        updateCachedView(next);
-        return next;
-      });
-    }
-  };
-
-  const handleOpenPayDialog = (cuenta) => {
-    setPayDialog({ open: true, cuenta, loading: false });
-  };
-
-  const handleClosePayDialog = () => {
-    setPayDialog({ open: false, cuenta: null, loading: false });
-  };
-
-  const marcarCuentaComoPagada = async () => {
-    const { cuenta } = payDialog;
-    if (!cuenta) return;
-
-    setPayDialog((prev) => ({ ...prev, loading: true }));
-
-    try {
-      if (cuenta.mesaNumber != null) {
-        const payload = { table: cuenta.mesaNumber };
-        if (cuenta.mesaSesionId) payload.tableSessionId = cuenta.mesaSesionId;
-        await closeAccount(slug, payload);
-      } else {
-        const pendientes = (cuenta.pedidos || []).filter((p) => p.order_status !== 'paid');
-        await Promise.all(pendientes.map((pedido) => putEstado(pedido, 'paid')));
-      }
-
-      setSnack({ open: true, msg: 'Cuenta marcada como pagada ✅', severity: 'success' });
-      handleClosePayDialog();
-      await fetchPedidos();
-    } catch (err) {
-      console.error('Error al marcar cuenta como pagada:', err?.response?.data || err);
-      setSnack({
-        open: true,
-        msg: 'No se pudo marcar la cuenta como pagada ❌',
-        severity: 'error',
-      });
-      setPayDialog((prev) => ({ ...prev, loading: false }));
-    }
-  };
-
-
-  // ---- memos de filtro ----
-  const pedidosFiltrados = useMemo(
-    () => pedidos.filter(pedidoMatchesMesaPartial),
-    [pedidos, mesaTokens]
-  );
-  const cuentasFiltradas = useMemo(
-    () => cuentas.filter(cuentaMatchesMesaPartial),
-    [cuentas, mesaTokens]
-  );
-  const noResultsPedidos =
-    !error && pedidos.length > 0 && pedidosFiltrados.length === 0 && mesaTokens.length > 0;
-  const noResultsCuentas =
-    cuentas.length > 0 && cuentasFiltradas.length === 0 && mesaTokens.length > 0;
-
-  // ---- UI ----
   return (
-    <Box sx={{ p: { xs: 2, md: 3 } }}>
-      {/* Encabezado minimal + barrita */}
-      <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, flexWrap: 'wrap', mb: 1 }}>
-        <Box sx={{ flexGrow: 1 }}>
-          <Typography
-            component="h1"
-            sx={(theme) => ({
-              fontSize: { xs: 26, sm: 32 },
-              fontWeight: 600,
-              lineHeight: 1.2,
-              letterSpacing: 0.5,
-              fontFamily: theme.typography.fontFamily,
-              color: 'text.primary',
-              mb: 0.5,
-            })}
+    <Box sx={{ p: 2, height: '100vh', display: 'flex', flexDirection: 'column', bgcolor: '#f5f5f5' }}>
+      {/* Header */}
+      <Box sx={{ mb: 2, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <Typography variant="h5" fontWeight="bold">
+          Tablero de Pedidos — {slug}
+        </Typography>
+        <Box sx={{ display: 'flex', gap: 2 }}>
+          <ToggleButtonGroup
+            value={role}
+            exclusive
+            onChange={(e, newRole) => newRole && setRole(newRole)}
+            size="small"
           >
-            Mostrador — {slug?.toUpperCase?.()} {showHistory ? '(Historial)' : ''}
-          </Typography>
-          <Box sx={{ height: 2, width: 120, bgcolor: 'divider', borderRadius: 1, position: 'relative' }}>
-            <Box
-              sx={(theme) => ({
-                position: 'absolute',
-                left: 0,
-                top: -1,
-                width: 44,
-                height: 4,
-                borderRadius: 999,
-                backgroundColor: theme.palette.primary.main,
-                boxShadow: '0 2px 8px rgba(0,0,0,0.10)',
-              })}
-            />
-          </Box>
+            <ToggleButton value="all">Todos</ToggleButton>
+            <ToggleButton value="kitchen">Cocina</ToggleButton>
+            <ToggleButton value="waiter">Mozo/Caja</ToggleButton>
+          </ToggleButtonGroup>
+          <Button startIcon={<RefreshIcon />} onClick={fetchPedidos} variant="outlined">
+            Actualizar
+          </Button>
         </Box>
-
-        <TextField
-          size="small"
-          label="Buscar por Nº de mesa"
-          value={searchQuery}
-          onChange={(e) => setSearchQuery(e.target.value)}
-          sx={{ minWidth: { xs: '100%', sm: 320 }, borderRadius: 2 }}
-          InputProps={{
-            startAdornment: <InputAdornment position="start">🔎</InputAdornment>,
-            endAdornment: searchQuery ? (
-              <InputAdornment
-                position="end"
-                sx={{ cursor: 'pointer' }}
-                onClick={() => setSearchQuery('')}
-                title="Limpiar búsqueda"
-              >
-                ×
-              </InputAdornment>
-            ) : null,
-          }}
-          placeholder="Ej: 3  |  12  |  12 33"
-        />
-
-        <Button
-          variant="outlined"
-          onClick={() => setShowHistory((s) => !s)}
-          sx={{ borderRadius: 2, px: 2.5 }}
-        >
-          {showHistory ? 'Ver activos' : 'Ver historial'}
-        </Button>
       </Box>
 
-      {error && <Typography color="error">{error}</Typography>}
+      {/* Kanban Board */}
+      <Box sx={{ display: 'flex', gap: 2, overflowX: 'auto', flexGrow: 1, pb: 2 }}>
+        {visibleColumns.map(colKey => {
+          const col = columns[colKey];
+          return (
+            <Paper
+              key={colKey}
+              sx={{
+                minWidth: 300,
+                width: 320,
+                bgcolor: '#ebecf0',
+                display: 'flex',
+                flexDirection: 'column',
+                maxHeight: '100%'
+              }}
+            >
+              <Box sx={{ p: 2, display: 'flex', alignItems: 'center', gap: 1, borderBottom: '1px solid rgba(0,0,0,0.05)' }}>
+                {col.icon}
+                <Typography variant="subtitle1" fontWeight="bold">
+                  {col.title} ({col.items.length})
+                </Typography>
+              </Box>
 
-      <Grid container spacing={2}>
-        <Grid item xs={12} md={8}>
-          {!error && pedidos.length === 0 && (
-            <Typography>
-              {showHistory ? 'No hay pedidos cerrados.' : 'No hay pedidos activos.'}
-            </Typography>
-          )}
-          {noResultsPedidos && (
-            <Typography sx={{ mb: 1 }}>
-              No hay pedidos para las mesas que coinciden con tu búsqueda.
-            </Typography>
-          )}
-          <Grid container spacing={2}>
-            {pedidosFiltrados.map((pedido) => {
-              const { id, documentId, order_status, customerNotes, items = [], total } = pedido;
-              const mesaNumero = pedido.mesa_sesion?.mesa?.number;
-              const flashing = flashIds.has(documentId);
-              const tituloMesa = `Mesa ${mesaNumero ?? 's/n'}`;
-
-              // chip de estado (colores suaves)
-              const estadoSx = {
-                px: 1,
-                py: 0.25,
-                borderRadius: 2,
-                fontSize: 12,
-                fontWeight: 600,
-                width: 'fit-content',
-                color:
-                  order_status === 'pending'
-                    ? 'error.main'
-                    : order_status === 'preparing'
-                    ? 'warning.main'
-                    : 'success.main',
-                bgcolor:
-                  order_status === 'pending'
-                    ? 'rgba(244, 67, 54, 0.08)'
-                    : order_status === 'preparing'
-                    ? 'rgba(255, 193, 7, 0.12)'
-                    : 'rgba(76, 175, 80, 0.10)',
-              };
-
-              return (
-                <Grid item key={documentId || id} xs={12} sm={6} md={6} lg={4}>
-                  <Card
-                    sx={{
-                      height: '100%',
-                      display: 'flex',
-                      flexDirection: 'column',
-                      bgcolor: flashing ? 'warning.light' : 'background.paper',
-                      transition: 'background-color 600ms ease',
-                      boxShadow: flashing ? 6 : 2,
-                      border: flashing ? '2px solid rgba(255,193,7,0.6)' : '1px solid',
-                      borderColor: flashing ? 'warning.main' : 'divider',
-                    }}
-                  >
-                    <CardContent sx={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
-                      {/* Encabezado de la tarjeta: título + estado a la derecha */}
-<Box sx={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', mb: 1 }}>
-  <Typography variant="h6" sx={{ fontWeight: 600 }}>
-    {tituloMesa}
-  </Typography>
-
-  <Box
-    sx={{
-      ...estadoSx,
-      px: 1.5,
-      py: 0.5,
-      fontSize: 13,
-      borderRadius: 10,
-      textTransform: 'capitalize',
-      display: 'inline-flex',
-      alignItems: 'center',
-      justifyContent: 'center',
-      whiteSpace: 'nowrap',
-    }}
-  >
-    {order_status || 'No definido'}
-  </Box>
-</Box>
-
-
-                      {customerNotes && (
-                        <Typography variant="body2" sx={{ mt: 1.25 }}>
-                          <strong>Notas:</strong> {customerNotes}
+              <Box sx={{ p: 1, overflowY: 'auto', flexGrow: 1, display: 'flex', flexDirection: 'column', gap: 1 }}>
+                {col.items.map(order => (
+                  <Card key={order.id} sx={{ boxShadow: 1 }}>
+                    <CardContent sx={{ p: 1.5, '&:last-child': { pb: 1.5 } }}>
+                      <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 1 }}>
+                        <Chip label={`Mesa ${order.mesa}`} size="small" color="primary" sx={{ fontWeight: 'bold' }} />
+                        <Typography variant="caption" color="text.secondary">
+                          {new Date(order.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                         </Typography>
-                      )}
+                      </Box>
 
-                      <Divider sx={{ my: 1.25 }} />
-
-                      <List sx={{ flexGrow: 1, py: 0 }}>
-                        {items.map((item) => {
-                          const prod = item?.product;
-                          return (
-                            <ListItem key={item.id} sx={{ px: 0, py: 0.5 }}>
-                              <Typography variant="body2">
-                                {prod?.name ? prod.name : 'Producto sin datos'}{' '}
-                                <Box component="span" sx={{ color: 'text.secondary' }}>
-                                  ×{item.quantity}
-                                </Box>
-                              </Typography>
-                            </ListItem>
-                          );
-                        })}
+                      <List dense disablePadding>
+                        {order.items.map((it, idx) => (
+                          <ListItem key={idx} sx={{ px: 0, py: 0.5 }}>
+                            <Typography variant="body2">
+                              <b>{it.quantity}x</b> {it.name}
+                              {it.notes && <span style={{ display: 'block', color: 'gray', fontSize: '0.85em' }}>({it.notes})</span>}
+                            </Typography>
+                          </ListItem>
+                        ))}
                       </List>
 
-                      <Typography
-                        variant="subtitle1"
-                        sx={{ textAlign: 'right', mb: 1, fontWeight: 600, letterSpacing: 0.2 }}
-                      >
-                        Total: {money(total)}
-                      </Typography>
+                      {order.customerNotes && (
+                        <Alert severity="warning" sx={{ mt: 1, py: 0 }}>
+                          Nota: {order.customerNotes}
+                        </Alert>
+                      )}
 
-                      {!showHistory && (
+                      <Divider sx={{ my: 1 }} />
+
+                      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <Typography variant="body2" fontWeight="bold">
+                          {money(order.total)}
+                        </Typography>
+
                         <Box sx={{ display: 'flex', gap: 1 }}>
-                          {order_status !== 'preparing' && (
-                            <Button
-                              variant="outlined"
-                              color="info"
-                              onClick={() => marcarComoRecibido(pedido)}
-                              fullWidth
-                              sx={{ borderRadius: 2 }}
-                            >
-                              Recibido
+                          {colKey === 'pending' && (
+                            <Button size="small" variant="contained" color="primary" onClick={() => updateStatus(order.id, 'preparing')}>
+                              Cocinar
                             </Button>
                           )}
-                          {order_status !== 'served' && (
-                            <Button
-                              variant="contained"
-                              color="success"
-                              onClick={() => marcarComoServido(pedido)}
-                              fullWidth
-                              sx={{ borderRadius: 2 }}
-                            >
-                              Completado
+                          {colKey === 'preparing' && (
+                            <Button size="small" variant="contained" color="success" onClick={() => updateStatus(order.id, 'served')}>
+                              Listo
+                            </Button>
+                          )}
+                          {colKey === 'served' && (
+                            <Button size="small" variant="outlined" onClick={() => updateStatus(order.id, 'paid')}>
+                              Pagado
                             </Button>
                           )}
                         </Box>
-                      )}
+                      </Box>
                     </CardContent>
                   </Card>
-                </Grid>
-              );
-            })}
-          </Grid>
-        </Grid>
-
-        <Grid item xs={12} md={4}>
-          <Box sx={{ mb: 1 }}>
-            <Typography variant="h5" sx={{ fontWeight: 600 }}>
-              {showHistory ? 'Cuentas pagadas' : 'Cuentas'}
-            </Typography>
-            <Box sx={{ height: 2, width: 80, bgcolor: 'divider', borderRadius: 1, mt: 0.5 }} />
-          </Box>
-
-          {noResultsCuentas && (
-            <Typography sx={{ mb: 1 }}>
-              No hay cuentas para las mesas que coinciden con tu búsqueda.
-            </Typography>
-          )}
-          {cuentasFiltradas.map((c) => (
-            <Card key={c.groupKey} sx={{ mb: 2, borderRadius: 3 }}>
-              <CardContent>
-                <Typography variant="h6" sx={{ fontWeight: 600 }}>
-                  Mesa {c.mesaNumber ?? 's/n'}
-                </Typography>
-                <Box sx={{ height: 2, width: 36, bgcolor: 'divider', borderRadius: 1, my: 0.5 }} />
-                <List sx={{ py: 0 }}>
-                  {c.pedidos.map((p) => (
-                    <ListItem key={p.documentId || p.id} sx={{ px: 0, py: 0.5 }}>
-                      <Typography variant="body2">Pedido {p.id} — {money(p.total)}</Typography>
-                    </ListItem>
-                  ))}
-                </List>
-                <Divider sx={{ my: 1 }} />
-                <Typography variant="subtitle1" sx={{ textAlign: 'right', fontWeight: 600 }}>
-                  Total: {money(c.total)}
-                </Typography>
-                {!showHistory && c.hasUnpaid && (
-                 /* Botón de pago de borde a borde en la base de la tarjeta */
-                  <Box sx={{ mt: 1, mx: -2, mb: -2 }}>
-                    <Button
-                      variant="contained"
-                      color="success"
-                      onClick={() => handleOpenPayDialog(c)}
-                      fullWidth
-                      sx={{ borderRadius: 2, py: 1.25 }}
-                    >
-                      Pagar
-                    </Button>
-                  </Box>
-                )}
-              </CardContent>
-            </Card>
-          ))}
-        </Grid>
-      </Grid>
+                ))}
+              </Box>
+            </Paper>
+          );
+        })}
+      </Box>
 
       <Snackbar
         open={snack.open}
-        autoHideDuration={2500}
-        onClose={() => setSnack((s) => ({ ...s, open: false }))}
+        autoHideDuration={4000}
+        onClose={() => setSnack({ ...snack, open: false })}
+        anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
       >
-        <Alert
-          onClose={() => setSnack((s) => ({ ...s, open: false }))}
-          severity={snack.severity}
-          sx={{ width: '100%' }}
-        >
-          {snack.msg}
-        </Alert>
+        <Alert severity={snack.severity}>{snack.msg}</Alert>
       </Snackbar>
-       <Dialog
-        open={payDialog.open}
-        onClose={() => (!payDialog.loading ? handleClosePayDialog() : null)}
-        aria-labelledby="confirm-pay-title"
-      >
-        <DialogTitle id="confirm-pay-title">Confirmar pago</DialogTitle>
-        <DialogContent>
-          <DialogContentText>
-            ¿Estás seguro que deseas marcar como pagada esta cuenta? Esta acción es irreversible.
-          </DialogContentText>
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={handleClosePayDialog} disabled={payDialog.loading}>
-            Cancelar
-          </Button>
-          <Button
-            variant="contained"
-            color="success"
-            onClick={marcarCuentaComoPagada}
-            disabled={payDialog.loading}
-          >
-            {payDialog.loading ? 'Confirmando...' : 'Confirmar'}
-          </Button>
-        </DialogActions>
-      </Dialog>
     </Box>
   );
 }

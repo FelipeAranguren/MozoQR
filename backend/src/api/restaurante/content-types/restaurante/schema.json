@@ -94,6 +94,13 @@
       "relation": "oneToMany",
       "target": "api::categoria.categoria",
       "mappedBy": "restaurante"
+    },
+    "is_demo": {
+      "type": "boolean",
+      "default": false
+    },
+    "owner_email": {
+      "type": "email"
     }
   }
 }

@@ -154,10 +154,10 @@ export default function StickyFooter({ table, tableSessionId }) {
 
   // Resetear propina cuando cambia el total (usar orderDetails si está disponible)
   useEffect(() => {
-    const currentTotal = orderDetails.length > 0 
+    const currentTotal = orderDetails.length > 0
       ? orderDetails.reduce((sum, o) => sum + (Number(o.total) || 0), 0)
       : accountTotal;
-    
+
     if (tipPercentage > 0 && currentTotal > 0) {
       setTipAmount((currentTotal * tipPercentage) / 100);
     }
@@ -258,8 +258,8 @@ export default function StickyFooter({ table, tableSessionId }) {
 
   // ---------- Pagar cuenta ----------
   const handlePay = async () => {
-    // Validar tarjeta si es necesario
-    if (payMethod === 'card') {
+    // Validar tarjeta si es necesario (SOLO si es online)
+    if (payType === 'online' && payMethod === 'card') {
       const { number, expiry, cvv, name } = card;
       const numOk = /^\d{4} \d{4} \d{4} \d{4}$/.test(number);
       const expOk = /^(0[1-9]|1[0-2])\/\d{2}$/.test(expiry);
@@ -672,106 +672,106 @@ export default function StickyFooter({ table, tableSessionId }) {
                   {(orderDetails.length > 0 ? orderDetails : []).map((order, orderIndex) => {
                     console.log('Rendering order:', order.id, 'with items:', order.items?.length || 0, order.items);
                     return (
-                    <motion.div
-                      key={order.id || `order-${orderIndex}`}
-                      initial={{ opacity: 0, y: 10 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      exit={{ opacity: 0 }}
-                      transition={{ delay: orderIndex * 0.1 }}
-                    >
-                      <Box
-                        sx={{
-                          mb: 2,
-                          p: 2,
-                          borderRadius: 2,
-                          backgroundColor: (theme) =>
-                            theme.palette.mode === 'light'
-                              ? alpha(theme.palette.primary.main, 0.03)
-                              : alpha(theme.palette.primary.main, 0.08),
-                          border: '1px solid',
-                          borderColor: 'divider',
-                        }}
+                      <motion.div
+                        key={order.id || `order-${orderIndex}`}
+                        initial={{ opacity: 0, y: 10 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        exit={{ opacity: 0 }}
+                        transition={{ delay: orderIndex * 0.1 }}
                       >
-                        <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 1 }}>
-                          <Typography variant="caption" color="text.secondary">
-                            Pedido #{order.id || orderIndex + 1}
-                          </Typography>
-                          {order.createdAt && (
+                        <Box
+                          sx={{
+                            mb: 2,
+                            p: 2,
+                            borderRadius: 2,
+                            backgroundColor: (theme) =>
+                              theme.palette.mode === 'light'
+                                ? alpha(theme.palette.primary.main, 0.03)
+                                : alpha(theme.palette.primary.main, 0.08),
+                            border: '1px solid',
+                            borderColor: 'divider',
+                          }}
+                        >
+                          <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 1 }}>
                             <Typography variant="caption" color="text.secondary">
-                              {new Date(order.createdAt).toLocaleTimeString('es-AR', {
-                                hour: '2-digit',
-                                minute: '2-digit',
-                              })}
+                              Pedido #{order.id || orderIndex + 1}
+                            </Typography>
+                            {order.createdAt && (
+                              <Typography variant="caption" color="text.secondary">
+                                {new Date(order.createdAt).toLocaleTimeString('es-AR', {
+                                  hour: '2-digit',
+                                  minute: '2-digit',
+                                })}
+                              </Typography>
+                            )}
+                          </Box>
+
+                          {/* Items del pedido */}
+                          {order.items && order.items.length > 0 ? (
+                            <Box sx={{ mt: 1.5 }}>
+                              {order.items.map((item, itemIndex) => (
+                                <Box
+                                  key={item.id || `item-${itemIndex}`}
+                                  sx={{
+                                    display: 'flex',
+                                    justifyContent: 'space-between',
+                                    alignItems: 'flex-start',
+                                    mb: 1,
+                                    pb: 1,
+                                    borderBottom: '1px solid',
+                                    borderColor: 'divider',
+                                    '&:last-child': {
+                                      borderBottom: 'none',
+                                      mb: 0,
+                                      pb: 0,
+                                    },
+                                  }}
+                                >
+                                  <Box sx={{ flex: 1, minWidth: 0 }}>
+                                    <Typography variant="body2" sx={{ fontWeight: 500 }}>
+                                      {item.name || 'Producto'}
+                                    </Typography>
+                                    {item.notes && (
+                                      <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 0.25 }}>
+                                        Nota: {item.notes}
+                                      </Typography>
+                                    )}
+                                  </Box>
+                                  <Box sx={{ textAlign: 'right', ml: 2 }}>
+                                    <Typography variant="body2" color="text.secondary">
+                                      {item.quantity || 1} × {money(item.unitPrice || item.totalPrice || 0)}
+                                    </Typography>
+                                    <Typography variant="body2" sx={{ fontWeight: 600 }}>
+                                      {money(item.totalPrice || item.unitPrice || 0)}
+                                    </Typography>
+                                  </Box>
+                                </Box>
+                              ))}
+                            </Box>
+                          ) : (
+                            <Typography variant="body2" color="text.secondary" sx={{ mt: 1.5 }}>
+                              Sin items detallados
                             </Typography>
                           )}
-                        </Box>
 
-                        {/* Items del pedido */}
-                        {order.items && order.items.length > 0 ? (
-                          <Box sx={{ mt: 1.5 }}>
-                            {order.items.map((item, itemIndex) => (
-                              <Box
-                                key={item.id || `item-${itemIndex}`}
-                                sx={{
-                                  display: 'flex',
-                                  justifyContent: 'space-between',
-                                  alignItems: 'flex-start',
-                                  mb: 1,
-                                  pb: 1,
-                                  borderBottom: '1px solid',
-                                  borderColor: 'divider',
-                                  '&:last-child': {
-                                    borderBottom: 'none',
-                                    mb: 0,
-                                    pb: 0,
-                                  },
-                                }}
-                              >
-                                <Box sx={{ flex: 1, minWidth: 0 }}>
-                                  <Typography variant="body2" sx={{ fontWeight: 500 }}>
-                                    {item.name || 'Producto'}
-                                  </Typography>
-                                  {item.notes && (
-                                    <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 0.25 }}>
-                                      Nota: {item.notes}
-                                    </Typography>
-                                  )}
-                                </Box>
-                                <Box sx={{ textAlign: 'right', ml: 2 }}>
-                                  <Typography variant="body2" color="text.secondary">
-                                    {item.quantity || 1} × {money(item.unitPrice || item.totalPrice || 0)}
-                                  </Typography>
-                                  <Typography variant="body2" sx={{ fontWeight: 600 }}>
-                                    {money(item.totalPrice || item.unitPrice || 0)}
-                                  </Typography>
-                                </Box>
-                              </Box>
-                            ))}
-                          </Box>
-                        ) : (
-                          <Typography variant="body2" color="text.secondary" sx={{ mt: 1.5 }}>
-                            Sin items detallados
-                          </Typography>
-                        )}
+                          {order.customerNotes && (
+                            <Box sx={{ mt: 1, pt: 1, borderTop: '1px solid', borderColor: 'divider' }}>
+                              <Typography variant="caption" color="text.secondary">
+                                Nota del pedido: {order.customerNotes}
+                              </Typography>
+                            </Box>
+                          )}
 
-                        {order.customerNotes && (
-                          <Box sx={{ mt: 1, pt: 1, borderTop: '1px solid', borderColor: 'divider' }}>
-                            <Typography variant="caption" color="text.secondary">
-                              Nota del pedido: {order.customerNotes}
+                          <Box sx={{ display: 'flex', justifyContent: 'space-between', mt: 1.5, pt: 1, borderTop: '1px solid', borderColor: 'divider' }}>
+                            <Typography variant="body2" sx={{ fontWeight: 600 }}>
+                              Subtotal pedido
+                            </Typography>
+                            <Typography variant="body2" sx={{ fontWeight: 700 }}>
+                              {money(order.total)}
                             </Typography>
                           </Box>
-                        )}
-
-                        <Box sx={{ display: 'flex', justifyContent: 'space-between', mt: 1.5, pt: 1, borderTop: '1px solid', borderColor: 'divider' }}>
-                          <Typography variant="body2" sx={{ fontWeight: 600 }}>
-                            Subtotal pedido
-                          </Typography>
-                          <Typography variant="body2" sx={{ fontWeight: 700 }}>
-                            {money(order.total)}
-                          </Typography>
                         </Box>
-                      </Box>
-                    </motion.div>
+                      </motion.div>
                     );
                   })}
                 </AnimatePresence>
@@ -884,7 +884,7 @@ export default function StickyFooter({ table, tableSessionId }) {
             <Typography variant="subtitle2" sx={{ mb: 2, fontWeight: 600 }}>
               Método de pago
             </Typography>
-            
+
             {/* Primero: Tipo de pago (Presencial u Online) */}
             <Box sx={{ display: 'flex', gap: 1, mb: 2, flexDirection: { xs: 'column', sm: 'row' } }}>
               <Button
@@ -1026,8 +1026,8 @@ export default function StickyFooter({ table, tableSessionId }) {
               </Box>
             )}
 
-            {/* Formulario de tarjeta cuando se selecciona tarjeta */}
-            {payMethod === 'card' && (
+            {/* Formulario de tarjeta SOLO cuando se selecciona tarjeta ONLINE */}
+            {payType === 'online' && payMethod === 'card' && (
               <Box sx={{ mt: 2 }}>
                 <TextField
                   label="Número de tarjeta"
@@ -1063,6 +1063,15 @@ export default function StickyFooter({ table, tableSessionId }) {
                   value={card.name}
                   onChange={handleName}
                 />
+              </Box>
+            )}
+
+            {/* Mensaje para pago presencial con tarjeta */}
+            {payType === 'presential' && payMethod === 'card' && (
+              <Box sx={{ mt: 2, p: 2, bgcolor: 'info.lighter', borderRadius: 1, border: '1px solid', borderColor: 'info.light' }}>
+                <Typography variant="body2" color="info.main" align="center">
+                  Solicitá el posnet al mozo para realizar el pago con tarjeta en la mesa.
+                </Typography>
               </Box>
             )}
 
@@ -1107,9 +1116,10 @@ export default function StickyFooter({ table, tableSessionId }) {
             disabled={
               payLoading ||
               (orderDetails.length === 0 && accountTotal === 0) ||
-              (payMethod === 'card' && (!card.number || !card.expiry || !card.cvv || !card.name))
+              (payType === 'online' && payMethod === 'card' && (!card.number || !card.expiry || !card.cvv || !card.name))
             }
             sx={{
+              display: (payType === 'online' && payMethod === 'mp') ? 'none' : 'inline-flex',
               borderRadius: 2,
               textTransform: 'none',
               px: 4,

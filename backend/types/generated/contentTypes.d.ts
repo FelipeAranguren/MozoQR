@@ -592,7 +592,14 @@ export interface ApiPedidoPedido extends Struct.CollectionTypeSchema {
       'api::mesa-sesion.mesa-sesion'
     >;
     order_status: Schema.Attribute.Enumeration<
-      ['pending', 'preparing', 'served', 'paid']
+      ['pending', 'preparing', 'served', 'paid', 'cancelled']
+    > &
+      Schema.Attribute.DefaultTo<'pending'>;
+    payment_method: Schema.Attribute.Enumeration<
+      ['cash', 'card_present', 'qr', 'online']
+    >;
+    payment_status: Schema.Attribute.Enumeration<
+      ['pending', 'paid', 'refunded']
     > &
       Schema.Attribute.DefaultTo<'pending'>;
     publishedAt: Schema.Attribute.DateTime;
@@ -717,6 +724,7 @@ export interface ApiRestauranteRestaurante extends Struct.CollectionTypeSchema {
     createdBy: Schema.Attribute.Relation<'oneToOne', 'admin::user'> &
       Schema.Attribute.Private;
     cuenta_bancaria: Schema.Attribute.String;
+    is_demo: Schema.Attribute.Boolean & Schema.Attribute.DefaultTo<false>;
     locale: Schema.Attribute.String & Schema.Attribute.Private;
     localizations: Schema.Attribute.Relation<
       'oneToMany',
@@ -732,6 +740,7 @@ export interface ApiRestauranteRestaurante extends Struct.CollectionTypeSchema {
     mp_access_token: Schema.Attribute.Text & Schema.Attribute.Private;
     mp_public_key: Schema.Attribute.String & Schema.Attribute.Private;
     name: Schema.Attribute.String & Schema.Attribute.Required;
+    owner_email: Schema.Attribute.Email;
     pedidos: Schema.Attribute.Relation<'oneToMany', 'api::pedido.pedido'>;
     primaryColoraccentColor: Schema.Attribute.String;
     productos: Schema.Attribute.Relation<'oneToMany', 'api::producto.producto'>;

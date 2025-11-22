@@ -72,8 +72,8 @@ export async function fetchMenus(slug) {
       });
     });
     if (products.length) {
-      return { 
-        restaurantName: data?.data?.restaurant?.name || data?.data?.name || slug, 
+      return {
+        restaurantName: data?.data?.restaurant?.name || data?.data?.name || slug,
         products,
         categories: data?.data?.categories || []
       };
@@ -84,40 +84,87 @@ export async function fetchMenus(slug) {
 
   // 2) Fallback directo a Strapi (v4)
   try {
+    // ESTRATEGIA ROBUSTA:
+    // 1. Pedimos SOLO los productos con su categoría e imagen.
+    // 2. Ignoramos la relación directa 'categorias' del restaurante para evitar problemas de populate/permisos.
+    // 3. Reconstruimos SIEMPRE las categorías a partir de los productos.
+
     const qs =
-  `?filters[slug][$eq]=${encodeURIComponent(slug)}` +
-  `&publicationState=preview` +
-  `&populate[productos][fields][0]=id` +
-  `&populate[productos][fields][1]=name` +
-  `&populate[productos][fields][2]=price` +
-  `&populate[productos][fields][3]=description` +
-  `&populate[productos][populate][image][fields][0]=url` +
-  `&fields[0]=id&fields[1]=name`;
-
-
+      `?filters[slug][$eq]=${encodeURIComponent(slug)}` +
+      `&publicationState=preview` +
+      `&populate[productos][populate][0]=image` +
+      `&populate[productos][populate][1]=categoria` +
+      `&fields[0]=id&fields[1]=name`;
 
     const res = await http.get(`/restaurantes${qs}`);
     const restaurante = res?.data?.data?.[0];
-    const products =
-      (restaurante?.productos || []).map((p) => {
-        const fm = p?.image?.formats;
-        const rel = fm?.small?.url || fm?.thumbnail?.url || p?.image?.url || null;
-        const description =
-          p?.description ?? p?.attributes?.description ?? null;
-        return {
-          id: p.id,
-          name: p.name,
-          price: p.price,
-          image: buildMediaURL(rel),
-          description,
-        };
-      }) || [];
 
+    // Map products
+    const mapProduct = (p) => {
+      const fm = p?.image?.formats;
+      const rel = fm?.small?.url || fm?.thumbnail?.url || p?.image?.url || null;
+      const description = p?.description ?? p?.attributes?.description ?? null;
 
-    return { restaurantName: restaurante?.name || slug, products };
+      // Extract category info if available
+      const catData = p?.categoria?.data?.attributes || p?.categoria?.attributes || p?.categoria;
+      const categoryId = p?.categoria?.data?.id || p?.categoria?.id;
+      const categoryName = catData?.name;
+
+      return {
+        id: p.id,
+        name: p.name,
+        price: p.price,
+        image: buildMediaURL(rel),
+        description,
+        categoryId,
+        categoryName
+      };
+    };
+
+    const products = (restaurante?.productos || []).map(mapProduct) || [];
+
+    // RECONSTRUCCIÓN FORZADA DE CATEGORÍAS
+    // Agrupamos los productos por su nombre de categoría
+    const catMap = {};
+    const uncategorized = [];
+
+    products.forEach(p => {
+      if (p.categoryName) {
+        if (!catMap[p.categoryName]) {
+          catMap[p.categoryName] = {
+            id: p.categoryId || `temp-${p.categoryName}`,
+            name: p.categoryName,
+            slug: p.categoryName.toLowerCase().replace(/\s+/g, '-'),
+            productos: []
+          };
+        }
+        catMap[p.categoryName].productos.push(p);
+      } else {
+        uncategorized.push(p);
+      }
+    });
+
+    let categories = Object.values(catMap);
+
+    // Ordenar categorías alfabéticamente
+    categories.sort((a, b) => a.name.localeCompare(b.name));
+
+    // Opcional: Agregar "Sin Categoría" si hay productos sueltos
+    if (uncategorized.length > 0) {
+      categories.push({
+        id: 'uncategorized',
+        name: 'Otros',
+        slug: 'otros',
+        productos: uncategorized
+      });
+    }
+
+    console.log(`✅ Menú reconstruido: ${products.length} productos en ${categories.length} categorías.`);
+
+    return { restaurantName: restaurante?.name || slug, products, categories };
   } catch (err) {
     console.error('fetchMenus fallback error:', err?.response?.status, err?.response?.data || err?.message);
-    return { restaurantName: slug, products: [] };
+    return { restaurantName: slug, products: [], categories: [] };
   }
 }
 
@@ -141,11 +188,11 @@ export async function createOrder(slug, payload) {
   // Clave idempotente (solo si está habilitada por env para evitar CORS hasta configurar backend)
   const idemKey = IDEM_ON
     ? makeIdempotencyKey({
-        slug,
-        table: Number(table),
-        tableSessionId: tableSessionId || null,
-        items: safeItems.map(({ productId, qty, price, notes }) => ({ productId, qty, price, notes })),
-      })
+      slug,
+      table: Number(table),
+      tableSessionId: tableSessionId || null,
+      items: safeItems.map(({ productId, qty, price, notes }) => ({ productId, qty, price, notes })),
+    })
     : null;
 
   // ✅ namespaced endpoint: crea pedido + ítems y asocia a mesa_sesion
@@ -258,71 +305,65 @@ export async function fetchOrderDetails(slug, payload) {
     const params = new URLSearchParams();
     params.append('filters[restaurante][slug][$eq]', slug);
     params.append('filters[order_status][$ne]', 'paid');
+
+    // Revert deep filter to avoid 400 Bad Request
+    // We will filter in memory as before
+
     params.append('fields[0]', 'id');
     params.append('fields[1]', 'order_status');
     params.append('fields[2]', 'total');
     params.append('fields[3]', 'customerNotes');
     params.append('fields[4]', 'createdAt');
+
+    // Populate for filtering
     params.append('populate[mesa_sesion][fields][0]', 'id');
     params.append('populate[mesa_sesion][fields][1]', 'code');
     params.append('populate[mesa_sesion][populate][mesa][fields][0]', 'number');
-    params.append('populate[items][fields][0]', 'id');
-    params.append('populate[items][fields][1]', 'quantity');
-    params.append('populate[items][fields][2]', 'UnitPrice');
-    params.append('populate[items][fields][3]', 'totalPrice');
-    params.append('populate[items][fields][4]', 'notes');
-    params.append('populate[items][populate][product][fields][0]', 'id');
-    params.append('populate[items][populate][product][fields][1]', 'name');
-    params.append('populate[items][populate][product][fields][2]', 'price');
+
+    // Populate items and their products - Simplified to avoid 400
+    params.append('populate[items][populate][product][fields][0]', 'name');
+    params.append('populate[items][populate][product][fields][1]', 'price');
+
     params.append('sort[0]', 'createdAt:asc');
     params.append('pagination[pageSize]', '100');
 
     const { data } = await http.get(`/pedidos?${params.toString()}`);
     const rows = data?.data || [];
 
-    // Filtrar por mesa y opcionalmente por sesión
+    // Filtrar por mesa (ignoramos sesión para mostrar todo lo acumulado de la mesa)
     const ordersForTable = rows.filter((row) => {
       const a = row.attributes || row;
       const ses = a.mesa_sesion?.data || a.mesa_sesion;
       const mesa = ses?.attributes?.mesa?.data || ses?.mesa;
       const num = mesa?.attributes?.number ?? mesa?.number;
+
       const matchesTable = Number(num) === Number(table);
-      
-      if (tableSessionId) {
-        const sesCode = ses?.attributes?.code ?? ses?.code;
-        return matchesTable && sesCode === tableSessionId;
-      }
-      
       return matchesTable;
     });
+
+    console.log(`🔍 fetchOrderDetails filtered for table ${table}: ${ordersForTable.length}`);
 
     // Formatear pedidos con items
     return ordersForTable.map((row) => {
       const a = row.attributes || row;
-      console.log('Processing order:', { id: row.id, raw: row, attributes: a });
-      
-      // Manejar items de diferentes formas posibles
+
       let itemsRaw = a.items?.data || a.items || [];
       if (!Array.isArray(itemsRaw)) {
         itemsRaw = [];
       }
-      
-      console.log('Items raw:', itemsRaw.length, itemsRaw);
-      
+
       const items = itemsRaw.map((item, idx) => {
         const itemAttr = item.attributes || item;
         const product = itemAttr.product?.data || itemAttr.product || item.product?.data || item.product;
         const productAttr = product?.attributes || product || {};
-        
+
         const itemId = item.id || item.documentId || `item-${idx}`;
         const productName = productAttr?.name || itemAttr.product?.name || item.product?.name || 'Producto';
         const quantity = Number(itemAttr.quantity || itemAttr.qty || item.quantity || item.qty || 1);
         const unitPrice = Number(itemAttr.UnitPrice || itemAttr.unitPrice || itemAttr.price || productAttr?.price || 0);
         const totalPrice = Number(itemAttr.totalPrice || itemAttr.total_price || item.totalPrice || unitPrice * quantity);
         const notes = itemAttr.notes || item.notes || null;
-        
-        console.log('Item processed:', { itemId, productName, quantity, unitPrice, totalPrice, raw: item });
-        
+
         return {
           id: itemId,
           productId: product?.id || product?.documentId || productAttr?.id,
@@ -334,8 +375,6 @@ export async function fetchOrderDetails(slug, payload) {
         };
       });
 
-      console.log('Final items array:', items);
-
       return {
         id: row.id || row.documentId,
         order_status: a.order_status,
@@ -346,7 +385,7 @@ export async function fetchOrderDetails(slug, payload) {
       };
     });
   } catch (err) {
-    console.warn('fetchOrderDetails error:', err?.response?.data || err);
+    console.error('fetchOrderDetails error:', err?.response?.status, err?.response?.data || err?.message);
     return [];
   }
 }

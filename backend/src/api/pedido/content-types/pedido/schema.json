@@ -18,7 +18,8 @@
         "pending",
         "preparing",
         "served",
-        "paid"
+        "paid",
+        "cancelled"
       ]
     },
     "items": {
@@ -51,6 +52,24 @@
       "relation": "manyToOne",
       "target": "api::mesa-sesion.mesa-sesion",
       "inversedBy": "pedidos"
+    },
+    "payment_method": {
+      "type": "enumeration",
+      "enum": [
+        "cash",
+        "card_present",
+        "qr",
+        "online"
+      ]
+    },
+    "payment_status": {
+      "type": "enumeration",
+      "default": "pending",
+      "enum": [
+        "pending",
+        "paid",
+        "refunded"
+      ]
     }
   }
 }

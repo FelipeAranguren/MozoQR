@@ -28,6 +28,7 @@ import PlanManagement from './pages/owner/plan/PlanManagement';
 import AdvancedPanel from './pages/owner/advanced/AdvancedPanel';
 import AIPanel from './pages/owner/ai/AIPanel';
 import AdminDashboard from './pages/AdminDashboard';
+import GlobalAdmin from './pages/admin/GlobalAdmin';
 import DemoDashboard from './pages/DemoDashboard';
 
 // Redirige rutas viejas /restaurantes/:slug -> /:slug/menu?t=1
@@ -56,17 +57,18 @@ export default function App() {
           <Route path="/:slug" element={<RestaurantMenu />} />
           <Route path="/:slug/menu" element={<RestaurantMenu />} />
           <Route path="/demo-dashboard" element={<DemoDashboard />} />
-          
+
           {/* Staff autenticado */}
           <Route path="/staff/:slug/orders" element={<OwnerRouteGuard><Mostrador /></OwnerRouteGuard>} />
           <Route path="/staff/:slug/products" element={<OwnerRouteGuard><CargarProductos /></OwnerRouteGuard>} />
-          
+
           {/* Owner autenticado */}
           <Route path="/owner" element={<AuthGuard><OwnerDashboardList /></AuthGuard>} />
-          
+
           {/* Admin Dashboard - Dashboard de administración */}
           <Route path="/admin/dashboard" element={<AuthGuard><AdminDashboard /></AuthGuard>} />
-          
+          <Route path="/admin-global" element={<AuthGuard><GlobalAdmin /></AuthGuard>} />
+
           {/* Rutas del owner con layout */}
           <Route path="/owner/:slug" element={<OwnerRouteGuard><OwnerLayout /></OwnerRouteGuard>}>
             <Route path="dashboard" element={<OwnerDashboard />} />
@@ -77,17 +79,17 @@ export default function App() {
             <Route path="ai" element={<AIPanel />} />
             <Route path="advanced" element={<AdvancedPanel />} />
           </Route>
-          
+
           {/* Rutas legacy para compatibilidad */}
           <Route path="/restaurantes" element={<Restaurants />} />
           <Route path="/restaurantes/:slug" element={<LegacyRestaurantesRoute />} />
           <Route path="/mostrador/:slug" element={<OwnerRouteGuard><Mostrador /></OwnerRouteGuard>} />
           <Route path="/cargarproductos/:slug" element={<OwnerRouteGuard><CargarProductos /></OwnerRouteGuard>} />
-          
+
           {/* Autenticación */}
           <Route path="/login" element={<Login />} />
           <Route path="/register" element={<Register />} />
-          
+
           {/* Páginas de pago */}
           <Route path="/connect/google/redirect" element={<GoogleRedirect />} />
           <Route path="/pago/success" element={<PagoSuccess />} />
