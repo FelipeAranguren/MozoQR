@@ -1,5 +1,5 @@
 // src/pages/RestaurantMenu.jsx
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useMemo } from 'react';
 import { useParams } from 'react-router-dom';
 import {
   Box,
@@ -11,8 +11,16 @@ import {
   CardContent,
   CardActions,
   Button,
+  TextField,
+  InputAdornment,
+  Chip,
+  Skeleton,
+  Fade,
+  Grow,
 } from '@mui/material';
+import SearchIcon from '@mui/icons-material/Search';
 import { alpha } from '@mui/material/styles';
+import { motion, AnimatePresence } from 'framer-motion';
 
 import { useCart } from '../context/CartContext';
 import { fetchMenus } from '../api/tenant';
@@ -62,8 +70,34 @@ export default function RestaurantMenu() {
   const [nombreRestaurante, setNombreRestaurante] = useState('');
   const [categorias, setCategorias] = useState([]);
   const [categoriaSeleccionada, setCategoriaSeleccionada] = useState(null);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [loading, setLoading] = useState(true);
 
   const { items, addItem, removeItem } = useCart();
+
+  // Filtrar productos según búsqueda
+  const productosFiltrados = useMemo(() => {
+    if (!searchQuery.trim()) return productos || [];
+    const query = searchQuery.toLowerCase().trim();
+    // Si hay búsqueda, buscar en todos los productos de todas las categorías
+    const todosLosProductos = categorias.flatMap((cat) => cat.productos || []);
+    return todosLosProductos.filter(
+      (p) =>
+        p.nombre.toLowerCase().includes(query) ||
+        p.descripcion?.toLowerCase().includes(query)
+    );
+  }, [productos, searchQuery, categorias]);
+
+  // Contar items en carrito por categoría
+  const getCategoryItemCount = (categoriaId) => {
+    if (!categoriaId) return 0;
+    const categoria = categorias.find((c) => c.id === categoriaId);
+    if (!categoria) return 0;
+    return categoria.productos.reduce((sum, prod) => {
+      const item = items.find((i) => i.id === prod.id);
+      return sum + (item?.qty || 0);
+    }, 0);
+  };
 
   // Función para obtener categorías desde Strapi
   const fetchCategorias = async (restaurantSlug) => {
@@ -72,6 +106,7 @@ export default function RestaurantMenu() {
       const { data } = await http.get(`/restaurants/${restaurantSlug}/menus`);
       console.log('✅ Response from /restaurants/menus:', data);
       
+      // El endpoint devuelve: { data: { restaurant: {...}, categories: [...] } }
       const categories = data?.data?.categories || [];
       console.log('Categories found:', categories.length, categories);
       
@@ -82,6 +117,7 @@ export default function RestaurantMenu() {
       
       // Mapear categorías con sus productos
       const categoriasMapeadas = categories.map((cat) => {
+        // Los productos ya vienen en cat.productos (no cat.attributes.productos)
         const productosCat = (cat.productos || []).map((p) => {
           const baseApi = (import.meta.env?.VITE_API_URL || '').replace('/api', '');
           // El endpoint namespaced ya devuelve la URL completa de la imagen si el plan es PRO
@@ -106,11 +142,12 @@ export default function RestaurantMenu() {
           id: cat.id,
           name: cat.name,
           slug: cat.slug,
-          productos: productosCat,
+          productos: productosCat || [],
         };
-      });
+      }); // No filtrar - mostrar todas las categorías, incluso si no tienen productos
 
       console.log('Mapped categories:', categoriasMapeadas);
+      console.log('Categories with products:', categoriasMapeadas.map(c => ({ name: c.name, count: c.productos.length })));
       return categoriasMapeadas;
       } catch (err) {
         console.error('❌ Error obteniendo categorías desde endpoint namespaced:', err);
@@ -118,20 +155,13 @@ export default function RestaurantMenu() {
         console.error('Response:', err?.response?.data);
         console.error('Message:', err?.message);
         
-        // No usamos fallback directo a /categorias porque requiere permisos
-        // El endpoint namespaced es el único que debería funcionar
-        console.warn('⚠️ El endpoint /restaurants/:slug/menus debería ser público. Verifica:');
-        console.warn('1. Que el restaurante con slug "' + restaurantSlug + '" exista y esté publicado');
-        console.warn('2. Que las categorías estén asociadas a ese restaurante');
-        console.warn('3. Que las categorías estén publicadas (publishedAt no null)');
-        console.warn('4. URL del endpoint:', `${http.defaults.baseURL}/restaurants/${restaurantSlug}/menus`);
-        
         return [];
       }
   };
 
   useEffect(() => {
     async function loadMenu() {
+      setLoading(true);
       try {
         // Obtener categorías con productos
         const categoriasData = await fetchCategorias(slug);
@@ -162,16 +192,17 @@ export default function RestaurantMenu() {
           }
         }
 
-        // Si hay categorías, seleccionar la primera automáticamente
+        // Si hay categorías, mostrar todos los productos inicialmente
         if (categoriasData.length > 0) {
-          const primeraCategoria = categoriasData[0];
-          setCategoriaSeleccionada(primeraCategoria.id);
-          
-          // Establecer productos de la primera categoría
-          const productosPrimera = primeraCategoria.productos || [];
-          setProductosTodos(productosPrimera);
-          setProductos(productosPrimera);
-          console.log('Primera categoría seleccionada:', primeraCategoria.name, 'con', productosPrimera.length, 'productos');
+          // Mostrar todos los productos de todas las categorías inicialmente
+          const todosLosProductos = categoriasData.flatMap((cat) => cat.productos || []);
+          setProductosTodos(todosLosProductos);
+          setProductos(todosLosProductos);
+          setCategoriaSeleccionada(null); // Ninguna categoría seleccionada inicialmente
+          console.log('✅ Categorías cargadas:', categoriasData.length, 'Total productos:', todosLosProductos.length);
+          categoriasData.forEach((cat) => {
+            console.log(`  - ${cat.name}: ${cat.productos?.length || 0} productos`);
+          });
         } else {
           // Fallback: usar el método anterior si no hay categorías
           console.log('No hay categorías, usando fallback de fetchMenus');
@@ -240,6 +271,8 @@ export default function RestaurantMenu() {
           setProductos([]);
           setProductosTodos([]);
         }
+      } finally {
+        setLoading(false);
       }
     }
 
@@ -249,47 +282,113 @@ export default function RestaurantMenu() {
   // Manejar cambio de categoría
   const handleCategoriaClick = (categoriaId) => {
     setCategoriaSeleccionada(categoriaId);
+    setSearchQuery(''); // Limpiar búsqueda al cambiar categoría
     const categoria = categorias.find((c) => c.id === categoriaId);
     if (categoria) {
       setProductos(categoria.productos || []);
+      // Scroll suave a la sección de productos
+      setTimeout(() => {
+        const productosSection = document.getElementById('productos-section');
+        if (productosSection) {
+          productosSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }
+      }, 100);
     }
   };
 
-  // --------- Estados de carga / vacío
-  if (productos === null) {
-    return (
-      <Box sx={{ minHeight: '60vh', display: 'grid', placeItems: 'center', width: '100%' }}>
-        <CircularProgress />
+  // Componente de skeleton loader para productos
+  const ProductSkeleton = () => (
+    <Card
+      elevation={0}
+      sx={{
+        display: 'flex',
+        gap: 1.25,
+        p: 1.25,
+        borderRadius: 3,
+        border: '1px solid',
+        borderColor: 'divider',
+      }}
+    >
+      <Skeleton variant="rectangular" width={92} height={92} sx={{ borderRadius: 2 }} />
+      <Box sx={{ flex: 1, minWidth: 0 }}>
+        <Skeleton variant="text" width="60%" height={24} />
+        <Skeleton variant="text" width="40%" height={20} sx={{ mt: 0.5 }} />
+        <Skeleton variant="text" width="100%" height={16} sx={{ mt: 1 }} />
+        <Skeleton variant="text" width="80%" height={16} />
       </Box>
+      <Box sx={{ display: 'flex', alignItems: 'center' }}>
+        <Skeleton variant="rectangular" width={96} height={36} sx={{ borderRadius: 1 }} />
+      </Box>
+    </Card>
+  );
+
+  // --------- Estados de carga / vacío
+  if (loading && productos === null) {
+    return (
+      <Container
+        component="main"
+        maxWidth="sm"
+        disableGutters
+        sx={{
+          px: { xs: 1.25, sm: 2 },
+          py: { xs: 3, sm: 4 },
+        }}
+      >
+        <Box sx={{ textAlign: 'center', mb: 4 }}>
+          <Skeleton variant="text" width="60%" height={40} sx={{ mx: 'auto', mb: 2 }} />
+          <Skeleton variant="text" width="40%" height={20} sx={{ mx: 'auto' }} />
+        </Box>
+        <Box sx={{ display: 'flex', gap: 1, mb: 3, overflowX: 'auto', pb: 1 }}>
+          {[1, 2, 3, 4].map((i) => (
+            <Skeleton key={i} variant="rounded" width={100} height={36} sx={{ flexShrink: 0 }} />
+          ))}
+        </Box>
+        <Box sx={{ display: 'grid', gap: 1.75, mt: 3 }}>
+          {[1, 2, 3, 4].map((i) => (
+            <ProductSkeleton key={i} />
+          ))}
+        </Box>
+      </Container>
     );
   }
 
-  if (productos.length === 0) {
+  if (!loading && productos !== null && productos.length === 0) {
     return (
-      <Box sx={{ textAlign: 'center', mt: 8, px: 2, width: '100%' }}>
-        <Typography variant="h6">
+      <Container
+        component="main"
+        maxWidth="sm"
+        disableGutters
+        sx={{
+          px: { xs: 1.25, sm: 2 },
+          py: { xs: 3, sm: 4 },
+          textAlign: 'center',
+          mt: 8,
+        }}
+      >
+        <Typography variant="h6" color="text.secondary">
           No se encontró el restaurante o no tiene productos disponibles.
         </Typography>
-      </Box>
+        <StickyFooter table={table} tableSessionId={tableSessionId} />
+      </Container>
     );
   }
 
   // --------- UI principal
   return (
-    <Container
-      component="main"
-      maxWidth="sm"
-      disableGutters
-      sx={{
-        px: { xs: 1.25, sm: 2 },
-        py: { xs: 3, sm: 4 },
-        position: 'relative',
-        borderRadius: 0,
-        bgcolor: 'transparent',
-        boxShadow: 'none',
-        '&::before': { display: 'none' }, // sin halo ni degradado
-      }}
-    >
+    <Box sx={{ width: '100%', position: 'relative', minHeight: '100vh' }}>
+      <Container
+        component="main"
+        maxWidth="sm"
+        disableGutters
+        sx={{
+          px: { xs: 1.25, sm: 2 },
+          py: { xs: 3, sm: 4 },
+          position: 'relative',
+          borderRadius: 0,
+          bgcolor: 'transparent',
+          boxShadow: 'none',
+        }}
+      >
       {/* Header */}
       <Box sx={{ textAlign: 'center' }}>
         <Typography
@@ -348,199 +447,464 @@ export default function RestaurantMenu() {
         </Typography>
       </Box>
 
-      {/* Botones de categorías */}
-      {categorias.length > 0 ? (
-        <Box
+      {/* Barra de búsqueda */}
+      <Box sx={{ mt: 3, mb: 2 }}>
+        <TextField
+          fullWidth
+          placeholder="Buscar productos..."
+          value={searchQuery}
+          onChange={(e) => {
+            setSearchQuery(e.target.value);
+            if (e.target.value) {
+              // Si hay búsqueda, mostrar todos los productos
+              const todosLosProductos = categorias.flatMap((cat) => cat.productos || []);
+              setProductosTodos(todosLosProductos);
+              setProductos(todosLosProductos);
+            } else {
+              // Si se limpia la búsqueda, volver a la categoría seleccionada
+              if (categoriaSeleccionada) {
+                const categoria = categorias.find((c) => c.id === categoriaSeleccionada);
+                if (categoria) {
+                  setProductos(categoria.productos || []);
+                }
+              } else {
+                // Mostrar todos si no hay categoría seleccionada
+                const todosLosProductos = categorias.flatMap((cat) => cat.productos || []);
+                setProductosTodos(todosLosProductos);
+                setProductos(todosLosProductos);
+              }
+            }
+          }}
+          InputProps={{
+            startAdornment: (
+              <InputAdornment position="start">
+                <SearchIcon sx={{ color: 'text.secondary' }} />
+              </InputAdornment>
+            ),
+          }}
           sx={{
-            display: 'flex',
-            gap: 1,
-            flexWrap: 'wrap',
-            justifyContent: 'center',
-            mt: 3,
-            mb: 2,
-            px: { xs: 1, sm: 0 },
+            '& .MuiOutlinedInput-root': {
+              borderRadius: 3,
+              backgroundColor: (theme) =>
+                theme.palette.mode === 'light' ? 'rgba(0,0,0,0.02)' : 'rgba(255,255,255,0.05)',
+              '&:hover': {
+                backgroundColor: (theme) =>
+                  theme.palette.mode === 'light' ? 'rgba(0,0,0,0.04)' : 'rgba(255,255,255,0.08)',
+              },
+              '&.Mui-focused': {
+                backgroundColor: (theme) =>
+                  theme.palette.mode === 'light' ? 'rgba(0,0,0,0.04)' : 'rgba(255,255,255,0.08)',
+              },
+            },
+          }}
+        />
+      </Box>
+
+      {/* Filtro de categorías - Chips similares a ProductsManagement - Siempre visible */}
+      {categorias.length > 0 && (
+        <Box 
+          sx={{ 
+            mb: 3, 
+            mt: -1,
+            display: 'flex', 
+            gap: 1, 
+            flexWrap: 'wrap', 
+            overflowX: 'auto', 
+            pb: 1,
+            px: { xs: 0.5, sm: 0 },
+            // Asegurar visibilidad
+            minHeight: 40,
+            alignItems: 'center',
           }}
         >
-          {categorias.map((categoria) => (
-            <Button
-              key={categoria.id}
-              onClick={() => handleCategoriaClick(categoria.id)}
-              variant={categoriaSeleccionada === categoria.id ? 'contained' : 'outlined'}
-              sx={{
-                minWidth: 'auto',
-                px: 2,
-                py: 0.75,
-                borderRadius: 3,
-                textTransform: 'none',
-                fontWeight: categoriaSeleccionada === categoria.id ? 600 : 500,
-                fontSize: { xs: '0.875rem', sm: '0.9375rem' },
-                boxShadow: categoriaSeleccionada === categoria.id ? 2 : 0,
-                '&:hover': {
-                  boxShadow: categoriaSeleccionada === categoria.id ? 4 : 1,
-                },
-                transition: 'all 0.2s ease-in-out',
+          <Chip
+            label="Todas"
+            onClick={() => {
+              setSearchQuery(''); // Limpiar búsqueda
+              const todosLosProductos = categorias.flatMap((cat) => cat.productos || []);
+              setProductosTodos(todosLosProductos);
+              setProductos(todosLosProductos);
+              setCategoriaSeleccionada(null);
+            }}
+            color={categoriaSeleccionada === null ? 'primary' : 'default'}
+            sx={{
+              bgcolor: categoriaSeleccionada === null ? 'primary.main' : 'background.paper',
+              color: categoriaSeleccionada === null ? 'white' : 'text.primary',
+              fontWeight: categoriaSeleccionada === null ? 600 : 400,
+              cursor: 'pointer',
+              '&:hover': {
+                bgcolor: categoriaSeleccionada === null ? 'primary.dark' : 'action.hover',
+              },
+            }}
+          />
+          {categorias.map((cat) => (
+            <Chip
+              key={cat.id}
+              label={`${cat.name} ${cat.productos && cat.productos.length > 0 ? `(${cat.productos.length})` : ''}`}
+              onClick={() => {
+                setCategoriaSeleccionada(cat.id);
+                setSearchQuery(''); // Limpiar búsqueda al cambiar categoría
+                setProductos(cat.productos || []);
+                setTimeout(() => {
+                  const productosSection = document.getElementById('productos-section');
+                  if (productosSection) {
+                    productosSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                  }
+                }, 100);
               }}
-            >
-              {categoria.name}
-            </Button>
+              color={categoriaSeleccionada === cat.id ? 'primary' : 'default'}
+              sx={{
+                bgcolor: categoriaSeleccionada === cat.id ? 'primary.main' : 'background.paper',
+                color: categoriaSeleccionada === cat.id ? 'white' : 'text.primary',
+                fontWeight: categoriaSeleccionada === cat.id ? 600 : 400,
+                cursor: 'pointer',
+                '&:hover': {
+                  bgcolor: categoriaSeleccionada === cat.id ? 'primary.dark' : 'action.hover',
+                },
+              }}
+            />
           ))}
         </Box>
-      ) : (
-        <Box sx={{ mt: 2, textAlign: 'center' }}>
+      )}
+
+      {/* Navegación de categorías - Tabs horizontales deslizables (Opcional - duplicado con chips arriba) */}
+      {false && categorias.length > 0 && !searchQuery && categoriaSeleccionada && (
+        <Box
+          sx={{
+            mt: 2,
+            mb: 3,
+            position: 'sticky',
+            top: 0,
+            zIndex: 10,
+            backgroundColor: 'background.default',
+            pb: 2,
+            pt: 1,
+          }}
+        >
+          <Box
+            sx={{
+              display: 'flex',
+              gap: 1,
+              overflowX: 'auto',
+              overflowY: 'hidden',
+              scrollbarWidth: 'thin',
+              '&::-webkit-scrollbar': {
+                height: 6,
+              },
+              '&::-webkit-scrollbar-track': {
+                backgroundColor: 'transparent',
+              },
+              '&::-webkit-scrollbar-thumb': {
+                backgroundColor: 'rgba(0,0,0,0.2)',
+                borderRadius: 3,
+              },
+              px: { xs: 0.5, sm: 0 },
+              pb: 1,
+            }}
+          >
+            {categorias.map((categoria) => {
+              const itemCount = getCategoryItemCount(categoria.id);
+              const isSelected = categoriaSeleccionada === categoria.id;
+              return (
+                <motion.div
+                  key={categoria.id}
+                  whileHover={{ scale: 1.02 }}
+                  whileTap={{ scale: 0.98 }}
+                  style={{ flexShrink: 0 }}
+                >
+                  <Button
+                    onClick={() => handleCategoriaClick(categoria.id)}
+                    variant={isSelected ? 'contained' : 'outlined'}
+                    sx={{
+                      minWidth: 'auto',
+                      px: 2.5,
+                      py: 1,
+                      borderRadius: 4,
+                      textTransform: 'none',
+                      fontWeight: isSelected ? 600 : 500,
+                      fontSize: '0.9375rem',
+                      boxShadow: isSelected ? 3 : 0,
+                      position: 'relative',
+                      whiteSpace: 'nowrap',
+                      '&:hover': {
+                        boxShadow: isSelected ? 4 : 2,
+                      },
+                      transition: 'all 0.2s ease-in-out',
+                    }}
+                  >
+                    {categoria.name}
+                    {itemCount > 0 && (
+                      <Chip
+                        label={itemCount}
+                        size="small"
+                        sx={{
+                          ml: 1,
+                          height: 20,
+                          minWidth: 20,
+                          fontSize: '0.7rem',
+                          fontWeight: 700,
+                          backgroundColor: isSelected ? 'rgba(255,255,255,0.3)' : 'primary.main',
+                          color: isSelected ? 'inherit' : 'white',
+                        }}
+                      />
+                    )}
+                  </Button>
+                </motion.div>
+              );
+            })}
+          </Box>
+        </Box>
+      )}
+
+      {/* Indicador de resultados de búsqueda */}
+      {searchQuery && (
+        <Box sx={{ mb: 2, mt: -1 }}>
           <Typography variant="body2" color="text.secondary">
-            No hay categorías disponibles
+            {productosFiltrados.length === 0
+              ? 'No se encontraron productos'
+              : `${productosFiltrados.length} producto${productosFiltrados.length !== 1 ? 's' : ''} encontrado${productosFiltrados.length !== 1 ? 's' : ''}`}
           </Typography>
         </Box>
       )}
 
       {/* Lista de productos */}
       <Box
+        id="productos-section"
         sx={{
           display: 'grid',
-          gap: { xs: 1.25, sm: 1.75 },
+          gap: { xs: 1.5, sm: 2 },
           width: '100%',
-          mt: { xs: 2.5, sm: 3 },
+          mt: searchQuery ? 2 : 0,
           overflowX: 'hidden',
+          px: { xs: 0, sm: 0.5 }, // Padding lateral para evitar que el sombreado se corte
         }}
       >
-        {productos.map((plato) => {
-          const qty = items.find((i) => i.id === plato.id)?.qty || 0;
-          return (
-            <Card
-              key={plato.id}
-              elevation={0}
-              sx={(theme) => ({
-                position: 'relative',
-                display: 'flex',
-                alignItems: 'stretch',
-                gap: { xs: 1, sm: 1.25 },
-                p: { xs: 1, sm: 1.25 },
-                borderRadius: 3,
-                background:
-                  theme.palette.mode === 'light'
-                    ? `linear-gradient(180deg, ${theme.palette.common.white} 0%, ${alpha(
-                        theme.palette.common.white,
-                        0.94
-                      )} 100%)`
-                    : `linear-gradient(180deg, ${alpha('#1e1e1e', 1)} 0%, ${alpha(
-                        '#1e1e1e',
-                        0.92
-                      )} 100%)`,
-                border: `1px solid ${alpha(theme.palette.common.black, 0.06)}`,
-                boxShadow:
-                  theme.palette.mode === 'light'
-                    ? '0 6px 24px rgba(0,0,0,0.06), 0 1px 0 rgba(0,0,0,0.02)'
-                    : '0 8px 28px rgba(0,0,0,0.35)',
-                flexDirection: 'row',
-                '&::before': {
-                  content: '""',
-                  position: 'absolute',
-                  inset: -2,
-                  borderRadius: 'inherit',
-                  pointerEvents: 'none',
-                  background:
-                    theme.palette.mode === 'light'
-                      ? `radial-gradient(120% 100% at 50% -10%, ${alpha(
-                          theme.palette.primary.main,
-                          0.06
-                        )} 0%, rgba(0,0,0,0) 60%)`
-                      : `radial-gradient(120% 100% at 50% -10%, ${alpha(
-                          theme.palette.primary.light,
-                          0.12
-                        )} 0%, rgba(0,0,0,0) 60%)`,
-                },
-              })}
+        <AnimatePresence mode="wait">
+          {productosFiltrados.length === 0 && searchQuery ? (
+            <motion.div
+              key="empty"
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0 }}
             >
-              {/* Imagen */}
               <Box
                 sx={{
-                  width: { xs: 76, sm: 92 },
-                  flexShrink: 0,
-                  borderRadius: 2,
-                  overflow: 'hidden',
+                  textAlign: 'center',
+                  py: 8,
+                  px: 2,
                 }}
               >
-                <CardMedia
-                  component="img"
-                  image={plato.imagen}
-                  alt={plato.nombre}
-                  loading="lazy"
-                  sx={{
-                    width: '100%',
-                    height: '100%',
-                    aspectRatio: '1 / 1',
-                    objectFit: 'cover',
-                    display: 'block',
-                  }}
-                />
-              </Box>
-
-              {/* Texto */}
-              <CardContent sx={{ p: 0, flex: 1, minWidth: 0 }}>
-                <Box
-                  sx={{
-                    display: 'flex',
-                    alignItems: 'baseline',
-                    gap: 0.75,
-                    flexWrap: 'wrap',
-                    mb: 0.5,
-                    minWidth: 0,
-                  }}
-                >
-                  <Typography
-                    variant="subtitle1"
-                    noWrap
-                    sx={{ fontWeight: 700, fontSize: { xs: 16, sm: 18 }, minWidth: 0 }}
-                    title={plato.nombre}
-                  >
-                    {plato.nombre}
-                  </Typography>
-                  <Typography variant="body2" sx={{ color: 'text.secondary' }}>
-                    · {money(plato.precio)}
-                  </Typography>
-                </Box>
-
-                <Box sx={{ height: 2, width: 36, bgcolor: 'divider', borderRadius: 1, mb: 0.5 }} />
-
-                <Typography
-                  variant="body2"
-                  sx={{
-                    color: 'text.secondary',
-                    display: '-webkit-box',
-                    WebkitLineClamp: 2,
-                    WebkitBoxOrient: 'vertical',
-                    overflow: 'hidden',
-                  }}
-                  title={plato.descripcion}
-                >
-                  {plato.descripcion || ''}
+                <Typography variant="h6" color="text.secondary" gutterBottom>
+                  No se encontraron productos
                 </Typography>
-              </CardContent>
+                <Typography variant="body2" color="text.secondary">
+                  Intenta con otros términos de búsqueda
+                </Typography>
+              </Box>
+            </motion.div>
+          ) : (
+            productosFiltrados.map((plato, index) => {
+              const qty = items.find((i) => i.id === plato.id)?.qty || 0;
+              return (
+                <motion.div
+                  key={plato.id}
+                  initial={{ opacity: 0, y: 20 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, scale: 0.9 }}
+                  transition={{ duration: 0.3, delay: index * 0.05 }}
+                  whileHover={{ scale: 1.01 }}
+                  style={{ originX: 0.5 }}
+                >
+                  <Card
+                    elevation={0}
+                    sx={(theme) => ({
+                      position: 'relative',
+                      display: 'flex',
+                      alignItems: 'stretch',
+                      gap: { xs: 1, sm: 1.25 },
+                      p: { xs: 1.25, sm: 1.5 },
+                      borderRadius: 4,
+                      mx: { xs: 0, sm: 0 }, // Margen horizontal para que el sombreado no se corte
+                      background:
+                        theme.palette.mode === 'light'
+                          ? `linear-gradient(180deg, ${theme.palette.common.white} 0%, ${alpha(
+                              theme.palette.common.white,
+                              0.98
+                            )} 100%)`
+                          : `linear-gradient(180deg, ${alpha('#1e1e1e', 1)} 0%, ${alpha(
+                              '#1e1e1e',
+                              0.95
+                            )} 100%)`,
+                      border: `1px solid ${alpha(theme.palette.common.black, qty > 0 ? 0.12 : 0.06)}`,
+                      boxShadow:
+                        qty > 0
+                          ? theme.palette.mode === 'light'
+                            ? '0 8px 32px rgba(0,0,0,0.08), 0 2px 0 rgba(0,0,0,0.03)'
+                            : '0 8px 32px rgba(0,0,0,0.4)'
+                          : theme.palette.mode === 'light'
+                          ? '0 4px 20px rgba(0,0,0,0.04), 0 1px 0 rgba(0,0,0,0.02)'
+                          : '0 6px 24px rgba(0,0,0,0.3)',
+                      flexDirection: 'row',
+                      transition: 'all 0.3s ease',
+                      overflow: 'hidden', // Evitar que el sombreado se corte
+                      '&:hover': {
+                        borderColor: alpha(theme.palette.primary.main, 0.3),
+                        boxShadow:
+                          theme.palette.mode === 'light'
+                            ? '0 12px 40px rgba(0,0,0,0.1), 0 2px 0 rgba(0,0,0,0.04)'
+                            : '0 12px 40px rgba(0,0,0,0.5)',
+                      },
+                    })}
+                  >
+                    {/* Imagen */}
+                    <Box
+                      sx={{
+                        width: { xs: 90, sm: 110 },
+                        flexShrink: 0,
+                        borderRadius: 2.5,
+                        overflow: 'hidden',
+                        position: 'relative',
+                        boxShadow: '0 2px 8px rgba(0,0,0,0.1)',
+                      }}
+                    >
+                      <CardMedia
+                        component="img"
+                        image={plato.imagen}
+                        alt={plato.nombre}
+                        loading="lazy"
+                        sx={{
+                          width: '100%',
+                          height: '100%',
+                          aspectRatio: '1 / 1',
+                          objectFit: 'cover',
+                          display: 'block',
+                          transition: 'transform 0.3s ease',
+                          '&:hover': {
+                            transform: 'scale(1.05)',
+                          },
+                        }}
+                      />
+                      {qty > 0 && (
+                        <Chip
+                          label={qty}
+                          size="small"
+                          sx={{
+                            position: 'absolute',
+                            top: 8,
+                            right: 8,
+                            backgroundColor: 'primary.main',
+                            color: 'white',
+                            fontWeight: 700,
+                            height: 24,
+                            minWidth: 24,
+                            fontSize: '0.75rem',
+                            boxShadow: '0 2px 8px rgba(0,0,0,0.2)',
+                          }}
+                        />
+                      )}
+                    </Box>
 
-              {/* Stepper */}
-              <CardActions
-                sx={{
-                  p: 0,
-                  ml: { xs: 0.5, sm: 1 },
-                  flexDirection: 'column',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  gap: 0.5,
-                  flexShrink: 0,
-                  minWidth: { xs: 80, sm: 96 },
-                }}
-              >
-                <QtyStepper
-                  value={qty}
-                  onAdd={() =>
-                    addItem({ id: plato.id, nombre: plato.nombre, precio: plato.precio })
-                  }
-                  onSub={() => removeItem(plato.id)}
-                />
-              </CardActions>
-            </Card>
-          );
-        })}
+                    {/* Texto */}
+                    <CardContent sx={{ p: 0, flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column' }}>
+                      <Box
+                        sx={{
+                          display: 'flex',
+                          alignItems: 'baseline',
+                          gap: 1,
+                          flexWrap: 'wrap',
+                          mb: 0.75,
+                          minWidth: 0,
+                        }}
+                      >
+                        <Typography
+                          variant="subtitle1"
+                          sx={{
+                            fontWeight: 700,
+                            fontSize: { xs: 17, sm: 19 },
+                            minWidth: 0,
+                            lineHeight: 1.3,
+                          }}
+                          title={plato.nombre}
+                        >
+                          {plato.nombre}
+                        </Typography>
+                      </Box>
+
+                      <Box
+                        sx={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: 1,
+                          mb: 1,
+                        }}
+                      >
+                        <Typography
+                          variant="h6"
+                          sx={{
+                            fontWeight: 700,
+                            color: 'primary.main',
+                            fontSize: { xs: 16, sm: 18 },
+                          }}
+                        >
+                          {money(plato.precio)}
+                        </Typography>
+                        <Box
+                          sx={{
+                            height: 3,
+                            width: 24,
+                            bgcolor: 'divider',
+                            borderRadius: 1.5,
+                          }}
+                        />
+                      </Box>
+
+                      {plato.descripcion && (
+                        <Typography
+                          variant="body2"
+                          sx={{
+                            color: 'text.secondary',
+                            display: '-webkit-box',
+                            WebkitLineClamp: 2,
+                            WebkitBoxOrient: 'vertical',
+                            overflow: 'hidden',
+                            fontSize: { xs: '0.875rem', sm: '0.9375rem' },
+                            lineHeight: 1.5,
+                            flex: 1,
+                          }}
+                          title={plato.descripcion}
+                        >
+                          {plato.descripcion}
+                        </Typography>
+                      )}
+                    </CardContent>
+
+                    {/* Stepper */}
+                    <CardActions
+                      sx={{
+                        p: 0,
+                        ml: { xs: 0.5, sm: 1 },
+                        flexDirection: 'column',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        gap: 0.5,
+                        flexShrink: 0,
+                        minWidth: { xs: 85, sm: 100 },
+                      }}
+                    >
+                      <QtyStepper
+                        value={qty}
+                        onAdd={() =>
+                          addItem({ id: plato.id, nombre: plato.nombre, precio: plato.precio })
+                        }
+                        onSub={() => removeItem(plato.id)}
+                      />
+                    </CardActions>
+                  </Card>
+                </motion.div>
+              );
+            })
+          )}
+        </AnimatePresence>
       </Box>
 
       {/* espacio para que el StickyFooter no tape contenido */}
@@ -548,6 +912,7 @@ export default function RestaurantMenu() {
 
       {/* Footer con resumen y confirmación */}
       <StickyFooter table={table} tableSessionId={tableSessionId} />
-    </Container>
+      </Container>
+    </Box>
   );
 }

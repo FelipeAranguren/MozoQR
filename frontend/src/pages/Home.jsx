@@ -166,7 +166,7 @@ export default function Home() {
                     <Button 
                       variant="contained" 
                       size="large" 
-                      onClick={() => navigate('/restaurantes')}
+                      onClick={() => navigate('/demo-dashboard')}
                       endIcon={<ArrowForwardIcon />}
                       sx={{
                         px: 4,
@@ -490,7 +490,7 @@ export default function Home() {
                       size="large" 
                       fullWidth
                       endIcon={<ArrowForwardIcon />}
-                      onClick={() => navigate('/restaurantes')}
+                      onClick={() => navigate('/demo-dashboard')}
                       sx={{
                         mb: 3,
                         py: 1.5,
@@ -673,7 +673,7 @@ export default function Home() {
                       variant="contained" 
                       size="large"
                       endIcon={<ArrowForwardIcon />}
-                      onClick={() => navigate('/restaurantes')}
+                      onClick={() => navigate('/demo-dashboard')}
                       sx={{
                         bgcolor: 'white',
                         color: 'primary.main',

@@ -246,3 +246,107 @@ export async function hasOpenAccount(slug, payload) {
     return false;
   }
 }
+
+/**
+ * Obtiene los pedidos detallados de una mesa (no pagados)
+ */
+export async function fetchOrderDetails(slug, payload) {
+  const { table, tableSessionId } = payload || {};
+  if (!table) return [];
+
+  try {
+    const params = new URLSearchParams();
+    params.append('filters[restaurante][slug][$eq]', slug);
+    params.append('filters[order_status][$ne]', 'paid');
+    params.append('fields[0]', 'id');
+    params.append('fields[1]', 'order_status');
+    params.append('fields[2]', 'total');
+    params.append('fields[3]', 'customerNotes');
+    params.append('fields[4]', 'createdAt');
+    params.append('populate[mesa_sesion][fields][0]', 'id');
+    params.append('populate[mesa_sesion][fields][1]', 'code');
+    params.append('populate[mesa_sesion][populate][mesa][fields][0]', 'number');
+    params.append('populate[items][fields][0]', 'id');
+    params.append('populate[items][fields][1]', 'quantity');
+    params.append('populate[items][fields][2]', 'UnitPrice');
+    params.append('populate[items][fields][3]', 'totalPrice');
+    params.append('populate[items][fields][4]', 'notes');
+    params.append('populate[items][populate][product][fields][0]', 'id');
+    params.append('populate[items][populate][product][fields][1]', 'name');
+    params.append('populate[items][populate][product][fields][2]', 'price');
+    params.append('sort[0]', 'createdAt:asc');
+    params.append('pagination[pageSize]', '100');
+
+    const { data } = await http.get(`/pedidos?${params.toString()}`);
+    const rows = data?.data || [];
+
+    // Filtrar por mesa y opcionalmente por sesión
+    const ordersForTable = rows.filter((row) => {
+      const a = row.attributes || row;
+      const ses = a.mesa_sesion?.data || a.mesa_sesion;
+      const mesa = ses?.attributes?.mesa?.data || ses?.mesa;
+      const num = mesa?.attributes?.number ?? mesa?.number;
+      const matchesTable = Number(num) === Number(table);
+      
+      if (tableSessionId) {
+        const sesCode = ses?.attributes?.code ?? ses?.code;
+        return matchesTable && sesCode === tableSessionId;
+      }
+      
+      return matchesTable;
+    });
+
+    // Formatear pedidos con items
+    return ordersForTable.map((row) => {
+      const a = row.attributes || row;
+      console.log('Processing order:', { id: row.id, raw: row, attributes: a });
+      
+      // Manejar items de diferentes formas posibles
+      let itemsRaw = a.items?.data || a.items || [];
+      if (!Array.isArray(itemsRaw)) {
+        itemsRaw = [];
+      }
+      
+      console.log('Items raw:', itemsRaw.length, itemsRaw);
+      
+      const items = itemsRaw.map((item, idx) => {
+        const itemAttr = item.attributes || item;
+        const product = itemAttr.product?.data || itemAttr.product || item.product?.data || item.product;
+        const productAttr = product?.attributes || product || {};
+        
+        const itemId = item.id || item.documentId || `item-${idx}`;
+        const productName = productAttr?.name || itemAttr.product?.name || item.product?.name || 'Producto';
+        const quantity = Number(itemAttr.quantity || itemAttr.qty || item.quantity || item.qty || 1);
+        const unitPrice = Number(itemAttr.UnitPrice || itemAttr.unitPrice || itemAttr.price || productAttr?.price || 0);
+        const totalPrice = Number(itemAttr.totalPrice || itemAttr.total_price || item.totalPrice || unitPrice * quantity);
+        const notes = itemAttr.notes || item.notes || null;
+        
+        console.log('Item processed:', { itemId, productName, quantity, unitPrice, totalPrice, raw: item });
+        
+        return {
+          id: itemId,
+          productId: product?.id || product?.documentId || productAttr?.id,
+          name: productName,
+          quantity,
+          unitPrice,
+          totalPrice,
+          notes,
+        };
+      });
+
+      console.log('Final items array:', items);
+
+      return {
+        id: row.id || row.documentId,
+        order_status: a.order_status,
+        total: Number(a.total || 0),
+        customerNotes: a.customerNotes || null,
+        createdAt: a.createdAt,
+        items,
+      };
+    });
+  } catch (err) {
+    console.warn('fetchOrderDetails error:', err?.response?.data || err);
+    return [];
+  }
+}
