@@ -17,7 +17,8 @@ import { useAuth } from '../../context/AuthContext';
 export default function OwnerHeader({ slug }) {
   const navigate = useNavigate();
   const location = useLocation();
-  const { user, logout } = useAuth();
+  const auth = useAuth();
+  const { user, logout } = auth || { user: null, logout: () => {} };
 
   // Generar breadcrumbs basado en la ruta actual
   const getBreadcrumbs = () => {
@@ -63,6 +64,7 @@ export default function OwnerHeader({ slug }) {
           tables: 'Mesas',
           settings: 'Configuración',
           plan: 'Plan',
+          ai: 'IA Integrada',
           advanced: 'Panel Avanzado',
         };
 

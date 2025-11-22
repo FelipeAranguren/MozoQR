@@ -1,4 +1,4 @@
-OwnerSidebar.jsx// frontend/src/components/owner/OwnerSidebar.jsx
+// frontend/src/components/owner/OwnerSidebar.jsx
 import React from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import {
@@ -16,6 +16,7 @@ import RestaurantMenuIcon from '@mui/icons-material/RestaurantMenu';
 import TableRestaurantIcon from '@mui/icons-material/TableRestaurant';
 import SettingsIcon from '@mui/icons-material/Settings';
 import CreditCardIcon from '@mui/icons-material/CreditCard';
+import PsychologyIcon from '@mui/icons-material/Psychology';
 import BuildIcon from '@mui/icons-material/Build';
 
 const menuItems = [
@@ -43,6 +44,11 @@ const menuItems = [
     label: 'Plan',
     icon: <CreditCardIcon />,
     path: '/owner/:slug/plan',
+  },
+  {
+    label: 'IA Integrada',
+    icon: <PsychologyIcon />,
+    path: '/owner/:slug/ai',
   },
   {
     label: 'Panel Avanzado',

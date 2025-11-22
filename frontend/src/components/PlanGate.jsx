@@ -23,8 +23,11 @@ export default function PlanGate({
     'PRO': 2,
     'ULTRA': 3
   };
+  
+  // Mapear planes antiguos (PLUS) a PRO para compatibilidad
+  const normalizedPlan = plan === 'PLUS' ? 'PRO' : plan;
 
-  const currentLevel = planHierarchy[plan?.toUpperCase()] || 1;
+  const currentLevel = planHierarchy[normalizedPlan?.toUpperCase()] || 1;
   const requiredLevel = planHierarchy[requiredPlan?.toUpperCase()] || 1;
 
   if (currentLevel >= requiredLevel) {

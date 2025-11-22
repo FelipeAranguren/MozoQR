@@ -1,13 +1,32 @@
 // src/pages/OwnerDashboard.jsx
 import React, { useEffect, useMemo, useState, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
+import { Box, Grid, Typography, Button } from '@mui/material';
 import SalesByDayChart from '../components/SalesByDayChart';
+import OwnerSuccessScore from '../components/OwnerSuccessScore';
+import KpiCardEnhanced from '../components/KpiCardEnhanced';
+import PlanGate from '../components/PlanGate';
+import HealthCheckPanel from '../components/HealthCheckPanel';
+import TablesStatusGrid from '../components/TablesStatusGrid';
+import PeakHoursHeatmap from '../components/PeakHoursHeatmap';
+import RecentActivityPanel from '../components/RecentActivityPanel';
+import ComparisonCard from '../components/ComparisonCard';
+import TopProductsChart from '../components/TopProductsChart';
+import { useRestaurantPlan } from '../hooks/useRestaurantPlan';
+import { calculateSuccessScore, calculateTodayVsYesterday, calculateSalesTrend } from '../utils/dashboardMetrics';
 import {
   getPaidOrders,
   getTotalOrdersCount,
   getSessionsCount,
   fetchTopProducts,
 } from '../api/analytics';
+import { fetchTables, fetchActiveOrders } from '../api/tables';
+import { api } from '../api';
+import { MARANA_COLORS } from '../theme';
+import AttachMoneyIcon from '@mui/icons-material/AttachMoney';
+import ShoppingCartIcon from '@mui/icons-material/ShoppingCart';
+import PeopleIcon from '@mui/icons-material/People';
+import TrendingUpIcon from '@mui/icons-material/TrendingUp';
 
 /* ========== Formatos ========== */
 const money = (n) =>
@@ -288,6 +307,7 @@ function groupOrdersToInvoices(orders = []) {
 export default function OwnerDashboard() {
   const { slug } = useParams();
   const navigate = useNavigate();
+  const { plan, loading: planLoading } = useRestaurantPlan(slug);
 
   const [periodKey, setPeriodKey] = useState('30d');
   const [periodTotal, setPeriodTotal] = useState(0);
@@ -298,10 +318,28 @@ export default function OwnerDashboard() {
   const isCustom = periodKey === 'custom';
 
   const [periodOrders, setPeriodOrders] = useState([]);
+  const [ordersToday, setOrdersToday] = useState([]);
+  const [ordersYesterday, setOrdersYesterday] = useState([]);
   const [lifetimeOrders, setLifetimeOrders] = useState(0);
   const [sessionsCount, setSessionsCount] = useState(0);
   const [topProducts, setTopProducts] = useState([]);
   const [invoices, setInvoices] = useState([]);
+  
+  // Nuevos estados para Health Check y Mesas
+  const [tables, setTables] = useState([]);
+  const [activeOrders, setActiveOrders] = useState([]);
+  
+  // Métricas para Success Score
+  const [restaurantMetrics, setRestaurantMetrics] = useState({
+    productsWithoutImage: 0,
+    totalProducts: 0,
+    outdatedPrices: 0,
+    missingTables: 0,
+    totalTables: 0,
+    hasLogo: false,
+    totalCategories: 0,
+    productsWithoutCategory: 0
+  });
 
   const [isLoading, setIsLoading] = useState(true);
   const [openDrawer, setOpenDrawer] = useState(false);
@@ -324,22 +362,85 @@ export default function OwnerDashboard() {
 
     // 👉 rango en ISO + to exclusivo
     const { fromIso, toIso } = buildRangeForApi(start, end);
+    
+    // Calcular rangos para HOY y AYER
+    const today = new Date();
+    const yesterday = addDays(today, -1);
+    const todayStart = startOfDay(today).toISOString();
+    const todayEnd = endOfDay(today).toISOString();
+    const yesterdayStart = startOfDay(yesterday).toISOString();
+    const yesterdayEnd = endOfDay(yesterday).toISOString();
 
     Promise.all([
       getPaidOrders({ slug, from: fromIso, to: toIso }),
+      getPaidOrders({ slug, from: todayStart, to: todayEnd }),
+      getPaidOrders({ slug, from: yesterdayStart, to: yesterdayEnd }),
       getTotalOrdersCount({ slug }),
       getSessionsCount({ slug, from: fromIso, to: toIso }),
       fetchTopProducts({ slug, from: fromIso, to: toIso, limit: 5 }),
+      // Obtener métricas del restaurante para Success Score
+      api.get(`/restaurantes?filters[slug][$eq]=${slug}&populate[productos][populate]=image,categoria&populate[mesas]=true&populate[categorias]=true&populate[logo]=true`).catch(() => ({ data: { data: [] } })),
+      // Obtener mesas y pedidos activos
+      fetchTables(slug).catch((e) => { console.warn('Error fetching tables:', e); return []; }),
+      fetchActiveOrders(slug).catch((e) => { console.warn('Error fetching active orders:', e); return []; }),
     ])
-      .then(([orders, totalOrd, sessions, topProd]) => {
+      .then(([orders, todayOrders, yesterdayOrders, totalOrd, sessions, topProd, restaurantRes, tablesData, activeOrdersData]) => {
         const list = Array.isArray(orders) ? orders : [];
+        const todayList = Array.isArray(todayOrders) ? todayOrders : [];
+        const yesterdayList = Array.isArray(yesterdayOrders) ? yesterdayOrders : [];
+        
         setPeriodOrders(list);
+        setOrdersToday(todayList);
+        setOrdersYesterday(yesterdayList);
         setLifetimeOrders(Number(totalOrd) || 0);
         setSessionsCount(Number(sessions) || 0);
         setTopProducts(topProd || []);
         setInvoices(groupOrdersToInvoices(list));
+        
+        // Mesas y pedidos activos
+        setTables(Array.isArray(tablesData) ? tablesData : []);
+        setActiveOrders(Array.isArray(activeOrdersData) ? activeOrdersData : []);
+        
+        // Calcular métricas para Success Score
+        const restaurant = restaurantRes?.data?.data?.[0];
+        if (restaurant) {
+          const attr = restaurant.attributes || restaurant;
+          const productos = attr.productos?.data || attr.productos || [];
+          const mesas = attr.mesas?.data || attr.mesas || [];
+          const categorias = attr.categorias?.data || attr.categorias || [];
+          
+          const productsWithoutImage = productos.filter(p => {
+            const pAttr = p.attributes || p;
+            return !pAttr.image || !pAttr.image.data;
+          }).length;
+
+          const productsWithoutCategory = productos.filter(p => {
+            const pAttr = p.attributes || p;
+            return !pAttr.categoria || !pAttr.categoria.data;
+          }).length;
+          
+          setRestaurantMetrics({
+            productsWithoutImage,
+            totalProducts: productos.length,
+            outdatedPrices: 0, // TODO: implementar lógica de precios desactualizados
+            missingTables: 0,   // TODO: implementar lógica de mesas sin configurar
+            totalTables: mesas.length,
+            hasLogo: !!(attr.logo?.data || attr.logo),
+            totalCategories: categorias.length,
+            productsWithoutCategory
+          });
+        }
       })
-      .catch(() => { setPeriodOrders([]); setInvoices([]); setTopProducts([]); })
+      .catch((err) => { 
+        console.error('Error loading dashboard data:', err);
+        setPeriodOrders([]); 
+        setOrdersToday([]);
+        setOrdersYesterday([]);
+        setInvoices([]); 
+        setTopProducts([]);
+        setTables([]);
+        setActiveOrders([]);
+      })
       .finally(() => setIsLoading(false));
   }, [slug, periodKey, start.getTime(), end.getTime()]);
 
@@ -367,8 +468,72 @@ export default function OwnerDashboard() {
       Object.entries(paymentMixCount).map(([k, v]) => [k, Math.round((v * 100) / totalInv) + '%'])
     );
 
-    return { ingresosHoy, ticketPromedio, paymentMix };
-  }, [periodOrders, periodTotal, invoices]);
+    // Comparativa HOY vs AYER
+    const todayVsYesterday = calculateTodayVsYesterday(ordersToday, ordersYesterday);
+    
+    // Tendencia de ventas (últimos 7 días vs anteriores 7 días)
+    const recent7Days = periodOrders.filter(o => {
+      const orderDate = safeDate(o.createdAt);
+      const daysAgo = Math.floor((today - orderDate) / (1000 * 60 * 60 * 24));
+      return daysAgo <= 7;
+    });
+    const previous7Days = periodOrders.filter(o => {
+      const orderDate = safeDate(o.createdAt);
+      const daysAgo = Math.floor((today - orderDate) / (1000 * 60 * 60 * 24));
+      return daysAgo > 7 && daysAgo <= 14;
+    });
+    const salesTrend = calculateSalesTrend(recent7Days, previous7Days);
+
+    // Comparativa semanal (esta semana vs semana pasada)
+    const thisWeekStart = new Date(today);
+    thisWeekStart.setDate(today.getDate() - today.getDay()); // Domingo de esta semana
+    thisWeekStart.setHours(0, 0, 0, 0);
+    
+    const lastWeekStart = new Date(thisWeekStart);
+    lastWeekStart.setDate(lastWeekStart.getDate() - 7);
+    const lastWeekEnd = new Date(thisWeekStart);
+    lastWeekEnd.setTime(lastWeekEnd.getTime() - 1);
+
+    const thisWeekOrders = periodOrders.filter(o => {
+      const orderDate = safeDate(o.createdAt);
+      return orderDate >= thisWeekStart;
+    });
+    const lastWeekOrders = periodOrders.filter(o => {
+      const orderDate = safeDate(o.createdAt);
+      return orderDate >= lastWeekStart && orderDate < thisWeekStart;
+    });
+
+    const thisWeekTotal = thisWeekOrders.reduce((sum, o) => sum + (Number(o.total) || 0), 0);
+    const lastWeekTotal = lastWeekOrders.reduce((sum, o) => sum + (Number(o.total) || 0), 0);
+
+    return { 
+      ingresosHoy, 
+      ticketPromedio, 
+      paymentMix,
+      todayVsYesterday,
+      salesTrend,
+      weeklyComparison: {
+        thisWeek: thisWeekTotal,
+        lastWeek: lastWeekTotal
+      }
+    };
+  }, [periodOrders, periodTotal, invoices, ordersToday, ordersYesterday]);
+
+  // Calcular Success Score
+  const successScoreData = useMemo(() => {
+    // Asegurar que siempre tengamos valores por defecto
+    const metrics = {
+      productsWithoutImage: restaurantMetrics.productsWithoutImage || 0,
+      totalProducts: restaurantMetrics.totalProducts || 0,
+      outdatedPrices: restaurantMetrics.outdatedPrices || 0,
+      missingTables: restaurantMetrics.missingTables || 0,
+      totalTables: restaurantMetrics.totalTables || 0,
+      hasLogo: restaurantMetrics.hasLogo || false,
+      totalCategories: restaurantMetrics.totalCategories || 0,
+      hasCategories: (restaurantMetrics.totalCategories || 0) > 0
+    };
+    return calculateSuccessScore(metrics);
+  }, [restaurantMetrics]);
 
   const filteredInvoices = useMemo(() => {
     return invoices.filter(inv => {
@@ -425,105 +590,271 @@ export default function OwnerDashboard() {
   const paymentMixString = Object.entries(derivedKpis.paymentMix).map(([k,v]) => `${k}: ${v}`).join(' / ');
 
   return (
-    <div style={{ padding: 24, background: '#f8fafc', minHeight: '100vh' }}>
+    <Box sx={{ p: 3, background: MARANA_COLORS.background, minHeight: '100vh' }}>
       {/* Header + períodos */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: 16, marginBottom: 16, flexWrap: 'wrap' }}>
-        <h2 style={{ margin: 0 }}>Dashboard — {prettyName(slug)}</h2>
-        <div style={{ marginLeft: 'auto', display: 'flex', gap: 8, alignItems: 'center', flexWrap:'wrap' }}>
+      <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 3, flexWrap: 'wrap', gap: 2 }}>
+        <Box>
+          <Typography variant="h4" sx={{ fontWeight: 700, mb: 0.5 }}>
+            Dashboard — {prettyName(slug)}
+          </Typography>
+          <Typography variant="body2" color="text.secondary">
+            Plan: <strong>{plan || 'BASIC'}</strong>
+          </Typography>
+        </Box>
+        <Box sx={{ display: 'flex', gap: 1, alignItems: 'center', flexWrap: 'wrap' }}>
           {PERIODS.filter(p => p.key !== 'custom').map((p) => (
-            <button
+            <Button
               key={p.key}
               onClick={() => setPeriodKey(p.key)}
-              className={`period-btn ${p.key === periodKey ? 'active' : ''}`}
+              variant={p.key === periodKey ? 'contained' : 'outlined'}
+              size="small"
+              sx={{
+                minWidth: 'auto',
+                px: 2,
+                textTransform: 'none',
+                ...(p.key === periodKey && {
+                  bgcolor: MARANA_COLORS.primary,
+                  '&:hover': { bgcolor: MARANA_COLORS.primary, opacity: 0.9 }
+                })
+              }}
             >
               {p.label}
-            </button>
+            </Button>
           ))}
-          <button
+          <Button
             onClick={() => setPeriodKey('custom')}
-            className={`period-btn ${periodKey === 'custom' ? 'active' : ''}`}
+            variant={periodKey === 'custom' ? 'contained' : 'outlined'}
+            size="small"
+            sx={{
+              minWidth: 'auto',
+              px: 2,
+              textTransform: 'none',
+              ...(periodKey === 'custom' && {
+                bgcolor: MARANA_COLORS.primary,
+                '&:hover': { bgcolor: MARANA_COLORS.primary, opacity: 0.9 }
+              })
+            }}
           >
             Personalizado
-          </button>
+          </Button>
           {periodKey === 'custom' && (
-            <div style={{ display:'flex', gap:8, alignItems:'center', marginLeft:8 }}>
+            <Box sx={{ display: 'flex', gap: 1, alignItems: 'center', ml: 1 }}>
               <input
                 type="date"
                 value={customStart}
                 max={customEnd}
                 onChange={(e) => setCustomStart(e.target.value)}
-                style={{ padding:'8px 10px', border:'1px solid #d1d5db', borderRadius:8, background:'#fff' }}
+                style={{ 
+                  padding: '8px 12px', 
+                  border: `1px solid ${MARANA_COLORS.border}`, 
+                  borderRadius: 8, 
+                  background: '#fff',
+                  fontFamily: 'Inter, sans-serif'
+                }}
               />
-              <span style={{ color:'#64748b' }}>—</span>
+              <Typography variant="body2" color="text.secondary">—</Typography>
               <input
                 type="date"
                 value={customEnd}
                 min={customStart}
                 onChange={(e) => setCustomEnd(e.target.value)}
-                style={{ padding:'8px 10px', border:'1px solid #d1d5db', borderRadius:8, background:'#fff' }}
+                style={{ 
+                  padding: '8px 12px', 
+                  border: `1px solid ${MARANA_COLORS.border}`, 
+                  borderRadius: 8, 
+                  background: '#fff',
+                  fontFamily: 'Inter, sans-serif'
+                }}
               />
-            </div>
+            </Box>
           )}
-        </div>
-      </div>
+        </Box>
+      </Box>
 
-      {/* fila 1 */}
-      <div className="grid-layout-row">
-        <div className="card">
-          <SalesByDayChart
-            slug={slug}
-            start={start}
-            end={end}
-            periodKey={periodKey + (isCustom ? ` ${customStart}-${customEnd}` : '')}
-            onTotalChange={setPeriodTotal}
-          />
-        </div>
-        <div className="card kpi-grid-container">
-          <KpiBox title="Ingresos del Día"   value={derivedKpis.ingresosHoy}       formatter={money} resetKey={periodKey} />
-          <KpiBox title="Ticket Promedio"    value={derivedKpis.ticketPromedio}    formatter={money} resetKey={periodKey} />
-          <KpiBox title="Pedidos Históricos" value={lifetimeOrders}                formatter={(n)=>String(Math.round(n))} resetKey={periodKey} />
-          <KpiBox title="Clientes Atendidos" value={sessionsCount}                 formatter={(n)=>String(Math.round(n))} resetKey={periodKey} />
-          <KpiBox title="Mix de Pagos"       value={paymentMixString || 'N/D'}     formatter={(s)=>s} isText resetKey={periodKey+paymentMixString} />
-        </div>
-      </div>
+      {/* Owner Success Score */}
+      <Box sx={{ mb: 3 }}>
+        <OwnerSuccessScore
+          score={successScoreData?.score ?? 100}
+          alerts={successScoreData?.alerts ?? []}
+          metrics={successScoreData?.metrics ?? {}}
+        />
+      </Box>
 
-      {/* fila 2 */}
-      <div className="grid-layout-row" style={{ gridTemplateColumns: '2fr 1fr' }}>
-        <div className="card">
-          <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:12 }}>
-            <h3 style={{ margin:0 }}>Facturas del período</h3>
-            <div style={{ color:'#64748b' }}>Mostrando: <b>{filteredInvoices.length}</b> de {invoices.length}</div>
-          </div>
-          <FiltersBar
-            filters={filters}
-            onFiltersChange={setFilters}
-            onExport={handleExport}
-            paymentMethods={Object.keys(derivedKpis.paymentMix)}
+      {/* KPIs mejorados */}
+      <Grid container spacing={2} sx={{ mb: 3 }}>
+        <Grid item xs={12} sm={6} md={3}>
+          <KpiCardEnhanced
+            title="Ingresos del Día"
+            value={derivedKpis.ingresosHoy}
+            formatter={money}
+            trend={derivedKpis.todayVsYesterday && Math.abs(derivedKpis.todayVsYesterday.percentChange) > 0.1 ? {
+              value: Math.round(derivedKpis.todayVsYesterday.percentChange * 10) / 10,
+              label: 'vs ayer'
+            } : undefined}
+            icon={<AttachMoneyIcon />}
+            color={MARANA_COLORS.primary}
+            loading={isLoading}
           />
-          {isLoading
-            ? <div className="loading-placeholder">Cargando facturas...</div>
-            : <InvoicesTable rows={filteredInvoices} onRowClick={(inv) => { setSelectedInvoice(inv); setOpenDrawer(true); }} />
-          }
-        </div>
-        <div className="card">
-          <h3 style={{ marginTop: 0, marginBottom: 12 }}>Top productos del período</h3>
-          {isLoading ? <div className="loading-placeholder">Cargando productos...</div> : <TopProductsList rows={topProducts} />}
-        </div>
-      </div>
+        </Grid>
+        <Grid item xs={12} sm={6} md={3}>
+          <KpiCardEnhanced
+            title="Ticket Promedio"
+            value={derivedKpis.ticketPromedio}
+            formatter={money}
+            icon={<ShoppingCartIcon />}
+            color={MARANA_COLORS.secondary}
+            loading={isLoading}
+          />
+        </Grid>
+        <Grid item xs={12} sm={6} md={3}>
+          <KpiCardEnhanced
+            title="Pedidos Históricos"
+            value={lifetimeOrders}
+            formatter={(n) => String(Math.round(n))}
+            icon={<TrendingUpIcon />}
+            color={MARANA_COLORS.primary}
+            loading={isLoading}
+          />
+        </Grid>
+        <Grid item xs={12} sm={6} md={3}>
+          <KpiCardEnhanced
+            title="Clientes Atendidos"
+            value={sessionsCount}
+            formatter={(n) => String(Math.round(n))}
+            icon={<PeopleIcon />}
+            color={MARANA_COLORS.accent}
+            loading={isLoading}
+          />
+        </Grid>
+      </Grid>
+
+      {/* Gráfico de ventas */}
+      <Box sx={{ mb: 3 }}>
+        <SalesByDayChart
+          slug={slug}
+          start={start}
+          end={end}
+          periodKey={periodKey + (isCustom ? ` ${customStart}-${customEnd}` : '')}
+          onTotalChange={setPeriodTotal}
+        />
+      </Box>
+
+      {/* Comparativas mejoradas */}
+      <Grid container spacing={2} sx={{ mb: 3 }}>
+        <Grid item xs={12} sm={6} md={4}>
+          <ComparisonCard
+            title="HOY vs AYER"
+            currentValue={derivedKpis.todayVsYesterday?.today || 0}
+            previousValue={derivedKpis.todayVsYesterday?.yesterday || 0}
+            formatter={money}
+            currentLabel="Hoy"
+            previousLabel="Ayer"
+          />
+        </Grid>
+        <Grid item xs={12} sm={6} md={4}>
+          <ComparisonCard
+            title="Esta Semana vs Semana Pasada"
+            currentValue={derivedKpis.weeklyComparison?.thisWeek || 0}
+            previousValue={derivedKpis.weeklyComparison?.lastWeek || 0}
+            formatter={money}
+            currentLabel="Esta semana"
+            previousLabel="Semana pasada"
+          />
+        </Grid>
+        <Grid item xs={12} sm={6} md={4}>
+          <ComparisonCard
+            title="Tendencia 7 días"
+            currentValue={derivedKpis.salesTrend?.recent || 0}
+            previousValue={derivedKpis.salesTrend?.previous || 0}
+            formatter={money}
+            currentLabel="Últimos 7 días"
+            previousLabel="Anteriores 7 días"
+          />
+        </Grid>
+      </Grid>
+
+      {/* Health Check Panel */}
+      <Box sx={{ mb: 3 }}>
+        <HealthCheckPanel
+          metrics={restaurantMetrics}
+          onActionClick={(actionId) => {
+            // Navegar a la sección correspondiente
+            if (actionId === 'images' || actionId === 'categories') {
+              navigate(`/owner/${slug}/menu`);
+            } else if (actionId === 'tables') {
+              navigate(`/owner/${slug}/tables`);
+            } else if (actionId === 'logo') {
+              navigate(`/owner/${slug}/settings`);
+            }
+          }}
+        />
+      </Box>
+
+      {/* Mesas en tiempo real y Heatmap de horas pico */}
+      <Grid container spacing={2} sx={{ mb: 3 }}>
+        <Grid item xs={12} lg={6}>
+          <TablesStatusGrid
+            tables={tables}
+            orders={activeOrders}
+            onTableClick={(table) => {
+              navigate(`/staff/${slug}/orders?table=${table.number}`);
+            }}
+          />
+        </Grid>
+        <Grid item xs={12} lg={6}>
+          <PeakHoursHeatmap orders={periodOrders} />
+        </Grid>
+      </Grid>
+
+      {/* Actividad Reciente y Top Productos */}
+      <Grid container spacing={2} sx={{ mb: 3 }}>
+        <Grid item xs={12} lg={6}>
+          <RecentActivityPanel
+            recentOrders={periodOrders.slice(0, 5)}
+            recentInvoices={invoices.slice(0, 5)}
+          />
+        </Grid>
+        <Grid item xs={12} lg={6}>
+          <TopProductsChart products={topProducts} limit={5} />
+        </Grid>
+      </Grid>
+
+      {/* Facturas del período */}
+      <Box
+        sx={{
+          border: `1px solid ${MARANA_COLORS.border}`,
+          borderRadius: 3,
+          background: '#fff',
+          p: 3,
+          boxShadow: '0px 1px 3px rgba(0,0,0,0.05)',
+          mb: 3
+        }}
+      >
+        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
+          <Typography variant="h6" sx={{ fontWeight: 600 }}>
+            Facturas del período
+          </Typography>
+          <Typography variant="body2" color="text.secondary">
+            Mostrando: <strong>{filteredInvoices.length}</strong> de {invoices.length}
+          </Typography>
+        </Box>
+        <FiltersBar
+          filters={filters}
+          onFiltersChange={setFilters}
+          onExport={handleExport}
+          paymentMethods={Object.keys(derivedKpis.paymentMix)}
+        />
+        {isLoading ? (
+          <Box sx={{ textAlign: 'center', py: 4 }}>
+            <Typography color="text.secondary">Cargando facturas...</Typography>
+          </Box>
+        ) : (
+          <InvoicesTable rows={filteredInvoices} onRowClick={(inv) => { setSelectedInvoice(inv); setOpenDrawer(true); }} />
+        )}
+      </Box>
 
       <InvoiceDrawer open={openDrawer} onClose={() => setOpenDrawer(false)} invoice={selectedInvoice} />
-
-      <style>{`
-        .card { border: 1px solid #e5e7eb; border-radius: 12px; background: #fff; padding: 20px; box-shadow: 0 1px 3px 0 rgb(0 0 0 / 0.05); }
-        .grid-layout-row { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 16px; align-items: start; }
-        @media (max-width: 900px) { .grid-layout-row { grid-template-columns: 1fr; } }
-        .period-btn { padding: 8px 12px; border-radius: 8px; border: 1px solid #d1d5db; background: #fff; cursor: pointer; font-weight: 600; transition: all 0.2s; }
-        .period-btn:hover { background-color: #f9fafb; border-color: #a1a1aa; }
-        .period-btn.active { border-color: #0ea5e9; background: #e0f2fe; color: #0c4a6e; }
-        .loading-placeholder { text-align: center; padding: 40px; color: #6b7280; font-size: 14px; }
-        .kpi-grid-container { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 16px; }
-      `}</style>
-    </div>
+    </Box>
   );
 }
 

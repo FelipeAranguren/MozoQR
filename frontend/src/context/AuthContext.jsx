@@ -122,5 +122,19 @@ export function AuthProvider({ children }) {
 }
 
 export function useAuth() {
-  return useContext(AuthContext);
+  const context = useContext(AuthContext);
+  if (!context) {
+    console.warn('useAuth must be used within an AuthProvider');
+    return {
+      jwt: null,
+      user: null,
+      isAuthenticated: false,
+      loading: false,
+      login: () => {},
+      loginWithEmail: async () => {},
+      register: async () => {},
+      logout: () => {}
+    };
+  }
+  return context;
 }

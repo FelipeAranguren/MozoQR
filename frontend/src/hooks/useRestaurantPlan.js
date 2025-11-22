@@ -28,13 +28,22 @@ export function useRestaurantPlan(slug) {
         try {
           const { data } = await api.get(`/restaurants/${slug}/menus`);
           if (data?.data?.restaurant) {
-            const planRaw = data.data.restaurant.plan || 'BASIC';
-            setPlan(planRaw.toUpperCase());
+            const planRaw = data.data.restaurant.plan || data.data.restaurant.Suscripcion || 'basic';
+            
+            // Mapear planes de Strapi (basic, pro, ultra) a frontend (BASIC, PRO, ULTRA)
+            const planMap = {
+              'basic': 'BASIC',
+              'pro': 'PRO',
+              'ultra': 'ULTRA'
+            };
+            
+            const mappedPlan = planMap[planRaw.toLowerCase()] || 'BASIC';
+            setPlan(mappedPlan);
             setRestaurant({
               id: data.data.restaurant.id,
               name: data.data.restaurant.name,
               slug: data.data.restaurant.slug,
-              plan: planRaw.toUpperCase()
+              plan: mappedPlan
             });
             setLoading(false);
             return;
@@ -50,12 +59,22 @@ export function useRestaurantPlan(slug) {
         if (data) {
           const attr = data.attributes || data;
           const planRaw = attr.Suscripcion || attr.suscripcion || 'basic';
-          setPlan(planRaw.toUpperCase());
+          
+          // Mapear planes de Strapi (basic, pro, ultra) a frontend (BASIC, PRO, ULTRA)
+          // Eliminamos PLUS ya que no existe en Strapi
+          const planMap = {
+            'basic': 'BASIC',
+            'pro': 'PRO',
+            'ultra': 'ULTRA'
+          };
+          
+          const mappedPlan = planMap[planRaw.toLowerCase()] || 'BASIC';
+          setPlan(mappedPlan);
           setRestaurant({
             id: data.id,
             name: attr.name || data.name,
             slug: attr.slug || data.slug,
-            plan: planRaw.toUpperCase()
+            plan: mappedPlan
           });
         } else {
           setPlan('BASIC');
@@ -73,7 +92,7 @@ export function useRestaurantPlan(slug) {
   }, [slug]);
 
   return {
-    plan,           // 'BASIC' | 'PRO' | 'ULTRA' (normalizado a mayúsculas)
+    plan,           // 'BASIC' | 'PRO' | 'ULTRA' (mapeado desde Strapi: basic, pro, ultra)
     restaurant,
     loading,
     error,

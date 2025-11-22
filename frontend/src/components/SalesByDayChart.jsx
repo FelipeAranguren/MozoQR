@@ -199,10 +199,16 @@ export default function SalesByDayChart({ slug, start, end, periodKey = '30d', o
     [yMax]
   );
 
-  // Estilos base
+  // Estilos base - Colores MarañaQR
   const COLORS = {
-    text: '#374151', textMuted: '#6b7280', grid: '#e5e7eb', axis: '#d1d5db',
-    barTop: '#bfdbfe', barBottom: '#93c5fd', barHover: '#60a5fa', panelBg: '#ffffff'
+    text: '#212121', 
+    textMuted: '#6B7280', 
+    grid: '#E7E7E7', 
+    axis: '#E7E7E7',
+    barTop: '#0E7C7B',      // Primary MarañaQR
+    barBottom: '#14A5A3',    // Primary light
+    barHover: '#0A5F5E',     // Primary dark
+    panelBg: '#ffffff'
   };
   const LEFT_GUTTER = 70, BAR_AREA_H = 240;
   const INNER_PAD = 8;          // separa la 1ª barra del eje Y
@@ -398,9 +404,9 @@ export default function SalesByDayChart({ slug, start, end, periodKey = '30d', o
                       onMouseLeave={() => setHoverIdx(null)}
                       style={{
                         height: h,
-                        backgroundImage: `linear-gradient(180deg, #bfdbfe, #93c5fd)`,
+                        backgroundImage: `linear-gradient(180deg, ${COLORS.barTop}, ${COLORS.barBottom})`,
                         borderRadius: 8,
-                        boxShadow: hoverIdx === idx ? '0 6px 14px rgba(0,0,0,0.07)' : '0 1px 0 rgba(0,0,0,0.02)',
+                        boxShadow: hoverIdx === idx ? `0 6px 14px ${COLORS.barTop}40` : '0 1px 0 rgba(0,0,0,0.02)',
                         transform: hoverIdx === idx ? 'translateY(-2px)' : 'translateY(0)',
                         transition: 'transform 120ms ease-out, box-shadow 120ms ease-out',
                         willChange: 'height, transform',
