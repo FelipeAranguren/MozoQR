@@ -144,6 +144,14 @@ export default function ProductsManagement({ slug }) {
   };
 
   const handleOpenDialog = (product = null) => {
+    if (product) {
+      console.log('Abriendo diálogo de edición para producto:', {
+        id: product.id,
+        documentId: product.documentId,
+        name: product.name,
+        fullProduct: product
+      });
+    }
     setEditingProduct(product);
     setOpenDialog(true);
   };
@@ -159,10 +167,13 @@ export default function ProductsManagement({ slug }) {
       if (editingProduct) {
         // Asegurar que tenemos un ID válido para actualizar
         const productId = editingProduct.id || editingProduct.documentId;
+        console.log('handleSaveProduct: editingProduct completo:', editingProduct);
+        console.log('handleSaveProduct: ID extraído:', productId, 'Tipo:', typeof productId);
         if (!productId) {
+          console.error('handleSaveProduct: No se pudo obtener ID del producto:', editingProduct);
           throw new Error('No se pudo obtener el ID del producto a editar');
         }
-        console.log('Actualizando producto con ID:', productId, 'Datos:', productData);
+        console.log('handleSaveProduct: Actualizando producto con ID:', productId, 'Datos:', productData);
         await updateProduct(productId, productData);
       } else {
         await createProduct(slug, productData);

@@ -389,6 +389,9 @@ export async function updateProduct(productId, productData) {
   if (!productId) throw new Error('productId requerido');
 
   try {
+    console.log('updateProduct: ID recibido:', productId, 'Tipo:', typeof productId);
+    console.log('updateProduct: Datos a actualizar:', productData);
+    
     // Convertir descripción de texto plano a formato blocks si se proporciona
     const descriptionBlocks = productData.description !== undefined 
       ? textToBlocks(productData.description || '')
@@ -413,11 +416,16 @@ export async function updateProduct(productId, productData) {
     }
     
     const payload = { data: payloadData };
+    console.log('updateProduct: Payload final:', payload);
+    console.log('updateProduct: URL:', `/productos/${productId}`);
 
     const res = await api.put(`/productos/${productId}`, payload, { headers: getAuthHeaders() });
+    console.log('updateProduct: Respuesta exitosa:', res?.data);
     return res?.data?.data || null;
   } catch (err) {
     console.error('Error updating product:', err);
+    console.error('Error response:', err?.response?.data);
+    console.error('Error status:', err?.response?.status);
     throw err;
   }
 }

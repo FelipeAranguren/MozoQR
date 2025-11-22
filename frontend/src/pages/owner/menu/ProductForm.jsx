@@ -25,6 +25,7 @@ const ProductForm = forwardRef(function ProductForm({ product, categories, onSav
   const [available, setAvailable] = useState(true);
   const [image, setImage] = useState(null);
   const [imagePreview, setImagePreview] = useState(null);
+  const [originalImage, setOriginalImage] = useState(null); // Guardar la imagen original del producto
   const fileInputRef = useRef(null);
   const formRef = useRef(null);
 
@@ -65,7 +66,10 @@ const ProductForm = forwardRef(function ProductForm({ product, categories, onSav
       setDescription(descriptionText);
       setCategoriaId(product.categoriaId || '');
       setAvailable(product.available !== false);
-      setImagePreview(product.image || null);
+      const productImage = product.image || null;
+      setImagePreview(productImage);
+      setOriginalImage(productImage); // Guardar la imagen original
+      setImage(null); // Resetear la nueva imagen seleccionada
     } else {
       // Reset form
       setName('');
@@ -75,6 +79,7 @@ const ProductForm = forwardRef(function ProductForm({ product, categories, onSav
       setAvailable(true);
       setImage(null);
       setImagePreview(null);
+      setOriginalImage(null);
     }
   }, [product]);
 
@@ -95,25 +100,35 @@ const ProductForm = forwardRef(function ProductForm({ product, categories, onSav
     }
 
     try {
-      let imageId = null;
+      let imageId = undefined; // undefined = no cambiar la imagen
 
-      // Si hay una nueva imagen, subirla
+      // Si hay una nueva imagen seleccionada, subirla
       if (image) {
         const uploaded = await uploadImage(image);
         imageId = uploaded?.id || null;
-      } else if (product?.image && !imagePreview) {
-        // Si se eliminó la imagen existente
-        imageId = null;
+      } else if (originalImage && !imagePreview) {
+        // Si había una imagen original pero ahora no hay preview
+        // significa que el usuario eliminó explícitamente la imagen
+        imageId = null; // null = eliminar la imagen
       }
+      // Si imageId es undefined:
+      // - No había imagen original y no se seleccionó nueva → no incluir (sin imagen)
+      // - Había imagen original y se mantiene → no incluir (mantener imagen actual)
 
-      await onSave({
+      const saveData = {
         name,
         price: parseFloat(price),
         description,
         categoriaId: categoriaId || null,
-        available,
-        imageId
-      });
+        available
+      };
+      
+      // Solo incluir imageId si está definido (undefined = mantener actual, null = eliminar, valor = cambiar)
+      if (imageId !== undefined) {
+        saveData.imageId = imageId;
+      }
+
+      await onSave(saveData);
     } catch (error) {
       console.error('Error saving product:', error);
       alert('Error al guardar el producto');
