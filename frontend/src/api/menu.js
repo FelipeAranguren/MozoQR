@@ -22,7 +22,7 @@ export async function fetchCategories(slug) {
     }
 
     const res = await api.get(
-      `/categorias?filters[restaurante][id][$eq]=${restauranteId}&populate[productos][populate]=image&sort[0]=name:asc`,
+      `/categorias?filters[restaurante][id][$eq]=${restauranteId}&populate[productos][populate]=image&sort[0]=name:asc&publicationState=preview`,
       { headers: getAuthHeaders() }
     );
     
@@ -59,11 +59,19 @@ export async function fetchProducts(slug, categoryId = null) {
     const allProducts = [];
     categories.forEach(cat => {
       const productos = cat.productos || [];
+      console.log(`Categoría "${cat.name}" tiene ${productos.length} productos`);
       productos.forEach(prod => {
         // Normalizar la estructura del producto
         // Los productos desde categorías pueden venir con o sin attributes
         const prodAttr = prod.attributes || prod;
         const prodId = prod.id || prod.documentId || prodAttr.id || prodAttr.documentId;
+        
+        console.log('Producto desde categoría:', {
+          raw: prod,
+          prodId,
+          name: prodAttr.name,
+          hasAttributes: !!prod.attributes
+        });
         
         // Agregar el categoriaId y categoriaName al producto y asegurar que tenga id
         const p = { 
@@ -79,6 +87,7 @@ export async function fetchProducts(slug, categoryId = null) {
     });
     
     console.log('Productos encontrados desde categorías:', allProducts.length);
+    console.log('Ejemplo de producto:', allProducts[0]);
     
     if (allProducts.length > 0) {
       let filtered = allProducts;
@@ -101,7 +110,7 @@ export async function fetchProducts(slug, categoryId = null) {
       return [];
     }
 
-    let url = `/productos?filters[restaurante][id][$eq]=${restauranteId}&populate[image,categoria]&sort[0]=name:asc`;
+    let url = `/productos?filters[restaurante][id][$eq]=${restauranteId}&populate[image,categoria]&sort[0]=name:asc&publicationState=preview`;
     if (categoryId) {
       url += `&filters[categoria][id][$eq]=${categoryId}`;
     }
@@ -119,7 +128,7 @@ export async function fetchProducts(slug, categoryId = null) {
 
     // Estrategia 3: Intentar con slug directamente
     console.log('Estrategia 3: Intentando con slug directamente...');
-    let urlSlug = `/productos?filters[restaurante][slug][$eq]=${slug}&populate[image,categoria]&sort[0]=name:asc`;
+    let urlSlug = `/productos?filters[restaurante][slug][$eq]=${slug}&populate[image,categoria]&sort[0]=name:asc&publicationState=preview`;
     if (categoryId) {
       urlSlug += `&filters[categoria][id][$eq]=${categoryId}`;
     }
@@ -182,17 +191,29 @@ function textToBlocks(text) {
 function mapProducts(data) {
   const baseURL = import.meta.env?.VITE_API_URL?.replace('/api', '') || '';
   
-  return data.map(item => {
+  console.log('mapProducts: recibidos', data.length, 'productos');
+  if (data.length > 0) {
+    console.log('mapProducts: ejemplo de producto raw:', data[0]);
+  }
+  
+  // Filtrar valores null/undefined ANTES de mapear
+  const validData = data.filter(item => item != null);
+  if (validData.length !== data.length) {
+    console.warn(`mapProducts: filtrados ${data.length - validData.length} productos null/undefined`);
+  }
+  
+  const mapped = validData.map(item => {
     // Los productos pueden venir directamente desde categorías (sin attributes) o desde API (con attributes)
     const attr = item.attributes || item;
     
     // Asegurar que siempre tengamos un id válido
-    const productId = item.id || item.documentId || attr.id || attr.documentId;
+    const productId = item.id || item.documentId || attr?.id || attr?.documentId;
     if (!productId) {
       console.warn('Producto sin ID válido:', item);
+      return null; // Retornar null para filtrar después
     }
     
-    const image = attr.image?.data || attr.image || (typeof attr.image === 'object' && attr.image.id ? attr.image : null);
+    const image = attr?.image?.data || attr?.image || (typeof attr?.image === 'object' && attr?.image?.id ? attr.image : null);
     
     // Si el producto ya tiene categoriaId (viene de categorías), usarlo
     // Si no, intentar obtenerlo de la relación categoria
@@ -200,7 +221,7 @@ function mapProducts(data) {
     let categoriaName = item.categoriaName || null; // Usar categoriaName si viene desde categorías
     
     if (!categoriaId) {
-      const categoria = attr.categoria?.data || attr.categoria;
+      const categoria = attr?.categoria?.data || attr?.categoria;
       categoriaId = categoria ? (categoria.id || categoria.documentId || categoria) : null;
       categoriaName = categoria ? (categoria.attributes?.name || categoria.name || '') : null;
     }
@@ -225,26 +246,40 @@ function mapProducts(data) {
     }
     
     // Convertir descripción a texto plano si es un array (Rich Text)
-    const description = Array.isArray(attr.description)
+    const description = Array.isArray(attr?.description)
       ? blocksToText(attr.description)
-      : typeof attr.description === 'string'
+      : typeof attr?.description === 'string'
       ? attr.description
       : '';
     
     const mapped = {
       id: productId,
-      documentId: item.documentId || attr.documentId,
-      name: attr.name || '',
-      price: Number(attr.price || 0),
+      documentId: item.documentId || attr?.documentId,
+      name: attr?.name || '',
+      price: Number(attr?.price || 0),
       description: description,
-      available: attr.available !== false,
+      available: attr?.available !== false,
       image: imageUrl,
       categoriaId: categoriaId,
       categoriaName: categoriaName
     };
     
     return mapped;
-  }).filter(item => item.id); // Filtrar productos sin ID válido
+  }).filter(item => {
+    // Filtrar productos sin ID válido o que sean null
+    if (!item || !item.id) {
+      console.warn('Filtrando producto inválido:', item);
+      return false;
+    }
+    return true;
+  });
+  
+  console.log('mapProducts: productos mapeados:', mapped.length);
+  if (mapped.length > 0) {
+    console.log('mapProducts: ejemplo de producto mapeado:', mapped[0]);
+  }
+  
+  return mapped;
 }
 
 /**
