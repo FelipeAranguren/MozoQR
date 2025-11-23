@@ -333,18 +333,44 @@ export async function getRestaurantId(slug) {
   if (!slug) return null;
 
   try {
+    // Obtener el objeto completo del restaurante (sin fields para evitar problemas)
     const res = await api.get(
-      `/restaurantes?filters[slug][$eq]=${slug}&fields[0]=id`,
+      `/restaurantes?filters[slug][$eq]=${slug}`,
       { headers: getAuthHeaders() }
     );
     
     const data = res?.data?.data?.[0];
-    const restauranteId = data?.id || data?.documentId || null;
-    console.log('Restaurante ID obtenido:', restauranteId, 'para slug:', slug);
+    if (!data) {
+      console.warn('⚠️ [getRestaurantId] No se encontró restaurante para slug:', slug);
+      console.log('⚠️ [getRestaurantId] Respuesta completa:', res?.data);
+      return null;
+    }
+
+    // Intentar obtener el ID de múltiples formas (Strapi v4 y v5)
+    const restauranteId = 
+      data?.id || 
+      data?.documentId || 
+      (data?.attributes && (data.attributes.id || data.attributes.documentId)) ||
+      null;
+    
+    console.log('🔍 [getRestaurantId] Restaurante encontrado:', {
+      slug,
+      restauranteId,
+      dataKeys: Object.keys(data || {}),
+      hasAttributes: !!data?.attributes,
+      rawData: data
+    });
+
+    if (!restauranteId) {
+      console.error('❌ [getRestaurantId] No se pudo extraer el ID del restaurante:', data);
+      return null;
+    }
+
     return restauranteId;
   } catch (err) {
-    console.error('Error fetching restaurant ID:', err);
-    console.error('Error details:', err?.response?.data || err?.message);
+    console.error('❌ [getRestaurantId] Error fetching restaurant ID:', err);
+    console.error('❌ [getRestaurantId] Error details:', err?.response?.data || err?.message);
+    console.error('❌ [getRestaurantId] Error status:', err?.response?.status);
     return null;
   }
 }
@@ -451,8 +477,14 @@ export async function deleteProduct(productId) {
 export async function createCategory(slug, categoryData) {
   if (!slug) throw new Error('slug requerido');
 
+  console.log('🔍 [createCategory] Obteniendo restauranteId para slug:', slug);
   const restauranteId = await getRestaurantId(slug);
-  if (!restauranteId) throw new Error('Restaurante no encontrado');
+  console.log('🔍 [createCategory] RestauranteId obtenido:', restauranteId);
+  
+  if (!restauranteId) {
+    console.error('❌ [createCategory] Restaurante no encontrado para slug:', slug);
+    throw new Error('Restaurante no encontrado');
+  }
 
   try {
     const payload = {
@@ -463,10 +495,14 @@ export async function createCategory(slug, categoryData) {
       }
     };
 
+    console.log('🔍 [createCategory] Enviando payload:', payload);
     const res = await api.post('/categorias', payload, { headers: getAuthHeaders() });
+    console.log('✅ [createCategory] Categoría creada exitosamente:', res?.data?.data);
     return res?.data?.data || null;
   } catch (err) {
-    console.error('Error creating category:', err);
+    console.error('❌ [createCategory] Error creating category:', err);
+    console.error('❌ [createCategory] Error response:', err?.response?.data);
+    console.error('❌ [createCategory] Error status:', err?.response?.status);
     throw err;
   }
 }

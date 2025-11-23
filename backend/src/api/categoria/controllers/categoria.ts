@@ -4,4 +4,292 @@
 
 import { factories } from '@strapi/strapi'
 
-export default factories.createCoreController('api::categoria.categoria');
+/**
+ * Helper para validar que el usuario tiene acceso al restaurante
+ */
+async function validateRestaurantAccess(strapi: any, userId: number, restauranteId: number | string): Promise<boolean> {
+  if (!userId || !restauranteId) {
+    console.log('❌ [validateRestaurantAccess] Missing userId or restauranteId:', { userId, restauranteId });
+    return false;
+  }
+
+  console.log('🔍 [validateRestaurantAccess] Iniciando validación', { userId, restauranteId, type: typeof restauranteId });
+
+  // Primero, obtener el restaurante real (puede ser por id numérico o documentId)
+  let restaurant: any = null;
+  
+  // Intentar buscar por id numérico primero
+  if (typeof restauranteId === 'number' || (typeof restauranteId === 'string' && /^\d+$/.test(restauranteId))) {
+    const numId = typeof restauranteId === 'string' ? Number(restauranteId) : restauranteId;
+    restaurant = await strapi.entityService.findOne('api::restaurante.restaurante', numId, {
+      fields: ['id'],
+    });
+    console.log('🔍 [validateRestaurantAccess] Buscado por id numérico:', numId, 'Resultado:', restaurant?.id);
+  }
+
+  // Si no se encontró y es string, intentar por documentId
+  if (!restaurant && typeof restauranteId === 'string') {
+    const [restaurantByDocId] = await strapi.db.query('api::restaurante.restaurante').findMany({
+      where: { documentId: restauranteId },
+      select: ['id'],
+      limit: 1,
+    });
+    if (restaurantByDocId) {
+      restaurant = restaurantByDocId;
+      console.log('🔍 [validateRestaurantAccess] Encontrado por documentId:', restauranteId, 'id:', restaurant.id);
+    }
+  }
+
+  // Si aún no se encontró, intentar buscar directamente por el valor como string en documentId
+  if (!restaurant && typeof restauranteId === 'string') {
+    // Último intento: buscar directamente en entityService con el string
+    try {
+      const found = await strapi.entityService.findMany('api::restaurante.restaurante', {
+        filters: {
+          $or: [
+            { id: { $eq: restauranteId } },
+            { documentId: { $eq: restauranteId } }
+          ]
+        },
+        fields: ['id'],
+        limit: 1,
+      });
+      if (found?.[0]) {
+        restaurant = found[0];
+        console.log('🔍 [validateRestaurantAccess] Encontrado por búsqueda amplia:', restauranteId);
+      }
+    } catch (err) {
+      console.log('⚠️ [validateRestaurantAccess] Error en búsqueda amplia:', err);
+    }
+  }
+
+  if (!restaurant?.id) {
+    console.log('❌ [validateRestaurantAccess] Restaurante no encontrado para:', restauranteId);
+    return false;
+  }
+
+  const finalRestaurantId = restaurant.id;
+  console.log('🔍 [validateRestaurantAccess] ID final del restaurante:', finalRestaurantId);
+
+  // Buscar membership del usuario para este restaurante
+  const [membership] = await strapi.db.query('api::restaurant-member.restaurant-member').findMany({
+    where: {
+      restaurante: { id: finalRestaurantId },
+      users_permissions_user: { id: userId },
+      role: { $in: ['owner', 'staff'] },
+      active: true,
+    },
+    populate: { 
+      restaurante: { select: ['id', 'documentId', 'slug'] },
+      users_permissions_user: { select: ['id', 'username'] }
+    },
+    select: ['id', 'role'],
+    limit: 1,
+  });
+
+  const hasAccess = !!membership;
+  console.log('🔍 [validateRestaurantAccess] Resultado final', {
+    userId,
+    restauranteId,
+    finalRestaurantId,
+    hasAccess,
+    membershipId: membership?.id,
+    membershipRole: membership?.role
+  });
+
+  if (!hasAccess) {
+    // Log adicional para debugging: verificar si el usuario tiene alguna membresía
+    const [allMemberships] = await strapi.db.query('api::restaurant-member.restaurant-member').findMany({
+      where: {
+        users_permissions_user: { id: userId },
+        active: true,
+      },
+      populate: { restaurante: { select: ['id', 'slug'] } },
+      select: ['id', 'role'],
+      limit: 10,
+    });
+    console.log('🔍 [validateRestaurantAccess] Membresías del usuario:', allMemberships?.map(m => ({
+      id: m.id,
+      role: m.role,
+      restauranteId: m.restaurante?.id,
+      restauranteSlug: m.restaurante?.slug
+    })));
+  }
+
+  return hasAccess;
+}
+
+/**
+ * Helper para obtener el restaurante de una categoría
+ */
+async function getCategoryRestaurant(strapi: any, categoryId: number | string): Promise<number | null> {
+  // Normalizar categoryId
+  const normalizedId = typeof categoryId === 'string' && /^\d+$/.test(categoryId) 
+    ? Number(categoryId) 
+    : categoryId;
+
+  const category = await strapi.entityService.findOne('api::categoria.categoria', normalizedId as number, {
+    fields: ['id'],
+    populate: { restaurante: { fields: ['id'] } },
+  });
+
+  if (!category) {
+    console.log('❌ [getCategoryRestaurant] Categoría no encontrada:', categoryId);
+    return null;
+  }
+  
+  const restaurante = category.restaurante?.data || category.restaurante;
+  const restauranteId = restaurante?.id || null;
+  console.log('🔍 [getCategoryRestaurant]', { categoryId, restauranteId });
+  return restauranteId;
+}
+
+export default factories.createCoreController('api::categoria.categoria', ({ strapi }) => ({
+  /**
+   * POST /api/categorias
+   * Crea una categoría validando que el usuario tenga acceso al restaurante
+   */
+  async create(ctx) {
+    const user = ctx.state?.user;
+    if (!user) {
+      console.log('❌ [categoria.create] Usuario no autenticado');
+      ctx.unauthorized('Usuario no autenticado');
+      return;
+    }
+
+    const payload = ctx.request?.body?.data || ctx.request?.body || {};
+    const restauranteId = payload.restaurante;
+
+    console.log('🔍 [categoria.create] Iniciando creación de categoría', {
+      userId: user.id,
+      restauranteId,
+      payload: { name: payload.name, slug: payload.slug }
+    });
+
+    if (!restauranteId) {
+      console.log('❌ [categoria.create] Restaurante no especificado en payload');
+      ctx.badRequest('Restaurante es requerido');
+      return;
+    }
+
+    // Validar que el usuario tiene acceso a este restaurante
+    const hasAccess = await validateRestaurantAccess(strapi, user.id, restauranteId);
+    if (!hasAccess) {
+      console.log('❌ [categoria.create] Usuario no tiene acceso al restaurante', {
+        userId: user.id,
+        restauranteId
+      });
+      ctx.forbidden('No tienes acceso a este restaurante');
+      return;
+    }
+
+    // Crear la categoría
+    try {
+      console.log('✅ [categoria.create] Creando categoría con payload:', payload);
+      const created = await strapi.entityService.create('api::categoria.categoria', {
+        data: payload,
+      });
+
+      console.log('✅ [categoria.create] Categoría creada exitosamente:', created?.id);
+      ctx.body = { data: created };
+    } catch (error: any) {
+      console.error('❌ [categoria.create] Error al crear categoría:', error);
+      console.error('❌ [categoria.create] Error details:', error?.message, error?.stack);
+      ctx.badRequest(error?.message || 'Error al crear la categoría');
+    }
+  },
+
+  /**
+   * PUT /api/categorias/:id
+   * Actualiza una categoría validando que el usuario tenga acceso al restaurante
+   */
+  async update(ctx) {
+    const user = ctx.state?.user;
+    if (!user) {
+      ctx.unauthorized('Usuario no autenticado');
+      return;
+    }
+
+    const categoryId = ctx.params?.id;
+    if (!categoryId) {
+      ctx.badRequest('ID de categoría requerido');
+      return;
+    }
+
+    // Obtener el restaurante de la categoría existente
+    const restauranteId = await getCategoryRestaurant(strapi, Number(categoryId));
+    if (!restauranteId) {
+      ctx.notFound('Categoría no encontrada');
+      return;
+    }
+
+    // Validar que el usuario tiene acceso a este restaurante
+    const hasAccess = await validateRestaurantAccess(strapi, user.id, restauranteId);
+    if (!hasAccess) {
+      ctx.forbidden('No tienes acceso a este restaurante');
+      return;
+    }
+
+    const payload = ctx.request?.body?.data || ctx.request?.body || {};
+
+    // Si se intenta cambiar el restaurante, validar acceso al nuevo restaurante también
+    if (payload.restaurante && payload.restaurante !== restauranteId) {
+      const hasNewAccess = await validateRestaurantAccess(strapi, user.id, payload.restaurante);
+      if (!hasNewAccess) {
+        ctx.forbidden('No tienes acceso al restaurante especificado');
+        return;
+      }
+    }
+
+    try {
+      const updated = await strapi.entityService.update('api::categoria.categoria', Number(categoryId), {
+        data: payload,
+      });
+
+      ctx.body = { data: updated };
+    } catch (error: any) {
+      console.error('Error updating category:', error);
+      ctx.badRequest(error?.message || 'Error al actualizar la categoría');
+    }
+  },
+
+  /**
+   * DELETE /api/categorias/:id
+   * Elimina una categoría validando que el usuario tenga acceso al restaurante
+   */
+  async delete(ctx) {
+    const user = ctx.state?.user;
+    if (!user) {
+      ctx.unauthorized('Usuario no autenticado');
+      return;
+    }
+
+    const categoryId = ctx.params?.id;
+    if (!categoryId) {
+      ctx.badRequest('ID de categoría requerido');
+      return;
+    }
+
+    // Obtener el restaurante de la categoría existente
+    const restauranteId = await getCategoryRestaurant(strapi, Number(categoryId));
+    if (!restauranteId) {
+      ctx.notFound('Categoría no encontrada');
+      return;
+    }
+
+    // Validar que el usuario tiene acceso a este restaurante
+    const hasAccess = await validateRestaurantAccess(strapi, user.id, restauranteId);
+    if (!hasAccess) {
+      ctx.forbidden('No tienes acceso a este restaurante');
+      return;
+    }
+
+    try {
+      const deleted = await strapi.entityService.delete('api::categoria.categoria', Number(categoryId));
+      ctx.body = { data: deleted };
+    } catch (error: any) {
+      console.error('Error deleting category:', error);
+      ctx.badRequest(error?.message || 'Error al eliminar la categoría');
+    }
+  },
+}));

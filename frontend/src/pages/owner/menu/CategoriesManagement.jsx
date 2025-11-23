@@ -92,6 +92,7 @@ export default function CategoriesManagement({ slug }) {
           slug: slugValue.trim() || name.toLowerCase().replace(/\s+/g, '-')
         });
       } else {
+        console.log('🔍 [CategoriesManagement] Creando categoría para slug:', slug);
         await createCategory(slug, {
           name: name.trim(),
           slug: slugValue.trim() || name.toLowerCase().replace(/\s+/g, '-')
@@ -101,7 +102,11 @@ export default function CategoriesManagement({ slug }) {
       handleCloseDialog();
     } catch (error) {
       console.error('Error saving category:', error);
-      alert('Error al guardar la categoría');
+      const errorMessage = error?.response?.data?.error?.message 
+        || error?.message 
+        || error?.response?.data?.message
+        || 'Error al guardar la categoría';
+      alert(`Error al guardar la categoría: ${errorMessage}`);
     }
   };
 
