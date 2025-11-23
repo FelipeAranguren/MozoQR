@@ -1,5 +1,6 @@
 // frontend/src/api/menu.js
 import { api } from '../api';
+import { http } from '../http';
 
 // Helper para obtener token de autenticación
 function getAuthHeaders() {
@@ -9,138 +10,185 @@ function getAuthHeaders() {
 
 /**
  * Obtiene todas las categorías de un restaurante
+ * Primero intenta el endpoint público, luego usa API directa como fallback
  */
 export async function fetchCategories(slug) {
   if (!slug) return [];
 
+  // Primero intentar el endpoint público (como lo ve el cliente)
   try {
-    // Primero obtener el ID del restaurante
+    const res = await http.get(`/restaurants/${slug}/menus`);
+    const categories = res?.data?.data?.categories || [];
+    
+    if (categories.length > 0) {
+      console.log('✅ [fetchCategories] Categorías obtenidas del endpoint /restaurants/menus:', categories.length);
+      
+      // Mapear categorías del formato del endpoint al formato esperado
+      return categories.map(cat => {
+        const productos = (cat.productos || []).map(p => ({
+          id: p.id,
+          name: p.name,
+          price: p.price,
+          image: p.image,
+          available: p.available !== false,
+          description: p.description,
+          ...p
+        }));
+        
+        return {
+          id: cat.id,
+          documentId: cat.id,
+          numericId: cat.id,
+          name: cat.name,
+          slug: cat.slug,
+          productos: productos
+        };
+      });
+    }
+  } catch (err) {
+    console.warn('⚠️ [fetchCategories] Endpoint /restaurants/menus no disponible, usando fallback:', err?.response?.status);
+  }
+  
+  // Fallback: usar API directa (para owner, puede acceder a productos no publicados)
+  try {
+    console.log('🔄 [fetchCategories] Usando API directa como fallback...');
     const restauranteId = await getRestaurantId(slug);
     if (!restauranteId) {
-      console.warn('No se encontró el restaurante con slug:', slug);
+      console.warn('❌ [fetchCategories] No se encontró el restaurante con slug:', slug);
       return [];
     }
 
-    const res = await api.get(
-      `/categorias?filters[restaurante][id][$eq]=${restauranteId}&populate[productos][populate]=image&sort[0]=name:asc&publicationState=preview`,
-      { headers: getAuthHeaders() }
-    );
+    // Para owner, obtenemos categorías y luego filtramos productos disponibles
+    // Primero obtener categorías
+    const params = new URLSearchParams();
+    params.append('filters[restaurante][id][$eq]', restauranteId);
+    params.append('populate[productos][populate]', 'image');
+    params.append('sort[0]', 'name:asc');
+    
+    const url = `/categorias?${params.toString()}`;
+    console.log('🔄 [fetchCategories] URL de fallback:', url);
+    
+    const res = await api.get(url, { headers: getAuthHeaders() });
     
     const data = res?.data?.data || [];
+    console.log('✅ [fetchCategories] Categorías obtenidas de API directa:', data.length);
+    
+    // Filtrar productos disponibles en el frontend (más confiable)
     return data.map(item => {
       const attr = item.attributes || item;
+      const categoryId = item.documentId || item.id || attr?.id;
+      const productosRaw = attr.productos?.data || attr.productos || [];
+      
+      // Filtrar solo productos disponibles
+      const productos = productosRaw.filter(p => {
+        const pAttr = p.attributes || p;
+        return pAttr.available !== false;
+      });
+      
       return {
-        id: item.id || item.documentId,
+        id: categoryId,
         documentId: item.documentId,
+        numericId: item.id,
         name: attr.name || '',
         slug: attr.slug || '',
-        productos: attr.productos?.data || attr.productos || []
+        productos: productos
       };
     });
-  } catch (err) {
-    console.error('Error fetching categories:', err);
-    console.error('Error details:', err?.response?.data || err?.message);
+  } catch (fallbackErr) {
+    console.error('❌ [fetchCategories] Error en fallback:', fallbackErr);
     return [];
   }
 }
 
 /**
  * Obtiene todos los productos de un restaurante
+ * Estrategia híbrida: intenta endpoint público, luego API directa como fallback
  */
 export async function fetchProducts(slug, categoryId = null) {
   if (!slug) return [];
 
+  // ESTRATEGIA 1: Intentar endpoint público (sincronizado con cliente)
   try {
-    // Estrategia 1: Obtener productos desde las categorías (más confiable)
-    console.log('Estrategia 1: Obteniendo productos desde categorías...');
-    const categories = await fetchCategories(slug);
+    const res = await http.get(`/restaurants/${slug}/menus`);
+    const categories = res?.data?.data?.categories || [];
     
-    // Extraer todos los productos de todas las categorías
-    const allProducts = [];
-    categories.forEach(cat => {
-      const productos = cat.productos || [];
-      console.log(`Categoría "${cat.name}" tiene ${productos.length} productos`);
-      productos.forEach(prod => {
-        // Normalizar la estructura del producto
-        // Los productos desde categorías pueden venir con o sin attributes
-        const prodAttr = prod.attributes || prod;
-        const prodId = prod.id || prod.documentId || prodAttr.id || prodAttr.documentId;
-        
-        console.log('Producto desde categoría:', {
-          raw: prod,
-          prodId,
-          name: prodAttr.name,
-          hasAttributes: !!prod.attributes
+    if (categories.length > 0 || res?.data?.data) {
+      console.log('✅ [fetchProducts] Usando endpoint /restaurants/menus, categorías:', categories.length);
+      
+      const allProducts = [];
+      categories.forEach(cat => {
+        (cat.productos || []).forEach(p => {
+          allProducts.push({
+            id: p.id,
+            name: p.name,
+            price: p.price,
+            image: p.image,
+            available: p.available !== false,
+            description: p.description,
+            categoriaId: cat.id,
+            categoriaName: cat.name
+          });
         });
-        
-        // Agregar el categoriaId y categoriaName al producto y asegurar que tenga id
-        const p = { 
-          ...prod,
-          id: prodId,
-          documentId: prod.documentId || prodAttr.documentId,
-          attributes: prodAttr,
-          categoriaId: cat.id,
-          categoriaName: cat.name // Agregar el nombre de la categoría
-        };
-        allProducts.push(p);
       });
-    });
-    
-    console.log('Productos encontrados desde categorías:', allProducts.length);
-    console.log('Ejemplo de producto:', allProducts[0]);
-    
-    if (allProducts.length > 0) {
+      
+      console.log('✅ [fetchProducts] Total productos del endpoint público:', allProducts.length);
+      
+      // Filtrar por categoría si se especifica
       let filtered = allProducts;
       if (categoryId) {
-        filtered = allProducts.filter(p => {
-          const pCatId = String(p.categoriaId || '');
-          const selectedCatId = String(categoryId || '');
-          return pCatId === selectedCatId;
-        });
+        filtered = allProducts.filter(p => String(p.categoriaId || '') === String(categoryId));
       }
       
-      return mapProducts(filtered);
+      return filtered.map(p => ({
+        id: p.id,
+        documentId: p.id,
+        name: p.name || '',
+        price: Number(p.price || 0),
+        description: typeof p.description === 'string' ? p.description : '',
+        available: p.available !== false,
+        image: p.image || null,
+        categoriaId: p.categoriaId || null,
+        categoriaName: p.categoriaName || null
+      }));
     }
+  } catch (err) {
+    console.warn('⚠️ [fetchProducts] Endpoint público no disponible, usando fallback:', err?.response?.status);
+  }
 
-    // Estrategia 2: Filtrar productos por ID del restaurante
-    console.log('Estrategia 2: Filtrando productos por ID del restaurante...');
+  // ESTRATEGIA 2: Fallback usando API directa (para owner, más permisos)
+  try {
+    console.log('🔄 [fetchProducts] Usando API directa como fallback...');
     const restauranteId = await getRestaurantId(slug);
     if (!restauranteId) {
-      console.warn('No se encontró el restaurante con slug:', slug);
+      console.warn('❌ [fetchProducts] No se encontró el restaurante con slug:', slug);
       return [];
     }
 
-    let url = `/productos?filters[restaurante][id][$eq]=${restauranteId}&populate[image,categoria]&sort[0]=name:asc&publicationState=preview`;
+    // Construir parámetros de consulta de forma segura
+    const params = new URLSearchParams();
+    params.append('filters[restaurante][id][$eq]', restauranteId);
+    params.append('filters[available][$eq]', 'true');
+    params.append('populate[image]', 'true');
+    params.append('populate[categoria]', 'true');
+    params.append('sort[0]', 'name:asc');
+    
     if (categoryId) {
-      url += `&filters[categoria][id][$eq]=${categoryId}`;
+      params.append('filters[categoria][id][$eq]', categoryId);
     }
     
-    console.log('Fetching products from URL:', url);
+    const url = `/productos?${params.toString()}`;
+    console.log('🔄 [fetchProducts] URL de fallback:', url);
+    
     const res = await api.get(url, { headers: getAuthHeaders() });
     
-    console.log('Raw API response:', res?.data);
     const data = res?.data?.data || [];
-    console.log('Products data array:', data.length);
+    console.log('✅ [fetchProducts] Productos obtenidos de API directa:', data.length);
     
-    if (data.length > 0) {
-      return mapProducts(data);
-    }
-
-    // Estrategia 3: Intentar con slug directamente
-    console.log('Estrategia 3: Intentando con slug directamente...');
-    let urlSlug = `/productos?filters[restaurante][slug][$eq]=${slug}&populate[image,categoria]&sort[0]=name:asc&publicationState=preview`;
-    if (categoryId) {
-      urlSlug += `&filters[categoria][id][$eq]=${categoryId}`;
-    }
-    const resSlug = await api.get(urlSlug, { headers: getAuthHeaders() });
-    const dataSlug = resSlug?.data?.data || [];
-    console.log('Products with slug filter:', dataSlug.length);
-    
-    return mapProducts(dataSlug);
+    return mapProducts(data);
   } catch (err) {
-    console.error('Error fetching products:', err);
-    console.error('Error details:', err?.response?.data || err?.message);
-    console.error('Error status:', err?.response?.status);
+    console.error('❌ [fetchProducts] Error en fallback:', err);
+    console.error('❌ [fetchProducts] Error response:', err?.response?.data);
+    console.error('❌ [fetchProducts] Error status:', err?.response?.status);
     return [];
   }
 }
@@ -536,10 +584,26 @@ export async function deleteCategory(categoryId) {
   if (!categoryId) throw new Error('categoryId requerido');
 
   try {
-    await api.delete(`/categorias/${categoryId}`, { headers: getAuthHeaders() });
+    const url = `/categorias/${categoryId}`;
+    console.log('🔍 [deleteCategory] Eliminando categoría', {
+      categoryId,
+      type: typeof categoryId,
+      url,
+      baseURL: api.defaults.baseURL
+    });
+    
+    const response = await api.delete(url, { headers: getAuthHeaders() });
+    console.log('✅ [deleteCategory] Categoría eliminada exitosamente', response?.data);
     return true;
   } catch (err) {
-    console.error('Error deleting category:', err);
+    console.error('❌ [deleteCategory] Error deleting category:', err);
+    console.error('❌ [deleteCategory] Error response:', err?.response?.data);
+    console.error('❌ [deleteCategory] Error status:', err?.response?.status);
+    console.error('❌ [deleteCategory] Error config:', {
+      url: err?.config?.url,
+      method: err?.config?.method,
+      headers: err?.config?.headers
+    });
     throw err;
   }
 }
@@ -567,4 +631,5 @@ export async function uploadImage(file) {
     throw err;
   }
 }
+
 

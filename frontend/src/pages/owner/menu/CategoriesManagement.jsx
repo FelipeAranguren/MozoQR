@@ -116,11 +116,46 @@ export default function CategoriesManagement({ slug }) {
     }
 
     try {
-      await deleteCategory(category.id);
+      // Intentar con el ID principal primero, si falla intentar con documentId o numericId
+      let categoryId = category.id;
+      
+      console.log('🔍 [CategoriesManagement] Eliminando categoría:', {
+        id: category.id,
+        documentId: category.documentId,
+        numericId: category.numericId,
+        name: category.name
+      });
+      
+      // Si el id parece ser un UUID (documentId), usarlo directamente
+      // Si no, intentar con documentId primero si está disponible
+      if (category.documentId && (!category.id || typeof category.id === 'string')) {
+        categoryId = category.documentId;
+      }
+      
+      await deleteCategory(categoryId);
       await loadCategories();
     } catch (error) {
-      console.error('Error deleting category:', error);
-      alert('Error al eliminar la categoría');
+      console.error('❌ [CategoriesManagement] Error deleting category:', error);
+      console.error('❌ [CategoriesManagement] Error response:', error?.response?.data);
+      console.error('❌ [CategoriesManagement] Error status:', error?.response?.status);
+      
+      // Si falla con el ID principal, intentar con el alternativo
+      if (category.documentId && category.id !== category.documentId) {
+        console.log('🔄 [CategoriesManagement] Reintentando con documentId alternativo');
+        try {
+          await deleteCategory(category.documentId);
+          await loadCategories();
+          return; // Éxito con el ID alternativo
+        } catch (retryError) {
+          console.error('❌ [CategoriesManagement] También falló con documentId:', retryError);
+        }
+      }
+      
+      const errorMessage = error?.response?.data?.error?.message 
+        || error?.response?.data?.message
+        || error?.message 
+        || 'Error al eliminar la categoría';
+      alert(`Error al eliminar la categoría: ${errorMessage}`);
     }
   };
 

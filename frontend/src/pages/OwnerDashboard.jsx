@@ -22,6 +22,7 @@ import {
 } from '../api/analytics';
 import { fetchTables, fetchActiveOrders } from '../api/tables';
 import { api } from '../api';
+import { http } from '../http';
 import { MARANA_COLORS } from '../theme';
 import AttachMoneyIcon from '@mui/icons-material/AttachMoney';
 import ShoppingCartIcon from '@mui/icons-material/ShoppingCart';
@@ -378,13 +379,77 @@ export default function OwnerDashboard() {
       getTotalOrdersCount({ slug }),
       getSessionsCount({ slug, from: fromIso, to: toIso }),
       fetchTopProducts({ slug, from: fromIso, to: toIso, limit: 5 }),
-      // Obtener métricas del restaurante para Success Score
-      api.get(`/restaurantes?filters[slug][$eq]=${slug}&populate[productos][populate]=image,categoria&populate[mesas]=true&populate[categorias]=true&populate[logo]=true`).catch(() => ({ data: { data: [] } })),
+      // Obtener productos: intenta endpoint público, luego API directa
+      // Esto asegura sincronización con cliente pero funciona si el endpoint falla
+      Promise.resolve().then(async () => {
+        try {
+          // Intentar endpoint público primero
+          const res = await http.get(`/restaurants/${slug}/menus`);
+          const categories = res?.data?.data?.categories || [];
+          if (categories.length > 0) {
+            const allProducts = [];
+            categories.forEach(cat => {
+              (cat.productos || []).forEach(p => {
+                allProducts.push({
+                  id: p.id,
+                  name: p.name,
+                  price: p.price,
+                  image: p.image,
+                  available: p.available !== false,
+                  categoriaId: cat.id,
+                  categoriaName: cat.name
+                });
+              });
+            });
+            console.log('✅ [OwnerDashboard] Productos del endpoint público:', allProducts.length);
+            return allProducts;
+          }
+        } catch (e) {
+          console.warn('⚠️ [OwnerDashboard] Endpoint público falló, usando API directa:', e?.response?.status);
+        }
+        
+        // Fallback: usar API directa
+        try {
+          const restauranteRes = await api.get(`/restaurantes?filters[slug][$eq]=${slug}`);
+          const restaurante = restauranteRes?.data?.data?.[0];
+          if (!restaurante) return [];
+          
+          const restauranteId = restaurante.id || restaurante.documentId || restaurante.attributes?.id;
+          if (!restauranteId) return [];
+          
+          const productosRes = await api.get(
+            `/productos?filters[restaurante][id][$eq]=${restauranteId}&filters[available][$eq]=true&populate[image,categoria]&sort[0]=name:asc`,
+            { headers: { Authorization: `Bearer ${localStorage.getItem('jwt') || localStorage.getItem('strapi_jwt') || ''}` } }
+          );
+          
+          const productos = productosRes?.data?.data || [];
+          console.log('✅ [OwnerDashboard] Productos de API directa:', productos.length);
+          
+          return productos.map(p => {
+            const attr = p.attributes || p;
+            const categoria = attr.categoria?.data || attr.categoria;
+            return {
+              id: p.id || p.documentId,
+              name: attr.name || '',
+              price: Number(attr.price || 0),
+              image: attr.image?.data?.attributes?.url || attr.image?.url || null,
+              available: attr.available !== false,
+              categoriaId: categoria ? (categoria.id || categoria.documentId) : null,
+              categoriaName: categoria ? (categoria.attributes?.name || categoria.name) : null
+            };
+          });
+        } catch (fallbackErr) {
+          console.error('❌ [OwnerDashboard] Error en fallback:', fallbackErr);
+          return [];
+        }
+      }),
+      // Obtener información del restaurante (mesas, categorías, logo) para métricas
+      api.get(`/restaurantes?filters[slug][$eq]=${slug}&populate[mesas]=true&populate[categorias]=true&populate[logo]=true`).catch(() => ({ data: { data: [] } })),
       // Obtener mesas y pedidos activos
       fetchTables(slug).catch((e) => { console.warn('Error fetching tables:', e); return []; }),
       fetchActiveOrders(slug).catch((e) => { console.warn('Error fetching active orders:', e); return []; }),
     ])
-      .then(([orders, todayOrders, yesterdayOrders, totalOrd, sessions, topProd, restaurantRes, tablesData, activeOrdersData]) => {
+      .then(([orders, todayOrders, yesterdayOrders, totalOrd, sessions, topProd, productosActivos, restaurantRes, tablesData, activeOrdersData]) => {
         const list = Array.isArray(orders) ? orders : [];
         const todayList = Array.isArray(todayOrders) ? todayOrders : [];
         const yesterdayList = Array.isArray(yesterdayOrders) ? yesterdayOrders : [];
@@ -401,23 +466,18 @@ export default function OwnerDashboard() {
         setTables(Array.isArray(tablesData) ? tablesData : []);
         setActiveOrders(Array.isArray(activeOrdersData) ? activeOrdersData : []);
         
-        // Calcular métricas para Success Score
+        // Calcular métricas para Success Score usando productos activos (como los ve el cliente)
         const restaurant = restaurantRes?.data?.data?.[0];
+        const productos = Array.isArray(productosActivos) ? productosActivos : [];
+        
         if (restaurant) {
           const attr = restaurant.attributes || restaurant;
-          const productos = attr.productos?.data || attr.productos || [];
           const mesas = attr.mesas?.data || attr.mesas || [];
           const categorias = attr.categorias?.data || attr.categorias || [];
           
-          const productsWithoutImage = productos.filter(p => {
-            const pAttr = p.attributes || p;
-            return !pAttr.image || !pAttr.image.data;
-          }).length;
-
-          const productsWithoutCategory = productos.filter(p => {
-            const pAttr = p.attributes || p;
-            return !pAttr.categoria || !pAttr.categoria.data;
-          }).length;
+          // Usar los productos activos obtenidos con fetchProducts (mismo método que cliente)
+          const productsWithoutImage = productos.filter(p => !p.image).length;
+          const productsWithoutCategory = productos.filter(p => !p.categoriaId).length;
           
           setRestaurantMetrics({
             productsWithoutImage,
@@ -427,6 +487,21 @@ export default function OwnerDashboard() {
             totalTables: mesas.length,
             hasLogo: !!(attr.logo?.data || attr.logo),
             totalCategories: categorias.length,
+            productsWithoutCategory
+          });
+        } else {
+          // Si no hay restaurante pero sí productos, calcular métricas solo con productos
+          const productsWithoutImage = productos.filter(p => !p.image).length;
+          const productsWithoutCategory = productos.filter(p => !p.categoriaId).length;
+          
+          setRestaurantMetrics({
+            productsWithoutImage,
+            totalProducts: productos.length,
+            outdatedPrices: 0,
+            missingTables: 0,
+            totalTables: 0,
+            hasLogo: false,
+            totalCategories: 0,
             productsWithoutCategory
           });
         }

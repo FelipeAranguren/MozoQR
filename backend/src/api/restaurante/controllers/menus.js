@@ -7,58 +7,41 @@
  */
 module.exports = {
   async find(ctx) {
-    try {
-      console.log('🔍 [menus.find] Iniciando request');
-      console.log('🔍 [menus.find] Params:', ctx.params);
-      console.log('🔍 [menus.find] State:', ctx.state);
-      
-      const restauranteId = ctx.state.restauranteId;
-      const plan = (ctx.state.restaurantePlan || 'BASIC').toUpperCase();
+    const restauranteId = ctx.state.restauranteId;
+    const plan = (ctx.state.restaurantePlan || 'BASIC').toUpperCase();
 
-      if (!restauranteId) {
-        console.error('❌ [menus.find] No restauranteId en ctx.state');
-        return ctx.badRequest('Restaurante no encontrado');
-      }
+    // Obtener información del restaurante (nombre, slug)
+    const restaurante = await strapi.entityService.findOne('api::restaurante.restaurante', restauranteId, {
+      fields: ['id', 'name', 'slug'],
+      publicationState: 'live',
+    });
 
-      console.log('🔍 [menus.find] Restaurante ID:', restauranteId);
+    // URL base para imágenes (desde configuración de Strapi)
+    const publicUrl = strapi.config.get('server.url', 'http://localhost:1337');
+    const buildImageUrl = (relativeUrl) => {
+      if (!relativeUrl) return null;
+      if (typeof relativeUrl === 'string' && relativeUrl.startsWith('http')) return relativeUrl;
+      // Remover leading slash si existe y construir URL absoluta
+      const cleanUrl = String(relativeUrl).replace(/^\/+/, '');
+      return `${publicUrl}/${cleanUrl}`;
+    };
 
-      // Obtener información del restaurante (nombre, slug)
-      const restaurante = await strapi.entityService.findOne('api::restaurante.restaurante', restauranteId, {
-        fields: ['id', 'name', 'slug'],
-        publicationState: 'live',
-      });
-
-      console.log('🔍 [menus.find] Restaurante encontrado:', restaurante?.name);
-
-      // URL base para imágenes (desde configuración de Strapi)
-      const publicUrl = strapi.config.get('server.url', 'http://localhost:1337');
-      const buildImageUrl = (relativeUrl) => {
-        if (!relativeUrl) return null;
-        if (typeof relativeUrl === 'string' && relativeUrl.startsWith('http')) return relativeUrl;
-        // Remover leading slash si existe y construir URL absoluta
-        const cleanUrl = String(relativeUrl).replace(/^\/+/, '');
-        return `${publicUrl}/${cleanUrl}`;
-      };
-
-      // Categorías del restaurante + productos disponibles
-      console.log('🔍 [menus.find] Buscando categorías para restaurante:', restauranteId);
-      const categorias = await strapi.entityService.findMany('api::categoria.categoria', {
-        filters: { restaurante: restauranteId },
-        sort: { name: 'asc' },
-        fields: ['id', 'name', 'Slug'],
-        populate: {
-          productos: {
-            filters: { available: true },
-            sort: { name: 'asc' },
-            fields: ['id', 'name', 'price', 'available', 'sku', 'slug', 'description'],
-            populate: { image: true },
-          },
+    // Categorías del restaurante + productos disponibles
+    const categorias = await strapi.entityService.findMany('api::categoria.categoria', {
+      filters: { restaurante: restauranteId },
+      sort: { name: 'asc' },
+      fields: ['id', 'name', 'Slug'],
+      populate: {
+        productos: {
+          filters: { available: true },
+          sort: { name: 'asc' },
+          fields: ['id', 'name', 'price', 'available', 'sku', 'slug', 'description'],
+          populate: { image: true },
         },
-        publicationState: 'live',
-        limit: 200,
-      });
-
-      console.log('🔍 [menus.find] Categorías encontradas:', categorias?.length || 0);
+      },
+      publicationState: 'live',
+      limit: 200,
+    });
 
     // Sanitizar: ocultar imagen si plan !== PRO
     const sanitized = (categorias || []).map((cat) => {
@@ -96,26 +79,16 @@ module.exports = {
       };
     });
 
-      console.log('🔍 [menus.find] Categorías sanitizadas:', sanitized?.length || 0);
-
-      const response = {
-        data: {
-          restaurant: {
-            id: restaurante?.id || restauranteId,
-            name: restaurante?.name || null,
-            slug: restaurante?.slug || ctx.params?.slug || null,
-            plan: plan,
-          },
-          categories: sanitized,
+    ctx.body = {
+      data: {
+        restaurant: {
+          id: restaurante?.id || restauranteId,
+          name: restaurante?.name || null,
+          slug: restaurante?.slug || ctx.params?.slug || null,
+          plan: plan,
         },
-      };
-
-      console.log('✅ [menus.find] Enviando respuesta:', JSON.stringify(response, null, 2).substring(0, 500));
-      ctx.body = response;
-    } catch (error) {
-      console.error('❌ [menus.find] Error:', error);
-      console.error('❌ [menus.find] Stack:', error.stack);
-      ctx.throw(500, 'Error obteniendo menú');
-    }
+        categories: sanitized,
+      },
+    };
   },
 };
