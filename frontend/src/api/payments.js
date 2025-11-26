@@ -1,21 +1,27 @@
-// src/api/payments.js
-const BASE_URL = import.meta.env.VITE_STRAPI_URL || 'http://localhost:1337';
+import { client, unwrap } from './client';
 
 export async function createMpPreference({ orderId, amount, items, payer_email, back_urls }) {
-  const res = await fetch(`${BASE_URL}/api/payments/create-preference`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ orderId, amount, items, payer_email, back_urls })
+  const res = await client.post('/payments/create-preference', {
+    orderId, amount, items, payer_email, back_urls
   });
 
-  if (!res.ok) {
-    const txt = await res.text().catch(() => '');
-    throw new Error(`MP create-preference failed: ${res.status} ${txt}`);
-  }
-
-  const data = await res.json();
+  const data = res.data;
   if (!data?.ok) {
     throw new Error(data?.error || 'Error creando preferencia.');
   }
   return data; // { ok, preference_id, init_point, sandbox_init_point, payment_id }
 }
+
+/**
+ * Post payment (mock/manual)
+ */
+export async function postPayment(
+  slug,
+  { orderId, status = 'approved', amount, provider, externalRef }
+) {
+  const res = await client.post(`/restaurants/${slug}/payments`, {
+    data: { orderId, status, amount, provider, externalRef },
+  });
+  return unwrap(res);
+}
+

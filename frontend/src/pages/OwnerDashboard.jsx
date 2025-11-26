@@ -21,8 +21,11 @@ import {
   fetchTopProducts,
 } from '../api/analytics';
 import { fetchTables, fetchActiveOrders } from '../api/tables';
-import { api } from '../api';
-import { http } from '../http';
+import { client } from '../api/client';
+// Aliases for compatibility with existing code
+const api = client;
+const http = client;
+
 import { MARANA_COLORS } from '../theme';
 import AttachMoneyIcon from '@mui/icons-material/AttachMoney';
 import ShoppingCartIcon from '@mui/icons-material/ShoppingCart';
@@ -36,33 +39,33 @@ const money = (n) =>
 const money0 = (n) =>
   new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS', maximumFractionDigits: 0, minimumFractionDigits: 0 })
     .format(Number(n) || 0);
-const fmtDate     = new Intl.DateTimeFormat('es-AR', { dateStyle: 'short' });
-const fmtTime     = new Intl.DateTimeFormat('es-AR', { timeStyle: 'short' });
+const fmtDate = new Intl.DateTimeFormat('es-AR', { dateStyle: 'short' });
+const fmtTime = new Intl.DateTimeFormat('es-AR', { timeStyle: 'short' });
 const fmtDateTime = new Intl.DateTimeFormat('es-AR', { dateStyle: 'short', timeStyle: 'short' });
 
 /* ========== Períodos ========== */
 const PERIODS = [
-  { key: '7d',  label: '7 días',   computeStart: (end) => addDays(end, -6) },
-  { key: '15d', label: '15 días',  computeStart: (end) => addDays(end, -14) },
-  { key: '30d', label: '30 días',  computeStart: (end) => addDays(end, -29) },
-  { key: '6m',  label: '6 meses',  computeStart: (end) => addMonths(end, -6) },
-  { key: '1y',  label: '12 meses', computeStart: (end) => addMonths(end, -12) },
+  { key: '7d', label: '7 días', computeStart: (end) => addDays(end, -6) },
+  { key: '15d', label: '15 días', computeStart: (end) => addDays(end, -14) },
+  { key: '30d', label: '30 días', computeStart: (end) => addDays(end, -29) },
+  { key: '6m', label: '6 meses', computeStart: (end) => addMonths(end, -6) },
+  { key: '1y', label: '12 meses', computeStart: (end) => addMonths(end, -12) },
   { key: 'custom', label: 'Personalizado', computeStart: (end) => end },
 ];
 
-function addDays(base, d) { const x = new Date(base); x.setDate(x.getDate() + d); x.setHours(0,0,0,0); return x; }
+function addDays(base, d) { const x = new Date(base); x.setDate(x.getDate() + d); x.setHours(0, 0, 0, 0); return x; }
 function addMonths(base, m) {
   const x = new Date(base); const day = x.getDate();
   x.setMonth(x.getMonth() + m);
   if (x.getDate() < day) x.setDate(0);
-  x.setHours(0,0,0,0);
+  x.setHours(0, 0, 0, 0);
   return x;
 }
 const prettyName = (s = '') => String(s || '').replaceAll('-', ' ').toUpperCase();
 
 /* ========== Fechas locales y rango para API ========== */
-function startOfDay(d) { const x = new Date(d); x.setHours(0,0,0,0); return x; }
-function endOfDay(d)   { const x = new Date(d); x.setHours(23,59,59,999); return x; }
+function startOfDay(d) { const x = new Date(d); x.setHours(0, 0, 0, 0); return x; }
+function endOfDay(d) { const x = new Date(d); x.setHours(23, 59, 59, 999); return x; }
 function fromISODateInputLocal(yyyyMmDd) {
   const [y, m, d] = String(yyyyMmDd).split('-').map(Number);
   if (!y || !m || !d) return new Date();
@@ -70,8 +73,8 @@ function fromISODateInputLocal(yyyyMmDd) {
 }
 function toDateInputStr(d) {
   const x = new Date(d); const y = x.getFullYear();
-  const m = String(x.getMonth()+1).padStart(2,'0');
-  const dd = String(x.getDate()).padStart(2,'0');
+  const m = String(x.getMonth() + 1).padStart(2, '0');
+  const dd = String(x.getDate()).padStart(2, '0');
   return `${y}-${m}-${dd}`;
 }
 /** Envía a la API ISO strings y hace to exclusivo (+1 ms) para no perder “hoy”. */
@@ -99,7 +102,7 @@ function makeFallbackSessionKey(o) {
     (o.table && (o.table.number || o.table.name || o.table.label)) ??
     o.mesaNumero ?? o.mesa ?? o.tableId ?? o.table_id ?? 'mesa?';
   const d = safeDate(o.createdAt);
-  const ymd = d.toISOString().slice(0,10);
+  const ymd = d.toISOString().slice(0, 10);
   return `fallback:${mesaGuess}|${ymd}`;
 }
 
@@ -227,16 +230,16 @@ function extractItemsFromOrder(order) {
   if (Array.isArray(order?.items)) {
     for (const it of order.items) {
       const name = it?.name || it?.product?.name || it?.product_name || 'Ítem';
-      const qty  = Number(it?.qty ?? it?.quantity ?? 1);
-      const up   = Number(it?.unitPrice ?? it?.price ?? it?.product?.price ?? 0);
+      const qty = Number(it?.qty ?? it?.quantity ?? 1);
+      const up = Number(it?.unitPrice ?? it?.price ?? it?.product?.price ?? 0);
       out.push({ name, qty, unitPrice: up, total: up * qty });
     }
   }
   if (Array.isArray(order?.itemPedidos)) {
     for (const it of order.itemPedidos) {
       const name = it?.name || it?.producto?.name || it?.producto?.nombre || 'Ítem';
-      const qty  = Number(it?.qty ?? it?.cantidad ?? 1);
-      const up   = Number(it?.unitPrice ?? it?.precio ?? it?.producto?.price ?? it?.producto?.precio ?? 0);
+      const qty = Number(it?.qty ?? it?.cantidad ?? 1);
+      const up = Number(it?.unitPrice ?? it?.precio ?? it?.producto?.price ?? it?.producto?.precio ?? 0);
       out.push({ name, qty, unitPrice: up, total: up * qty });
     }
   }
@@ -269,9 +272,9 @@ function groupOrdersToInvoices(orders = []) {
     const updated = safeDate(o.updatedAt || o.createdAt);
     const payMethod = pickPaymentMethodFromOrder(o);
     const tableLabel = readTableLabelFromOrder(o, sessionKey);
-    const itemsArr   = extractItemsFromOrder(o);
+    const itemsArr = extractItemsFromOrder(o);
     const itemsCount = Math.max(1, itemsArr.reduce((s, it) => s + (Number(it.qty) || 0), 0));
-    const total      = Number(o.total ?? o.amount ?? 0);
+    const total = Number(o.total ?? o.amount ?? 0);
 
     if (!byKey.has(sessionKey)) {
       byKey.set(sessionKey, {
@@ -290,9 +293,9 @@ function groupOrdersToInvoices(orders = []) {
     const inv = byKey.get(sessionKey);
     inv.orders.push({ id: o.id, createdAt: created, status: o.status || o.estado || '—', total });
     inv.ordersRaw.push(o);
-    inv.items    += itemsCount;
+    inv.items += itemsCount;
     inv.subtotal += total;
-    inv.total    += total;
+    inv.total += total;
 
     if (created < inv.openedAt) inv.openedAt = created;
     if (updated > inv.closedAt) inv.closedAt = updated;
@@ -300,7 +303,7 @@ function groupOrdersToInvoices(orders = []) {
     if ((inv.table === '—' || inv.table === 'mesa?') && tableLabel && tableLabel !== '—') inv.table = tableLabel;
   }
 
-  return Array.from(byKey.values()).sort((a,b) => b.closedAt - a.closedAt);
+  return Array.from(byKey.values()).sort((a, b) => b.closedAt - a.closedAt);
 }
 
 
@@ -315,7 +318,7 @@ export default function OwnerDashboard() {
 
   // rango personalizado
   const [customStart, setCustomStart] = useState(toDateInputStr(addDays(new Date(), -6)));
-  const [customEnd,   setCustomEnd]   = useState(toDateInputStr(new Date()));
+  const [customEnd, setCustomEnd] = useState(toDateInputStr(new Date()));
   const isCustom = periodKey === 'custom';
 
   const [periodOrders, setPeriodOrders] = useState([]);
@@ -325,11 +328,11 @@ export default function OwnerDashboard() {
   const [sessionsCount, setSessionsCount] = useState(0);
   const [topProducts, setTopProducts] = useState([]);
   const [invoices, setInvoices] = useState([]);
-  
+
   // Nuevos estados para Health Check y Mesas
   const [tables, setTables] = useState([]);
   const [activeOrders, setActiveOrders] = useState([]);
-  
+
   // Métricas para Success Score
   const [restaurantMetrics, setRestaurantMetrics] = useState({
     productsWithoutImage: 0,
@@ -363,7 +366,7 @@ export default function OwnerDashboard() {
 
     // 👉 rango en ISO + to exclusivo
     const { fromIso, toIso } = buildRangeForApi(start, end);
-    
+
     // Calcular rangos para HOY y AYER
     const today = new Date();
     const yesterday = addDays(today, -1);
@@ -407,24 +410,24 @@ export default function OwnerDashboard() {
         } catch (e) {
           console.warn('⚠️ [OwnerDashboard] Endpoint público falló, usando API directa:', e?.response?.status);
         }
-        
+
         // Fallback: usar API directa
         try {
           const restauranteRes = await api.get(`/restaurantes?filters[slug][$eq]=${slug}`);
           const restaurante = restauranteRes?.data?.data?.[0];
           if (!restaurante) return [];
-          
+
           const restauranteId = restaurante.id || restaurante.documentId || restaurante.attributes?.id;
           if (!restauranteId) return [];
-          
+
           const productosRes = await api.get(
             `/productos?filters[restaurante][id][$eq]=${restauranteId}&filters[available][$eq]=true&populate[image,categoria]&sort[0]=name:asc`,
             { headers: { Authorization: `Bearer ${localStorage.getItem('jwt') || localStorage.getItem('strapi_jwt') || ''}` } }
           );
-          
+
           const productos = productosRes?.data?.data || [];
           console.log('✅ [OwnerDashboard] Productos de API directa:', productos.length);
-          
+
           return productos.map(p => {
             const attr = p.attributes || p;
             const categoria = attr.categoria?.data || attr.categoria;
@@ -453,7 +456,7 @@ export default function OwnerDashboard() {
         const list = Array.isArray(orders) ? orders : [];
         const todayList = Array.isArray(todayOrders) ? todayOrders : [];
         const yesterdayList = Array.isArray(yesterdayOrders) ? yesterdayOrders : [];
-        
+
         setPeriodOrders(list);
         setOrdersToday(todayList);
         setOrdersYesterday(yesterdayList);
@@ -461,24 +464,24 @@ export default function OwnerDashboard() {
         setSessionsCount(Number(sessions) || 0);
         setTopProducts(topProd || []);
         setInvoices(groupOrdersToInvoices(list));
-        
+
         // Mesas y pedidos activos
         setTables(Array.isArray(tablesData) ? tablesData : []);
         setActiveOrders(Array.isArray(activeOrdersData) ? activeOrdersData : []);
-        
+
         // Calcular métricas para Success Score usando productos activos (como los ve el cliente)
         const restaurant = restaurantRes?.data?.data?.[0];
         const productos = Array.isArray(productosActivos) ? productosActivos : [];
-        
+
         if (restaurant) {
           const attr = restaurant.attributes || restaurant;
           const mesas = attr.mesas?.data || attr.mesas || [];
           const categorias = attr.categorias?.data || attr.categorias || [];
-          
+
           // Usar los productos activos obtenidos con fetchProducts (mismo método que cliente)
           const productsWithoutImage = productos.filter(p => !p.image).length;
           const productsWithoutCategory = productos.filter(p => !p.categoriaId).length;
-          
+
           setRestaurantMetrics({
             productsWithoutImage,
             totalProducts: productos.length,
@@ -493,7 +496,7 @@ export default function OwnerDashboard() {
           // Si no hay restaurante pero sí productos, calcular métricas solo con productos
           const productsWithoutImage = productos.filter(p => !p.image).length;
           const productsWithoutCategory = productos.filter(p => !p.categoriaId).length;
-          
+
           setRestaurantMetrics({
             productsWithoutImage,
             totalProducts: productos.length,
@@ -506,12 +509,12 @@ export default function OwnerDashboard() {
           });
         }
       })
-      .catch((err) => { 
+      .catch((err) => {
         console.error('Error loading dashboard data:', err);
-        setPeriodOrders([]); 
+        setPeriodOrders([]);
         setOrdersToday([]);
         setOrdersYesterday([]);
-        setInvoices([]); 
+        setInvoices([]);
         setTopProducts([]);
         setTables([]);
         setActiveOrders([]);
@@ -524,8 +527,8 @@ export default function OwnerDashboard() {
     const sameLocalDay = (d) => {
       const a = safeDate(d);
       return a.getFullYear() === today.getFullYear() &&
-             a.getMonth() === today.getMonth() &&
-             a.getDate() === today.getDate();
+        a.getMonth() === today.getMonth() &&
+        a.getDate() === today.getDate();
     };
     const ingresosHoy = periodOrders
       .filter((o) => o.createdAt && sameLocalDay(o.createdAt))
@@ -545,7 +548,7 @@ export default function OwnerDashboard() {
 
     // Comparativa HOY vs AYER
     const todayVsYesterday = calculateTodayVsYesterday(ordersToday, ordersYesterday);
-    
+
     // Tendencia de ventas (últimos 7 días vs anteriores 7 días)
     const recent7Days = periodOrders.filter(o => {
       const orderDate = safeDate(o.createdAt);
@@ -563,7 +566,7 @@ export default function OwnerDashboard() {
     const thisWeekStart = new Date(today);
     thisWeekStart.setDate(today.getDate() - today.getDay()); // Domingo de esta semana
     thisWeekStart.setHours(0, 0, 0, 0);
-    
+
     const lastWeekStart = new Date(thisWeekStart);
     lastWeekStart.setDate(lastWeekStart.getDate() - 7);
     const lastWeekEnd = new Date(thisWeekStart);
@@ -581,9 +584,9 @@ export default function OwnerDashboard() {
     const thisWeekTotal = thisWeekOrders.reduce((sum, o) => sum + (Number(o.total) || 0), 0);
     const lastWeekTotal = lastWeekOrders.reduce((sum, o) => sum + (Number(o.total) || 0), 0);
 
-    return { 
-      ingresosHoy, 
-      ticketPromedio, 
+    return {
+      ingresosHoy,
+      ticketPromedio,
       paymentMix,
       todayVsYesterday,
       salesTrend,
@@ -616,7 +619,7 @@ export default function OwnerDashboard() {
       const byText = !q
         || String(inv.invoiceId).toLowerCase().includes(q)
         || String(inv.table).toLowerCase().includes(q);
-      const byPay  = filters.paymentMethod ? (inv.paymentMethod === filters.paymentMethod) : true;
+      const byPay = filters.paymentMethod ? (inv.paymentMethod === filters.paymentMethod) : true;
       return byText && byPay;
     });
   }, [invoices, filters]);
@@ -637,10 +640,10 @@ export default function OwnerDashboard() {
     ].join(';'))).join('\n');
 
     const blob = new Blob([`\uFEFF${headers}${rows}`], { type: 'text/csv;charset=utf-8;' });
-    const url  = URL.createObjectURL(blob);
+    const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `facturas_${slug}_${new Date().toISOString().slice(0,10)}.csv`;
+    a.download = `facturas_${slug}_${new Date().toISOString().slice(0, 10)}.csv`;
     document.body.appendChild(a);
     a.click();
     a.remove();
@@ -662,7 +665,7 @@ export default function OwnerDashboard() {
     );
   }
 
-  const paymentMixString = Object.entries(derivedKpis.paymentMix).map(([k,v]) => `${k}: ${v}`).join(' / ');
+  const paymentMixString = Object.entries(derivedKpis.paymentMix).map(([k, v]) => `${k}: ${v}`).join(' / ');
 
   return (
     <Box sx={{ p: 3, background: MARANA_COLORS.background, minHeight: '100vh' }}>
@@ -719,10 +722,10 @@ export default function OwnerDashboard() {
                 value={customStart}
                 max={customEnd}
                 onChange={(e) => setCustomStart(e.target.value)}
-                style={{ 
-                  padding: '8px 12px', 
-                  border: `1px solid ${MARANA_COLORS.border}`, 
-                  borderRadius: 8, 
+                style={{
+                  padding: '8px 12px',
+                  border: `1px solid ${MARANA_COLORS.border}`,
+                  borderRadius: 8,
                   background: '#fff',
                   fontFamily: 'Inter, sans-serif'
                 }}
@@ -733,10 +736,10 @@ export default function OwnerDashboard() {
                 value={customEnd}
                 min={customStart}
                 onChange={(e) => setCustomEnd(e.target.value)}
-                style={{ 
-                  padding: '8px 12px', 
-                  border: `1px solid ${MARANA_COLORS.border}`, 
-                  borderRadius: 8, 
+                style={{
+                  padding: '8px 12px',
+                  border: `1px solid ${MARANA_COLORS.border}`,
+                  borderRadius: 8,
                   background: '#fff',
                   fontFamily: 'Inter, sans-serif'
                 }}
@@ -991,7 +994,7 @@ function InvoicesTable({ rows, onRowClick }) {
   const [pageSize, setPageSize] = useState(20);
   if (!rows || !rows.length) return <div className="loading-placeholder">Sin facturas para los filtros seleccionados.</div>;
 
-  const sorted = [...rows].sort((a,b) => {
+  const sorted = [...rows].sort((a, b) => {
     const { key, dir } = sort;
     const av = a[key]; const bv = b[key];
     if (av < bv) return dir === 'asc' ? -1 : 1;
@@ -1007,29 +1010,29 @@ function InvoicesTable({ rows, onRowClick }) {
     <div style={{ overflowX: 'auto' }}>
       <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 720 }}>
         <thead>
-          <tr style={{ textAlign:'left', color:'#6b7280' }}>
-            <Th onClick={() => toggle('invoiceId')}>Factura {sort.key==='invoiceId' ? (sort.dir==='asc'?'▲':'▼') : ''}</Th>
-            <Th onClick={() => toggle('closedAt')}>Cierre {sort.key==='closedAt' ? (sort.dir==='asc'?'▲':'▼') : ''}</Th>
-            <Th onClick={() => toggle('table')}>Mesa {sort.key==='table' ? (sort.dir==='asc'?'▲':'▼') : ''}</Th>
-            <Th onClick={() => toggle('items')} style={{ textAlign:'right' }}>Items {sort.key==='items' ? (sort.dir==='asc'?'▲':'▼') : ''}</Th>
-            <Th onClick={() => toggle('total')} style={{ textAlign:'right' }}>Total {sort.key==='total' ? (sort.dir==='asc'?'▲':'▼') : ''}</Th>
+          <tr style={{ textAlign: 'left', color: '#6b7280' }}>
+            <Th onClick={() => toggle('invoiceId')}>Factura {sort.key === 'invoiceId' ? (sort.dir === 'asc' ? '▲' : '▼') : ''}</Th>
+            <Th onClick={() => toggle('closedAt')}>Cierre {sort.key === 'closedAt' ? (sort.dir === 'asc' ? '▲' : '▼') : ''}</Th>
+            <Th onClick={() => toggle('table')}>Mesa {sort.key === 'table' ? (sort.dir === 'asc' ? '▲' : '▼') : ''}</Th>
+            <Th onClick={() => toggle('items')} style={{ textAlign: 'right' }}>Items {sort.key === 'items' ? (sort.dir === 'asc' ? '▲' : '▼') : ''}</Th>
+            <Th onClick={() => toggle('total')} style={{ textAlign: 'right' }}>Total {sort.key === 'total' ? (sort.dir === 'asc' ? '▲' : '▼') : ''}</Th>
             <Th>Pago</Th>
           </tr>
         </thead>
         <tbody>
           {page.map((inv) => (
-            <tr key={inv.invoiceId} onClick={() => onRowClick && onRowClick(inv)} style={{ cursor:'pointer', borderBottom: '1px solid #f1f5f9' }}>
-              <td style={{ padding: '12px 8px', fontFamily:'ui-monospace, monospace' }}>{shortId(inv.invoiceId)}</td>
+            <tr key={inv.invoiceId} onClick={() => onRowClick && onRowClick(inv)} style={{ cursor: 'pointer', borderBottom: '1px solid #f1f5f9' }}>
+              <td style={{ padding: '12px 8px', fontFamily: 'ui-monospace, monospace' }}>{shortId(inv.invoiceId)}</td>
               <td style={{ padding: '12px 8px' }}>{fmtDateTime.format(safeDate(inv.closedAt))}</td>
               <td style={{ padding: '12px 8px' }}>{String(inv.table)}</td>
-              <td style={{ padding: '12px 8px', textAlign:'right', fontVariantNumeric:'tabular-nums' }}>{inv.items}</td>
-              <td style={{ padding: '12px 8px', textAlign:'right', fontWeight:700 }}>{money0(inv.total)}</td>
+              <td style={{ padding: '12px 8px', textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>{inv.items}</td>
+              <td style={{ padding: '12px 8px', textAlign: 'right', fontWeight: 700 }}>{money0(inv.total)}</td>
               <td style={{ padding: '12px 8px' }}>{String(inv.paymentMethod || '—')}</td>
             </tr>
           ))}
         </tbody>
       </table>
-      {canMore && <div style={{ display:'flex', justifyContent:'center', marginTop:16 }}>
+      {canMore && <div style={{ display: 'flex', justifyContent: 'center', marginTop: 16 }}>
         <button onClick={() => setPageSize(s => s + 20)} className="period-btn">Cargar más</button>
       </div>}
     </div>
@@ -1047,7 +1050,7 @@ function InvoiceDrawer({ open, onClose, invoice }) {
     acc[key].total += Number(it.total || 0);
     return acc;
   }, {});
-  const items = Object.values(itemsGrouped).sort((a,b) => b.total - a.total);
+  const items = Object.values(itemsGrouped).sort((a, b) => b.total - a.total);
 
   const subtotal = invoice.subtotal || items.reduce((s, i) => s + i.total, 0);
   const discounts = invoice.discounts || 0;
@@ -1057,32 +1060,32 @@ function InvoiceDrawer({ open, onClose, invoice }) {
 
   return (
     <>
-      <div onClick={onClose} style={{ position:'fixed', inset:0, background:'rgba(15,23,42,0.35)', zIndex: 40 }} />
-      <div role="dialog" aria-modal="true" style={{ position:'fixed', top:0, right:0, height:'100dvh', width:'min(560px, 95vw)', background:'#fff', borderLeft:'1px solid #e5e7eb', zIndex: 41, display:'flex', flexDirection:'column' }}>
-        <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', padding:'14px 16px', borderBottom:'1px solid #e5e7eb' }}>
-          <div style={{ fontWeight:800, fontSize:18 }}>Factura {String(invoice.invoiceId).replace(/^fallback:/,'')}</div>
-          <button onClick={onClose} style={{ border:'1px solid #e5e7eb', borderRadius:8, padding:'6px 10px', background:'#fff', cursor:'pointer' }}>Cerrar</button>
+      <div onClick={onClose} style={{ position: 'fixed', inset: 0, background: 'rgba(15,23,42,0.35)', zIndex: 40 }} />
+      <div role="dialog" aria-modal="true" style={{ position: 'fixed', top: 0, right: 0, height: '100dvh', width: 'min(560px, 95vw)', background: '#fff', borderLeft: '1px solid #e5e7eb', zIndex: 41, display: 'flex', flexDirection: 'column' }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '14px 16px', borderBottom: '1px solid #e5e7eb' }}>
+          <div style={{ fontWeight: 800, fontSize: 18 }}>Factura {String(invoice.invoiceId).replace(/^fallback:/, '')}</div>
+          <button onClick={onClose} style={{ border: '1px solid #e5e7eb', borderRadius: 8, padding: '6px 10px', background: '#fff', cursor: 'pointer' }}>Cerrar</button>
         </div>
-        <div style={{ padding:16, overflow:'auto' }}>
-          <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:12, marginBottom:16 }}>
+        <div style={{ padding: 16, overflow: 'auto' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 16 }}>
             <InfoRow label="Mesa" value={String(invoice.table)} />
             <InfoRow label="Pago" value={String(invoice.paymentMethod || '—')} />
             <InfoRow label="Apertura" value={`${fmtDate.format(invoice.openedAt)} ${fmtTime.format(invoice.openedAt)}`} />
-            <InfoRow label="Cierre"   value={`${fmtDate.format(invoice.closedAt)} ${fmtTime.format(invoice.closedAt)}`} />
+            <InfoRow label="Cierre" value={`${fmtDate.format(invoice.closedAt)} ${fmtTime.format(invoice.closedAt)}`} />
           </div>
-          <div style={{ border:'1px solid #e5e7eb', borderRadius:10, padding:12, marginBottom:16 }}>
-            <div style={{ display:'grid', gridTemplateColumns:'1fr auto', gap:8 }}>
-              <div style={{ color:'#64748b' }}>Subtotal</div><div style={{ textAlign:'right', fontWeight:600 }}>{money0(subtotal)}</div>
-              <div style={{ color:'#64748b' }}>Descuentos</div><div style={{ textAlign:'right', fontWeight:600 }}>{discounts ? `- ${money0(discounts)}` : money0(0)}</div>
-              <div style={{ color:'#64748b' }}>Impuestos</div><div style={{ textAlign:'right', fontWeight:600 }}>{money0(taxes)}</div>
-              <div style={{ color:'#64748b' }}>Propina</div><div style={{ textAlign:'right', fontWeight:600 }}>{money0(tip)}</div>
-              <div style={{ borderTop:'1px dashed #e5e7eb', marginTop:6 }}></div><div style={{ borderTop:'1px dashed #e5e7eb', marginTop:6 }}></div>
-              <div style={{ fontWeight:800 }}>Total</div><div style={{ textAlign:'right', fontWeight:800 }}>{money0(total)}</div>
+          <div style={{ border: '1px solid #e5e7eb', borderRadius: 10, padding: 12, marginBottom: 16 }}>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr auto', gap: 8 }}>
+              <div style={{ color: '#64748b' }}>Subtotal</div><div style={{ textAlign: 'right', fontWeight: 600 }}>{money0(subtotal)}</div>
+              <div style={{ color: '#64748b' }}>Descuentos</div><div style={{ textAlign: 'right', fontWeight: 600 }}>{discounts ? `- ${money0(discounts)}` : money0(0)}</div>
+              <div style={{ color: '#64748b' }}>Impuestos</div><div style={{ textAlign: 'right', fontWeight: 600 }}>{money0(taxes)}</div>
+              <div style={{ color: '#64748b' }}>Propina</div><div style={{ textAlign: 'right', fontWeight: 600 }}>{money0(tip)}</div>
+              <div style={{ borderTop: '1px dashed #e5e7eb', marginTop: 6 }}></div><div style={{ borderTop: '1px dashed #e5e7eb', marginTop: 6 }}></div>
+              <div style={{ fontWeight: 800 }}>Total</div><div style={{ textAlign: 'right', fontWeight: 800 }}>{money0(total)}</div>
             </div>
           </div>
-          <div style={{ marginBottom:16 }}>
-            <div style={{ fontWeight:700, marginBottom:8 }}>Timeline</div>
-            <ul style={{ margin:0, paddingLeft:18 }}>
+          <div style={{ marginBottom: 16 }}>
+            <div style={{ fontWeight: 700, marginBottom: 8 }}>Timeline</div>
+            <ul style={{ margin: 0, paddingLeft: 18 }}>
               <li>Abierta: {fmtDateTime.format(invoice.openedAt)}</li>
               {Array.isArray(invoice.orders) && invoice.orders.map((o) => (
                 <li key={o.id}>Pedido #{o.id} — {o.status} — {fmtDateTime.format(o.createdAt)} — {money0(o.total)}</li>
@@ -1091,28 +1094,28 @@ function InvoiceDrawer({ open, onClose, invoice }) {
             </ul>
           </div>
           <div>
-            <div style={{ fontWeight:700, marginBottom:8 }}>Items</div>
-            <div style={{ overflow:'auto' }}>
-              <table style={{ width:'100%', borderCollapse:'collapse' }}>
+            <div style={{ fontWeight: 700, marginBottom: 8 }}>Items</div>
+            <div style={{ overflow: 'auto' }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse' }}>
                 <thead>
-                  <tr style={{ textAlign:'left', color:'#6b7280' }}>
-                    <th style={{ padding:'8px 6px', borderBottom:'1px solid #e5e7eb' }}>Producto</th>
-                    <th style={{ padding:'8px 6px', borderBottom:'1px solid #e5e7eb', textAlign:'right' }}>Cant.</th>
-                    <th style={{ padding:'8px 6px', borderBottom:'1px solid #e5e7eb', textAlign:'right' }}>Precio</th>
-                    <th style={{ padding:'8px 6px', borderBottom:'1px solid #e5e7eb', textAlign:'right' }}>Total</th>
+                  <tr style={{ textAlign: 'left', color: '#6b7280' }}>
+                    <th style={{ padding: '8px 6px', borderBottom: '1px solid #e5e7eb' }}>Producto</th>
+                    <th style={{ padding: '8px 6px', borderBottom: '1px solid #e5e7eb', textAlign: 'right' }}>Cant.</th>
+                    <th style={{ padding: '8px 6px', borderBottom: '1px solid #e5e7eb', textAlign: 'right' }}>Precio</th>
+                    <th style={{ padding: '8px 6px', borderBottom: '1px solid #e5e7eb', textAlign: 'right' }}>Total</th>
                   </tr>
                 </thead>
                 <tbody>
                   {items.map((it, i) => (
                     <tr key={it.name + '_' + i}>
-                      <td style={{ padding:'10px 6px', borderBottom:'1px solid #f1f5f9' }}>{it.name}</td>
-                      <td style={{ padding:'10px 6px', borderBottom:'1px solid #f1f5f9', textAlign:'right', fontVariantNumeric:'tabular-nums' }}>{it.qty}</td>
-                      <td style={{ padding:'10px 6px', borderBottom:'1px solid #f1f5f9', textAlign:'right' }}>{money0(it.unitPrice)}</td>
-                      <td style={{ padding:'10px 6px', borderBottom:'1px solid #f1f5f9', textAlign:'right', fontWeight:700 }}>{money0(it.total)}</td>
+                      <td style={{ padding: '10px 6px', borderBottom: '1px solid #f1f5f9' }}>{it.name}</td>
+                      <td style={{ padding: '10px 6px', borderBottom: '1px solid #f1f5f9', textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>{it.qty}</td>
+                      <td style={{ padding: '10px 6px', borderBottom: '1px solid #f1f5f9', textAlign: 'right' }}>{money0(it.unitPrice)}</td>
+                      <td style={{ padding: '10px 6px', borderBottom: '1px solid #f1f5f9', textAlign: 'right', fontWeight: 700 }}>{money0(it.total)}</td>
                     </tr>
                   ))}
                   {!items.length && (
-                    <tr><td colSpan={4} style={{ padding:12, textAlign:'center', color:'#64748b' }}>Sin desglose de items para esta factura.</td></tr>
+                    <tr><td colSpan={4} style={{ padding: 12, textAlign: 'center', color: '#64748b' }}>Sin desglose de items para esta factura.</td></tr>
                   )}
                 </tbody>
               </table>
@@ -1126,9 +1129,9 @@ function InvoiceDrawer({ open, onClose, invoice }) {
 
 function InfoRow({ label, value }) {
   return (
-    <div style={{ border:'1px solid #e5e7eb', borderRadius:10, padding:'10px 12px', background:'#fff' }}>
-      <div style={{ color:'#64748b', fontSize:12, marginBottom:4 }}>{label}</div>
-      <div style={{ fontWeight:700 }}>{value}</div>
+    <div style={{ border: '1px solid #e5e7eb', borderRadius: 10, padding: '10px 12px', background: '#fff' }}>
+      <div style={{ color: '#64748b', fontSize: 12, marginBottom: 4 }}>{label}</div>
+      <div style={{ fontWeight: 700 }}>{value}</div>
     </div>
   );
 }
@@ -1164,13 +1167,13 @@ function Th({ children, onClick, style }) {
     <th
       onClick={onClick}
       style={{
-        textAlign:'left',
-        padding:'10px 6px',
+        textAlign: 'left',
+        padding: '10px 6px',
         cursor: onClick ? 'pointer' : 'default',
-        userSelect:'none',
-        whiteSpace:'nowrap',
-        fontSize:13,
-        color:'#475569',
+        userSelect: 'none',
+        whiteSpace: 'nowrap',
+        fontSize: 13,
+        color: '#475569',
         borderBottom: '1px solid #e5e7eb',
         ...style
       }}

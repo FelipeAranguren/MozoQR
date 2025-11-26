@@ -1,5 +1,7 @@
 // backend/src/api/restaurante/controllers/owner.ts
 /* eslint-disable @typescript-eslint/no-explicit-any */
+import { getBackendUrl } from '../../../config/urls';
+
 declare const strapi: any;
 
 export default {
@@ -164,7 +166,7 @@ export default {
 
         // Logo URL
         const logoUrl = restaurante.logo?.url || restaurante.logo?.data?.attributes?.url || null;
-        const publicUrl = strapi.config.get('server.url', 'http://localhost:1337');
+        const publicUrl = getBackendUrl(strapi.config);
         const fullLogoUrl = logoUrl && !logoUrl.startsWith('http') ? `${publicUrl}${logoUrl}` : logoUrl;
 
         return {

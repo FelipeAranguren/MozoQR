@@ -1,12 +1,15 @@
-// frontend/src/api/menu.js
-import { api } from '../api';
-import { http } from '../http';
+import { client } from './client';
 
 // Helper para obtener token de autenticación
 function getAuthHeaders() {
   const token = localStorage.getItem('strapi_jwt') || localStorage.getItem('jwt');
   return token ? { Authorization: `Bearer ${token}` } : {};
 }
+
+// Helper para usar client en lugar de api/http
+const api = client;
+const http = client;
+
 
 /**
  * Obtiene todas las categorías de un restaurante
@@ -19,10 +22,10 @@ export async function fetchCategories(slug) {
   try {
     const res = await http.get(`/restaurants/${slug}/menus`);
     const categories = res?.data?.data?.categories || [];
-    
+
     if (categories.length > 0) {
       console.log('✅ [fetchCategories] Categorías obtenidas del endpoint /restaurants/menus:', categories.length);
-      
+
       // Mapear categorías del formato del endpoint al formato esperado
       return categories.map(cat => {
         const productos = (cat.productos || []).map(p => ({
@@ -34,7 +37,7 @@ export async function fetchCategories(slug) {
           description: p.description,
           ...p
         }));
-        
+
         return {
           id: cat.id,
           documentId: cat.id,
@@ -48,7 +51,7 @@ export async function fetchCategories(slug) {
   } catch (err) {
     console.warn('⚠️ [fetchCategories] Endpoint /restaurants/menus no disponible, usando fallback:', err?.response?.status);
   }
-  
+
   // Fallback: usar API directa (para owner, puede acceder a productos no publicados)
   try {
     console.log('🔄 [fetchCategories] Usando API directa como fallback...');
@@ -64,27 +67,27 @@ export async function fetchCategories(slug) {
     params.append('filters[restaurante][id][$eq]', restauranteId);
     params.append('populate[productos][populate]', 'image');
     params.append('sort[0]', 'name:asc');
-    
+
     const url = `/categorias?${params.toString()}`;
     console.log('🔄 [fetchCategories] URL de fallback:', url);
-    
+
     const res = await api.get(url, { headers: getAuthHeaders() });
-    
+
     const data = res?.data?.data || [];
     console.log('✅ [fetchCategories] Categorías obtenidas de API directa:', data.length);
-    
+
     // Filtrar productos disponibles en el frontend (más confiable)
     return data.map(item => {
       const attr = item.attributes || item;
       const categoryId = item.documentId || item.id || attr?.id;
       const productosRaw = attr.productos?.data || attr.productos || [];
-      
+
       // Filtrar solo productos disponibles
       const productos = productosRaw.filter(p => {
         const pAttr = p.attributes || p;
         return pAttr.available !== false;
       });
-      
+
       return {
         id: categoryId,
         documentId: item.documentId,
@@ -111,10 +114,10 @@ export async function fetchProducts(slug, categoryId = null) {
   try {
     const res = await http.get(`/restaurants/${slug}/menus`);
     const categories = res?.data?.data?.categories || [];
-    
+
     if (categories.length > 0 || res?.data?.data) {
       console.log('✅ [fetchProducts] Usando endpoint /restaurants/menus, categorías:', categories.length);
-      
+
       const allProducts = [];
       categories.forEach(cat => {
         (cat.productos || []).forEach(p => {
@@ -130,15 +133,15 @@ export async function fetchProducts(slug, categoryId = null) {
           });
         });
       });
-      
+
       console.log('✅ [fetchProducts] Total productos del endpoint público:', allProducts.length);
-      
+
       // Filtrar por categoría si se especifica
       let filtered = allProducts;
       if (categoryId) {
         filtered = allProducts.filter(p => String(p.categoriaId || '') === String(categoryId));
       }
-      
+
       return filtered.map(p => ({
         id: p.id,
         documentId: p.id,
@@ -171,19 +174,19 @@ export async function fetchProducts(slug, categoryId = null) {
     params.append('populate[image]', 'true');
     params.append('populate[categoria]', 'true');
     params.append('sort[0]', 'name:asc');
-    
+
     if (categoryId) {
       params.append('filters[categoria][id][$eq]', categoryId);
     }
-    
+
     const url = `/productos?${params.toString()}`;
     console.log('🔄 [fetchProducts] URL de fallback:', url);
-    
+
     const res = await api.get(url, { headers: getAuthHeaders() });
-    
+
     const data = res?.data?.data || [];
     console.log('✅ [fetchProducts] Productos obtenidos de API directa:', data.length);
-    
+
     return mapProducts(data);
   } catch (err) {
     console.error('❌ [fetchProducts] Error en fallback:', err);
@@ -198,7 +201,7 @@ function blocksToText(blocks) {
   if (!blocks) return '';
   if (typeof blocks === 'string') return blocks;
   if (!Array.isArray(blocks)) return '';
-  
+
   const walk = (nodes) => {
     if (!Array.isArray(nodes)) return '';
     return nodes
@@ -224,7 +227,7 @@ function textToBlocks(text) {
       }
     ];
   }
-  
+
   return [
     {
       type: 'paragraph',
@@ -238,68 +241,68 @@ function textToBlocks(text) {
 // Helper para mapear productos
 function mapProducts(data) {
   const baseURL = import.meta.env?.VITE_API_URL?.replace('/api', '') || '';
-  
+
   console.log('mapProducts: recibidos', data.length, 'productos');
   if (data.length > 0) {
     console.log('mapProducts: ejemplo de producto raw:', data[0]);
   }
-  
+
   // Filtrar valores null/undefined ANTES de mapear
   const validData = data.filter(item => item != null);
   if (validData.length !== data.length) {
     console.warn(`mapProducts: filtrados ${data.length - validData.length} productos null/undefined`);
   }
-  
+
   const mapped = validData.map(item => {
     // Los productos pueden venir directamente desde categorías (sin attributes) o desde API (con attributes)
     const attr = item.attributes || item;
-    
+
     // Asegurar que siempre tengamos un id válido
     const productId = item.id || item.documentId || attr?.id || attr?.documentId;
     if (!productId) {
       console.warn('Producto sin ID válido:', item);
       return null; // Retornar null para filtrar después
     }
-    
+
     const image = attr?.image?.data || attr?.image || (typeof attr?.image === 'object' && attr?.image?.id ? attr.image : null);
-    
+
     // Si el producto ya tiene categoriaId (viene de categorías), usarlo
     // Si no, intentar obtenerlo de la relación categoria
     let categoriaId = item.categoriaId || null;
     let categoriaName = item.categoriaName || null; // Usar categoriaName si viene desde categorías
-    
+
     if (!categoriaId) {
       const categoria = attr?.categoria?.data || attr?.categoria;
       categoriaId = categoria ? (categoria.id || categoria.documentId || categoria) : null;
       categoriaName = categoria ? (categoria.attributes?.name || categoria.name || '') : null;
     }
-    
+
     // Construir URL completa de la imagen
     let imageUrl = null;
     if (image) {
       if (typeof image === 'string') {
         imageUrl = image.startsWith('http') ? image : baseURL + image;
       } else if (image.attributes?.url) {
-        imageUrl = image.attributes.url.startsWith('http') 
-          ? image.attributes.url 
+        imageUrl = image.attributes.url.startsWith('http')
+          ? image.attributes.url
           : baseURL + image.attributes.url;
       } else if (image.url) {
-        imageUrl = image.url.startsWith('http') 
-          ? image.url 
+        imageUrl = image.url.startsWith('http')
+          ? image.url
           : baseURL + image.url;
       } else if (image.id) {
         // Si solo tenemos el ID de la imagen, construir URL
         imageUrl = `${baseURL}/uploads/${image.documentId || image.id}`;
       }
     }
-    
+
     // Convertir descripción a texto plano si es un array (Rich Text)
     const description = Array.isArray(attr?.description)
       ? blocksToText(attr.description)
       : typeof attr?.description === 'string'
-      ? attr.description
-      : '';
-    
+        ? attr.description
+        : '';
+
     const mapped = {
       id: productId,
       documentId: item.documentId || attr?.documentId,
@@ -311,7 +314,7 @@ function mapProducts(data) {
       categoriaId: categoriaId,
       categoriaName: categoriaName
     };
-    
+
     return mapped;
   }).filter(item => {
     // Filtrar productos sin ID válido o que sean null
@@ -321,12 +324,12 @@ function mapProducts(data) {
     }
     return true;
   });
-  
+
   console.log('mapProducts: productos mapeados:', mapped.length);
   if (mapped.length > 0) {
     console.log('mapProducts: ejemplo de producto mapeado:', mapped[0]);
   }
-  
+
   return mapped;
 }
 
@@ -341,22 +344,22 @@ export async function fetchProduct(productId) {
       `/productos/${productId}?populate[image,categoria,restaurante]=true`,
       { headers: getAuthHeaders() }
     );
-    
+
     const item = res?.data?.data;
     if (!item) return null;
-    
+
     const attr = item.attributes || item;
     const image = attr.image?.data || attr.image;
     const categoria = attr.categoria?.data || attr.categoria;
     const restaurante = attr.restaurante?.data || attr.restaurante;
-    
+
     // Convertir descripción a texto plano si es un array (Rich Text)
     const description = Array.isArray(attr.description)
       ? blocksToText(attr.description)
       : typeof attr.description === 'string'
-      ? attr.description
-      : '';
-    
+        ? attr.description
+        : '';
+
     return {
       id: item.id,
       name: attr.name || '',
@@ -386,7 +389,7 @@ export async function getRestaurantId(slug) {
       `/restaurantes?filters[slug][$eq]=${slug}`,
       { headers: getAuthHeaders() }
     );
-    
+
     const data = res?.data?.data?.[0];
     if (!data) {
       console.warn('⚠️ [getRestaurantId] No se encontró restaurante para slug:', slug);
@@ -395,12 +398,12 @@ export async function getRestaurantId(slug) {
     }
 
     // Intentar obtener el ID de múltiples formas (Strapi v4 y v5)
-    const restauranteId = 
-      data?.id || 
-      data?.documentId || 
+    const restauranteId =
+      data?.id ||
+      data?.documentId ||
       (data?.attributes && (data.attributes.id || data.attributes.documentId)) ||
       null;
-    
+
     console.log('🔍 [getRestaurantId] Restaurante encontrado:', {
       slug,
       restauranteId,
@@ -435,7 +438,7 @@ export async function createProduct(slug, productData) {
   try {
     // Convertir descripción de texto plano a formato blocks
     const descriptionBlocks = textToBlocks(productData.description || '');
-    
+
     const payload = {
       data: {
         name: productData.name,
@@ -465,30 +468,30 @@ export async function updateProduct(productId, productData) {
   try {
     console.log('updateProduct: ID recibido:', productId, 'Tipo:', typeof productId);
     console.log('updateProduct: Datos a actualizar:', productData);
-    
+
     // Convertir descripción de texto plano a formato blocks si se proporciona
-    const descriptionBlocks = productData.description !== undefined 
+    const descriptionBlocks = productData.description !== undefined
       ? textToBlocks(productData.description || '')
       : undefined;
-    
+
     // Construir payload de actualización
     const payloadData = {};
-    
+
     if (productData.name !== undefined) payloadData.name = productData.name;
     if (productData.price !== undefined) payloadData.price = Number(productData.price);
     if (descriptionBlocks !== undefined) payloadData.description = descriptionBlocks;
     if (productData.available !== undefined) payloadData.available = productData.available;
-    
+
     // Manejar categoriaId: si está definido, incluir en el payload (null para eliminar relación, valor para establecer)
     if (productData.categoriaId !== undefined) {
       payloadData.categoria = productData.categoriaId || null;
     }
-    
+
     // Manejar imageId: si está definido, incluir en el payload (null para eliminar imagen, valor para establecer)
     if (productData.imageId !== undefined) {
       payloadData.image = productData.imageId || null;
     }
-    
+
     const payload = { data: payloadData };
     console.log('updateProduct: Payload final:', payload);
     console.log('updateProduct: URL:', `/productos/${productId}`);
@@ -528,7 +531,7 @@ export async function createCategory(slug, categoryData) {
   console.log('🔍 [createCategory] Obteniendo restauranteId para slug:', slug);
   const restauranteId = await getRestaurantId(slug);
   console.log('🔍 [createCategory] RestauranteId obtenido:', restauranteId);
-  
+
   if (!restauranteId) {
     console.error('❌ [createCategory] Restaurante no encontrado para slug:', slug);
     throw new Error('Restaurante no encontrado');
@@ -591,7 +594,7 @@ export async function deleteCategory(categoryId) {
       url,
       baseURL: api.defaults.baseURL
     });
-    
+
     const response = await api.delete(url, { headers: getAuthHeaders() });
     console.log('✅ [deleteCategory] Categoría eliminada exitosamente', response?.data);
     return true;

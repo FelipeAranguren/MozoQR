@@ -1,7 +1,7 @@
 // src/api/pedido/controllers/pedido.ts
 import { factories } from '@strapi/strapi';
 
-export default factories.createCoreController('api::pedido.pedido', ({ strapi }) => ({
+export default factories.createCoreController('api::pedido.pedido', ({ strapi: strapiInstance }) => ({
 
   /**
    * PUT /api/pedidos/:id
@@ -32,7 +32,7 @@ export default factories.createCoreController('api::pedido.pedido', ({ strapi })
       realId = maybeNumber;
     } else {
       // Tratar como documentId
-      const existing = await strapi.db.query('api::pedido.pedido').findOne({
+      const existing = await strapiInstance.db.query('api::pedido.pedido').findOne({
         where: { documentId: param as any },
         select: ['id'],
       });
@@ -43,7 +43,7 @@ export default factories.createCoreController('api::pedido.pedido', ({ strapi })
       realId = existing.id;
     }
 
-    const updated = await strapi.entityService.update('api::pedido.pedido', realId, {
+    const updated = await strapiInstance.entityService.update('api::pedido.pedido', realId, {
       data: payload,
     });
 

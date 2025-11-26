@@ -6,25 +6,33 @@ exports.default = {
             method: 'GET',
             path: '/payments/ping',
             handler: 'payments.ping',
-            config: { auth: false, policies: [], middlewares: [] },
+            config: { policies: [], middlewares: [] },
         },
         {
             method: 'POST',
             path: '/payments/create-preference',
             handler: 'payments.createPreference',
-            config: { auth: false, policies: [], middlewares: [] },
+            config: { policies: [], middlewares: [] },
         },
         {
             method: 'POST',
             path: '/payments/card-pay',
             handler: 'payments.cardPay',
-            config: { auth: false, policies: [], middlewares: [] },
+            config: { policies: [], middlewares: [] },
         },
         {
             method: 'GET',
             path: '/payments/confirm',
             handler: 'payments.confirm',
-            config: { auth: false, policies: [], middlewares: [] },
+            config: { policies: [], middlewares: [] },
+        },
+        {
+            method: 'POST',
+            path: '/restaurants/:slug/payments',
+            handler: 'payments.create',
+            config: {
+                policies: ['global::by-restaurant'],
+            },
         }
         // Si luego agregás webhook, sumá aquí:
         // {

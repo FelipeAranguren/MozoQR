@@ -14,7 +14,7 @@ export default {
       path: '/owner/restaurants',
       handler: 'api::restaurante.owner.listRestaurants',
       config: {
-        auth: false, // temporalmente público para verificar que funciona
+        auth: {}, // requiere autenticación
         policies: [], // no necesita policy específica, solo autenticación
       },
     },

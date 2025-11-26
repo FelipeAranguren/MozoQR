@@ -1,10 +1,7 @@
-// src/api.js
-import axios from 'axios';
+import { client } from './api/client';
 
-export const api = axios.create({
-  baseURL: import.meta.env.VITE_API_URL,
-  headers: { 'Content-Type': 'application/json' },
-});
+export const api = client;
+
 
 // 👇 NUEVO helper para endpoints namespaced
 export const withSlug = (slug, path) => `/restaurants/${slug}${path}`;

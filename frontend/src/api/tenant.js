@@ -1,13 +1,10 @@
-// frontend/src/api/tenant.js
-import axios from 'axios';
+import { client } from './client';
 
 const baseURL = import.meta.env?.VITE_API_URL || 'http://localhost:1337/api';
 const IDEM_ON = String(import.meta.env?.VITE_IDEMPOTENCY || '').toLowerCase() === 'on';
 
-export const http = axios.create({
-  baseURL,
-  headers: { 'Content-Type': 'application/json' },
-});
+export const http = client;
+
 
 /* ---------------- UTILS ---------------- */
 function buildMediaURL(relUrl) {

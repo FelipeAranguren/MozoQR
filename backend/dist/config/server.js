@@ -8,6 +8,11 @@ exports.default = ({ env }) => ({
     // Si más adelante usás Nginx/Heroku/Render, podés activar esto:
     proxy: env.bool('PROXY', false),
     app: {
-        keys: env.array('APP_KEYS'),
+        keys: env.array('APP_KEYS', [
+            'defaultKeyOne',
+            'defaultKeyTwo',
+            'defaultKeyThree',
+            'defaultKeyFour',
+        ]),
     },
 });

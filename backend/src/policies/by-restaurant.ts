@@ -1,13 +1,10 @@
-// backend/src/policies/by-restaurant.js
-'use strict';
-
 /**
  * Global policy to scope requests by :slug (restaurant slug).
  * - Ensures the restaurant exists and is published.
  * - Attaches ctx.state.restauranteId and ctx.state.restaurantePlan
  * Usage in routes: config: { policies: ['global::by-restaurant'] }
  */
-module.exports = async (policyContext, config, { strapi }) => {
+export default async (policyContext: any, _config: any, { strapi }: any) => {
   try {
     const ctx = policyContext;
     const slug = ctx.params?.slug;
@@ -48,3 +45,4 @@ module.exports = async (policyContext, config, { strapi }) => {
     return false;
   }
 };
+

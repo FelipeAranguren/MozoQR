@@ -9,6 +9,11 @@ export default ({ env }) => ({
   proxy: env.bool('PROXY', false),
 
   app: {
-    keys: env.array('APP_KEYS'),
+    keys: env.array('APP_KEYS', [
+      'defaultKeyOne',
+      'defaultKeyTwo',
+      'defaultKeyThree',
+      'defaultKeyFour',
+    ]),
   },
 });

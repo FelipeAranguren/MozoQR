@@ -3,17 +3,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 // backend/src/api/payments/controllers/payments.ts
 /* eslint-disable @typescript-eslint/no-explicit-any */
 const mercadopago_1 = require("mercadopago");
-function ensureHttpUrl(u, fallback = 'http://localhost:5173') {
-    const s = String(u || '').trim();
-    if (!s)
-        return fallback;
-    if (!/^https?:\/\//i.test(s))
-        return `http://${s.replace(/^\/*/, '')}`;
-    return s;
-}
-function isHttps(u) {
-    return typeof u === 'string' && /^https:\/\//i.test(u.trim());
-}
+const urls_1 = require("../../../config/urls");
 function resolvePaymentUID() {
     const uid1 = 'api::payment.payment';
     const uid2 = 'api::payments.payment';
@@ -77,10 +67,9 @@ async function resolveOrderPk(ref) {
     return null;
 }
 // Construye back_urls que pasan por el backend y le envían también orderRef
-function buildBackendBackUrls(orderId) {
-    const baseFront = ensureHttpUrl(process.env.FRONTEND_URL || 'http://127.0.0.1:5173').replace(/\/*$/, '');
-    const baseBack = ensureHttpUrl(process.env.BACKEND_URL || process.env.STRAPI_URL || 'http://127.0.0.1:1337')
-        .replace(/\/*$/, '');
+function buildBackendBackUrls(orderId, strapiConfig) {
+    const baseFront = (0, urls_1.getFrontendUrl)().replace(/\/*$/, '');
+    const baseBack = (0, urls_1.getBackendUrl)(strapiConfig).replace(/\/*$/, '');
     const encOrder = encodeURIComponent(orderId !== null && orderId !== void 0 ? orderId : '');
     const successFront = `${baseFront}/pago/success?orderId=${encOrder}`;
     const failureFront = `${baseFront}/pago/failure?orderId=${encOrder}`;
@@ -137,17 +126,17 @@ exports.default = {
                 ];
             const totalAmount = saneItems.reduce((acc, it) => acc + Number(it.unit_price) * Number(it.quantity || 1), 0);
             // ---- back_urls: forzamos a pasar por el backend (confirm) y le mandamos orderRef
-            const backUrls = buildBackendBackUrls(orderId);
+            const backUrls = buildBackendBackUrls(orderId, strapi.config);
             // ---- Crear preferencia
             const client = new mercadopago_1.MercadoPagoConfig({ accessToken });
             const preference = new mercadopago_1.Preference(client);
-            const baseBack = process.env.BACKEND_URL || process.env.STRAPI_URL || '';
+            const baseBack = (0, urls_1.getBackendUrl)(strapi.config);
             const body = {
                 items: saneItems.map((it, i) => ({ id: String(i + 1), ...it })),
                 external_reference: orderId ? String(orderId) : undefined,
                 back_urls: backUrls,
             };
-            if (isHttps(baseBack))
+            if ((0, urls_1.isHttps)(baseBack))
                 body.auto_return = 'approved';
             const mpPref = await preference.create({ body });
             // ---- Persistencia best-effort
@@ -337,7 +326,7 @@ exports.default = {
             // 6) Redirección al front si vino "redirect"
             const redirect = ((_v = ctx.request.query) === null || _v === void 0 ? void 0 : _v.redirect) || null;
             if (redirect) {
-                const dest = ensureHttpUrl(redirect);
+                const dest = (0, urls_1.ensureHttpUrl)(redirect);
                 ctx.status = 302;
                 ctx.redirect(dest);
                 return;
@@ -349,5 +338,86 @@ exports.default = {
             ctx.status = 500;
             ctx.body = { ok: false, error: (e === null || e === void 0 ? void 0 : e.message) || 'Error confirmando pago' };
         }
+    },
+    /**
+     * POST /restaurants/:slug/payments
+     * Mock/Manual payment creation
+     */
+    async create(ctx) {
+        var _a;
+        const restauranteId = ctx.state.restauranteId;
+        const payload = (ctx.request.body && ctx.request.body.data) || ctx.request.body || {};
+        const { orderId, status, amount, provider, externalRef } = payload;
+        if (!orderId)
+            return ctx.badRequest('Falta orderId');
+        // 1) Verificar que el pedido exista y pertenezca al restaurante
+        const order = await strapi.entityService.findOne('api::pedido.pedido', orderId, {
+            fields: ['id', 'order_status', 'total'],
+            populate: { restaurante: { fields: ['id'] } },
+        });
+        if (!(order === null || order === void 0 ? void 0 : order.id))
+            return ctx.notFound('Pedido no encontrado');
+        const orderRestId = ((_a = order.restaurante) === null || _a === void 0 ? void 0 : _a.id) || order.restaurante;
+        if (String(orderRestId) !== String(restauranteId)) {
+            return ctx.unauthorized('Pedido de otro restaurante');
+        }
+        // 2) Recalcular subtotal en servidor
+        let serverSubtotal = 0;
+        try {
+            const itemsA = await strapi.entityService.findMany('api::item-pedido.item-pedido', {
+                filters: { pedido: order.id },
+                fields: ['qty', 'price'],
+                limit: 500,
+            });
+            if (Array.isArray(itemsA) && itemsA.length) {
+                serverSubtotal = itemsA.reduce((s, it) => {
+                    const q = Number((it === null || it === void 0 ? void 0 : it.qty) || 0);
+                    const p = Number((it === null || it === void 0 ? void 0 : it.price) || 0);
+                    const line = q * p;
+                    return s + (Number.isFinite(line) ? line : 0);
+                }, 0);
+            }
+        }
+        catch (e) {
+            strapi.log.debug('No se pudo leer item-pedido, se usa order.total como fallback');
+        }
+        if (!Number.isFinite(serverSubtotal) || serverSubtotal <= 0) {
+            serverSubtotal = Number(order.total || 0) || 0;
+        }
+        // 3) Validar amount
+        if (amount !== undefined && amount !== null) {
+            const cents = (n) => Math.round(Number(n) * 100);
+            if (cents(amount) !== cents(serverSubtotal)) {
+                return ctx.badRequest('El monto no coincide con el subtotal del servidor');
+            }
+        }
+        // 4) Datos a guardar
+        const data = {
+            status: status || 'approved',
+            amount: amount !== null && amount !== void 0 ? amount : serverSubtotal,
+            provider: provider || 'mock',
+            externalRef: externalRef || null,
+            order: order.id,
+            restaurante: restauranteId,
+        };
+        // 5) Crear Payment
+        try {
+            await strapi.entityService.create('api::payments.payments', { data });
+        }
+        catch (e1) {
+            try {
+                await strapi.entityService.create('api::payment.payment', { data });
+            }
+            catch (e2) {
+                strapi.log.warn('Payment CT missing. Continuing without persisting payment record.');
+            }
+        }
+        // 6) Si aprobado, marcar pedido como paid
+        if (String(status || 'approved').toLowerCase() === 'approved') {
+            await strapi.entityService.update('api::pedido.pedido', order.id, {
+                data: { order_status: 'paid' },
+            });
+        }
+        ctx.body = { data: { ok: true } };
     },
 };

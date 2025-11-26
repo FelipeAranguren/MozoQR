@@ -2,7 +2,7 @@
 Object.defineProperty(exports, "__esModule", { value: true });
 // src/api/pedido/controllers/pedido.ts
 const strapi_1 = require("@strapi/strapi");
-exports.default = strapi_1.factories.createCoreController('api::pedido.pedido', ({ strapi }) => ({
+exports.default = strapi_1.factories.createCoreController('api::pedido.pedido', ({ strapi: strapiInstance }) => ({
     /**
      * PUT /api/pedidos/:id
      * - Si :id es numérico -> actualiza por id
@@ -30,7 +30,7 @@ exports.default = strapi_1.factories.createCoreController('api::pedido.pedido', 
         }
         else {
             // Tratar como documentId
-            const existing = await strapi.db.query('api::pedido.pedido').findOne({
+            const existing = await strapiInstance.db.query('api::pedido.pedido').findOne({
                 where: { documentId: param },
                 select: ['id'],
             });
@@ -40,7 +40,7 @@ exports.default = strapi_1.factories.createCoreController('api::pedido.pedido', 
             }
             realId = existing.id;
         }
-        const updated = await strapi.entityService.update('api::pedido.pedido', realId, {
+        const updated = await strapiInstance.entityService.update('api::pedido.pedido', realId, {
             data: payload,
         });
         ctx.body = { data: updated };
