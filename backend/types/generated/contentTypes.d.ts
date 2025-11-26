@@ -607,6 +607,7 @@ export interface ApiPedidoPedido extends Struct.CollectionTypeSchema {
       'manyToOne',
       'api::restaurante.restaurante'
     >;
+    staffNotes: Schema.Attribute.Text;
     total: Schema.Attribute.Decimal & Schema.Attribute.Required;
     updatedAt: Schema.Attribute.DateTime;
     updatedBy: Schema.Attribute.Relation<'oneToOne', 'admin::user'> &

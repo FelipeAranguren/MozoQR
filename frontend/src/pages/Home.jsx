@@ -2,7 +2,7 @@
 import React from 'react'
 import { useNavigate } from 'react-router-dom'
 import { motion } from 'framer-motion'
-import { Container, Typography, Button, Grid, Card, CardContent, Box } from '@mui/material'
+import { Container, Typography, Button, Grid, Card, Box } from '@mui/material'
 import QrCodeIcon from '@mui/icons-material/QrCode'
 import SmartphoneIcon from '@mui/icons-material/Smartphone'
 import CreditCardIcon from '@mui/icons-material/CreditCard'
@@ -16,27 +16,27 @@ export default function Home() {
   const navigate = useNavigate()
 
   const features = [
-    { 
-      icon: <QrCodeIcon sx={{ fontSize: 40 }} />, 
-      title: 'Sin contacto', 
+    {
+      icon: <QrCodeIcon sx={{ fontSize: 40 }} />,
+      title: 'Sin contacto',
       desc: 'Los clientes escanean un QR y ordenan desde su celular. Experiencia segura e instantánea.',
       color: '#2196F3'
     },
-    { 
-      icon: <SmartphoneIcon sx={{ fontSize: 40 }} />, 
-      title: 'Experiencia moderna', 
+    {
+      icon: <SmartphoneIcon sx={{ fontSize: 40 }} />,
+      title: 'Experiencia moderna',
       desc: 'Interfaz intuitiva diseñada para todas las edades. Pedidos en 3 clics.',
       color: '#9C27B0'
     },
-    { 
-      icon: <CreditCardIcon sx={{ fontSize: 40 }} />, 
-      title: 'Pagos digitales', 
+    {
+      icon: <CreditCardIcon sx={{ fontSize: 40 }} />,
+      title: 'Pagos digitales',
       desc: 'Múltiples métodos de pago integrados y seguros. Sin efectivo, sin complicaciones.',
       color: '#4CAF50'
     },
-    { 
-      icon: <BarChartIcon sx={{ fontSize: 40 }} />, 
-      title: 'Análisis en tiempo real', 
+    {
+      icon: <BarChartIcon sx={{ fontSize: 40 }} />,
+      title: 'Análisis en tiempo real',
       desc: 'Dashboard con métricas de ventas y productos populares. Toma decisiones basadas en datos.',
       color: '#FF9800'
     }
@@ -84,8 +84,8 @@ export default function Home() {
 
   const itemVariants = {
     hidden: { opacity: 0, y: 20 },
-    visible: { 
-      opacity: 1, 
+    visible: {
+      opacity: 1,
       y: 0,
       transition: {
         duration: 0.5
@@ -96,8 +96,8 @@ export default function Home() {
   return (
     <div>
       {/* Hero Section */}
-      <Box sx={{ 
-        py: { xs: 6, md: 12 }, 
+      <Box sx={{
+        py: { xs: 6, md: 12 },
         background: 'linear-gradient(to bottom right, #e0f2f1, #ffffff)',
         position: 'relative',
         overflow: 'hidden'
@@ -111,9 +111,9 @@ export default function Home() {
                 transition={{ duration: 0.6 }}
               >
                 <Box sx={{ mb: 2 }}>
-                  <Typography 
-                    variant="body2" 
-                    sx={{ 
+                  <Typography
+                    variant="body2"
+                    sx={{
                       display: 'inline-block',
                       px: 2,
                       py: 1,
@@ -127,12 +127,12 @@ export default function Home() {
                     🚀 La solución #1 para restaurantes
                   </Typography>
                 </Box>
-                
-                <Typography 
-                  variant="h2" 
-                  fontWeight="bold" 
+
+                <Typography
+                  variant="h2"
+                  fontWeight="bold"
                   gutterBottom
-                  sx={{ 
+                  sx={{
                     fontSize: { xs: '2rem', md: '3rem', lg: '3.5rem' },
                     lineHeight: 1.2
                   }}
@@ -142,12 +142,12 @@ export default function Home() {
                   <br />
                   en minutos
                 </Typography>
-                
-                <Typography 
-                  variant="h6" 
-                  color="textSecondary" 
+
+                <Typography
+                  variant="h6"
+                  color="textSecondary"
                   paragraph
-                  sx={{ 
+                  sx={{
                     fontSize: { xs: '1rem', md: '1.25rem' },
                     mt: 2,
                     mb: 3,
@@ -157,16 +157,16 @@ export default function Home() {
                   Transforma la experiencia de tus clientes con pedidos digitales, pagos instantáneos y análisis en tiempo real.{' '}
                   <strong style={{ color: '#212121' }}>Aumenta tus ventas mientras reduces costos.</strong>
                 </Typography>
-                
+
                 <Box sx={{ display: 'flex', gap: 2, flexWrap: 'wrap', mb: 4 }}>
                   <motion.div
                     whileHover={{ scale: 1.05 }}
                     whileTap={{ scale: 0.95 }}
                   >
-                    <Button 
-                      variant="contained" 
-                      size="large" 
-                      onClick={() => navigate('/demo-dashboard')}
+                    <Button
+                      variant="contained"
+                      size="large"
+                      onClick={() => navigate('/demo')}
                       endIcon={<ArrowForwardIcon />}
                       sx={{
                         px: 4,
@@ -182,14 +182,15 @@ export default function Home() {
                       Probar gratis ahora
                     </Button>
                   </motion.div>
-                  
+
                   <motion.div
                     whileHover={{ scale: 1.05 }}
                     whileTap={{ scale: 0.95 }}
                   >
-                    <Button 
-                      variant="outlined" 
+                    <Button
+                      variant="outlined"
                       size="large"
+                      href="mailto:ventas@mozoqr.com"
                       sx={{
                         px: 4,
                         py: 1.5,
@@ -201,7 +202,7 @@ export default function Home() {
                         }
                       }}
                     >
-                      Ver demostración
+                      Contactar Ventas
                     </Button>
                   </motion.div>
                 </Box>
@@ -242,7 +243,7 @@ export default function Home() {
                 </motion.div>
               </motion.div>
             </Grid>
-            
+
             <Grid item xs={12} md={6}>
               <motion.div
                 initial={{ opacity: 0, x: 50 }}
@@ -265,7 +266,7 @@ export default function Home() {
                       }}
                     />
                   </motion.div>
-                  
+
                   {/* Floating card */}
                   <motion.div
                     initial={{ opacity: 0, y: 20 }}
@@ -332,7 +333,7 @@ export default function Home() {
               Funcionalidades diseñadas para aumentar tus ventas y mejorar la experiencia de tus clientes
             </Typography>
           </motion.div>
-          
+
           <motion.div
             variants={containerVariants}
             initial="hidden"
@@ -363,8 +364,8 @@ export default function Home() {
                         }
                       }}
                     >
-                      <Box 
-                        sx={{ 
+                      <Box
+                        sx={{
                           mb: 2,
                           display: 'flex',
                           justifyContent: 'center',
@@ -406,10 +407,10 @@ export default function Home() {
                   <span style={{ color: '#00796B' }}>hablan por sí solos</span>
                 </Typography>
                 <Typography variant="body1" color="textSecondary" paragraph sx={{ mb: 4 }}>
-                  Miles de restaurantes ya están transformando su negocio con MozoQR. 
+                  Miles de restaurantes ya están transformando su negocio con MozoQR.
                   Únete a la revolución digital y comienza a ver resultados desde el primer día.
                 </Typography>
-                
+
                 <motion.div
                   variants={containerVariants}
                   initial="hidden"
@@ -422,12 +423,12 @@ export default function Home() {
                         key={i}
                         variants={itemVariants}
                       >
-                        <Box 
-                          sx={{ 
-                            display: 'flex', 
-                            alignItems: 'center', 
+                        <Box
+                          sx={{
+                            display: 'flex',
+                            alignItems: 'center',
                             justifyContent: 'space-between',
-                            gap: 2, 
+                            gap: 2,
                             mb: 2,
                             p: 2,
                             borderRadius: 2,
@@ -443,9 +444,9 @@ export default function Home() {
                               {b.text}
                             </Typography>
                           </Box>
-                          <Typography 
-                            variant="h5" 
-                            fontWeight="bold" 
+                          <Typography
+                            variant="h5"
+                            fontWeight="bold"
                             sx={{ color: 'primary.main', minWidth: '60px', textAlign: 'right' }}
                           >
                             {b.stat}
@@ -465,11 +466,11 @@ export default function Home() {
                 viewport={{ once: true }}
                 transition={{ duration: 0.6 }}
               >
-                <Card 
-                  elevation={1} 
-                  sx={{ 
-                    p: 4, 
-                    textAlign: 'center', 
+                <Card
+                  elevation={1}
+                  sx={{
+                    p: 4,
+                    textAlign: 'center',
                     background: 'linear-gradient(to bottom right, #e0f2f1, #fff8e1)',
                     boxShadow: 4
                   }}
@@ -480,17 +481,17 @@ export default function Home() {
                   <Typography variant="body2" color="textSecondary" paragraph sx={{ mb: 3 }}>
                     Configuración en menos de 24 horas. Sin instalación, sin hardware adicional.
                   </Typography>
-                  
+
                   <motion.div
                     whileHover={{ scale: 1.05 }}
                     whileTap={{ scale: 0.95 }}
                   >
-                    <Button 
-                      variant="contained" 
-                      size="large" 
+                    <Button
+                      variant="contained"
+                      size="large"
                       fullWidth
                       endIcon={<ArrowForwardIcon />}
-                      onClick={() => navigate('/demo-dashboard')}
+                      onClick={() => navigate('/demo')}
                       sx={{
                         mb: 3,
                         py: 1.5,
@@ -503,7 +504,7 @@ export default function Home() {
                       Empezar demostración
                     </Button>
                   </motion.div>
-                  
+
                   <Box sx={{ mt: 3, pt: 3, borderTop: 1, borderColor: 'divider' }}>
                     <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1 }}>
                       <CheckCircleIcon color="success" sx={{ fontSize: 20 }} />
@@ -575,11 +576,11 @@ export default function Home() {
                           <StarIcon key={i} sx={{ color: '#FFC107', fontSize: 20 }} />
                         ))}
                       </Box>
-                      <Typography 
-                        variant="body1" 
-                        color="textSecondary" 
+                      <Typography
+                        variant="body1"
+                        color="textSecondary"
                         paragraph
-                        sx={{ 
+                        sx={{
                           fontStyle: 'italic',
                           flex: 1,
                           mb: 2
@@ -605,8 +606,8 @@ export default function Home() {
       </Box>
 
       {/* Final CTA Section */}
-      <Box sx={{ 
-        py: { xs: 8, md: 12 }, 
+      <Box sx={{
+        py: { xs: 8, md: 12 },
         background: 'linear-gradient(to bottom right, #00796B, #004D40)',
         position: 'relative',
         overflow: 'hidden'
@@ -625,11 +626,11 @@ export default function Home() {
                 viewport={{ once: true }}
                 transition={{ delay: 0.2 }}
               >
-                <Typography 
-                  variant="h4" 
-                  gutterBottom 
+                <Typography
+                  variant="h4"
+                  gutterBottom
                   fontWeight="bold"
-                  sx={{ 
+                  sx={{
                     color: 'white',
                     fontSize: { xs: '2rem', md: '2.5rem' },
                     mb: 2
@@ -638,26 +639,26 @@ export default function Home() {
                   ¿Listo para transformar tu restaurante?
                 </Typography>
               </motion.div>
-              
+
               <motion.div
                 initial={{ opacity: 0, y: 20 }}
                 whileInView={{ opacity: 1, y: 0 }}
                 viewport={{ once: true }}
                 transition={{ delay: 0.3 }}
               >
-                <Typography 
-                  variant="h6" 
+                <Typography
+                  variant="h6"
                   paragraph
-                  sx={{ 
+                  sx={{
                     color: 'rgba(255, 255, 255, 0.9)',
                     mb: 4
                   }}
                 >
-                  Únete a cientos de restaurantes que ya están aumentando sus ventas y mejorando 
+                  Únete a cientos de restaurantes que ya están aumentando sus ventas y mejorando
                   la experiencia de sus clientes con MozoQR.
                 </Typography>
               </motion.div>
-              
+
               <motion.div
                 initial={{ opacity: 0, y: 20 }}
                 whileInView={{ opacity: 1, y: 0 }}
@@ -669,11 +670,11 @@ export default function Home() {
                     whileHover={{ scale: 1.05 }}
                     whileTap={{ scale: 0.95 }}
                   >
-                    <Button 
-                      variant="contained" 
+                    <Button
+                      variant="contained"
                       size="large"
                       endIcon={<ArrowForwardIcon />}
-                      onClick={() => navigate('/demo-dashboard')}
+                      onClick={() => navigate('/demo')}
                       sx={{
                         bgcolor: 'white',
                         color: 'primary.main',
@@ -691,14 +692,15 @@ export default function Home() {
                       Comenzar gratis ahora
                     </Button>
                   </motion.div>
-                  
+
                   <motion.div
                     whileHover={{ scale: 1.05 }}
                     whileTap={{ scale: 0.95 }}
                   >
-                    <Button 
-                      variant="outlined" 
+                    <Button
+                      variant="outlined"
                       size="large"
+                      href="mailto:ventas@mozoqr.com"
                       sx={{
                         borderColor: 'white',
                         color: 'white',
@@ -714,7 +716,7 @@ export default function Home() {
                         }
                       }}
                     >
-                      Hablar con ventas
+                      Contactar Ventas
                     </Button>
                   </motion.div>
                 </Box>

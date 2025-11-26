@@ -3,16 +3,27 @@ import React, { useEffect, useRef, useState, useMemo } from 'react';
 import { useParams } from 'react-router-dom';
 import { api } from '../api';
 import { closeAccount } from '../api/tenant';
+import { fetchTables } from '../api/tables';
+import TablesStatusGridEnhanced from '../components/TablesStatusGridEnhanced';
 import {
   Box, Typography, Card, CardContent, List, ListItem, Button,
   Divider, Grid, TextField, InputAdornment, Snackbar, Alert,
   Dialog, DialogTitle, DialogContent, DialogContentText, DialogActions,
-  Chip
+  Chip, Drawer, IconButton, MenuItem, Select, FormControl,
+  InputLabel
 } from '@mui/material';
 import AccessTimeIcon from '@mui/icons-material/AccessTime';
 import RestaurantIcon from '@mui/icons-material/Restaurant';
 import AccountBalanceWalletIcon from '@mui/icons-material/AccountBalanceWallet';
 import WarningIcon from '@mui/icons-material/Warning';
+import HistoryIcon from '@mui/icons-material/History';
+import CloseIcon from '@mui/icons-material/Close';
+import VisibilityIcon from '@mui/icons-material/Visibility';
+import CancelIcon from '@mui/icons-material/Cancel';
+import EditIcon from '@mui/icons-material/Edit';
+import LocalOfferIcon from '@mui/icons-material/LocalOffer';
+import FreeBreakfastIcon from '@mui/icons-material/FreeBreakfast';
+import TableRestaurantIcon from '@mui/icons-material/TableRestaurant';
 
 const money = (n) =>
   new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS' })
@@ -24,12 +35,21 @@ export default function Mostrador() {
   // ----- estado principal -----
   const [pedidos, setPedidos] = useState([]);
   const [cuentas, setCuentas] = useState([]);
+  const [mesas, setMesas] = useState([]);
   const [error, setError] = useState(null);
-  const [showHistory, setShowHistory] = useState(false);
+  const [showHistoryDrawer, setShowHistoryDrawer] = useState(false);
+  const [historyTab, setHistoryTab] = useState(0); // 0: pedidos, 1: cuentas
+  const [historyPedidos, setHistoryPedidos] = useState([]);
+  const [historyCuentas, setHistoryCuentas] = useState([]);
+  const [accountDetailDialog, setAccountDetailDialog] = useState({ open: false, cuenta: null });
   const [searchQuery, setSearchQuery] = useState('');
   const [flashIds, setFlashIds] = useState(new Set());
   const [snack, setSnack] = useState({ open: false, msg: '', severity: 'info' });
-  const [payDialog, setPayDialog] = useState({ open: false, cuenta: null, loading: false });
+  const [payDialog, setPayDialog] = useState({ open: false, cuenta: null, loading: false, discount: 0, discountType: 'percent', closeWithoutPayment: false });
+  const [orderDetailDialog, setOrderDetailDialog] = useState({ open: false, pedido: null });
+  const [completeOrderDialog, setCompleteOrderDialog] = useState({ open: false, pedido: null, staffNotes: '' });
+  const [cancelOrderDialog, setCancelOrderDialog] = useState({ open: false, pedido: null, reason: '' });
+  const [tableDetailDialog, setTableDetailDialog] = useState({ open: false, mesa: null });
 
   // ----- refs auxiliares (SOLO AQUÍ ARRIBA; no dentro de funciones) -----
   const pedidosRef = useRef([]);
@@ -78,13 +98,71 @@ export default function Mostrador() {
   };
 
   const updateCachedView = (nextPedidos, nextCuentas = null) => {
-    const modeKey = showHistory ? 'history' : 'active';
-    const cuentasForCache =
-      nextCuentas ?? cachedViewsRef.current[modeKey]?.cuentas ?? cuentas;
-    cachedViewsRef.current[modeKey] = {
+    const cuentasForCache = nextCuentas ?? cachedViewsRef.current.active?.cuentas ?? cuentas;
+    cachedViewsRef.current.active = {
       pedidos: nextPedidos,
       cuentas: cuentasForCache,
     };
+  };
+
+
+  // Cargar historial completo (para el drawer)
+  const fetchFullHistory = async () => {
+    try {
+      const qs =
+        `?filters[restaurante][slug][$eq]=${encodeURIComponent(slug)}` +
+        `&filters[order_status][$in][0]=served&filters[order_status][$in][1]=paid` +
+        `&publicationState=preview` +
+        `&fields[0]=id&fields[1]=documentId&fields[2]=order_status&fields[3]=total&fields[4]=createdAt&fields[5]=updatedAt&fields[6]=customerNotes&fields[7]=staffNotes` +
+        `&populate[mesa_sesion][populate][mesa][fields][0]=number` +
+        `&sort[0]=updatedAt:desc` +
+        `&pagination[pageSize]=100`;
+
+      const res = await api.get(`/pedidos${qs}`);
+      const base = res?.data?.data ?? [];
+      const planos = base.map(mapPedidoRow);
+      
+      // Cargar items para cada pedido
+      const planosConItems = await Promise.all(
+        planos.map(async (p) => {
+          try {
+            const items = await fetchItemsDePedido(p.id);
+            return { ...p, items: items || [] };
+          } catch {
+            return { ...p, items: [] };
+          }
+        })
+      );
+      
+      // Agrupar por sesión para cuentas
+      const grupos = new Map();
+      planosConItems.forEach((p) => {
+        if (p.mesa_sesion?.id != null) {
+          const key = `sesion:${p.mesa_sesion.id}`;
+          const arr = grupos.get(key) || [];
+          arr.push(p);
+          grupos.set(key, arr);
+        }
+      });
+
+      const cuentasArr = Array.from(grupos, ([groupKey, arr]) => {
+        const total = arr.reduce((sum, it) => sum + Number(it.total || 0), 0);
+        const lastUpdated = arr.reduce((max, it) => Math.max(max, new Date(it.updatedAt).getTime()), 0);
+        const mesaNumber = arr.find((x) => Number.isFinite(Number(x.mesa_sesion?.mesa?.number)))?.mesa_sesion?.mesa?.number ?? null;
+        return {
+          groupKey,
+          mesaNumber,
+          pedidos: arr.sort((a, b) => new Date(b.updatedAt) - new Date(a.updatedAt)),
+          total,
+          lastUpdated,
+        };
+      });
+
+      setHistoryPedidos(planosConItems);
+      setHistoryCuentas(cuentasArr.sort((a, b) => b.lastUpdated - a.lastUpdated));
+    } catch (err) {
+      console.error('Error al obtener historial completo:', err);
+    }
   };
 
   // ---- helpers
@@ -231,16 +309,14 @@ export default function Mostrador() {
   // =================== carga de pedidos ===================
   const fetchPedidos = async () => {
     try {
-      const sort = showHistory ? 'updatedAt:desc' : 'createdAt:asc';
-      const statusFilter = showHistory
-        ? `&filters[order_status][$in][0]=served&filters[order_status][$in][1]=paid`
-        : `&filters[order_status][$in][0]=pending&filters[order_status][$in][1]=preparing&filters[order_status][$in][2]=served`;
+      const sort = 'createdAt:asc';
+      const statusFilter = `&filters[order_status][$in][0]=pending&filters[order_status][$in][1]=preparing&filters[order_status][$in][2]=served`;
 
       const listQS =
         `?filters[restaurante][slug][$eq]=${encodeURIComponent(slug)}` +
         statusFilter +
         `&publicationState=preview` +
-        `&fields[0]=id&fields[1]=documentId&fields[2]=order_status&fields[3]=customerNotes&fields[4]=total&fields[5]=createdAt&fields[6]=updatedAt` +
+        `&fields[0]=id&fields[1]=documentId&fields[2]=order_status&fields[3]=customerNotes&fields[4]=staffNotes&fields[5]=total&fields[6]=createdAt&fields[7]=updatedAt` +
         `&populate[mesa_sesion][fields][0]=id` +
         `&populate[mesa_sesion][fields][1]=session_status` +
         `&populate[mesa_sesion][fields][2]=code` +
@@ -271,9 +347,7 @@ export default function Mostrador() {
 
           // Si no hay items (ni del backend ni previos), intentar cargar
           const shouldFetchItems =
-            items.length === 0 &&
-            (isActive(p.order_status) ||
-              (showHistory && ['served', 'paid'].includes(p.order_status)));
+            items.length === 0 && isActive(p.order_status);
 
           if (shouldFetchItems) {
             try {
@@ -300,16 +374,12 @@ export default function Mostrador() {
         })
       );
 
-      const ordenados = showHistory
-        ? [...conItems].sort((a, b) => new Date(b.updatedAt) - new Date(a.updatedAt))
-        : ordenarActivos(conItems);
+      const ordenados = ordenarActivos(conItems);
 
-      // visibles según modo
-      const visibles = showHistory
-        ? ordenados.filter((p) => ['served', 'paid'].includes(p.order_status))
-        : ordenados.filter((p) => isActive(p.order_status) && !servingIdsRef.current.has(p.id));
+      // visibles: solo activos
+      const visibles = ordenados.filter((p) => isActive(p.order_status) && !servingIdsRef.current.has(p.id));
 
-      if (!showHistory && pendingBeforeHistoryRef.current.size > 0) {
+      if (pendingBeforeHistoryRef.current.size > 0) {
         pendingBeforeHistoryRef.current.forEach((id) => seenIdsRef.current.add(id));
         pendingBeforeHistoryRef.current = new Set();
       }
@@ -320,7 +390,7 @@ export default function Mostrador() {
       );
 
       const nuevosFiltrados = nuevosVisibles.filter(pedidoMatchesMesaPartial);
-      if (!showHistory && hasLoadedRef.current && nuevosFiltrados.length > 0) {
+      if (hasLoadedRef.current && nuevosFiltrados.length > 0) {
         try { playBeep(); } catch { }
         setSnack({ open: true, msg: `${nuevosFiltrados.length} pedido(s) nuevo(s)`, severity: 'info' });
         nuevosFiltrados.forEach((n) => triggerFlash(n.documentId));
@@ -333,51 +403,28 @@ export default function Mostrador() {
       pedidosRef.current = visibles;
       setPedidos(visibles);
 
-      // ---- agrupar cuentas
-      // En historial: cada mesa_sesion cerrada es una cuenta única e inmutable
-      // En activos: agrupar por mesa para mostrar cuentas abiertas
+      // ---- agrupar cuentas (solo activas)
       const grupos = new Map();
       ordenados.forEach((p) => {
+        const mesaNum = p.mesa_sesion?.mesa?.number;
         let key;
-        if (showHistory) {
-          // En historial: usar mesa_sesion.id como clave única si existe
-          // Esto asegura que cada sesión cerrada tenga su propio grupo
-          // Si no hay mesa_sesion.id, usar pedido.id como clave única (fallback)
-          if (p.mesa_sesion?.id != null) {
-            key = `sesion:${p.mesa_sesion.id}`;
-          } else {
-            // Fallback: usar pedido.id como clave única para pedidos sin sesión
-            key = `pedido:${p.id}`;
-          }
+        if (mesaNum != null) {
+          key = `mesa:${mesaNum}`;
+        } else if (p.mesa_sesion?.id != null) {
+          key = `sesion:${p.mesa_sesion.id}`;
         } else {
-          // En activos: agrupar por mesa para mostrar cuentas abiertas
-          const mesaNum = p.mesa_sesion?.mesa?.number;
-          if (mesaNum != null) {
-            key = `mesa:${mesaNum}`;
-          } else if (p.mesa_sesion?.id != null) {
-            key = `sesion:${p.mesa_sesion.id}`;
-          } else {
-            key = `pedido:${p.id}`;
-          }
+          key = `pedido:${p.id}`;
         }
         const arr = grupos.get(key) || [];
         arr.push(p);
         grupos.set(key, arr);
       });
 
-      // En historial: NO fusionar grupos por mesa ni tiempo
-      // Cada sesión cerrada (mesa_sesion con status 'paid') debe mantener su identidad única
-      // Esto evita que cuentas cerradas por separado se agrupen incorrectamente
-
       const cuentasArr = Array.from(grupos, ([groupKey, arr]) => {
         const hasUnpaid = arr.some((o) => o.order_status !== 'paid');
-        // En historial: mostrar todos los pedidos de la sesión
-        // En activos: mostrar solo pedidos no pagados para la cuenta abierta
-        const lista = showHistory
-          ? arr // En historial, mostrar todos los pedidos de la sesión
-          : hasUnpaid
-            ? arr.filter((o) => o.order_status !== 'paid') // En activos, solo no pagados
-            : arr;
+        const lista = hasUnpaid
+          ? arr.filter((o) => o.order_status !== 'paid')
+          : arr;
         const total = lista.reduce((sum, it) => sum + Number(it.total || 0), 0);
         const lastUpdated = arr.reduce((max, it) => Math.max(max, new Date(it.updatedAt).getTime()), 0);
         const mesaNumber =
@@ -395,13 +442,11 @@ export default function Mostrador() {
         };
       });
 
-      const filtradas = showHistory
-        ? cuentasArr.filter((c) => !c.hasUnpaid).sort((a, b) => b.lastUpdated - a.lastUpdated)
-        : cuentasArr.filter((c) => c.hasUnpaid).sort((a, b) => {
-          const am = Number.isFinite(Number(a.mesaNumber)) ? Number(a.mesaNumber) : 999999;
-          const bm = Number.isFinite(Number(b.mesaNumber)) ? Number(b.mesaNumber) : 999999;
-          return am - bm;
-        });
+      const filtradas = cuentasArr.filter((c) => c.hasUnpaid).sort((a, b) => {
+        const am = Number.isFinite(Number(a.mesaNumber)) ? Number(a.mesaNumber) : 999999;
+        const bm = Number.isFinite(Number(b.mesaNumber)) ? Number(b.mesaNumber) : 999999;
+        return am - bm;
+      });
 
       updateCachedView(visibles, filtradas);
 
@@ -418,35 +463,35 @@ export default function Mostrador() {
     seenIdsRef.current = new Set(); // reset de vistos al cambiar de restaurante
     cachedViewsRef.current = {
       active: { pedidos: [], cuentas: [] },
-      history: { pedidos: [], cuentas: [] },
     };
   }, [slug]);
 
-  const prevShowHistoryRef = useRef(showHistory);
-  useEffect(() => {
-    if (!prevShowHistoryRef.current && showHistory) {
-      pendingBeforeHistoryRef.current = new Set(
-        pedidosRef.current
-          .filter((p) => p.order_status === 'pending')
-          .map((p) => p.id)
-      );
+  // Cargar mesas
+  const fetchMesas = async () => {
+    try {
+      const mesasData = await fetchTables(slug);
+      setMesas(mesasData);
+    } catch (err) {
+      console.error('Error al obtener mesas:', err);
     }
-    prevShowHistoryRef.current = showHistory;
-  }, [showHistory]);
+  };
 
   useEffect(() => {
-    const modeKey = showHistory ? 'history' : 'active';
-    const cached = cachedViewsRef.current[modeKey] ?? { pedidos: [], cuentas: [] };
+    const cached = cachedViewsRef.current.active ?? { pedidos: [], cuentas: [] };
     const nextPedidos = Array.isArray(cached.pedidos) ? [...cached.pedidos] : [];
     const nextCuentas = Array.isArray(cached.cuentas) ? [...cached.cuentas] : [];
     pedidosRef.current = nextPedidos;
     setPedidos(nextPedidos);
     setCuentas(nextCuentas);
     fetchPedidos();
-    const interval = setInterval(fetchPedidos, 3000);
+    fetchMesas();
+    const interval = setInterval(() => {
+      fetchPedidos();
+      fetchMesas();
+    }, 3000);
     return () => clearInterval(interval);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [slug, showHistory]);
+  }, [slug]);
 
   // marcar que ya hubo al menos una carga
   useEffect(() => { hasLoadedRef.current = true; }, []);
@@ -515,7 +560,7 @@ export default function Mostrador() {
     }
   };
 
-  const marcarComoServido = async (pedido) => {
+  const marcarComoServido = async (pedido, staffNotes = '') => {
     try {
       triggerFlash(pedido.documentId);
       servingIdsRef.current.add(pedido.id);
@@ -524,11 +569,40 @@ export default function Mostrador() {
         pedidosRef.current = next;
         return next;
       });
-      await putEstado(pedido, 'served');
+      
+      // Actualizar el pedido con el estado y las notas del staff
+      const updateData = { order_status: 'served' };
+      if (staffNotes && staffNotes.trim()) {
+        updateData.staffNotes = staffNotes.trim();
+      }
+      
+      try {
+        await api.patch(`/pedidos/${pedido.id}`, { data: updateData });
+      } catch (patchErr) {
+        // Si PATCH falla, intentar PUT
+        if (patchErr?.response?.status === 405) {
+          await api.put(`/pedidos/${pedido.id}`, { data: updateData });
+        } else {
+          throw patchErr;
+        }
+      }
+      
       await fetchPedidos();
+      setSnack({ 
+        open: true, 
+        msg: staffNotes && staffNotes.trim() 
+          ? 'Pedido completado con observaciones ✅' 
+          : 'Pedido marcado como servido ✅', 
+        severity: 'success' 
+      });
     } catch (err) {
       console.error('Error al marcar como servido:', err?.response?.data || err);
       setError('No se pudo actualizar el pedido.');
+      setSnack({
+        open: true,
+        msg: 'Error al completar el pedido. Intentá de nuevo.',
+        severity: 'error'
+      });
       servingIdsRef.current.delete(pedido.id);
       setPedidos((prev) => {
         if (prev.some((p) => keyOf(p) === keyOf(pedido))) return prev;
@@ -540,44 +614,121 @@ export default function Mostrador() {
     }
   };
 
-  const handleOpenPayDialog = (cuenta) => {
-    setPayDialog({ open: true, cuenta, loading: false });
+  const cancelarPedido = async (pedido, reason = '') => {
+    try {
+      await api.patch(`/pedidos/${pedido.id}`, {
+        data: {
+          order_status: 'cancelled',
+          cancellationReason: reason
+        }
+      });
+      setSnack({ open: true, msg: 'Pedido cancelado ✅', severity: 'success' });
+      await fetchPedidos();
+    } catch (err) {
+      console.error('Error al cancelar pedido:', err);
+      setSnack({ open: true, msg: 'No se pudo cancelar el pedido ❌', severity: 'error' });
+    }
   };
 
-  const handleClosePayDialog = () => {
-    setPayDialog({ open: false, cuenta: null, loading: false });
+  const handleOpenPayDialog = (cuenta) => {
+    setPayDialog({ open: true, cuenta, loading: false, discount: 0, discountType: 'percent', closeWithoutPayment: false });
   };
 
   const marcarCuentaComoPagada = async () => {
-    const { cuenta } = payDialog;
+    const { cuenta, discount, discountType, closeWithoutPayment } = payDialog;
     if (!cuenta) return;
 
     setPayDialog((prev) => ({ ...prev, loading: true }));
 
     try {
-      if (cuenta.mesaNumber != null) {
-        const payload = { table: cuenta.mesaNumber };
-        if (cuenta.mesaSesionId) payload.tableSessionId = cuenta.mesaSesionId;
-        await closeAccount(slug, payload);
-      } else {
-        const pendientes = (cuenta.pedidos || []).filter((p) => p.order_status !== 'paid');
-        await Promise.all(pendientes.map((pedido) => putEstado(pedido, 'paid')));
+      // Calcular total con descuento si aplica
+      let totalFinal = cuenta.total;
+      if (discount > 0 && !closeWithoutPayment) {
+        if (discountType === 'percent') {
+          totalFinal = cuenta.total * (1 - discount / 100);
+        } else {
+          totalFinal = Math.max(0, cuenta.total - discount);
+        }
       }
 
-      setSnack({ open: true, msg: 'Cuenta marcada como pagada ✅', severity: 'success' });
+      if (closeWithoutPayment) {
+        // Cerrar sin cobrar (invitado)
+        if (cuenta.mesaNumber != null) {
+          const payload = { table: cuenta.mesaNumber, closeWithoutPayment: true };
+          if (cuenta.mesaSesionId) payload.tableSessionId = cuenta.mesaSesionId;
+          await closeAccount(slug, payload);
+        } else {
+          const pendientes = (cuenta.pedidos || []).filter((p) => p.order_status !== 'paid');
+          await Promise.all(pendientes.map((pedido) => 
+            api.patch(`/pedidos/${pedido.id}`, { 
+              data: { 
+                order_status: 'paid',
+                payment_status: 'paid',
+                closeWithoutPayment: true
+              } 
+            })
+          ));
+        }
+        setSnack({ open: true, msg: 'Cuenta cerrada sin cobro (Invitado) ✅', severity: 'success' });
+      } else if (discount > 0) {
+        // Aplicar descuento y pagar
+        const pendientes = (cuenta.pedidos || []).filter((p) => p.order_status !== 'paid');
+        await Promise.all(pendientes.map((pedido) => {
+          const pedidoTotal = Number(pedido.total || 0);
+          const pedidoDiscount = discountType === 'percent' 
+            ? pedidoTotal * (discount / 100)
+            : (discount * pedidoTotal / cuenta.total);
+          const pedidoFinal = Math.max(0, pedidoTotal - pedidoDiscount);
+          
+          return api.patch(`/pedidos/${pedido.id}`, {
+            data: {
+              order_status: 'paid',
+              payment_status: 'paid',
+              total: pedidoFinal,
+              discount: discount,
+              discountType: discountType
+            }
+          });
+        }));
+        setSnack({ open: true, msg: `Cuenta pagada con ${discount}${discountType === 'percent' ? '%' : '$'} de descuento ✅`, severity: 'success' });
+      } else {
+        // Pago normal
+        if (cuenta.mesaNumber != null) {
+          const payload = { table: cuenta.mesaNumber };
+          if (cuenta.mesaSesionId) payload.tableSessionId = cuenta.mesaSesionId;
+          await closeAccount(slug, payload);
+        } else {
+          const pendientes = (cuenta.pedidos || []).filter((p) => p.order_status !== 'paid');
+          await Promise.all(pendientes.map((pedido) => putEstado(pedido, 'paid')));
+        }
+        setSnack({ open: true, msg: 'Cuenta marcada como pagada ✅', severity: 'success' });
+      }
+
       handleClosePayDialog();
       await fetchPedidos();
     } catch (err) {
-      console.error('Error al marcar cuenta como pagada:', err?.response?.data || err);
+      console.error('Error al procesar cuenta:', err?.response?.data || err);
       setSnack({
         open: true,
-        msg: 'No se pudo marcar la cuenta como pagada ❌',
+        msg: 'No se pudo procesar la cuenta ❌',
         severity: 'error',
       });
       setPayDialog((prev) => ({ ...prev, loading: false }));
     }
   };
 
+  const handleClosePayDialog = () => {
+    setPayDialog({ open: false, cuenta: null, loading: false, discount: 0, discountType: 'percent', closeWithoutPayment: false });
+  };
+
+  // Función para detectar si es un pedido del sistema (debe estar antes de los memos)
+  const isSystemOrder = (pedido) => {
+    const items = pedido.items || [];
+    return items.some(item => {
+      const prodName = (item?.product?.name || item?.name || '').toUpperCase();
+      return prodName.includes('LLAMAR MOZO') || prodName.includes('SOLICITUD DE COBRO') || prodName.includes('💳');
+    });
+  };
 
   // ---- memos de filtro ----
   const pedidosFiltrados = useMemo(
@@ -585,11 +736,15 @@ export default function Mostrador() {
     [pedidos, mesaTokens]
   );
   const pedidosPendientes = useMemo(
-    () => pedidosFiltrados.filter((p) => p.order_status === 'pending'),
+    () => pedidosFiltrados.filter((p) => p.order_status === 'pending' && !isSystemOrder(p)),
     [pedidosFiltrados]
   );
   const pedidosEnCocina = useMemo(
-    () => pedidosFiltrados.filter((p) => p.order_status === 'preparing'),
+    () => pedidosFiltrados.filter((p) => p.order_status === 'preparing' && !isSystemOrder(p)),
+    [pedidosFiltrados]
+  );
+  const pedidosSistema = useMemo(
+    () => pedidosFiltrados.filter((p) => isSystemOrder(p) && isActive(p.order_status)),
     [pedidosFiltrados]
   );
   const cuentasFiltradas = useMemo(
@@ -613,7 +768,7 @@ export default function Mostrador() {
   // Función para obtener color consistente por número de mesa
   const getMesaColor = (mesaNumber) => {
     if (mesaNumber == null) return 'primary';
-    
+
     // Paleta de colores vibrantes y distinguibles
     const colors = [
       '#1976d2', // azul
@@ -637,14 +792,206 @@ export default function Mostrador() {
       '#f4511e', // naranja oscuro
       '#0097a7', // turquesa
     ];
-    
+
     // Usar el número de mesa como índice para obtener un color consistente
     const index = Number(mesaNumber) % colors.length;
     return colors[index];
   };
 
+  const getSystemOrderType = (pedido) => {
+    const items = pedido.items || [];
+    const hasWaiterCall = items.some(item => {
+      const prodName = item?.product?.name || item?.name || '';
+      return prodName.includes('LLAMAR MOZO');
+    });
+    const hasPayRequest = items.some(item => {
+      const prodName = item?.product?.name || item?.name || '';
+      return prodName.includes('SOLICITUD DE COBRO');
+    });
+
+    if (hasWaiterCall) return 'waiter-call';
+    if (hasPayRequest) return 'pay-request';
+    return null;
+  };
+
+  // Función para manejar dismiss de pedidos del sistema
+  const handleDismissSystemOrder = async (pedido) => {
+    try {
+      triggerFlash(pedido.documentId);
+      // Marcar como servido para sacarlo de la vista activa
+      await putEstado(pedido, 'served');
+      await fetchPedidos();
+      setSnack({
+        open: true,
+        msg: 'Solicitud atendida ✅',
+        severity: 'success'
+      });
+    } catch (err) {
+      console.error('Error al marcar como atendido:', err);
+      setSnack({
+        open: true,
+        msg: 'No se pudo marcar como atendido',
+        severity: 'error'
+      });
+    }
+  };
+
+  // Función para renderizar una tarjeta de pedido del sistema
+  const renderSystemOrderCard = (pedido) => {
+    const { id, documentId, customerNotes, items = [], createdAt } = pedido;
+    const mesaNumero = pedido.mesa_sesion?.mesa?.number;
+    const flashing = flashIds.has(documentId);
+    const systemType = getSystemOrderType(pedido);
+
+    const isWaiterCall = systemType === 'waiter-call';
+    const isPay = systemType === 'pay-request';
+
+    // Extraer info del método de pago si es solicitud de cobro
+    let paymentMethod = '';
+    if (isPay) {
+      const payItem = items.find(item => {
+        const prodName = item?.product?.name || item?.name || '';
+        return prodName.includes('SOLICITUD DE COBRO');
+      });
+      paymentMethod = payItem?.notes || customerNotes || '';
+    }
+
+    return (
+      <Card
+        key={documentId || id}
+        sx={{
+          mb: 1.25,
+          bgcolor: flashing
+            ? (isWaiterCall ? '#fff3cd' : '#d1ecf1')
+            : (isWaiterCall ? '#fff8e1' : '#e3f2fd'),
+          transition: 'all 0.2s ease-in-out',
+          boxShadow: flashing ? 6 : 2,
+          border: '2px solid',
+          borderColor: flashing
+            ? (isWaiterCall ? '#ffc107' : '#17a2b8')
+            : (isWaiterCall ? '#ffa726' : '#29b6f6'),
+          borderRadius: 2,
+          cursor: 'pointer',
+          '&:hover': {
+            boxShadow: 8,
+            transform: 'translateY(-2px)',
+          },
+        }}
+      >
+        <CardContent sx={{ p: 1.25, '&:last-child': { pb: 1.25 } }}>
+          <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 1 }}>
+            <Chip
+              label={`Mesa ${mesaNumero ?? 's/n'}`}
+              size="small"
+              sx={{
+                fontWeight: 600,
+                bgcolor: getMesaColor(mesaNumero),
+                color: 'white',
+                fontSize: '0.75rem',
+                height: 22,
+              }}
+            />
+            <Typography variant="body2" sx={{ color: 'text.secondary', fontSize: '0.75rem' }}>
+              {formatTime(createdAt)}
+            </Typography>
+          </Box>
+
+          <Box sx={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: 1,
+            mb: 1,
+            p: 1,
+            bgcolor: 'white',
+            borderRadius: 1,
+            border: '1.5px solid',
+            borderColor: isWaiterCall ? '#ff9800' : '#0288d1',
+          }}>
+            <Typography
+              variant="h6"
+              sx={{
+                fontSize: '1rem',
+                fontWeight: 700,
+                color: isWaiterCall ? '#f57c00' : '#0277bd',
+                flex: 1,
+              }}
+            >
+              {isWaiterCall ? '🔔 LLAMAR MOZO' : '💳 SOLICITUD DE COBRO'}
+            </Typography>
+          </Box>
+
+          {isPay && paymentMethod && (
+            <Typography
+              variant="body2"
+              sx={{
+                mb: 1,
+                fontSize: '0.8125rem',
+                color: 'text.secondary',
+                fontStyle: 'italic',
+              }}
+            >
+              {paymentMethod}
+            </Typography>
+          )}
+
+          {customerNotes && !isPay && (
+            <Box
+              sx={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: 0.5,
+                mb: 0.75,
+                p: 0.5,
+                bgcolor: '#fff3cd',
+                borderRadius: 1,
+                border: '1.5px solid',
+                borderColor: '#ff9800',
+              }}
+            >
+              <WarningIcon sx={{ fontSize: '0.875rem', color: '#f57c00' }} />
+              <Typography
+                variant="body2"
+                sx={{
+                  fontSize: '0.75rem',
+                  color: '#e65100',
+                  fontWeight: 600,
+                  flex: 1,
+                }}
+              >
+                {customerNotes}
+              </Typography>
+            </Box>
+          )}
+
+          <Button
+            variant="contained"
+            color={isWaiterCall ? 'warning' : 'info'}
+            onClick={() => handleDismissSystemOrder(pedido)}
+            fullWidth
+            size="small"
+            sx={{
+              mt: 0.75,
+              borderRadius: 1,
+              textTransform: 'none',
+              fontWeight: 600,
+              fontSize: '0.8125rem',
+              py: 0.5,
+            }}
+          >
+            Atendido
+          </Button>
+        </CardContent>
+      </Card>
+    );
+  };
+
   // Función para renderizar una tarjeta de pedido
-  const renderPedidoCard = (pedido) => {
+  const renderPedidoCard = (pedido, isHistory = false) => {
+    // Si es un pedido del sistema, usar el render especial
+    if (isSystemOrder(pedido)) {
+      return renderSystemOrderCard(pedido);
+    }
+
     const { id, documentId, order_status, customerNotes, items = [], total, createdAt } = pedido;
     const mesaNumero = pedido.mesa_sesion?.mesa?.number;
     const flashing = flashIds.has(documentId);
@@ -721,14 +1068,27 @@ export default function Mostrador() {
             </Box>
           )}
 
-          {items.map((item) => {
-            const prod = item?.product;
-            return (
-              <Typography key={item.id} variant="body2" sx={{ mb: 0.25, fontSize: '0.8125rem' }}>
-                {item.quantity}x {prod?.name || 'Producto sin datos'}
-              </Typography>
-            );
-          })}
+          {items.length > 0 ? (
+            <>
+              {items.slice(0, 3).map((item) => {
+                const prod = item?.product;
+                return (
+                  <Typography key={item.id} variant="body2" sx={{ mb: 0.25, fontSize: '0.8125rem' }}>
+                    {item.quantity}x {prod?.name || 'Producto sin datos'}
+                  </Typography>
+                );
+              })}
+              {items.length > 3 && (
+                <Typography variant="caption" color="text.secondary" sx={{ fontSize: '0.75rem', fontStyle: 'italic' }}>
+                  +{items.length - 3} más...
+                </Typography>
+              )}
+            </>
+          ) : (
+            <Typography variant="caption" color="text.secondary" sx={{ fontSize: '0.75rem', fontStyle: 'italic' }}>
+              Sin items detallados
+            </Typography>
+          )}
 
           <Typography
             variant="subtitle2"
@@ -737,42 +1097,91 @@ export default function Mostrador() {
             {money(total)}
           </Typography>
 
-          {!showHistory && (
+          {isHistory ? (
+            // En historial: solo botón Ver
             <Button
-              variant={order_status === 'pending' ? 'contained' : 'outlined'}
-              color={order_status === 'pending' ? 'primary' : undefined}
-              onClick={() => {
-                if (order_status === 'pending') {
-                  marcarComoRecibido(pedido);
-                } else if (order_status === 'preparing') {
-                  marcarComoServido(pedido);
-                }
+              variant="outlined"
+              size="small"
+              startIcon={<VisibilityIcon />}
+              onClick={(e) => {
+                e.stopPropagation();
+                setOrderDetailDialog({ open: true, pedido });
               }}
               fullWidth
-              size="small"
-              sx={{
-                mt: 0.75,
-                borderRadius: 1,
-                textTransform: 'none',
-                fontWeight: 600,
-                fontSize: '0.8125rem',
-                py: 0.5,
-                ...(order_status === 'preparing' && {
-                  bgcolor: 'white',
-                  color: '#f57c00',
-                  borderColor: '#f57c00',
-                  borderWidth: 1.5,
-                  borderStyle: 'solid',
-                  '&:hover': {
-                    bgcolor: 'rgba(245, 124, 0, 0.08)',
+              sx={{ mt: 0.75, textTransform: 'none', fontSize: '0.75rem' }}
+            >
+              Ver detalles
+            </Button>
+          ) : (
+            // En vista activa: botones de acción
+            <>
+              <Box sx={{ display: 'flex', gap: 0.5, mt: 0.75 }}>
+                <Button
+                  variant="outlined"
+                  size="small"
+                  startIcon={<VisibilityIcon />}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setOrderDetailDialog({ open: true, pedido });
+                  }}
+                  sx={{ flex: 1, textTransform: 'none', fontSize: '0.75rem' }}
+                >
+                  Ver
+                </Button>
+                {(order_status === 'pending' || order_status === 'preparing') && (
+                  <Button
+                    variant="outlined"
+                    size="small"
+                    color="error"
+                    startIcon={<CancelIcon />}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setCancelOrderDialog({ open: true, pedido, reason: '' });
+                    }}
+                    sx={{ textTransform: 'none', fontSize: '0.75rem' }}
+                  >
+                    Cancelar
+                  </Button>
+                )}
+              </Box>
+
+              <Button
+                variant={order_status === 'pending' ? 'contained' : 'outlined'}
+                color={order_status === 'pending' ? 'primary' : undefined}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  if (order_status === 'pending') {
+                    marcarComoRecibido(pedido);
+                  } else if (order_status === 'preparing') {
+                    setCompleteOrderDialog({ open: true, pedido, staffNotes: '' });
+                  }
+                }}
+                fullWidth
+                size="small"
+                sx={{
+                  mt: 0.5,
+                  borderRadius: 1,
+                  textTransform: 'none',
+                  fontWeight: 600,
+                  fontSize: '0.8125rem',
+                  py: 0.5,
+                  ...(order_status === 'preparing' && {
+                    bgcolor: 'white',
+                    color: '#f57c00',
                     borderColor: '#f57c00',
                     borderWidth: 1.5,
-                  },
-                }),
-              }}
-            >
-              {order_status === 'pending' ? 'Cocinar' : 'Completado'}
-            </Button>
+                    borderStyle: 'solid',
+                    '&:hover': {
+                      bgcolor: 'rgba(245, 124, 0, 0.08)',
+                      borderColor: '#f57c00',
+                      borderWidth: 1.5,
+                    },
+                  }),
+                }}
+              >
+                {order_status === 'pending' ? 'Cocinar' : 'Completado'}
+              </Button>
+            </>
           )}
         </CardContent>
       </Card>
@@ -802,7 +1211,7 @@ export default function Mostrador() {
               mb: 0.5,
             })}
           >
-            Mostrador — {slug?.toUpperCase?.()} {showHistory ? '(Historial)' : ''}
+            Mostrador — {slug?.toUpperCase?.()}
           </Typography>
           <Box sx={{ height: 2, width: 120, bgcolor: 'divider', borderRadius: 1, position: 'relative' }}>
             <Box
@@ -844,258 +1253,230 @@ export default function Mostrador() {
 
         <Button
           variant="outlined"
-          onClick={() => setShowHistory((s) => !s)}
+          startIcon={<HistoryIcon />}
+          onClick={() => {
+            setShowHistoryDrawer(true);
+            fetchFullHistory();
+          }}
           sx={{ borderRadius: 2, px: 2.5 }}
         >
-          {showHistory ? 'Ver activos' : 'Ver historial'}
+          Historial completo
         </Button>
       </Box>
 
       {error && <Typography color="error">{error}</Typography>}
 
-      {!showHistory ? (
-        <Grid container spacing={1}>
-          {/* Columna 1: Pedidos Pendientes (primera mitad) */}
-          <Grid item xs={12} md={2.25}>
-            <Box sx={{ mb: 1.5, display: 'flex', alignItems: 'center', gap: 1 }}>
-              <AccessTimeIcon sx={{ fontSize: 20, color: 'text.secondary' }} />
-              <Typography variant="h6" sx={{ fontWeight: 600 }}>
-                Pendientes ({pedidosPendientes.length})
-              </Typography>
-            </Box>
-            {pedidosPendientes.length === 0 && !noResultsPedidos && (
-              <Typography variant="body2" color="text.secondary">
-                No hay pedidos pendientes
-              </Typography>
-            )}
-            {noResultsPedidos && pedidosPendientes.length === 0 && (
-              <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
-                No hay pedidos pendientes para las mesas buscadas.
-              </Typography>
-            )}
-            <Box>
-              {pedidosPendientes
-                .filter((_, index) => index % 2 === 0)
-                .map((pedido) => renderPedidoCard(pedido))}
-            </Box>
+      {/* Vista activa - siempre visible */}
+      <>
+        {/* Sección superior: Pedidos activos */}
+        <Grid container spacing={1} sx={{ mb: 3 }}>
+            {/* Columna 1: Pedidos Pendientes (primera mitad) */}
+            <Grid item xs={12} md={2.25}>
+              <Box sx={{ mb: 1.5, display: 'flex', alignItems: 'center', gap: 1 }}>
+                <AccessTimeIcon sx={{ fontSize: 20, color: 'text.secondary' }} />
+                <Typography variant="h6" sx={{ fontWeight: 600 }}>
+                  Pendientes ({pedidosPendientes.length})
+                </Typography>
+              </Box>
+              {pedidosPendientes.length === 0 && !noResultsPedidos && (
+                <Typography variant="body2" color="text.secondary">
+                  No hay pedidos pendientes
+                </Typography>
+              )}
+              {noResultsPedidos && pedidosPendientes.length === 0 && (
+                <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
+                  No hay pedidos pendientes para las mesas buscadas.
+                </Typography>
+              )}
+              <Box>
+                {pedidosPendientes
+                  .filter((_, index) => index % 2 === 0)
+                  .map((pedido) => renderPedidoCard(pedido))}
+              </Box>
+            </Grid>
+
+            {/* Columna 2: Pedidos Pendientes (segunda mitad) */}
+            <Grid item xs={12} md={2.25}>
+              <Box sx={{ mb: 2, display: 'flex', alignItems: 'center', gap: 1, visibility: 'hidden' }}>
+                <AccessTimeIcon sx={{ fontSize: 20 }} />
+                <Typography variant="h6" sx={{ fontWeight: 600 }}>
+                  Pendientes ({pedidosPendientes.filter((_, index) => index % 2 === 1).length})
+                </Typography>
+              </Box>
+              <Box>
+                {pedidosPendientes
+                  .filter((_, index) => index % 2 === 1)
+                  .map((pedido) => renderPedidoCard(pedido))}
+              </Box>
+            </Grid>
+
+
+            {/* Columna 3: Pedidos en Cocina (primera mitad) */}
+            <Grid item xs={12} md={3}>
+              <Box sx={{ mb: 1.5, display: 'flex', alignItems: 'center', gap: 1 }}>
+                <RestaurantIcon sx={{ fontSize: 20, color: 'text.secondary' }} />
+                <Typography variant="h6" sx={{ fontWeight: 600 }}>
+                  Cocina ({pedidosEnCocina.length})
+                </Typography>
+              </Box>
+              {pedidosEnCocina.length === 0 && !noResultsPedidos && (
+                <Typography variant="body2" color="text.secondary">
+                  No hay pedidos en cocina
+                </Typography>
+              )}
+              {noResultsPedidos && pedidosEnCocina.length === 0 && (
+                <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
+                  No hay pedidos en cocina para las mesas buscadas.
+                </Typography>
+              )}
+              <Box>
+                {pedidosEnCocina
+                  .filter((_, index) => index % 2 === 0)
+                  .map((pedido) => renderPedidoCard(pedido))}
+              </Box>
+            </Grid>
+
+            {/* Columna 4: Pedidos en Cocina (segunda mitad) */}
+            <Grid item xs={12} md={3}>
+              <Box sx={{ mb: 2, display: 'flex', alignItems: 'center', gap: 1, visibility: 'hidden' }}>
+                <RestaurantIcon sx={{ fontSize: 20 }} />
+                <Typography variant="h6" sx={{ fontWeight: 600 }}>
+                  Cocina ({pedidosEnCocina.length})
+                </Typography>
+              </Box>
+              <Box>
+                {pedidosEnCocina
+                  .filter((_, index) => index % 2 === 1)
+                  .map((pedido) => renderPedidoCard(pedido))}
+              </Box>
+            </Grid>
+
           </Grid>
 
-          {/* Columna 2: Pedidos Pendientes (segunda mitad) */}
-          <Grid item xs={12} md={2.25}>
-            <Box sx={{ mb: 2, display: 'flex', alignItems: 'center', gap: 1, visibility: 'hidden' }}>
-              <AccessTimeIcon sx={{ fontSize: 20 }} />
-              <Typography variant="h6" sx={{ fontWeight: 600 }}>
-                Pendientes ({pedidosPendientes.filter((_, index) => index % 2 === 1).length})
-              </Typography>
-            </Box>
-            <Box>
-              {pedidosPendientes
-                .filter((_, index) => index % 2 === 1)
-                .map((pedido) => renderPedidoCard(pedido))}
-            </Box>
-          </Grid>
+          {/* División visual */}
+          <Divider sx={{ my: 3, borderWidth: 2 }} />
 
-          {/* División 1 */}
-          <Grid item xs={12} md={0.25} sx={{ display: { xs: 'none', md: 'block' }, px: 0 }}>
-            <Box
-              sx={{
-                width: 1,
-                height: '100%',
-                bgcolor: 'divider',
-                mx: 'auto',
-                minHeight: 400,
-              }}
-            />
-          </Grid>
+        {/* Sección inferior: Grid de mesas */}
+        <Box sx={{ mt: 3 }}>
+          <TablesStatusGridEnhanced
+            tables={mesas}
+            orders={pedidos}
+            systemOrders={pedidosSistema}
+            onTableClick={(table) => {
+              // Abrir modal con detalles de la mesa
+              const mesaPedidos = pedidos.filter(p => 
+                p.mesa_sesion?.mesa?.number === table.number
+              );
+              const mesaCuenta = cuentas.find(c => c.mesaNumber === table.number);
+              setTableDetailDialog({ 
+                open: true, 
+                mesa: { 
+                  ...table, 
+                  pedidos: mesaPedidos,
+                  cuenta: mesaCuenta
+                } 
+              });
+            }}
+          />
+        </Box>
 
-          {/* Columna 3: Pedidos en Cocina (primera mitad) */}
-          <Grid item xs={12} md={2.25}>
-            <Box sx={{ mb: 1.5, display: 'flex', alignItems: 'center', gap: 1 }}>
-              <RestaurantIcon sx={{ fontSize: 20, color: 'text.secondary' }} />
-              <Typography variant="h6" sx={{ fontWeight: 600 }}>
-                Cocina ({pedidosEnCocina.length})
-              </Typography>
-            </Box>
-            {pedidosEnCocina.length === 0 && !noResultsPedidos && (
-              <Typography variant="body2" color="text.secondary">
-                No hay pedidos en cocina
-              </Typography>
-            )}
-            {noResultsPedidos && pedidosEnCocina.length === 0 && (
-              <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
-                No hay pedidos en cocina para las mesas buscadas.
-              </Typography>
-            )}
-            <Box>
-              {pedidosEnCocina
-                .filter((_, index) => index % 2 === 0)
-                .map((pedido) => renderPedidoCard(pedido))}
-            </Box>
-          </Grid>
+      </>
 
-          {/* Columna 4: Pedidos en Cocina (segunda mitad) */}
-          <Grid item xs={12} md={2.25}>
-            <Box sx={{ mb: 2, display: 'flex', alignItems: 'center', gap: 1, visibility: 'hidden' }}>
-              <RestaurantIcon sx={{ fontSize: 20 }} />
-              <Typography variant="h6" sx={{ fontWeight: 600 }}>
-                Cocina ({pedidosEnCocina.length})
-              </Typography>
-            </Box>
-            <Box>
-              {pedidosEnCocina
-                .filter((_, index) => index % 2 === 1)
-                .map((pedido) => renderPedidoCard(pedido))}
-            </Box>
-          </Grid>
+      {/* Drawer de historial completo */}
+      <Drawer
+        anchor="right"
+        open={showHistoryDrawer}
+        onClose={() => setShowHistoryDrawer(false)}
+        PaperProps={{
+          sx: { width: { xs: '100%', sm: '80%', md: '60%' }, maxWidth: 900 }
+        }}
+      >
+        <Box sx={{ p: 3 }}>
+          <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 3 }}>
+            <Typography variant="h5" sx={{ fontWeight: 700 }}>
+              Historial Completo
+            </Typography>
+            <IconButton onClick={() => setShowHistoryDrawer(false)}>
+              <CloseIcon />
+            </IconButton>
+          </Box>
 
-          {/* División 2 */}
-          <Grid item xs={12} md={0.25} sx={{ display: { xs: 'none', md: 'block' }, px: 0 }}>
-            <Box
-              sx={{
-                width: 1,
-                height: '100%',
-                bgcolor: 'divider',
-                mx: 'auto',
-                minHeight: 400,
-              }}
-            />
-          </Grid>
+          <Box sx={{ display: 'flex', gap: 2, mb: 3 }}>
+            <Button
+              variant={historyTab === 0 ? 'contained' : 'outlined'}
+              startIcon={<RestaurantIcon />}
+              onClick={() => setHistoryTab(0)}
+              sx={{ textTransform: 'none' }}
+            >
+              Pedidos ({historyPedidos.length})
+            </Button>
+            <Button
+              variant={historyTab === 1 ? 'contained' : 'outlined'}
+              startIcon={<AccountBalanceWalletIcon />}
+              onClick={() => setHistoryTab(1)}
+              sx={{ textTransform: 'none' }}
+            >
+              Cuentas ({historyCuentas.length})
+            </Button>
+          </Box>
 
-          {/* Columna 5: Cuentas */}
-          <Grid item xs={12} md={2.5}>
-            <Box sx={{ mb: 1.5, display: 'flex', alignItems: 'center', gap: 1 }}>
-              <AccountBalanceWalletIcon sx={{ fontSize: 20, color: 'text.secondary' }} />
-              <Typography variant="h6" sx={{ fontWeight: 600 }}>
-                Cuentas ({cuentasFiltradas.length})
-              </Typography>
-            </Box>
-
-            {noResultsCuentas && (
-              <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
-                No hay cuentas para las mesas que coinciden con tu búsqueda.
-              </Typography>
-            )}
-            {cuentasFiltradas.map((c) => (
-              <Card key={c.groupKey} sx={{ mb: 1.25, borderRadius: 2, boxShadow: 1 }}>
-                <CardContent sx={{ p: 1.25, '&:last-child': { pb: 1.25 } }}>
-                  <Chip
-                    label={`Mesa ${c.mesaNumber ?? 's/n'}`}
-                    size="small"
-                    sx={{
-                      fontWeight: 600,
-                      mb: 1,
-                      fontSize: '0.75rem',
-                      height: 22,
-                      bgcolor: getMesaColor(c.mesaNumber),
-                      color: 'white',
-                      '&:hover': {
-                        bgcolor: getMesaColor(c.mesaNumber),
-                        opacity: 0.9,
-                      },
-                    }}
-                  />
-                  <List sx={{ py: 0, mb: 0.75 }}>
-                    {c.pedidos.map((p) => (
-                      <ListItem key={p.documentId || p.id} sx={{ px: 0, py: 0.125 }}>
-                        <Typography variant="body2" sx={{ fontSize: '0.8125rem' }}>
-                          Pedido {p.id} — {money(p.total)}
-                        </Typography>
-                      </ListItem>
-                    ))}
-                  </List>
-                  <Divider sx={{ my: 0.75 }} />
-                  <Typography variant="subtitle2" sx={{ textAlign: 'right', fontWeight: 600, mb: 0.75, fontSize: '0.9375rem' }}>
-                    Total: {money(c.total)}
-                  </Typography>
-                  {c.hasUnpaid && (
-                    <Button
-                      variant="contained"
-                      color="success"
-                      onClick={() => handleOpenPayDialog(c)}
-                      fullWidth
-                      size="small"
-                      sx={{ borderRadius: 1, textTransform: 'none', fontWeight: 600, fontSize: '0.8125rem', py: 0.5 }}
-                    >
-                      Pagar
-                    </Button>
-                  )}
-                </CardContent>
-              </Card>
-            ))}
-          </Grid>
-        </Grid>
-      ) : (
-        // Vista de historial (mantener estructura original)
-        <Grid container spacing={2}>
-          <Grid item xs={12} md={9}>
-            {!error && pedidos.length === 0 && (
-              <Typography>
-                No hay pedidos cerrados.
-              </Typography>
-            )}
-            {noResultsPedidos && (
-              <Typography sx={{ mb: 1 }}>
-                No hay pedidos para las mesas que coinciden con tu búsqueda.
-              </Typography>
-            )}
+          {historyTab === 0 ? (
             <Grid container spacing={2}>
-              {pedidosFiltrados.map((pedido) => (
-                <Grid item key={pedido.documentId || pedido.id} xs={12} sm={6} md={6} lg={4}>
-                  {renderPedidoCard(pedido)}
+              {historyPedidos.map((pedido) => (
+                <Grid item key={pedido.documentId || pedido.id} xs={12} sm={6} md={4}>
+                  {renderPedidoCard(pedido, true)}
                 </Grid>
               ))}
             </Grid>
-          </Grid>
-
-          <Grid item xs={12} md={3}>
-            <Box sx={{ mb: 1.5, display: 'flex', alignItems: 'center', gap: 1 }}>
-              <AccountBalanceWalletIcon sx={{ fontSize: 20, color: 'text.secondary' }} />
-              <Typography variant="h6" sx={{ fontWeight: 600 }}>
-                Cuentas pagadas ({cuentasFiltradas.length})
-              </Typography>
-            </Box>
-
-            {noResultsCuentas && (
-              <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
-                No hay cuentas para las mesas que coinciden con tu búsqueda.
-              </Typography>
-            )}
-            {cuentasFiltradas.map((c) => (
-              <Card key={c.groupKey} sx={{ mb: 2, borderRadius: 2, boxShadow: 1 }}>
-                <CardContent sx={{ p: 2, '&:last-child': { pb: 2 } }}>
-                  <Chip
-                    label={`Mesa ${c.mesaNumber ?? 's/n'}`}
-                    size="small"
-                    sx={{
-                      fontWeight: 600,
-                      mb: 1.5,
-                      bgcolor: getMesaColor(c.mesaNumber),
-                      color: 'white',
-                      '&:hover': {
-                        bgcolor: getMesaColor(c.mesaNumber),
-                        opacity: 0.9,
-                      },
-                    }}
-                  />
-                  <List sx={{ py: 0, mb: 1 }}>
-                    {c.pedidos.map((p) => (
-                      <ListItem key={p.documentId || p.id} sx={{ px: 0, py: 0.25 }}>
-                        <Typography variant="body2" sx={{ fontSize: '0.875rem' }}>
-                          Pedido {p.id} — {money(p.total)}
+          ) : (
+            <Grid container spacing={2}>
+              {historyCuentas.map((c) => {
+                const fechaHora = new Date(c.lastUpdated);
+                const fecha = fechaHora.toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit', year: 'numeric' });
+                const hora = fechaHora.toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' });
+                
+                return (
+                  <Grid item key={c.groupKey} xs={12} sm={6} md={4}>
+                    <Card sx={{ borderRadius: 2, boxShadow: 2 }}>
+                      <CardContent sx={{ p: 2 }}>
+                        <Chip
+                          label={`Mesa ${c.mesaNumber ?? 's/n'}`}
+                          size="small"
+                          sx={{
+                            fontWeight: 600,
+                            mb: 1.5,
+                            bgcolor: getMesaColor(c.mesaNumber),
+                            color: 'white'
+                          }}
+                        />
+                        <Typography variant="body2" color="text.secondary" sx={{ display: 'block', mb: 0.5 }}>
+                          {fecha}
                         </Typography>
-                      </ListItem>
-                    ))}
-                  </List>
-                  <Divider sx={{ my: 1 }} />
-                  <Typography variant="subtitle2" sx={{ textAlign: 'right', fontWeight: 600, fontSize: '1rem' }}>
-                    Total: {money(c.total)}
-                  </Typography>
-                </CardContent>
-              </Card>
-            ))}
-          </Grid>
-        </Grid>
-      )}
+                        <Typography variant="body2" color="text.secondary" sx={{ display: 'block', mb: 2 }}>
+                          {hora}
+                        </Typography>
+                        <Divider sx={{ my: 1.5 }} />
+                        <Typography variant="h6" sx={{ textAlign: 'right', fontWeight: 700, mb: 2 }}>
+                          Total: {money(c.total)}
+                        </Typography>
+                        <Button
+                          variant="outlined"
+                          fullWidth
+                          startIcon={<VisibilityIcon />}
+                          onClick={() => setAccountDetailDialog({ open: true, cuenta: c })}
+                          sx={{ textTransform: 'none' }}
+                        >
+                          Ver detalles
+                        </Button>
+                      </CardContent>
+                    </Card>
+                  </Grid>
+                );
+              })}
+            </Grid>
+          )}
+        </Box>
+      </Drawer>
 
       <Snackbar
         open={snack.open}
@@ -1110,16 +1491,84 @@ export default function Mostrador() {
           {snack.msg}
         </Alert>
       </Snackbar>
+      {/* Dialog de pago mejorado */}
       <Dialog
         open={payDialog.open}
         onClose={() => (!payDialog.loading ? handleClosePayDialog() : null)}
-        aria-labelledby="confirm-pay-title"
+        maxWidth="sm"
+        fullWidth
       >
-        <DialogTitle id="confirm-pay-title">Confirmar pago</DialogTitle>
+        <DialogTitle>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+            <AccountBalanceWalletIcon />
+            Cerrar cuenta - Mesa {payDialog.cuenta?.mesaNumber ?? 's/n'}
+          </Box>
+        </DialogTitle>
         <DialogContent>
-          <DialogContentText>
-            ¿Estás seguro que deseas marcar como pagada esta cuenta? Esta acción es irreversible.
-          </DialogContentText>
+          <Box sx={{ mb: 2 }}>
+            <Typography variant="h6" sx={{ mb: 1 }}>
+              Total: {money(payDialog.cuenta?.total || 0)}
+            </Typography>
+            {payDialog.cuenta?.pedidos && (
+              <List dense>
+                {payDialog.cuenta.pedidos.map((p) => (
+                  <ListItem key={p.id} sx={{ px: 0 }}>
+                    <Typography variant="body2">
+                      Pedido {p.id} — {money(p.total)}
+                    </Typography>
+                  </ListItem>
+                ))}
+              </List>
+            )}
+          </Box>
+
+          <FormControl fullWidth sx={{ mb: 2 }}>
+            <InputLabel>Opción de cierre</InputLabel>
+            <Select
+              value={payDialog.closeWithoutPayment ? 'free' : 'paid'}
+              onChange={(e) => setPayDialog(prev => ({ ...prev, closeWithoutPayment: e.target.value === 'free' }))}
+              disabled={payDialog.loading}
+            >
+              <MenuItem value="paid">Pagar cuenta</MenuItem>
+              <MenuItem value="free">Cerrar sin cobrar (Invitado)</MenuItem>
+            </Select>
+          </FormControl>
+
+          {!payDialog.closeWithoutPayment && (
+            <>
+              <Box sx={{ display: 'flex', gap: 2, mb: 2 }}>
+                <FormControl sx={{ flex: 1 }}>
+                  <InputLabel>Tipo de descuento</InputLabel>
+                  <Select
+                    value={payDialog.discountType}
+                    onChange={(e) => setPayDialog(prev => ({ ...prev, discountType: e.target.value, discount: 0 }))}
+                    disabled={payDialog.loading}
+                  >
+                    <MenuItem value="percent">Porcentaje (%)</MenuItem>
+                    <MenuItem value="fixed">Monto fijo ($)</MenuItem>
+                  </Select>
+                </FormControl>
+                <TextField
+                  label={payDialog.discountType === 'percent' ? 'Descuento %' : 'Descuento $'}
+                  type="number"
+                  value={payDialog.discount}
+                  onChange={(e) => setPayDialog(prev => ({ ...prev, discount: Number(e.target.value) || 0 }))}
+                  disabled={payDialog.loading}
+                  sx={{ flex: 1 }}
+                  inputProps={{ min: 0, max: payDialog.discountType === 'percent' ? 100 : payDialog.cuenta?.total }}
+                />
+              </Box>
+              {payDialog.discount > 0 && (
+                <Alert severity="info" sx={{ mb: 2 }}>
+                  Total con descuento: {money(
+                    payDialog.discountType === 'percent'
+                      ? payDialog.cuenta?.total * (1 - payDialog.discount / 100)
+                      : Math.max(0, payDialog.cuenta?.total - payDialog.discount)
+                  )}
+                </Alert>
+              )}
+            </>
+          )}
         </DialogContent>
         <DialogActions>
           <Button onClick={handleClosePayDialog} disabled={payDialog.loading}>
@@ -1127,11 +1576,418 @@ export default function Mostrador() {
           </Button>
           <Button
             variant="contained"
-            color="success"
+            color={payDialog.closeWithoutPayment ? 'warning' : 'success'}
             onClick={marcarCuentaComoPagada}
             disabled={payDialog.loading}
+            startIcon={payDialog.closeWithoutPayment ? <FreeBreakfastIcon /> : <LocalOfferIcon />}
           >
-            {payDialog.loading ? 'Confirmando...' : 'Confirmar'}
+            {payDialog.loading ? 'Procesando...' : payDialog.closeWithoutPayment ? 'Cerrar sin cobrar' : 'Confirmar pago'}
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Dialog de detalles de pedido */}
+      <Dialog
+        open={orderDetailDialog.open}
+        onClose={() => setOrderDetailDialog({ open: false, pedido: null })}
+        maxWidth="sm"
+        fullWidth
+      >
+        <DialogTitle>
+          <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+              <RestaurantIcon />
+              Pedido #{orderDetailDialog.pedido?.id}
+            </Box>
+            <Chip
+              label={`Mesa ${orderDetailDialog.pedido?.mesa_sesion?.mesa?.number ?? 's/n'}`}
+              size="small"
+              sx={{ bgcolor: getMesaColor(orderDetailDialog.pedido?.mesa_sesion?.mesa?.number), color: 'white' }}
+            />
+          </Box>
+        </DialogTitle>
+        <DialogContent>
+          {orderDetailDialog.pedido && (
+            <>
+              <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 2 }}>
+                {new Date(orderDetailDialog.pedido.createdAt).toLocaleString('es-AR')}
+              </Typography>
+
+              {orderDetailDialog.pedido.customerNotes && (
+                <Alert severity="warning" sx={{ mb: 2 }}>
+                  <Typography variant="subtitle2" sx={{ fontWeight: 600, mb: 0.5 }}>Notas del cliente:</Typography>
+                  {orderDetailDialog.pedido.customerNotes}
+                </Alert>
+              )}
+
+              {orderDetailDialog.pedido.staffNotes && (
+                <Alert severity="info" sx={{ mb: 2 }}>
+                  <Typography variant="subtitle2" sx={{ fontWeight: 600, mb: 0.5 }}>Observaciones del staff:</Typography>
+                  {orderDetailDialog.pedido.staffNotes}
+                </Alert>
+              )}
+
+              <Typography variant="subtitle1" sx={{ fontWeight: 600, mb: 1 }}>
+                Items del pedido:
+              </Typography>
+              <List>
+                {orderDetailDialog.pedido.items?.map((item) => {
+                  const prod = item?.product;
+                  return (
+                    <ListItem key={item.id} sx={{ px: 0 }}>
+                      <Box sx={{ display: 'flex', justifyContent: 'space-between', width: '100%' }}>
+                        <Typography variant="body2">
+                          {item.quantity}x {prod?.name || 'Producto sin datos'}
+                        </Typography>
+                        <Typography variant="body2" sx={{ fontWeight: 600 }}>
+                          {money(item.totalPrice || item.UnitPrice * item.quantity)}
+                        </Typography>
+                      </Box>
+                      {item.notes && (
+                        <Typography variant="caption" color="text.secondary" sx={{ display: 'block', ml: 2, fontStyle: 'italic' }}>
+                          Nota: {item.notes}
+                        </Typography>
+                      )}
+                    </ListItem>
+                  );
+                })}
+              </List>
+              <Divider sx={{ my: 2 }} />
+              <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <Typography variant="h6">Total:</Typography>
+                <Typography variant="h6" sx={{ fontWeight: 700 }}>
+                  {money(orderDetailDialog.pedido.total)}
+                </Typography>
+              </Box>
+            </>
+          )}
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setOrderDetailDialog({ open: false, pedido: null })}>
+            Cerrar
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Dialog para completar pedido con notas */}
+      <Dialog
+        open={completeOrderDialog.open}
+        onClose={() => setCompleteOrderDialog({ open: false, pedido: null, staffNotes: '' })}
+        maxWidth="sm"
+        fullWidth
+      >
+        <DialogTitle>Completar pedido</DialogTitle>
+        <DialogContent>
+          <DialogContentText sx={{ mb: 2 }}>
+            ¿Deseas agregar alguna observación al completar este pedido? (opcional)
+          </DialogContentText>
+          <TextField
+            fullWidth
+            multiline
+            rows={3}
+            label="Observaciones del staff"
+            placeholder="Ej: Sin lechuga, sin cebolla, etc."
+            value={completeOrderDialog.staffNotes}
+            onChange={(e) => setCompleteOrderDialog(prev => ({ ...prev, staffNotes: e.target.value }))}
+          />
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setCompleteOrderDialog({ open: false, pedido: null, staffNotes: '' })}>
+            Cancelar
+          </Button>
+          <Button
+            variant="contained"
+            onClick={() => {
+              marcarComoServido(completeOrderDialog.pedido, completeOrderDialog.staffNotes);
+              setCompleteOrderDialog({ open: false, pedido: null, staffNotes: '' });
+            }}
+          >
+            Completar
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Dialog para cancelar pedido */}
+      <Dialog
+        open={cancelOrderDialog.open}
+        onClose={() => setCancelOrderDialog({ open: false, pedido: null, reason: '' })}
+        maxWidth="sm"
+        fullWidth
+      >
+        <DialogTitle sx={{ color: 'error.main' }}>Cancelar pedido</DialogTitle>
+        <DialogContent>
+          <DialogContentText sx={{ mb: 2 }}>
+            ¿Estás seguro que deseas cancelar este pedido? Esta acción no se puede deshacer.
+          </DialogContentText>
+          <TextField
+            fullWidth
+            multiline
+            rows={2}
+            label="Razón de cancelación (opcional)"
+            placeholder="Ej: Cliente se fue, error en pedido, etc."
+            value={cancelOrderDialog.reason}
+            onChange={(e) => setCancelOrderDialog(prev => ({ ...prev, reason: e.target.value }))}
+          />
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setCancelOrderDialog({ open: false, pedido: null, reason: '' })}>
+            No cancelar
+          </Button>
+          <Button
+            variant="contained"
+            color="error"
+            onClick={() => {
+              cancelarPedido(cancelOrderDialog.pedido, cancelOrderDialog.reason);
+              setCancelOrderDialog({ open: false, pedido: null, reason: '' });
+            }}
+          >
+            Confirmar cancelación
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Dialog de detalles de mesa */}
+      <Drawer
+        anchor="right"
+        open={tableDetailDialog.open}
+        onClose={() => setTableDetailDialog({ open: false, mesa: null })}
+        PaperProps={{
+          sx: { width: { xs: '100%', sm: '80%', md: '50%' }, maxWidth: 600 }
+        }}
+      >
+        <Box sx={{ p: 3 }}>
+          <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 3 }}>
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+              <TableRestaurantIcon />
+              <Typography variant="h5" sx={{ fontWeight: 700 }}>
+                Mesa {tableDetailDialog.mesa?.number ?? 's/n'}
+              </Typography>
+            </Box>
+            <IconButton onClick={() => setTableDetailDialog({ open: false, mesa: null })}>
+              <CloseIcon />
+            </IconButton>
+          </Box>
+
+          {tableDetailDialog.mesa && (
+            <>
+              {/* Pedidos activos de la mesa */}
+              {tableDetailDialog.mesa.pedidos && tableDetailDialog.mesa.pedidos.length > 0 && (
+                <Box sx={{ mb: 3 }}>
+                  <Typography variant="h6" sx={{ fontWeight: 600, mb: 2 }}>
+                    Pedidos activos ({tableDetailDialog.mesa.pedidos.length})
+                  </Typography>
+                  <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
+                    {tableDetailDialog.mesa.pedidos.map((pedido) => (
+                      <Card key={pedido.id} sx={{ cursor: 'pointer' }} onClick={() => {
+                        setOrderDetailDialog({ open: true, pedido });
+                        setTableDetailDialog({ open: false, mesa: null });
+                      }}>
+                        <CardContent sx={{ p: 1.5 }}>
+                          <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'start', mb: 1 }}>
+                            <Typography variant="subtitle2" sx={{ fontWeight: 600 }}>
+                              Pedido #{pedido.id}
+                            </Typography>
+                            <Chip
+                              label={pedido.order_status === 'pending' ? 'Pendiente' : pedido.order_status === 'preparing' ? 'En cocina' : 'Servido'}
+                              size="small"
+                              color={pedido.order_status === 'pending' ? 'warning' : pedido.order_status === 'preparing' ? 'info' : 'success'}
+                            />
+                          </Box>
+                          <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
+                            {pedido.items?.length || 0} items
+                          </Typography>
+                          <Typography variant="h6" sx={{ textAlign: 'right', fontWeight: 700 }}>
+                            {money(pedido.total)}
+                          </Typography>
+                        </CardContent>
+                      </Card>
+                    ))}
+                  </Box>
+                </Box>
+              )}
+
+              {/* Cuenta de la mesa */}
+              {tableDetailDialog.mesa.cuenta && (
+                <Box sx={{ mb: 3 }}>
+                  <Divider sx={{ my: 2 }} />
+                  <Typography variant="h6" sx={{ fontWeight: 600, mb: 2 }}>
+                    Cuenta
+                  </Typography>
+                  <Card sx={{ bgcolor: 'primary.light', color: 'primary.contrastText' }}>
+                    <CardContent>
+                      <List>
+                        {tableDetailDialog.mesa.cuenta.pedidos.map((p) => (
+                          <ListItem key={p.id} sx={{ px: 0, py: 0.5 }}>
+                            <Typography variant="body2" sx={{ flex: 1 }}>
+                              Pedido {p.id}
+                            </Typography>
+                            <Typography variant="body2" sx={{ fontWeight: 600 }}>
+                              {money(p.total)}
+                            </Typography>
+                          </ListItem>
+                        ))}
+                      </List>
+                      <Divider sx={{ my: 1, bgcolor: 'rgba(255,255,255,0.3)' }} />
+                      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <Typography variant="h6" sx={{ fontWeight: 700 }}>
+                          Total:
+                        </Typography>
+                        <Typography variant="h6" sx={{ fontWeight: 700 }}>
+                          {money(tableDetailDialog.mesa.cuenta.total)}
+                        </Typography>
+                      </Box>
+                      {tableDetailDialog.mesa.cuenta.hasUnpaid && (
+                        <Button
+                          variant="contained"
+                          color="success"
+                          fullWidth
+                          onClick={() => {
+                            handleOpenPayDialog(tableDetailDialog.mesa.cuenta);
+                            setTableDetailDialog({ open: false, mesa: null });
+                          }}
+                          sx={{ mt: 2 }}
+                        >
+                          Cerrar cuenta
+                        </Button>
+                      )}
+                    </CardContent>
+                  </Card>
+                </Box>
+              )}
+
+              {(!tableDetailDialog.mesa.pedidos || tableDetailDialog.mesa.pedidos.length === 0) && 
+               !tableDetailDialog.mesa.cuenta && (
+                <Box sx={{ textAlign: 'center', py: 4 }}>
+                  <Typography variant="body1" color="text.secondary">
+                    Esta mesa no tiene pedidos activos ni cuenta abierta
+                  </Typography>
+                </Box>
+              )}
+            </>
+          )}
+        </Box>
+      </Drawer>
+
+      {/* Dialog de detalles de cuenta (historial) */}
+      <Dialog
+        open={accountDetailDialog.open}
+        onClose={() => setAccountDetailDialog({ open: false, cuenta: null })}
+        maxWidth="md"
+        fullWidth
+      >
+        <DialogTitle>
+          <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+              <AccountBalanceWalletIcon />
+              Cuenta - Mesa {accountDetailDialog.cuenta?.mesaNumber ?? 's/n'}
+            </Box>
+            {accountDetailDialog.cuenta && (
+              <Typography variant="caption" color="text.secondary">
+                {new Date(accountDetailDialog.cuenta.lastUpdated).toLocaleString('es-AR')}
+              </Typography>
+            )}
+          </Box>
+        </DialogTitle>
+        <DialogContent>
+          {accountDetailDialog.cuenta && (
+            <>
+              <Box sx={{ mb: 3 }}>
+                <Typography variant="h6" sx={{ mb: 2, fontWeight: 600 }}>
+                  Pedidos de la cuenta
+                </Typography>
+                <List>
+                  {accountDetailDialog.cuenta.pedidos.map((pedido) => (
+                    <ListItem
+                      key={pedido.id}
+                      sx={{
+                        px: 0,
+                        py: 1.5,
+                        mb: 1,
+                        border: '1px solid',
+                        borderColor: 'divider',
+                        borderRadius: 2,
+                        flexDirection: 'column',
+                        alignItems: 'flex-start'
+                      }}
+                    >
+                      <Box sx={{ display: 'flex', justifyContent: 'space-between', width: '100%', mb: 1 }}>
+                        <Typography variant="subtitle2" sx={{ fontWeight: 600 }}>
+                          Pedido #{pedido.id}
+                        </Typography>
+                        <Typography variant="subtitle2" sx={{ fontWeight: 700, color: 'primary.main' }}>
+                          {money(pedido.total)}
+                        </Typography>
+                      </Box>
+                      <Typography variant="caption" color="text.secondary" sx={{ mb: 1, display: 'block' }}>
+                        {new Date(pedido.createdAt || pedido.updatedAt).toLocaleString('es-AR')}
+                      </Typography>
+                      {pedido.items && pedido.items.length > 0 ? (
+                        <Box sx={{ width: '100%', mb: 1 }}>
+                          {pedido.items.map((item) => {
+                            const prod = item?.product;
+                            return (
+                              <Typography key={item.id} variant="body2" sx={{ fontSize: '0.875rem', mb: 0.5 }}>
+                                {item.quantity}x {prod?.name || 'Producto sin datos'} — {money(item.totalPrice || item.UnitPrice * item.quantity)}
+                              </Typography>
+                            );
+                          })}
+                        </Box>
+                      ) : (
+                        <Typography variant="body2" color="text.secondary" sx={{ fontStyle: 'italic', mb: 1 }}>
+                          Sin items detallados
+                        </Typography>
+                      )}
+                      {pedido.customerNotes && (
+                        <Box sx={{ mb: 1, p: 1, bgcolor: '#fff3cd', borderRadius: 1, width: '100%' }}>
+                          <Typography variant="caption" sx={{ fontWeight: 600, display: 'block', mb: 0.5 }}>
+                            Nota del cliente:
+                          </Typography>
+                          <Typography variant="caption">
+                            {pedido.customerNotes}
+                          </Typography>
+                        </Box>
+                      )}
+                      {pedido.staffNotes && (
+                        <Box sx={{ mb: 1, p: 1, bgcolor: '#e3f2fd', borderRadius: 1, width: '100%' }}>
+                          <Typography variant="caption" sx={{ fontWeight: 600, display: 'block', mb: 0.5 }}>
+                            Observación del staff:
+                          </Typography>
+                          <Typography variant="caption">
+                            {pedido.staffNotes}
+                          </Typography>
+                        </Box>
+                      )}
+                      <Button
+                        variant="outlined"
+                        size="small"
+                        startIcon={<VisibilityIcon />}
+                        onClick={() => {
+                          setAccountDetailDialog({ open: false, cuenta: null });
+                          setOrderDetailDialog({ open: true, pedido });
+                        }}
+                        sx={{ mt: 1, textTransform: 'none' }}
+                      >
+                        Ver detalle completo
+                      </Button>
+                    </ListItem>
+                  ))}
+                </List>
+              </Box>
+              <Divider sx={{ my: 2 }} />
+              <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <Typography variant="h6" sx={{ fontWeight: 700 }}>
+                  Total de la cuenta:
+                </Typography>
+                <Typography variant="h6" sx={{ fontWeight: 700, color: 'primary.main' }}>
+                  {money(accountDetailDialog.cuenta.total)}
+                </Typography>
+              </Box>
+            </>
+          )}
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setAccountDetailDialog({ open: false, cuenta: null })}>
+            Cerrar
           </Button>
         </DialogActions>
       </Dialog>

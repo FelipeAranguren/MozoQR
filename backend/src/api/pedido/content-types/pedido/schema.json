@@ -35,6 +35,9 @@
     "customerNotes": {
       "type": "text"
     },
+    "staffNotes": {
+      "type": "text"
+    },
     "restaurante": {
       "type": "relation",
       "relation": "manyToOne",

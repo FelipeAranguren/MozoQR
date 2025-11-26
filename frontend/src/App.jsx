@@ -29,7 +29,7 @@ import AdvancedPanel from './pages/owner/advanced/AdvancedPanel';
 import AIPanel from './pages/owner/ai/AIPanel';
 import AdminDashboard from './pages/AdminDashboard';
 import GlobalAdmin from './pages/admin/GlobalAdmin';
-import DemoDashboard from './pages/DemoDashboard';
+import DemoLanding from './pages/DemoLanding';
 
 // Redirige rutas viejas /restaurantes/:slug -> /:slug/menu?t=1
 function LegacyRestaurantesRoute() {
@@ -56,7 +56,7 @@ export default function App() {
           <Route path="/" element={<Home />} />
           <Route path="/:slug" element={<RestaurantMenu />} />
           <Route path="/:slug/menu" element={<RestaurantMenu />} />
-          <Route path="/demo-dashboard" element={<DemoDashboard />} />
+          <Route path="/demo" element={<DemoLanding />} />
 
           {/* Staff autenticado */}
           <Route path="/staff/:slug/orders" element={<OwnerRouteGuard><Mostrador /></OwnerRouteGuard>} />

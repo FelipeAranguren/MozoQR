@@ -1,4 +1,3 @@
-// frontend/src/components/StickyFooter.jsx
 import React, { useState, useEffect, useMemo } from 'react';
 import {
   Paper, Typography, Button, Dialog, DialogTitle, DialogContent,
@@ -8,6 +7,10 @@ import {
 import AttachMoneyIcon from '@mui/icons-material/AttachMoney';
 import CreditCardIcon from '@mui/icons-material/CreditCard';
 import PointOfSaleIcon from '@mui/icons-material/PointOfSale';
+import RoomServiceIcon from '@mui/icons-material/RoomService';
+import LocalOfferIcon from '@mui/icons-material/LocalOffer';
+import CheckCircleIcon from '@mui/icons-material/CheckCircle';
+import CancelIcon from '@mui/icons-material/Cancel';
 import { alpha } from '@mui/material/styles';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useParams } from 'react-router-dom';
@@ -18,6 +21,31 @@ import PayWithMercadoPago from './PayWithMercadoPago';
 
 const money = (n) =>
   new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS' }).format(Number(n) || 0);
+
+// --- Helpers de estado
+const getStatusLabel = (status) => {
+  const map = {
+    pending: 'Pendiente',
+    preparing: 'En preparación',
+    ready: 'Listo para servir',
+    delivered: 'Entregado',
+    cancelled: 'Cancelado',
+    paid: 'Pagado'
+  };
+  return map[status] || status;
+};
+
+const getStatusColor = (status) => {
+  const map = {
+    pending: 'default',
+    preparing: 'info',
+    ready: 'success',
+    delivered: 'success',
+    cancelled: 'error',
+    paid: 'success'
+  };
+  return map[status] || 'default';
+};
 
 // --- Claves de storage (para acumular totales de pedidos abiertos por mesa y restaurante)
 const openOrdersKey = (slug, table) => `OPEN_ORDERS_${slug}_${table}`;
@@ -49,15 +77,21 @@ export default function StickyFooter({ table, tableSessionId }) {
   const [sending, setSending] = useState(false);
   const [orderNotes, setOrderNotes] = useState('');
 
+  const [callWaiterOpen, setCallWaiterOpen] = useState(false);
+
   const [payOpen, setPayOpen] = useState(false);
-  const [payType, setPayType] = useState('presential'); // 'presential' | 'online'
-  const [payMethod, setPayMethod] = useState('cash'); // 'cash' | 'card' para presential, 'card' | 'mp' para online
+  const [payType, setPayType] = useState('online'); // 'presential' | 'online' - Default: online
+  const [payMethod, setPayMethod] = useState('card'); // 'cash' | 'card' para presential, 'card' | 'mp' para online
   const [payLoading, setPayLoading] = useState(false);
+  const [payRequestSent, setPayRequestSent] = useState(false); // Prevenir múltiples solicitudes
   const [card, setCard] = useState({ number: '', expiry: '', cvv: '', name: '' });
   const [orderDetails, setOrderDetails] = useState([]);
   const [loadingOrders, setLoadingOrders] = useState(false);
   const [tipAmount, setTipAmount] = useState(0);
   const [tipPercentage, setTipPercentage] = useState(0);
+  const [couponCode, setCouponCode] = useState('');
+  const [couponDiscount, setCouponDiscount] = useState(null); // { type: 'percent' | 'fixed', value: number, code: string }
+  const [validatingCoupon, setValidatingCoupon] = useState(false);
 
   const [snack, setSnack] = useState({ open: false, msg: '', severity: 'success' });
 
@@ -101,13 +135,28 @@ export default function StickyFooter({ table, tableSessionId }) {
     [openOrders]
   );
 
-  // Total con propina (usar orderDetails si está disponible, sino accountTotal)
+  // Calcular descuento del cupón
+  const couponDiscountAmount = useMemo(() => {
+    if (!couponDiscount) return 0;
+    const baseTotal = orderDetails.length > 0
+      ? orderDetails.reduce((sum, o) => sum + (Number(o.total) || 0), 0)
+      : accountTotal;
+    
+    if (couponDiscount.type === 'percent') {
+      return baseTotal * (couponDiscount.value / 100);
+    } else {
+      return Math.min(couponDiscount.value, baseTotal);
+    }
+  }, [couponDiscount, accountTotal, orderDetails]);
+
+  // Total con propina y descuento (usar orderDetails si está disponible, sino accountTotal)
   const totalWithTip = useMemo(() => {
     const baseTotal = orderDetails.length > 0
       ? orderDetails.reduce((sum, o) => sum + (Number(o.total) || 0), 0)
       : accountTotal;
-    return baseTotal + tipAmount;
-  }, [accountTotal, tipAmount, orderDetails]);
+    const totalAfterDiscount = baseTotal - couponDiscountAmount;
+    return Math.max(0, totalAfterDiscount + tipAmount);
+  }, [accountTotal, tipAmount, orderDetails, couponDiscountAmount]);
 
   // Cargar detalles de pedidos cuando se abre el modal de pago
   useEffect(() => {
@@ -116,19 +165,9 @@ export default function StickyFooter({ table, tableSessionId }) {
       fetchOrderDetails(slug, { table, tableSessionId })
         .then((orders) => {
           console.log('✅ Order details loaded:', orders);
-          console.log('✅ Orders count:', orders.length);
-          orders.forEach((order, idx) => {
-            console.log(`✅ Order ${idx + 1}:`, {
-              id: order.id,
-              total: order.total,
-              itemsCount: order.items?.length || 0,
-              items: order.items,
-            });
-          });
           setOrderDetails(orders);
           // Calcular total desde los pedidos detallados
           const calculatedTotal = orders.reduce((sum, o) => sum + (Number(o.total) || 0), 0);
-          console.log('✅ Calculated total from orders:', calculatedTotal);
           // Actualizar propina basada en el nuevo total
           if (tipPercentage > 0) {
             setTipAmount((calculatedTotal * tipPercentage) / 100);
@@ -136,7 +175,6 @@ export default function StickyFooter({ table, tableSessionId }) {
         })
         .catch((err) => {
           console.error('❌ Error loading order details:', err);
-          console.error('❌ Error response:', err?.response?.data);
           setOrderDetails([]);
         })
         .finally(() => {
@@ -147,8 +185,11 @@ export default function StickyFooter({ table, tableSessionId }) {
       setOrderDetails([]);
       setTipAmount(0);
       setTipPercentage(0);
-      setPayType('presential');
-      setPayMethod('cash');
+      setPayType('online');
+      setPayMethod('card');
+      setCouponCode('');
+      setCouponDiscount(null);
+      setPayRequestSent(false);
     }
   }, [payOpen, slug, table, tableSessionId, tipPercentage]);
 
@@ -239,6 +280,39 @@ export default function StickyFooter({ table, tableSessionId }) {
     }
   }, [confirmOpen]);
 
+  // ---------- Llamar Mozo ----------
+  const handleCallWaiter = async () => {
+    try {
+      setCallWaiterOpen(false);
+
+      // Enviar "pedido" especial para notificar al mozo
+      await createOrder(slug, {
+        table,
+        tableSessionId,
+        items: [{
+          productId: 'sys-waiter-call',
+          name: '🔔 LLAMAR MOZO',
+          price: 0,
+          qty: 1
+        }],
+        notes: 'Solicitud de asistencia'
+      });
+
+      setSnack({
+        open: true,
+        msg: 'Mozo notificado. En breve se acercará a tu mesa. 🔔',
+        severity: 'success'
+      });
+    } catch (err) {
+      console.error('Error calling waiter:', err);
+      setSnack({
+        open: true,
+        msg: 'No se pudo notificar al mozo. Por favor intentá de nuevo.',
+        severity: 'error'
+      });
+    }
+  };
+
   // ---------- Inputs de tarjeta ----------
   const handleCardNumber = (e) => {
     const v = e.target.value.replace(/\D/g, '').slice(0, 16);
@@ -255,6 +329,57 @@ export default function StickyFooter({ table, tableSessionId }) {
     setCard((c) => ({ ...c, cvv: v }));
   };
   const handleName = (e) => setCard((c) => ({ ...c, name: e.target.value }));
+
+  // ---------- Validar cupón ----------
+  const handleValidateCoupon = async () => {
+    if (!couponCode.trim()) {
+      setSnack({ open: true, msg: 'Ingresá un código de cupón', severity: 'warning' });
+      return;
+    }
+
+    setValidatingCoupon(true);
+    try {
+      // Por ahora, validación simple en frontend
+      // En producción, esto debería llamar a un endpoint del backend
+      // const response = await api.post(`/restaurants/${slug}/coupons/validate`, { code: couponCode });
+      
+      // Simulación: aceptar códigos que empiecen con "DESC" o "PROMO"
+      // En producción, reemplazar con llamada real al backend
+      await new Promise(resolve => setTimeout(resolve, 500)); // Simular delay
+      
+      const codeUpper = couponCode.trim().toUpperCase();
+      
+      // Ejemplo de validación (en producción esto viene del backend)
+      let discount = null;
+      if (codeUpper.startsWith('DESC10')) {
+        discount = { type: 'percent', value: 10, code: couponCode.trim() };
+      } else if (codeUpper.startsWith('DESC20')) {
+        discount = { type: 'percent', value: 20, code: couponCode.trim() };
+      } else if (codeUpper.startsWith('PROMO')) {
+        discount = { type: 'fixed', value: 500, code: couponCode.trim() };
+      } else {
+        setSnack({ open: true, msg: 'Código de cupón inválido', severity: 'error' });
+        setCouponCode('');
+        return;
+      }
+
+      setCouponDiscount(discount);
+      setSnack({ 
+        open: true, 
+        msg: `Cupón aplicado: ${discount.value}${discount.type === 'percent' ? '%' : '$'} de descuento ✅`, 
+        severity: 'success' 
+      });
+    } catch (err) {
+      console.error('Error validando cupón:', err);
+      setSnack({ 
+        open: true, 
+        msg: 'Error al validar el cupón. Intentá de nuevo.', 
+        severity: 'error' 
+      });
+    } finally {
+      setValidatingCoupon(false);
+    }
+  };
 
   // ---------- Pagar cuenta ----------
   const handlePay = async () => {
@@ -273,41 +398,95 @@ export default function StickyFooter({ table, tableSessionId }) {
 
     // Si es Mercado Pago online, ya maneja su propio flujo
     if (payType === 'online' && payMethod === 'mp') {
-      // El componente PayWithMercadoPago maneja su propio flujo
       return;
     }
 
     try {
       setPayLoading(true);
 
-      // Cierre de cuenta
-      await closeAccount(slug, { table, tableSessionId });
-
-      // Limpiamos la lista local (ya no hay pedidos abiertos)
-      if (slug && table) {
-        clearOpenOrders(slug, table);
-        setOpenOrders([]);
-      }
-
-      // Resetear propina
-      setTipAmount(0);
-      setTipPercentage(0);
-
+      const isPresential = payType === 'presential';
       const methodNames = {
         cash: 'efectivo',
         card: payType === 'presential' ? 'tarjeta presencial' : 'tarjeta online',
         mp: 'Mercado Pago',
       };
 
-      setSnack({
-        open: true,
-        msg: `Cuenta pagada con ${methodNames[payMethod] || 'tarjeta'} ${tipAmount > 0 ? `(+${money(tipAmount)} propina)` : ''} ✅`,
-        severity: 'success',
-      });
-      setPayOpen(false);
-      setBackendHasAccount(false);
-      setPayType('presential');
-      setPayMethod('cash');
+      if (isPresential) {
+        // Prevenir múltiples solicitudes
+        if (payRequestSent) {
+          setSnack({
+            open: true,
+            msg: 'Ya se envió una solicitud de cobro. Por favor esperá a que el mozo se acerque.',
+            severity: 'warning',
+          });
+          return;
+        }
+
+        // Para pago presencial, NO cerramos la cuenta aún. 
+        // Enviamos una solicitud de cobro al mostrador.
+        setPayRequestSent(true);
+        try {
+          await createOrder(slug, {
+            table,
+            tableSessionId,
+            items: [{
+              productId: 'sys-pay-request',
+              name: '💳 SOLICITUD DE COBRO',
+              price: 0,
+              qty: 1,
+              notes: `Pago con ${methodNames[payMethod] || 'Efectivo'}`
+            }],
+            notes: `Mesa ${table} solicita cobrar en ${methodNames[payMethod] || 'Efectivo'}`
+          });
+
+          setSnack({
+            open: true,
+            msg: `Solicitud enviada. Un mozo se acercará a cobrarte en ${methodNames[payMethod]}. ✅`,
+            severity: 'success',
+          });
+
+          // No cerramos la cuenta localmente ni en backend, esperamos al mozo.
+          setPayOpen(false);
+          // Resetear form
+          setPayType('online');
+          setPayMethod('card');
+          setPayRequestSent(false); // Resetear después de un delay
+          setTimeout(() => setPayRequestSent(false), 5000); // Permitir nueva solicitud después de 5 segundos
+        } catch (err) {
+          setPayRequestSent(false);
+          throw err;
+        }
+      } else {
+        // Pago Online (Simulado o real si fuera MP integrado aquí)
+        // Aquí sí cerramos la cuenta porque se asume "pagado"
+        const closePayload = { table, tableSessionId };
+        if (couponDiscount) {
+          closePayload.couponCode = couponDiscount.code;
+          closePayload.discount = couponDiscount.value;
+          closePayload.discountType = couponDiscount.type;
+        }
+        await closeAccount(slug, closePayload);
+
+        // Limpiamos la lista local (ya no hay pedidos abiertos)
+        if (slug && table) {
+          clearOpenOrders(slug, table);
+          setOpenOrders([]);
+        }
+
+        // Resetear propina
+        setTipAmount(0);
+        setTipPercentage(0);
+
+        setSnack({
+          open: true,
+          msg: `Cuenta pagada (${methodNames[payMethod] || 'tarjeta'}). Gracias por tu visita. ✅`,
+          severity: 'success',
+        });
+        setPayOpen(false);
+        setBackendHasAccount(false);
+        setPayType('online');
+        setPayMethod('card');
+      }
     } catch (err) {
       console.error(err);
       const apiMsg =
@@ -359,6 +538,26 @@ export default function StickyFooter({ table, tableSessionId }) {
             </Button>
           </>
         )}
+
+        {/* Botón Llamar Mozo */}
+        <Button
+          variant="outlined"
+          color="warning"
+          onClick={() => setCallWaiterOpen(true)}
+          startIcon={<RoomServiceIcon />}
+          sx={{
+            borderColor: 'warning.main',
+            color: 'warning.main',
+            '&:hover': {
+              borderColor: 'warning.dark',
+              bgcolor: (theme) => alpha(theme.palette.warning.main, 0.05),
+            },
+            width: { xs: '100%', sm: 'auto' }
+          }}
+        >
+          Mozo
+        </Button>
+
         {backendHasAccount && (
           <Button
             variant="outlined"
@@ -366,10 +565,36 @@ export default function StickyFooter({ table, tableSessionId }) {
             onClick={() => setPayOpen(true)}
             sx={{ width: { xs: '100%', sm: 'auto' } }}
           >
-            Cerrar y pagar cuenta
+            Ver Cuenta
           </Button>
         )}
       </Paper>
+
+      {/* Diálogo Confirmar Llamar Mozo */}
+      <Dialog
+        open={callWaiterOpen}
+        onClose={() => setCallWaiterOpen(false)}
+        maxWidth="xs"
+        fullWidth
+      >
+        <DialogTitle sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+          <RoomServiceIcon color="warning" />
+          ¿Llamar al mozo?
+        </DialogTitle>
+        <DialogContent>
+          <Typography variant="body1">
+            Un mozo se acercará a tu mesa para ayudarte con lo que necesites.
+          </Typography>
+        </DialogContent>
+        <DialogActions sx={{ p: 2 }}>
+          <Button onClick={() => setCallWaiterOpen(false)} color="inherit">
+            Cancelar
+          </Button>
+          <Button onClick={handleCallWaiter} variant="contained" color="warning">
+            Llamar
+          </Button>
+        </DialogActions>
+      </Dialog>
 
       {/* Confirmación de pedido */}
       <Dialog
@@ -632,7 +857,7 @@ export default function StickyFooter({ table, tableSessionId }) {
         >
           <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
             <Typography variant="h6" sx={{ fontWeight: 700 }}>
-              Pagar cuenta
+              Tu Cuenta
             </Typography>
             {table && (
               <Chip label={`Mesa ${table}`} size="small" color="primary" variant="outlined" />
@@ -670,7 +895,6 @@ export default function StickyFooter({ table, tableSessionId }) {
                 )}
                 <AnimatePresence>
                   {(orderDetails.length > 0 ? orderDetails : []).map((order, orderIndex) => {
-                    console.log('Rendering order:', order.id, 'with items:', order.items?.length || 0, order.items);
                     return (
                       <motion.div
                         key={order.id || `order-${orderIndex}`}
@@ -704,6 +928,17 @@ export default function StickyFooter({ table, tableSessionId }) {
                                 })}
                               </Typography>
                             )}
+                          </Box>
+
+                          {/* Estado del pedido */}
+                          <Box sx={{ mb: 1.5 }}>
+                            <Chip
+                              label={getStatusLabel(order.order_status)}
+                              color={getStatusColor(order.order_status)}
+                              size="small"
+                              variant="outlined"
+                              sx={{ fontWeight: 600 }}
+                            />
                           </Box>
 
                           {/* Items del pedido */}
@@ -792,6 +1027,90 @@ export default function StickyFooter({ table, tableSessionId }) {
               </Typography>
             </Box>
 
+            {/* Cupón de descuento */}
+            <Box sx={{ mt: 2, mb: 2 }}>
+              <Typography variant="body2" sx={{ mb: 1, fontWeight: 500 }}>
+                Cupón de descuento
+              </Typography>
+              {!couponDiscount ? (
+                <Box sx={{ display: 'flex', gap: 1 }}>
+                  <TextField
+                    fullWidth
+                    size="small"
+                    label="Código de cupón"
+                    placeholder="Ingresá tu código"
+                    value={couponCode}
+                    onChange={(e) => setCouponCode(e.target.value.toUpperCase())}
+                    disabled={validatingCoupon}
+                    sx={{ flex: 1 }}
+                    InputProps={{
+                      endAdornment: (
+                        <IconButton
+                          size="small"
+                          onClick={handleValidateCoupon}
+                          disabled={!couponCode.trim() || validatingCoupon}
+                          sx={{ mr: -1 }}
+                        >
+                          {validatingCoupon ? (
+                            <CircularProgress size={20} />
+                          ) : (
+                            <LocalOfferIcon />
+                          )}
+                        </IconButton>
+                      ),
+                    }}
+                  />
+                </Box>
+              ) : (
+                <Box
+                  sx={{
+                    p: 1.5,
+                    borderRadius: 2,
+                    bgcolor: 'success.light',
+                    border: '1px solid',
+                    borderColor: 'success.main',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                  }}
+                >
+                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                    <CheckCircleIcon sx={{ color: 'success.main' }} />
+                    <Box>
+                      <Typography variant="body2" sx={{ fontWeight: 600 }}>
+                        Cupón: {couponDiscount.code}
+                      </Typography>
+                      <Typography variant="caption" color="text.secondary">
+                        {couponDiscount.value}{couponDiscount.type === 'percent' ? '%' : '$'} de descuento
+                      </Typography>
+                    </Box>
+                  </Box>
+                  <IconButton
+                    size="small"
+                    onClick={() => {
+                      setCouponDiscount(null);
+                      setCouponCode('');
+                    }}
+                    sx={{ color: 'error.main' }}
+                  >
+                    <CancelIcon />
+                  </IconButton>
+                </Box>
+              )}
+            </Box>
+
+            {/* Mostrar descuento aplicado */}
+            {couponDiscountAmount > 0 && (
+              <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 1 }}>
+                <Typography variant="body2" color="success.main" sx={{ fontWeight: 600 }}>
+                  Descuento ({couponDiscount.code})
+                </Typography>
+                <Typography variant="body2" color="success.main" sx={{ fontWeight: 600 }}>
+                  -{money(couponDiscountAmount)}
+                </Typography>
+              </Box>
+            )}
+
             {/* Propina */}
             <Box sx={{ mt: 2 }}>
               <Typography variant="body2" sx={{ mb: 1, fontWeight: 500 }}>
@@ -851,6 +1170,16 @@ export default function StickyFooter({ table, tableSessionId }) {
                   )}
                 </Typography>
               </Box>
+              {couponDiscountAmount > 0 && (
+                <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 0.5 }}>
+                  <Typography variant="body2" color="success.main">
+                    Descuento ({couponDiscount.code})
+                  </Typography>
+                  <Typography variant="body2" color="success.main" sx={{ fontWeight: 600 }}>
+                    -{money(couponDiscountAmount)}
+                  </Typography>
+                </Box>
+              )}
               {tipAmount > 0 && (
                 <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 0.5 }}>
                   <Typography variant="body2" color="text.secondary">
@@ -885,31 +1214,8 @@ export default function StickyFooter({ table, tableSessionId }) {
               Método de pago
             </Typography>
 
-            {/* Primero: Tipo de pago (Presencial u Online) */}
+            {/* Primero: Tipo de pago (Online primero, luego Presencial) */}
             <Box sx={{ display: 'flex', gap: 1, mb: 2, flexDirection: { xs: 'column', sm: 'row' } }}>
-              <Button
-                fullWidth
-                variant={payType === 'presential' ? 'contained' : 'outlined'}
-                startIcon={<PointOfSaleIcon />}
-                onClick={() => {
-                  setPayType('presential');
-                  setPayMethod('cash'); // Resetear a efectivo por defecto
-                }}
-                sx={{
-                  borderRadius: 2,
-                  textTransform: 'none',
-                  py: 1.5,
-                  bgcolor: payType === 'presential' ? '#4CAF50' : undefined,
-                  color: payType === 'presential' ? 'white' : undefined,
-                  borderColor: payType === 'presential' ? '#4CAF50' : undefined,
-                  '&:hover': {
-                    bgcolor: payType === 'presential' ? '#45a049' : undefined,
-                    borderColor: payType === 'presential' ? '#45a049' : undefined,
-                  },
-                }}
-              >
-                Presencial
-              </Button>
               <Button
                 fullWidth
                 variant={payType === 'online' ? 'contained' : 'outlined'}
@@ -933,31 +1239,34 @@ export default function StickyFooter({ table, tableSessionId }) {
               >
                 Online
               </Button>
+              <Button
+                fullWidth
+                variant={payType === 'presential' ? 'contained' : 'outlined'}
+                startIcon={<PointOfSaleIcon />}
+                onClick={() => {
+                  setPayType('presential');
+                  setPayMethod('card'); // Resetear a tarjeta por defecto en presencial
+                }}
+                sx={{
+                  borderRadius: 2,
+                  textTransform: 'none',
+                  py: 1.5,
+                  bgcolor: payType === 'presential' ? '#4CAF50' : undefined,
+                  color: payType === 'presential' ? 'white' : undefined,
+                  borderColor: payType === 'presential' ? '#4CAF50' : undefined,
+                  '&:hover': {
+                    bgcolor: payType === 'presential' ? '#45a049' : undefined,
+                    borderColor: payType === 'presential' ? '#45a049' : undefined,
+                  },
+                }}
+              >
+                Presencial
+              </Button>
             </Box>
 
             {/* Segundo: Método específico según el tipo */}
             {payType === 'presential' && (
               <Box sx={{ display: 'flex', gap: 1, flexDirection: { xs: 'column', sm: 'row' } }}>
-                <Button
-                  fullWidth
-                  variant={payMethod === 'cash' ? 'contained' : 'outlined'}
-                  startIcon={<AttachMoneyIcon />}
-                  onClick={() => setPayMethod('cash')}
-                  sx={{
-                    borderRadius: 2,
-                    textTransform: 'none',
-                    py: 1.5,
-                    bgcolor: payMethod === 'cash' ? '#4CAF50' : undefined,
-                    color: payMethod === 'cash' ? 'white' : '#4CAF50',
-                    borderColor: '#4CAF50',
-                    '&:hover': {
-                      bgcolor: payMethod === 'cash' ? '#45a049' : alpha('#4CAF50', 0.1),
-                      borderColor: '#45a049',
-                    },
-                  }}
-                >
-                  Efectivo
-                </Button>
                 <Button
                   fullWidth
                   variant={payMethod === 'card' ? 'contained' : 'outlined'}
@@ -977,6 +1286,26 @@ export default function StickyFooter({ table, tableSessionId }) {
                   }}
                 >
                   Tarjeta
+                </Button>
+                <Button
+                  fullWidth
+                  variant={payMethod === 'cash' ? 'contained' : 'outlined'}
+                  startIcon={<AttachMoneyIcon />}
+                  onClick={() => setPayMethod('cash')}
+                  sx={{
+                    borderRadius: 2,
+                    textTransform: 'none',
+                    py: 1.5,
+                    bgcolor: payMethod === 'cash' ? '#4CAF50' : undefined,
+                    color: payMethod === 'cash' ? 'white' : '#4CAF50',
+                    borderColor: '#4CAF50',
+                    '&:hover': {
+                      bgcolor: payMethod === 'cash' ? '#45a049' : alpha('#4CAF50', 0.1),
+                      borderColor: '#45a049',
+                    },
+                  }}
+                >
+                  Efectivo
                 </Button>
               </Box>
             )}
@@ -1115,6 +1444,7 @@ export default function StickyFooter({ table, tableSessionId }) {
             onClick={handlePay}
             disabled={
               payLoading ||
+              payRequestSent ||
               (orderDetails.length === 0 && accountTotal === 0) ||
               (payType === 'online' && payMethod === 'card' && (!card.number || !card.expiry || !card.cvv || !card.name))
             }
@@ -1130,7 +1460,14 @@ export default function StickyFooter({ table, tableSessionId }) {
               },
             }}
           >
-            {payLoading ? 'Pagando…' : `Pagar ${money(totalWithTip)}`}
+            {payLoading
+              ? 'Procesando…'
+              : payRequestSent
+                ? 'Solicitud enviada'
+              : payType === 'presential'
+                ? 'Solicitar Cobro'
+                : `Pagar ${money(totalWithTip)}`
+            }
           </Button>
         </DialogActions>
       </Dialog>
