@@ -13,31 +13,24 @@
     "noEmitOnError": true,
     "noImplicitThis": true,
     "outDir": "dist",
-    "rootDir": "."
+    "rootDir": ".",
+    "typeRoots": ["./node_modules/@types"]
   },
   "include": [
-    // Include root files
     "./",
-    // Include all ts files
     "./**/*.ts",
-    // Include all js files
     "./**/*.js",
-    // Force the JSON files in the src folder to be included
+    "./types/**/*.d.ts",
     "src/**/*.json"
   ],
-
   "exclude": [
     "node_modules/",
     "build/",
     "dist/",
     ".cache/",
     ".tmp/",
-
-    // Do not include admin files in the server compilation
     "src/admin/",
-    // Do not include test files
     "**/*.test.*",
-    // Do not include plugins in the server compilation
     "src/plugins/**"
   ]
 }

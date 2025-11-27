@@ -3,14 +3,10 @@
 import { MercadoPagoConfig, Preference, Payment } from 'mercadopago';
 import { ensureHttpUrl, getFrontendUrl, getBackendUrl, isHttps } from '../../../config/urls';
 
-declare const strapi: any;
-
-function resolvePaymentUID(): string | null {
+function resolvePaymentUID(strapi: any): string | null {
   const uid1 = 'api::payment.payment';
   const uid2 = 'api::payments.payment';
-  // @ts-ignore
   const has1 = !!(strapi?.contentTypes && strapi.contentTypes[uid1]);
-  // @ts-ignore
   const has2 = !!(strapi?.contentTypes && strapi.contentTypes[uid2]);
   if (has1) return uid1;
   if (has2) return uid2;
@@ -18,7 +14,7 @@ function resolvePaymentUID(): string | null {
 }
 
 // Intenta marcar el pedido como "paid" con el campo que exista
-async function markOrderPaid(orderPk: number) {
+async function markOrderPaid(strapi: any, orderPk: number) {
   const ORDER_UID = 'api::pedido.pedido';
   const tries = [
     { data: { order_status: 'paid' } },
@@ -39,7 +35,7 @@ async function markOrderPaid(orderPk: number) {
 }
 
 // Busca el pedido por varios caminos
-async function resolveOrderPk(ref: string | number | null) {
+async function resolveOrderPk(strapi: any, ref: string | number | null) {
   if (ref == null) return null;
   const ORDER_UID = 'api::pedido.pedido';
   const refStr = String(ref).trim();
@@ -131,6 +127,7 @@ export default {
         0,
       );
 
+      const strapi = ctx.strapi;
       // ---- back_urls: forzamos a pasar por el backend (confirm) y le mandamos orderRef
       const backUrls = buildBackendBackUrls(orderId, strapi.config);
 
@@ -151,7 +148,7 @@ export default {
       // ---- Persistencia best-effort
       let paymentId: number | null = null;
       try {
-        const paymentUID = resolvePaymentUID();
+        const paymentUID = resolvePaymentUID(strapi);
         if (paymentUID) {
           const orderPk =
             orderId !== undefined && orderId !== null && orderId !== '' && !Number.isNaN(Number(orderId))
@@ -188,6 +185,7 @@ export default {
         payment_id: paymentId,
       };
     } catch (e: any) {
+      const strapi = ctx.strapi;
       strapi?.log?.error?.('createPreference ERROR ->', e?.response?.data || e?.message);
       ctx.status = 500;
       ctx.body = { ok: false, error: e?.response?.data ?? e?.message ?? 'Error creando preferencia' };
@@ -227,6 +225,7 @@ export default {
 
       ctx.body = { id: mpRes?.id, status: mpRes?.status, status_detail: mpRes?.status_detail };
     } catch (e: any) {
+      const strapi = ctx.strapi;
       strapi?.log?.error?.('cardPay ERROR ->', e?.response?.data || e?.message);
       ctx.status = 500;
       ctx.body = { error: e?.message || 'Error procesando pago', details: e?.response?.data ?? null };
@@ -236,6 +235,7 @@ export default {
   // Confirmar pago al volver del redirect (sin webhook)
   async confirm(ctx: any) {
     try {
+      const strapi = ctx.strapi;
       const q = ctx.request.query || {};
       const paymentIdQ = q.payment_id ?? q.collection_id;
       const preferenceIdQ = q.preference_id ?? q.preference_id;
@@ -287,7 +287,7 @@ export default {
       }
 
       // 3) Resolver PK del pedido con múltiples estrategias
-      const orderPk = await resolveOrderPk(orderRef);
+      const orderPk = await resolveOrderPk(strapi, orderRef);
       if (!orderPk) {
         ctx.status = 404;
         ctx.body = { ok: false, error: `Pedido no encontrado para ref: ${orderRef}` };
@@ -297,11 +297,11 @@ export default {
       // 4) Marcar como paid si corresponde
       const normalizedStatus = typeof status === 'string' ? status.toLowerCase() : null;
       const shouldMarkPaid = normalizedStatus === 'approved';
-      if (shouldMarkPaid) await markOrderPaid(orderPk);
+      if (shouldMarkPaid) await markOrderPaid(strapi, orderPk);
       else strapi?.log?.info?.(`[payments.confirm] Estado no aprobado (${normalizedStatus}). No marco paid.`);
 
       // 5) Actualizar registro de payments si existe
-      const paymentUID = resolvePaymentUID();
+      const paymentUID = resolvePaymentUID(strapi);
       if (paymentUID) {
         try {
           const searchFilters: Record<string, any> = { order: orderPk };
@@ -332,6 +332,7 @@ export default {
 
       ctx.body = { ok: true, orderId: orderPk, status: normalizedStatus || status || 'approved' };
     } catch (e: any) {
+      const strapi = ctx.strapi;
       strapi?.log?.error?.('[payments.confirm] ', e?.response?.data || e?.message);
       ctx.status = 500;
       ctx.body = { ok: false, error: e?.message || 'Error confirmando pago' };
@@ -343,6 +344,7 @@ export default {
    * Mock/Manual payment creation
    */
   async create(ctx: any) {
+    const strapi = ctx.strapi;
     const restauranteId = ctx.state.restauranteId;
     const payload = (ctx.request.body && ctx.request.body.data) || ctx.request.body || {};
     const { orderId, status, amount, provider, externalRef } = payload;

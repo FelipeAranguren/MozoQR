@@ -33,7 +33,7 @@ exports.default = {
             config: {
                 policies: ['global::by-restaurant'],
             },
-        }
+        },
         // Si luego agregás webhook, sumá aquí:
         // {
         //   method: 'POST',

@@ -4,14 +4,13 @@
 
 import { getBackendUrl } from '../../../config/urls';
 
-declare const strapi: any;
-
 export default {
     /**
      * GET /restaurants/:slug/menus
      * Returns categories with available products. Hides product image unless plan === 'PRO'.
      */
     async find(ctx: any) {
+        const strapi = ctx.strapi;
         const restauranteId = ctx.state.restauranteId;
         const plan = (ctx.state.restaurantePlan || 'BASIC').toUpperCase();
 
