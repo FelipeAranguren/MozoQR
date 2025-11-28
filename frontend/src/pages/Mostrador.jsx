@@ -121,7 +121,7 @@ export default function Mostrador() {
       const res = await api.get(`/pedidos${qs}`);
       const base = res?.data?.data ?? [];
       const planos = base.map(mapPedidoRow);
-      
+
       // Cargar items para cada pedido
       const planosConItems = await Promise.all(
         planos.map(async (p) => {
@@ -133,7 +133,7 @@ export default function Mostrador() {
           }
         })
       );
-      
+
       // Agrupar por sesión para cuentas
       const grupos = new Map();
       planosConItems.forEach((p) => {
@@ -569,13 +569,13 @@ export default function Mostrador() {
         pedidosRef.current = next;
         return next;
       });
-      
+
       // Actualizar el pedido con el estado y las notas del staff
       const updateData = { order_status: 'served' };
       if (staffNotes && staffNotes.trim()) {
         updateData.staffNotes = staffNotes.trim();
       }
-      
+
       try {
         await api.patch(`/pedidos/${pedido.id}`, { data: updateData });
       } catch (patchErr) {
@@ -586,14 +586,14 @@ export default function Mostrador() {
           throw patchErr;
         }
       }
-      
+
       await fetchPedidos();
-      setSnack({ 
-        open: true, 
-        msg: staffNotes && staffNotes.trim() 
-          ? 'Pedido completado con observaciones ✅' 
-          : 'Pedido marcado como servido ✅', 
-        severity: 'success' 
+      setSnack({
+        open: true,
+        msg: staffNotes && staffNotes.trim()
+          ? 'Pedido completado con observaciones ✅'
+          : 'Pedido marcado como servido ✅',
+        severity: 'success'
       });
     } catch (err) {
       console.error('Error al marcar como servido:', err?.response?.data || err);
@@ -659,13 +659,13 @@ export default function Mostrador() {
           await closeAccount(slug, payload);
         } else {
           const pendientes = (cuenta.pedidos || []).filter((p) => p.order_status !== 'paid');
-          await Promise.all(pendientes.map((pedido) => 
-            api.patch(`/pedidos/${pedido.id}`, { 
-              data: { 
+          await Promise.all(pendientes.map((pedido) =>
+            api.patch(`/pedidos/${pedido.id}`, {
+              data: {
                 order_status: 'paid',
                 payment_status: 'paid',
                 closeWithoutPayment: true
-              } 
+              }
             })
           ));
         }
@@ -675,11 +675,11 @@ export default function Mostrador() {
         const pendientes = (cuenta.pedidos || []).filter((p) => p.order_status !== 'paid');
         await Promise.all(pendientes.map((pedido) => {
           const pedidoTotal = Number(pedido.total || 0);
-          const pedidoDiscount = discountType === 'percent' 
+          const pedidoDiscount = discountType === 'percent'
             ? pedidoTotal * (discount / 100)
             : (discount * pedidoTotal / cuenta.total);
           const pedidoFinal = Math.max(0, pedidoTotal - pedidoDiscount);
-          
+
           return api.patch(`/pedidos/${pedido.id}`, {
             data: {
               order_status: 'paid',
@@ -723,11 +723,22 @@ export default function Mostrador() {
 
   // Función para detectar si es un pedido del sistema (debe estar antes de los memos)
   const isSystemOrder = (pedido) => {
+    // Check items
     const items = pedido.items || [];
-    return items.some(item => {
+    const hasSystemItem = items.some(item => {
       const prodName = (item?.product?.name || item?.name || '').toUpperCase();
       return prodName.includes('LLAMAR MOZO') || prodName.includes('SOLICITUD DE COBRO') || prodName.includes('💳');
     });
+
+    if (hasSystemItem) return true;
+
+    // Check customer notes for payment requests
+    const notes = (pedido.customerNotes || '').toUpperCase();
+    if (notes.includes('SOLICITA COBRAR') || notes.includes('CUENTA') || notes.includes('PAGAR')) {
+      return true;
+    }
+
+    return false;
   };
 
   // ---- memos de filtro ----
@@ -1270,91 +1281,91 @@ export default function Mostrador() {
       <>
         {/* Sección superior: Pedidos activos */}
         <Grid container spacing={1} sx={{ mb: 3 }}>
-            {/* Columna 1: Pedidos Pendientes (primera mitad) */}
-            <Grid item xs={12} md={2.25}>
-              <Box sx={{ mb: 1.5, display: 'flex', alignItems: 'center', gap: 1 }}>
-                <AccessTimeIcon sx={{ fontSize: 20, color: 'text.secondary' }} />
-                <Typography variant="h6" sx={{ fontWeight: 600 }}>
-                  Pendientes ({pedidosPendientes.length})
-                </Typography>
-              </Box>
-              {pedidosPendientes.length === 0 && !noResultsPedidos && (
-                <Typography variant="body2" color="text.secondary">
-                  No hay pedidos pendientes
-                </Typography>
-              )}
-              {noResultsPedidos && pedidosPendientes.length === 0 && (
-                <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
-                  No hay pedidos pendientes para las mesas buscadas.
-                </Typography>
-              )}
-              <Box>
-                {pedidosPendientes
-                  .filter((_, index) => index % 2 === 0)
-                  .map((pedido) => renderPedidoCard(pedido))}
-              </Box>
-            </Grid>
-
-            {/* Columna 2: Pedidos Pendientes (segunda mitad) */}
-            <Grid item xs={12} md={2.25}>
-              <Box sx={{ mb: 2, display: 'flex', alignItems: 'center', gap: 1, visibility: 'hidden' }}>
-                <AccessTimeIcon sx={{ fontSize: 20 }} />
-                <Typography variant="h6" sx={{ fontWeight: 600 }}>
-                  Pendientes ({pedidosPendientes.filter((_, index) => index % 2 === 1).length})
-                </Typography>
-              </Box>
-              <Box>
-                {pedidosPendientes
-                  .filter((_, index) => index % 2 === 1)
-                  .map((pedido) => renderPedidoCard(pedido))}
-              </Box>
-            </Grid>
-
-
-            {/* Columna 3: Pedidos en Cocina (primera mitad) */}
-            <Grid item xs={12} md={3}>
-              <Box sx={{ mb: 1.5, display: 'flex', alignItems: 'center', gap: 1 }}>
-                <RestaurantIcon sx={{ fontSize: 20, color: 'text.secondary' }} />
-                <Typography variant="h6" sx={{ fontWeight: 600 }}>
-                  Cocina ({pedidosEnCocina.length})
-                </Typography>
-              </Box>
-              {pedidosEnCocina.length === 0 && !noResultsPedidos && (
-                <Typography variant="body2" color="text.secondary">
-                  No hay pedidos en cocina
-                </Typography>
-              )}
-              {noResultsPedidos && pedidosEnCocina.length === 0 && (
-                <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
-                  No hay pedidos en cocina para las mesas buscadas.
-                </Typography>
-              )}
-              <Box>
-                {pedidosEnCocina
-                  .filter((_, index) => index % 2 === 0)
-                  .map((pedido) => renderPedidoCard(pedido))}
-              </Box>
-            </Grid>
-
-            {/* Columna 4: Pedidos en Cocina (segunda mitad) */}
-            <Grid item xs={12} md={3}>
-              <Box sx={{ mb: 2, display: 'flex', alignItems: 'center', gap: 1, visibility: 'hidden' }}>
-                <RestaurantIcon sx={{ fontSize: 20 }} />
-                <Typography variant="h6" sx={{ fontWeight: 600 }}>
-                  Cocina ({pedidosEnCocina.length})
-                </Typography>
-              </Box>
-              <Box>
-                {pedidosEnCocina
-                  .filter((_, index) => index % 2 === 1)
-                  .map((pedido) => renderPedidoCard(pedido))}
-              </Box>
-            </Grid>
-
+          {/* Columna 1: Pedidos Pendientes (primera mitad) */}
+          <Grid item xs={12} md={2.25}>
+            <Box sx={{ mb: 1.5, display: 'flex', alignItems: 'center', gap: 1 }}>
+              <AccessTimeIcon sx={{ fontSize: 20, color: 'text.secondary' }} />
+              <Typography variant="h6" sx={{ fontWeight: 600 }}>
+                Pendientes ({pedidosPendientes.length})
+              </Typography>
+            </Box>
+            {pedidosPendientes.length === 0 && !noResultsPedidos && (
+              <Typography variant="body2" color="text.secondary">
+                No hay pedidos pendientes
+              </Typography>
+            )}
+            {noResultsPedidos && pedidosPendientes.length === 0 && (
+              <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
+                No hay pedidos pendientes para las mesas buscadas.
+              </Typography>
+            )}
+            <Box>
+              {pedidosPendientes
+                .filter((_, index) => index % 2 === 0)
+                .map((pedido) => renderPedidoCard(pedido))}
+            </Box>
           </Grid>
 
-          {/* División visual */}
-          <Divider sx={{ my: 3, borderWidth: 2 }} />
+          {/* Columna 2: Pedidos Pendientes (segunda mitad) */}
+          <Grid item xs={12} md={2.25}>
+            <Box sx={{ mb: 2, display: 'flex', alignItems: 'center', gap: 1, visibility: 'hidden' }}>
+              <AccessTimeIcon sx={{ fontSize: 20 }} />
+              <Typography variant="h6" sx={{ fontWeight: 600 }}>
+                Pendientes ({pedidosPendientes.filter((_, index) => index % 2 === 1).length})
+              </Typography>
+            </Box>
+            <Box>
+              {pedidosPendientes
+                .filter((_, index) => index % 2 === 1)
+                .map((pedido) => renderPedidoCard(pedido))}
+            </Box>
+          </Grid>
+
+
+          {/* Columna 3: Pedidos en Cocina (primera mitad) */}
+          <Grid item xs={12} md={3}>
+            <Box sx={{ mb: 1.5, display: 'flex', alignItems: 'center', gap: 1 }}>
+              <RestaurantIcon sx={{ fontSize: 20, color: 'text.secondary' }} />
+              <Typography variant="h6" sx={{ fontWeight: 600 }}>
+                Cocina ({pedidosEnCocina.length})
+              </Typography>
+            </Box>
+            {pedidosEnCocina.length === 0 && !noResultsPedidos && (
+              <Typography variant="body2" color="text.secondary">
+                No hay pedidos en cocina
+              </Typography>
+            )}
+            {noResultsPedidos && pedidosEnCocina.length === 0 && (
+              <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
+                No hay pedidos en cocina para las mesas buscadas.
+              </Typography>
+            )}
+            <Box>
+              {pedidosEnCocina
+                .filter((_, index) => index % 2 === 0)
+                .map((pedido) => renderPedidoCard(pedido))}
+            </Box>
+          </Grid>
+
+          {/* Columna 4: Pedidos en Cocina (segunda mitad) */}
+          <Grid item xs={12} md={3}>
+            <Box sx={{ mb: 2, display: 'flex', alignItems: 'center', gap: 1, visibility: 'hidden' }}>
+              <RestaurantIcon sx={{ fontSize: 20 }} />
+              <Typography variant="h6" sx={{ fontWeight: 600 }}>
+                Cocina ({pedidosEnCocina.length})
+              </Typography>
+            </Box>
+            <Box>
+              {pedidosEnCocina
+                .filter((_, index) => index % 2 === 1)
+                .map((pedido) => renderPedidoCard(pedido))}
+            </Box>
+          </Grid>
+
+        </Grid>
+
+        {/* División visual */}
+        <Divider sx={{ my: 3, borderWidth: 2 }} />
 
         {/* Sección inferior: Grid de mesas */}
         <Box sx={{ mt: 3 }}>
@@ -1364,17 +1375,17 @@ export default function Mostrador() {
             systemOrders={pedidosSistema}
             onTableClick={(table) => {
               // Abrir modal con detalles de la mesa
-              const mesaPedidos = pedidos.filter(p => 
+              const mesaPedidos = pedidos.filter(p =>
                 p.mesa_sesion?.mesa?.number === table.number
               );
               const mesaCuenta = cuentas.find(c => c.mesaNumber === table.number);
-              setTableDetailDialog({ 
-                open: true, 
-                mesa: { 
-                  ...table, 
+              setTableDetailDialog({
+                open: true,
+                mesa: {
+                  ...table,
                   pedidos: mesaPedidos,
                   cuenta: mesaCuenta
-                } 
+                }
               });
             }}
           />
@@ -1434,7 +1445,7 @@ export default function Mostrador() {
                 const fechaHora = new Date(c.lastUpdated);
                 const fecha = fechaHora.toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit', year: 'numeric' });
                 const hora = fechaHora.toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' });
-                
+
                 return (
                   <Grid item key={c.groupKey} xs={12} sm={6} md={4}>
                     <Card sx={{ borderRadius: 2, boxShadow: 2 }}>
@@ -1855,14 +1866,14 @@ export default function Mostrador() {
                 </Box>
               )}
 
-              {(!tableDetailDialog.mesa.pedidos || tableDetailDialog.mesa.pedidos.length === 0) && 
-               !tableDetailDialog.mesa.cuenta && (
-                <Box sx={{ textAlign: 'center', py: 4 }}>
-                  <Typography variant="body1" color="text.secondary">
-                    Esta mesa no tiene pedidos activos ni cuenta abierta
-                  </Typography>
-                </Box>
-              )}
+              {(!tableDetailDialog.mesa.pedidos || tableDetailDialog.mesa.pedidos.length === 0) &&
+                !tableDetailDialog.mesa.cuenta && (
+                  <Box sx={{ textAlign: 'center', py: 4 }}>
+                    <Typography variant="body1" color="text.secondary">
+                      Esta mesa no tiene pedidos activos ni cuenta abierta
+                    </Typography>
+                  </Box>
+                )}
             </>
           )}
         </Box>

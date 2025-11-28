@@ -13,11 +13,11 @@ import NotificationsActiveIcon from '@mui/icons-material/NotificationsActive';
  * Componente mejorado para mostrar el estado de las mesas en tiempo real
  * Estados: disponible, ocupada, por limpiar, reservada, llamando
  */
-export default function TablesStatusGridEnhanced({ 
-  tables = [], 
-  orders = [], 
+export default function TablesStatusGridEnhanced({
+  tables = [],
+  orders = [],
   systemOrders = [],
-  onTableClick 
+  onTableClick
 }) {
   // Agrupar pedidos por mesa
   const ordersByTable = React.useMemo(() => {
@@ -69,9 +69,9 @@ export default function TablesStatusGridEnhanced({
   const getTableStatus = (table) => {
     const tableOrders = ordersByTable.get(table.number) || [];
     const systemCalls = systemOrdersByTable.get(table.number) || [];
-    const activeOrders = tableOrders.filter(o => 
-      o.order_status === 'pending' || 
-      o.order_status === 'preparing' || 
+    const activeOrders = tableOrders.filter(o =>
+      o.order_status === 'pending' ||
+      o.order_status === 'preparing' ||
       o.order_status === 'served'
     );
 
@@ -87,7 +87,7 @@ export default function TablesStatusGridEnhanced({
       const isPayRequest = callType?.items?.some(item => {
         const prodName = (item?.product?.name || item?.name || '').toUpperCase();
         return prodName.includes('SOLICITUD DE COBRO') || prodName.includes('💳');
-      });
+      }) || (callType?.customerNotes || '').toUpperCase().includes('SOLICITA COBRAR') || (callType?.customerNotes || '').toUpperCase().includes('CUENTA');
       return {
         status: 'calling',
         label: isPayRequest ? 'Solicita pago' : 'Llama mozo',
@@ -127,14 +127,14 @@ export default function TablesStatusGridEnhanced({
     // (asumimos que si la última sesión fue pagada hace menos de X minutos, necesita limpieza)
     if (hasPaid && !hasPending && !hasPreparing && !hasServed) {
       const paidOrders = tableOrders.filter(o => o.order_status === 'paid');
-      const lastPaid = paidOrders.sort((a, b) => 
+      const lastPaid = paidOrders.sort((a, b) =>
         new Date(b.updatedAt || b.createdAt) - new Date(a.updatedAt || a.createdAt)
       )[0];
-      
+
       if (lastPaid) {
         const paidTime = new Date(lastPaid.updatedAt || lastPaid.createdAt);
         const minutesSincePaid = (Date.now() - paidTime.getTime()) / (1000 * 60);
-        
+
         // Si fue pagado hace menos de 30 minutos, necesita limpieza
         if (minutesSincePaid < 30) {
           return {
@@ -201,28 +201,28 @@ export default function TablesStatusGridEnhanced({
           </Typography>
         </Box>
         <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
-          <Chip 
-            icon={<CheckCircleIcon />} 
-            label="Disponible" 
-            size="small" 
+          <Chip
+            icon={<CheckCircleIcon />}
+            label="Disponible"
+            size="small"
             sx={{ bgcolor: '#4caf50', color: 'white', fontWeight: 600 }}
           />
-          <Chip 
-            icon={<RestaurantIcon />} 
-            label="Ocupada" 
-            size="small" 
+          <Chip
+            icon={<RestaurantIcon />}
+            label="Ocupada"
+            size="small"
             sx={{ bgcolor: '#1976d2', color: 'white', fontWeight: 600 }}
           />
-          <Chip 
-            icon={<CleaningServicesIcon />} 
-            label="Por limpiar" 
-            size="small" 
+          <Chip
+            icon={<CleaningServicesIcon />}
+            label="Por limpiar"
+            size="small"
             sx={{ bgcolor: '#9c27b0', color: 'white', fontWeight: 600 }}
           />
-          <Chip 
-            icon={<NotificationsActiveIcon />} 
-            label="Llamando" 
-            size="small" 
+          <Chip
+            icon={<NotificationsActiveIcon />}
+            label="Llamando"
+            size="small"
             sx={{ bgcolor: '#ff1744', color: 'white', fontWeight: 600 }}
           />
         </Box>
@@ -232,7 +232,7 @@ export default function TablesStatusGridEnhanced({
         {sortedTables.map((table) => {
           const tableStatus = getTableStatus(table);
           const tableOrders = ordersByTable.get(table.number) || [];
-          const activeOrdersCount = tableOrders.filter(o => 
+          const activeOrdersCount = tableOrders.filter(o =>
             o.order_status !== 'paid'
           ).length;
 
@@ -248,13 +248,13 @@ export default function TablesStatusGridEnhanced({
                   textAlign: 'center',
                   cursor: onTableClick ? 'pointer' : 'default',
                   transition: 'all 0.3s ease',
-                  background: tableStatus.status === 'available' 
+                  background: tableStatus.status === 'available'
                     ? 'linear-gradient(135deg, #ffffff 0%, #f1f8e9 100%)'
                     : `linear-gradient(135deg, ${tableStatus.color}15 0%, ${tableStatus.color}08 100%)`,
                   position: 'relative',
                   overflow: 'visible',
-                  animation: tableStatus.blinking 
-                    ? 'pulse 1.5s ease-in-out infinite' 
+                  animation: tableStatus.blinking
+                    ? 'pulse 1.5s ease-in-out infinite'
                     : 'none',
                   '@keyframes pulse': {
                     '0%, 100%': {
@@ -304,10 +304,10 @@ export default function TablesStatusGridEnhanced({
                   </Badge>
                 </Box>
 
-                <Typography 
-                  variant="h6" 
-                  sx={{ 
-                    fontWeight: 700, 
+                <Typography
+                  variant="h6"
+                  sx={{
+                    fontWeight: 700,
                     mb: 0.5,
                     color: tableStatus.status === 'calling' ? tableStatus.color : 'text.primary'
                   }}
@@ -339,9 +339,9 @@ export default function TablesStatusGridEnhanced({
                 )}
 
                 {tableStatus.status === 'calling' && (
-                  <Typography 
-                    variant="caption" 
-                    sx={{ 
+                  <Typography
+                    variant="caption"
+                    sx={{
                       display: 'block',
                       color: tableStatus.color,
                       fontWeight: 600,

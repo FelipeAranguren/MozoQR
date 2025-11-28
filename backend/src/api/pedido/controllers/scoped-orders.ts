@@ -2,12 +2,38 @@
  * scoped-orders controller
  */
 
+declare const strapi: any;
+
 const ALLOWED_NEXT: Record<string, string[]> = {
     pending: ['preparing', 'served', 'paid'],
     preparing: ['served', 'paid'],
     served: ['paid'],
     paid: [],
 };
+
+interface OrderItemPayload {
+    productId?: number;
+    product?: number;
+    id?: number;
+    quantity?: number;
+    qty?: number;
+    notes?: string;
+}
+
+interface OrderPayload {
+    table: number;
+    tableSessionId?: string;
+    items: OrderItemPayload[];
+    notes?: string;
+}
+
+interface NormalizedItem {
+    product: number;
+    quantity: number;
+    UnitPrice: number;
+    totalPrice: number;
+    notes: string | null;
+}
 
 async function getMesaByNumber(strapi: any, restauranteId: number, number: number) {
     const [mesa] = await strapi.entityService.findMany('api::mesa.mesa', {
@@ -87,7 +113,7 @@ export default {
         const strapi: any = ctx.strapi;
         const restauranteId = ctx.state.restauranteId;
         const payload = (ctx.request.body && ctx.request.body.data) || ctx.request.body || {};
-        const { table, tableSessionId, items, notes } = payload;
+        const { table, tableSessionId, items, notes } = payload as OrderPayload;
 
         if (!table) return ctx.badRequest('Falta número de mesa');
         if (!Array.isArray(items) || items.length === 0) {
@@ -101,7 +127,7 @@ export default {
 
         // Validar productos y calcular subtotal con precios actuales
         let subtotal = 0;
-        const normalized = [];
+        const normalized: NormalizedItem[] = [];
         for (const it of items) {
             const pid = it.productId || it.product || it.id;
             const qty = Number(it.quantity || it.qty || 0);

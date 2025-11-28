@@ -3,6 +3,18 @@ Object.defineProperty(exports, "__esModule", { value: true });
 // src/api/pedido/controllers/pedido.ts
 const strapi_1 = require("@strapi/strapi");
 exports.default = strapi_1.factories.createCoreController('api::pedido.pedido', ({ strapi: strapiInstance }) => ({
+    async find(ctx) {
+        if (!ctx.state.user)
+            return ctx.unauthorized();
+        const { data, meta } = await super.find(ctx);
+        return { data, meta };
+    },
+    async findOne(ctx) {
+        if (!ctx.state.user)
+            return ctx.unauthorized();
+        const { data, meta } = await super.findOne(ctx);
+        return { data, meta };
+    },
     /**
      * PUT /api/pedidos/:id
      * - Si :id es numérico -> actualiza por id
