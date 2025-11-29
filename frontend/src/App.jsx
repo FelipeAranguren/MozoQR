@@ -28,7 +28,6 @@ import PlanManagement from './pages/owner/plan/PlanManagement';
 import AdvancedPanel from './pages/owner/advanced/AdvancedPanel';
 import AIPanel from './pages/owner/ai/AIPanel';
 import AdminDashboard from './pages/AdminDashboard';
-import GlobalAdmin from './pages/admin/GlobalAdmin';
 import DemoLanding from './pages/DemoLanding';
 
 // Redirige rutas viejas /restaurantes/:slug -> /:slug/menu (usa selector de mesas)
@@ -67,7 +66,7 @@ export default function App() {
 
           {/* Admin Dashboard - Dashboard de administración */}
           <Route path="/admin/dashboard" element={<AuthGuard><AdminDashboard /></AuthGuard>} />
-          <Route path="/admin-global" element={<AuthGuard><GlobalAdmin /></AuthGuard>} />
+          
 
           {/* Rutas del owner con layout */}
           <Route path="/owner/:slug" element={<OwnerRouteGuard><OwnerLayout /></OwnerRouteGuard>}>

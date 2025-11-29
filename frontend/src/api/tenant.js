@@ -212,6 +212,26 @@ export async function createOrder(slug, payload) {
   return res.data; // { data: { id, documentId, ... } }
 }
 
+/**
+ * Abre una sesión de mesa (marca la mesa como ocupada) aunque no haya pedido todavía
+ */
+export async function openSession(slug, payload) {
+  const { table } = payload || {};
+  if (table === undefined || table === null || table === '') {
+    throw new Error('table requerido');
+  }
+
+  try {
+    const res = await publicHttp.post(`/restaurants/${slug}/open-session`, {
+      data: { table },
+    });
+    return res?.data?.data || res?.data;
+  } catch (err) {
+    console.error('Error abriendo sesión de mesa:', err?.response?.data || err);
+    throw err;
+  }
+}
+
 export async function closeAccount(slug, payload) {
   const { table, tableSessionId } = payload || {};
   if (!table) throw new Error('Falta número de mesa');

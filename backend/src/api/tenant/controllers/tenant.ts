@@ -3,6 +3,7 @@
  * Endpoints:
  *  - POST /api/restaurants/:slug/orders
  *  - POST|PUT /api/restaurants/:slug/close-account
+ *  - POST /api/restaurants/:slug/open-session
  */
 import { errors } from '@strapi/utils';
 type ID = number | string;
@@ -13,6 +14,10 @@ type Ctx = {
   params?: Record<string, any>;
   request: { body: any };
   body?: any;
+  forbidden?: (message?: string) => void;
+  badRequest?: (message?: string) => void;
+  unauthorized?: (message?: string) => void;
+  notFound?: (message?: string) => void;
 };
 
 function getPayload(raw: any) {
@@ -261,5 +266,44 @@ export default {
     }
 
     ctx.body = { data: { paidOrders: ids.length } };
+  },
+
+  /**
+   * POST /restaurants/:slug/open-session
+   * Body: { table: number }
+   * Abre una sesión de mesa (marca la mesa como ocupada) aunque no haya pedido todavía
+   */
+  async openSession(ctx: Ctx) {
+    const { slug } = ctx.params || {};
+    if (!slug) throw new ValidationError('Missing restaurant slug');
+
+    const data = getPayload(ctx.request.body);
+    const table = data?.table;
+
+    if (table === undefined || table === null || table === '') {
+      throw new ValidationError('Missing table');
+    }
+
+    // Restaurante
+    const restaurante = await getRestaurantBySlug(String(slug));
+
+    // Mesa (debe existir, no creamos automáticamente)
+    const found = await strapi.entityService.findMany('api::mesa.mesa', {
+      filters: { restaurante: { id: Number(restaurante.id) }, number: Number(table) },
+      fields: ['id', 'number'],
+      limit: 1,
+    });
+    if (!found?.[0]?.id) {
+      throw new ValidationError(`Mesa ${table} no existe para este restaurante`);
+    }
+    const mesa = found[0];
+
+    // Crear o reutilizar sesión abierta
+    const sesion = await getOrCreateOpenSession({
+      restauranteId: restaurante.id,
+      mesaId: mesa.id,
+    });
+
+    ctx.body = { data: { sessionId: sesion.id, code: sesion.code } };
   },
 };

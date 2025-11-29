@@ -23,7 +23,7 @@ import { alpha } from '@mui/material/styles';
 import { motion, AnimatePresence } from 'framer-motion';
 
 import { useCart } from '../context/CartContext';
-import { fetchMenus } from '../api/tenant';
+import { fetchMenus, openSession } from '../api/tenant';
 import { fetchTables } from '../api/tables';
 import { http } from '../api/tenant';
 import useTableSession from '../hooks/useTableSession';
@@ -196,6 +196,44 @@ export default function RestaurantMenu() {
       cancelled = true;
     };
   }, [slug, table]);
+
+  // Abrir sesión de mesa cuando el cliente entra (marca la mesa como ocupada)
+  useEffect(() => {
+    let cancelled = false;
+
+    async function openTableSession() {
+      // Solo abrir sesión si la mesa es válida y existe
+      if (!table || !slug || isTableValid !== true) {
+        return;
+      }
+
+      try {
+        const result = await openSession(slug, { table });
+        console.log(`✅ Sesión abierta para Mesa ${table}:`, result);
+      } catch (err) {
+        // No mostramos error al usuario, solo logueamos
+        // Si falla (403, etc.), la sesión se abrirá automáticamente cuando haga el primer pedido
+        // Esto es opcional y no crítico para el funcionamiento
+        if (err?.response?.status === 403) {
+          console.info(`ℹ️ No se pudo abrir sesión de mesa (permisos). Se abrirá automáticamente al hacer el primer pedido.`);
+        } else {
+          console.warn('No se pudo abrir sesión de mesa (puede que ya esté abierta):', err?.response?.data || err?.message || err);
+        }
+      }
+    }
+
+    // Esperar un poco para asegurar que la validación terminó
+    const timer = setTimeout(() => {
+      if (!cancelled) {
+        openTableSession();
+      }
+    }, 500);
+
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+  }, [slug, table, isTableValid]);
 
   useEffect(() => {
     async function loadMenu() {

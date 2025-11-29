@@ -24,6 +24,7 @@ import EditIcon from '@mui/icons-material/Edit';
 import LocalOfferIcon from '@mui/icons-material/LocalOffer';
 import FreeBreakfastIcon from '@mui/icons-material/FreeBreakfast';
 import TableRestaurantIcon from '@mui/icons-material/TableRestaurant';
+import CheckCircleIcon from '@mui/icons-material/CheckCircle';
 
 const money = (n) =>
   new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS' })
@@ -36,6 +37,7 @@ export default function Mostrador() {
   const [pedidos, setPedidos] = useState([]);
   const [cuentas, setCuentas] = useState([]);
   const [mesas, setMesas] = useState([]);
+  const [openSessions, setOpenSessions] = useState([]); // Sesiones abiertas sin pedidos
   const [error, setError] = useState(null);
   const [showHistoryDrawer, setShowHistoryDrawer] = useState(false);
   const [historyTab, setHistoryTab] = useState(0); // 0: pedidos, 1: cuentas
@@ -562,6 +564,230 @@ export default function Mostrador() {
     }
   };
 
+  // Cargar sesiones abiertas (mesas ocupadas sin pedidos)
+  const fetchOpenSessions = async () => {
+    try {
+      // Primero obtener el restaurante por slug para tener su ID
+      const restauranteRes = await api.get(`/restaurantes?filters[slug][$eq]=${slug}&fields[0]=id`);
+      const restaurante = restauranteRes?.data?.data?.[0];
+      if (!restaurante?.id) {
+        setOpenSessions([]);
+        return;
+      }
+
+      const params = new URLSearchParams();
+      params.append('filters[restaurante][id][$eq]', restaurante.id);
+      params.append('filters[session_status][$eq]', 'open');
+      params.append('populate[mesa]', 'true'); // Poblar completamente la mesa
+      params.append('pagination[pageSize]', '200');
+
+      const { data } = await api.get(`/mesa-sesions?${params.toString()}`);
+      const sessions = data?.data || [];
+
+      // DIAGNÓSTICO: Log único de la primera sesión para ver su estructura
+      if (sessions.length > 0 && !window._debugSessionLogged) {
+        console.log('🔍 [DIAGNÓSTICO] Primera sesión encontrada:', JSON.stringify(sessions[0], null, 2));
+        window._debugSessionLogged = true;
+      }
+
+      // Incluir TODAS las sesiones abiertas (con o sin pedidos activos)
+      // La lógica en TablesStatusGridEnhanced ya maneja correctamente los pedidos activos
+      const allOpenSessions = sessions.map((session) => {
+        // Manejar diferentes estructuras de respuesta de Strapi
+        // Según el log de diagnóstico, la estructura es: session.mesa.number directamente
+        let mesaNumber = null;
+        const sessionAttr = session.attributes || session;
+        
+        // PRIORIDAD 1: Buscar directamente en session.mesa (estructura real según el log)
+        if (session.mesa) {
+          const mesa = session.mesa;
+          if (typeof mesa.number === 'number' || typeof mesa.number === 'string') {
+            mesaNumber = Number(mesa.number);
+          } else if (mesa.data?.number) {
+            mesaNumber = Number(mesa.data.number);
+          } else if (mesa.attributes?.number) {
+            mesaNumber = Number(mesa.attributes.number);
+          }
+        }
+        
+        // PRIORIDAD 2: Si no encontramos, buscar en session.attributes.mesa
+        if (!mesaNumber) {
+          const mesa = sessionAttr.mesa;
+          if (mesa) {
+            if (typeof mesa.number === 'number' || typeof mesa.number === 'string') {
+              mesaNumber = Number(mesa.number);
+            } else if (mesa.data?.number) {
+              mesaNumber = Number(mesa.data.number);
+            } else if (mesa.attributes?.number) {
+              mesaNumber = Number(mesa.attributes.number);
+            }
+          }
+        }
+
+        if (!mesaNumber || isNaN(Number(mesaNumber))) {
+          return null;
+        }
+
+        const sessionId = session.id || session.documentId;
+
+        return {
+          id: sessionId,
+          mesaNumber: Number(mesaNumber),
+          openedAt: sessionAttr.openedAt || sessionAttr.createdAt,
+        };
+      });
+
+      const validSessions = allOpenSessions.filter(Boolean);
+      
+      // DIAGNÓSTICO: Log único cuando hay sesiones válidas
+      if (validSessions.length > 0 && !window._debugValidSessionsLogged) {
+        console.log('✅ [DIAGNÓSTICO] Sesiones abiertas sin pedidos encontradas:', validSessions);
+        window._debugValidSessionsLogged = true;
+      }
+      
+      setOpenSessions(validSessions);
+    } catch (err) {
+      // Solo loguear errores críticos, no en cada intento
+      if (err?.response?.status !== 404 && err?.response?.status !== 403) {
+        console.error('[fetchOpenSessions] Error al obtener sesiones abiertas:', err?.response?.data || err);
+      }
+      setOpenSessions([]);
+    }
+  };
+
+  // Liberar mesa (cerrar sesión sin pedidos)
+  const liberarMesa = async (mesaNumber) => {
+    try {
+      // Buscar la sesión abierta de esa mesa
+      const session = openSessions.find((s) => s.mesaNumber === mesaNumber);
+      if (!session) {
+        setSnack({ open: true, msg: 'No se encontró sesión abierta para esta mesa', severity: 'warning' });
+        return;
+      }
+
+      // Cerrar la sesión
+      await api.put(`/mesa-sesions/${session.id}`, {
+        data: {
+          session_status: 'closed',
+          closedAt: new Date().toISOString(),
+        },
+      });
+
+      setSnack({ open: true, msg: `Mesa ${mesaNumber} liberada ✅`, severity: 'success' });
+      await fetchOpenSessions();
+      await fetchPedidos();
+      
+      // Cerrar el diálogo de detalle de mesa si está abierto
+      if (tableDetailDialog.mesa?.number === mesaNumber) {
+        setTableDetailDialog({ open: false, mesa: null });
+      }
+    } catch (err) {
+      console.error('Error al liberar mesa:', err);
+      setSnack({ open: true, msg: 'No se pudo liberar la mesa ❌', severity: 'error' });
+    }
+  };
+
+  // Marcar mesa como disponible después de limpiarla (cierra sesiones pendientes)
+  const marcarMesaComoDisponible = async (mesaNumber) => {
+    try {
+      // Obtener el restaurante por slug
+      const restauranteRes = await api.get(`/restaurantes?filters[slug][$eq]=${slug}&fields[0]=id`);
+      const restaurante = restauranteRes?.data?.data?.[0];
+      if (!restaurante?.id) {
+        setSnack({ open: true, msg: 'No se encontró el restaurante', severity: 'error' });
+        return;
+      }
+
+      // Buscar todas las sesiones de esta mesa (abiertas o cerradas recientemente)
+      const params = new URLSearchParams();
+      params.append('filters[restaurante][id][$eq]', restaurante.id);
+      params.append('populate[mesa][fields][0]', 'number');
+      params.append('populate[mesa][fields][1]', 'id');
+      params.append('pagination[pageSize]', '10');
+      params.append('sort[0]', 'openedAt:desc');
+
+      const { data } = await api.get(`/mesa-sesions?${params.toString()}`);
+      const sessions = data?.data || [];
+
+      // Filtrar sesiones de esta mesa
+      const mesaSessions = sessions.filter((session) => {
+        const sessionAttr = session.attributes || session;
+        const mesa = sessionAttr.mesa?.data || sessionAttr.mesa;
+        const mesaAttr = mesa?.attributes || mesa;
+        return Number(mesaAttr?.number) === mesaNumber;
+      });
+
+      // Cerrar todas las sesiones pendientes de esta mesa
+      const sessionsToClose = mesaSessions.filter((session) => {
+        const sessionAttr = session.attributes || session;
+        return sessionAttr.session_status === 'open' || sessionAttr.session_status === 'paid';
+      });
+
+      if (sessionsToClose.length === 0) {
+        setSnack({ open: true, msg: 'No hay sesiones pendientes para cerrar', severity: 'info' });
+        return;
+      }
+
+      // Cerrar todas las sesiones
+      await Promise.all(
+        sessionsToClose.map((session) => {
+          const sessionId = session.id || session.documentId;
+          return api.put(`/mesa-sesions/${sessionId}`, {
+            data: {
+              session_status: 'closed',
+              closedAt: new Date().toISOString(),
+            },
+          });
+        })
+      );
+
+      setSnack({ open: true, msg: `Mesa ${mesaNumber} marcada como disponible ✅`, severity: 'success' });
+      await fetchOpenSessions();
+      await fetchPedidos();
+      
+      // Cerrar el diálogo de detalle de mesa si está abierto
+      if (tableDetailDialog.mesa?.number === mesaNumber) {
+        setTableDetailDialog({ open: false, mesa: null });
+      }
+    } catch (err) {
+      console.error('Error al marcar mesa como disponible:', err);
+      setSnack({ open: true, msg: 'No se pudo marcar la mesa como disponible ❌', severity: 'error' });
+    }
+  };
+
+  // Verificar si una mesa necesita limpieza (tiene pedidos pagados recientemente)
+  const mesaNecesitaLimpieza = (mesaNumber) => {
+    const mesaPedidos = pedidos.filter(p =>
+      !isSystemOrder(p) &&
+      p.mesa_sesion?.mesa?.number === mesaNumber
+    );
+
+    const activeOrders = mesaPedidos.filter(o =>
+      o.order_status === 'pending' ||
+      o.order_status === 'preparing' ||
+      o.order_status === 'served'
+    );
+
+    // Si tiene pedidos activos, no necesita limpieza
+    if (activeOrders.length > 0) return false;
+
+    const paidOrders = mesaPedidos.filter(o => o.order_status === 'paid');
+    if (paidOrders.length === 0) return false;
+
+    // Verificar si el último pedido pagado fue hace menos de 30 minutos
+    const lastPaid = paidOrders.sort((a, b) =>
+      new Date(b.updatedAt || b.createdAt) - new Date(a.updatedAt || a.createdAt)
+    )[0];
+
+    if (lastPaid) {
+      const paidTime = new Date(lastPaid.updatedAt || lastPaid.createdAt);
+      const minutesSincePaid = (Date.now() - paidTime.getTime()) / (1000 * 60);
+      return minutesSincePaid < 30;
+    }
+
+    return false;
+  };
+
   useEffect(() => {
     const cached = cachedViewsRef.current.active ?? { pedidos: [], cuentas: [] };
     const nextPedidos = Array.isArray(cached.pedidos) ? [...cached.pedidos] : [];
@@ -571,9 +797,11 @@ export default function Mostrador() {
     setCuentas(nextCuentas);
     fetchPedidos();
     fetchMesas();
+    fetchOpenSessions();
     const interval = setInterval(() => {
       fetchPedidos();
       fetchMesas();
+      fetchOpenSessions();
     }, 3000);
     return () => clearInterval(interval);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -1508,6 +1736,7 @@ export default function Mostrador() {
           // Para el estado de mesas usamos SOLO pedidos "reales" (no pedidos del sistema)
           orders={pedidos.filter((p) => !isSystemOrder(p))}
             systemOrders={pedidosSistema}
+            openSessions={openSessions}
             onTableClick={(table) => {
               // Abrir modal con detalles de la mesa
               // Solo mostrar en el detalle los pedidos "reales" (no de sistema)
@@ -2054,12 +2283,46 @@ export default function Mostrador() {
                 </Box>
               )}
 
+              {/* Botón para marcar mesa como disponible si necesita limpieza */}
+              {mesaNecesitaLimpieza(tableDetailDialog.mesa?.number) && (
+                <Box sx={{ mb: 3 }}>
+                  <Divider sx={{ my: 2 }} />
+                  <Typography variant="h6" sx={{ fontWeight: 600, mb: 1 }}>
+                    Mesa por limpiar
+                  </Typography>
+                  <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+                    Esta mesa fue pagada recientemente y necesita limpieza. Marcala como disponible una vez que esté lista.
+                  </Typography>
+                  <Button
+                    variant="contained"
+                    color="success"
+                    fullWidth
+                    startIcon={<CheckCircleIcon />}
+                    onClick={() => marcarMesaComoDisponible(tableDetailDialog.mesa.number)}
+                  >
+                    Marcar como Disponible
+                  </Button>
+                </Box>
+              )}
+
               {(!tableDetailDialog.mesa.pedidos || tableDetailDialog.mesa.pedidos.length === 0) &&
-                !tableDetailDialog.mesa.cuenta && (
+                !tableDetailDialog.mesa.cuenta &&
+                !mesaNecesitaLimpieza(tableDetailDialog.mesa?.number) && (
                   <Box sx={{ textAlign: 'center', py: 4 }}>
-                    <Typography variant="body1" color="text.secondary">
+                    <Typography variant="body1" color="text.secondary" sx={{ mb: 2 }}>
                       Esta mesa no tiene pedidos activos ni cuenta abierta
                     </Typography>
+                    {/* Botón para liberar mesa si tiene sesión abierta */}
+                    {openSessions.some((s) => s.mesaNumber === tableDetailDialog.mesa?.number) && (
+                      <Button
+                        variant="contained"
+                        color="warning"
+                        onClick={() => liberarMesa(tableDetailDialog.mesa.number)}
+                        sx={{ mt: 2 }}
+                      >
+                        Liberar Mesa
+                      </Button>
+                    )}
                   </Box>
                 )}
             </>

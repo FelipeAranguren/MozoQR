@@ -20,5 +20,11 @@ export default {
       handler: 'tenant.closeAccount',
       config: { policies: [], middlewares: [] },
     },
+    {
+      method: 'POST',
+      path: '/restaurants/:slug/open-session',
+      handler: 'tenant.openSession',
+      config: { policies: [], middlewares: [] },
+    },
   ],
 };

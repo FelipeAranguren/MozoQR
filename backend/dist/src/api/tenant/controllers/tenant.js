@@ -5,6 +5,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
  * Endpoints:
  *  - POST /api/restaurants/:slug/orders
  *  - POST|PUT /api/restaurants/:slug/close-account
+ *  - POST /api/restaurants/:slug/open-session
  */
 const utils_1 = require("@strapi/utils");
 const { ValidationError, NotFoundError } = utils_1.errors;
@@ -220,5 +221,39 @@ exports.default = {
             // opcional: si no existe el campo, ignorar
         }
         ctx.body = { data: { paidOrders: ids.length } };
+    },
+    /**
+     * POST /restaurants/:slug/open-session
+     * Body: { table: number }
+     * Abre una sesión de mesa (marca la mesa como ocupada) aunque no haya pedido todavía
+     */
+    async openSession(ctx) {
+        var _a;
+        const { slug } = ctx.params || {};
+        if (!slug)
+            throw new ValidationError('Missing restaurant slug');
+        const data = getPayload(ctx.request.body);
+        const table = data === null || data === void 0 ? void 0 : data.table;
+        if (table === undefined || table === null || table === '') {
+            throw new ValidationError('Missing table');
+        }
+        // Restaurante
+        const restaurante = await getRestaurantBySlug(String(slug));
+        // Mesa (debe existir, no creamos automáticamente)
+        const found = await strapi.entityService.findMany('api::mesa.mesa', {
+            filters: { restaurante: { id: Number(restaurante.id) }, number: Number(table) },
+            fields: ['id', 'number'],
+            limit: 1,
+        });
+        if (!((_a = found === null || found === void 0 ? void 0 : found[0]) === null || _a === void 0 ? void 0 : _a.id)) {
+            throw new ValidationError(`Mesa ${table} no existe para este restaurante`);
+        }
+        const mesa = found[0];
+        // Crear o reutilizar sesión abierta
+        const sesion = await getOrCreateOpenSession({
+            restauranteId: restaurante.id,
+            mesaId: mesa.id,
+        });
+        ctx.body = { data: { sessionId: sesion.id, code: sesion.code } };
     },
 };

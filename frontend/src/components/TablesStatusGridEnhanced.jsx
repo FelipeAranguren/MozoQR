@@ -17,8 +17,17 @@ export default function TablesStatusGridEnhanced({
   tables = [],
   orders = [],
   systemOrders = [],
+  openSessions = [],
   onTableClick
 }) {
+  // DIAGNÓSTICO: Log único cuando se reciben openSessions
+  React.useEffect(() => {
+    if (openSessions.length > 0 && !window._debugOpenSessionsReceived) {
+      console.log('📊 [DIAGNÓSTICO] TablesStatusGrid recibió openSessions:', openSessions);
+      window._debugOpenSessionsReceived = true;
+    }
+  }, [openSessions]);
+
   // Agrupar pedidos por mesa
   const ordersByTable = React.useMemo(() => {
     try {
@@ -69,6 +78,15 @@ export default function TablesStatusGridEnhanced({
   const getTableStatus = (table) => {
     const tableOrders = ordersByTable.get(table.number) || [];
     const systemCalls = systemOrdersByTable.get(table.number) || [];
+    const hasOpenSession = openSessions.some((s) => {
+      const matches = Number(s.mesaNumber) === Number(table.number);
+      // DIAGNÓSTICO: Log único cuando se detecta una sesión abierta
+      if (matches && !window._debugSessionDetected) {
+        console.log(`🎯 [DIAGNÓSTICO] Mesa ${table.number} tiene sesión abierta detectada!`, s);
+        window._debugSessionDetected = true;
+      }
+      return matches;
+    });
     const activeOrders = tableOrders.filter(o =>
       o.order_status === 'pending' ||
       o.order_status === 'preparing' ||
@@ -108,6 +126,19 @@ export default function TablesStatusGridEnhanced({
         blinking: false,
         priority: 2,
         activeOrdersCount: activeOrders.length
+      };
+    }
+
+    // PRIORIDAD 2.5: Si tiene sesión abierta pero sin pedidos, está ocupada (cliente entró pero no pidió)
+    if (hasOpenSession && activeOrders.length === 0 && !hasServed && !hasPaid) {
+      return {
+        status: 'occupied',
+        label: 'Ocupada',
+        color: '#1976d2', // Azul
+        icon: <RestaurantIcon />,
+        blinking: false,
+        priority: 2,
+        activeOrdersCount: 0
       };
     }
 
