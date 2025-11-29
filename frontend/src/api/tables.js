@@ -1,5 +1,8 @@
-// frontend/src/api/tables.js
 import { api } from '../api';
+import axios from 'axios';
+
+const baseURL = import.meta.env?.VITE_API_URL || 'http://localhost:1337/api';
+const publicHttp = axios.create({ baseURL });
 
 // Helper para obtener token de autenticación
 function getAuthHeaders() {
@@ -13,19 +16,62 @@ function getAuthHeaders() {
 export async function fetchTables(slug) {
   if (!slug) return [];
 
+  // Método principal: obtener mesas desde el restaurante (más confiable)
   try {
-    // Primero obtener el ID del restaurante
+    const restauranteRes = await api.get(
+      `/restaurantes?filters[slug][$eq]=${slug}&populate[mesas]=true&fields[0]=id`
+    );
+    
+    const restauranteData = restauranteRes?.data?.data?.[0];
+    if (restauranteData) {
+      const attr = restauranteData.attributes || restauranteData;
+      const mesasData = attr.mesas?.data || attr.mesas || [];
+      
+      // Debug: log para ver qué estamos obteniendo
+      if (mesasData.length > 0) {
+        console.log(`[tables.js] Obtenidas ${mesasData.length} mesas desde restaurante para ${slug}`);
+      }
+      
+      // Si hay mesas, retornarlas
+      if (mesasData.length > 0) {
+        const mesas = mesasData.map(item => {
+          const mesaAttr = item.attributes || item;
+          return {
+            id: item.id || item.documentId,
+            documentId: item.documentId,
+            number: mesaAttr.number || mesaAttr.numero || item.id,
+            name: mesaAttr.name || mesaAttr.displayName || `Mesa ${mesaAttr.number || item.id}`,
+            displayName: mesaAttr.displayName || mesaAttr.name || `Mesa ${mesaAttr.number || item.id}`
+          };
+        }).sort((a, b) => (a.number || 0) - (b.number || 0));
+        
+        return mesas;
+      }
+      
+      // Si no hay mesas pero el restaurante existe, retornar array vacío (válido)
+      console.log(`[tables.js] Restaurante ${slug} encontrado pero sin mesas`);
+      return [];
+    } else {
+      console.warn(`[tables.js] Restaurante ${slug} no encontrado`);
+    }
+  } catch (restErr) {
+    // Si hay un error real (no solo que no hay mesas), loguearlo pero continuar con fallback
+    console.warn('[tables.js] Error al obtener mesas desde restaurante:', restErr?.response?.status || restErr?.message);
+  }
+
+  // Fallback: intentar endpoint directo de mesas (solo si el método principal no funcionó)
+  // Este método puede dar 403 si no hay permisos, pero es mejor intentarlo como último recurso
+  try {
     const restauranteId = await getRestaurantId(slug);
     if (!restauranteId) {
-      console.warn('No se encontró el restaurante con slug:', slug);
+      // Si no encontramos el restaurante, retornar vacío
       return [];
     }
 
     const res = await api.get(
-      `/mesas?filters[restaurante][id][$eq]=${restauranteId}&fields[0]=id&fields[1]=number&fields[2]=name&fields[3]=displayName&sort[0]=number:asc`,
-      { headers: getAuthHeaders() }
+      `/mesas?filters[restaurante][id][$eq]=${restauranteId}&fields[0]=id&fields[1]=number&fields[2]=name&fields[3]=displayName&sort[0]=number:asc`
     );
-    
+
     const data = res?.data?.data || [];
     return data.map(item => {
       const attr = item.attributes || item;
@@ -38,7 +84,14 @@ export async function fetchTables(slug) {
       };
     });
   } catch (err) {
-    console.error('Error fetching tables:', err);
+    // Si el fallback también falla, solo loguear si no es 403 (403 es esperado si no hay permisos)
+    if (err?.response?.status === 403) {
+      // Error 403 es esperado si el usuario no tiene permisos para el endpoint directo
+      // Pero ya intentamos el método principal, así que solo retornar vacío sin loguear
+      return [];
+    }
+    // Para otros errores, loguear pero retornar vacío
+    console.warn('[tables.js] Error en fallback de mesas:', err?.response?.status || err?.message);
     return [];
   }
 }
@@ -54,11 +107,11 @@ export async function fetchActiveOrders(slug) {
       `/pedidos?filters[restaurante][slug][$eq]=${slug}&filters[order_status][$ne]=paid&populate[mesa_sesion][populate]=mesa&sort[0]=createdAt:desc&pagination[pageSize]=200`,
       { headers: getAuthHeaders() }
     );
-    
+
     const data = res?.data?.data || [];
     return data.map(item => {
       const attr = item.attributes || item;
-      
+
       // Extraer número de mesa
       let mesaNumber = null;
       const mesaSesion = attr.mesa_sesion?.data || attr.mesa_sesion;
@@ -93,11 +146,11 @@ async function getRestaurantId(slug) {
   if (!slug) return null;
 
   try {
+    // Usar api en lugar de publicHttp para incluir autenticación automática
     const res = await api.get(
-      `/restaurantes?filters[slug][$eq]=${slug}&fields[0]=id`,
-      { headers: getAuthHeaders() }
+      `/restaurantes?filters[slug][$eq]=${slug}&fields[0]=id`
     );
-    
+
     const data = res?.data?.data?.[0];
     return data?.id || data?.documentId || null;
   } catch (err) {
@@ -121,14 +174,21 @@ export async function createTable(slug, tableData) {
         number: Number(tableData.number),
         name: tableData.name || `Mesa ${tableData.number}`,
         displayName: tableData.displayName || tableData.name || `Mesa ${tableData.number}`,
-        restaurante: restauranteId
+        restaurante: restauranteId,
+        isActive: true,
+        publishedAt: new Date().toISOString() // Necesario para draftAndPublish
       }
     };
 
-    const res = await api.post('/mesas', payload, { headers: getAuthHeaders() });
+    // api ya incluye el token automáticamente por el interceptor
+    const res = await api.post('/mesas', payload);
     return res?.data?.data || null;
   } catch (err) {
     console.error('Error creating table:', err);
+    // Mejorar el mensaje de error
+    if (err?.response?.status === 403) {
+      throw new Error('No tienes permisos para crear mesas. Verifica que estés autenticado correctamente.');
+    }
     throw err;
   }
 }
@@ -148,10 +208,14 @@ export async function updateTable(tableId, tableData) {
       }
     };
 
-    const res = await api.put(`/mesas/${tableId}`, payload, { headers: getAuthHeaders() });
+    // api ya incluye el token automáticamente por el interceptor
+    const res = await api.put(`/mesas/${tableId}`, payload);
     return res?.data?.data || null;
   } catch (err) {
     console.error('Error updating table:', err);
+    if (err?.response?.status === 403) {
+      throw new Error('No tienes permisos para actualizar mesas.');
+    }
     throw err;
   }
 }
@@ -163,10 +227,14 @@ export async function deleteTable(tableId) {
   if (!tableId) throw new Error('tableId requerido');
 
   try {
-    await api.delete(`/mesas/${tableId}`, { headers: getAuthHeaders() });
+    // api ya incluye el token automáticamente por el interceptor
+    await api.delete(`/mesas/${tableId}`);
     return true;
   } catch (err) {
     console.error('Error deleting table:', err);
+    if (err?.response?.status === 403) {
+      throw new Error('No tienes permisos para eliminar mesas.');
+    }
     throw err;
   }
 }

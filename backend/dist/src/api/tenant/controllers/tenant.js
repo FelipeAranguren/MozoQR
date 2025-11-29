@@ -27,24 +27,21 @@ async function getRestaurantBySlug(slug) {
         throw new NotFoundError('Restaurante no encontrado');
     return { id: r.id, name: r.name };
 }
-/** Crea (si no existe) o devuelve la Mesa (por restaurante + number) */
+/**
+ * Devuelve la Mesa existente (por restaurante + number).
+ * Ya no crea mesas automáticamente: si no existe, lanza ValidationError.
+ */
 async function getOrCreateMesa(restauranteId, number) {
-    var _a;
     const found = await strapi.entityService.findMany('api::mesa.mesa', {
         filters: { restaurante: { id: Number(restauranteId) }, number },
         fields: ['id', 'number'],
         limit: 1,
     });
-    if ((_a = found === null || found === void 0 ? void 0 : found[0]) === null || _a === void 0 ? void 0 : _a.id)
-        return found[0];
-    return await strapi.entityService.create('api::mesa.mesa', {
-        data: {
-            number,
-            isActive: true,
-            restaurante: restauranteId,
-            publishedAt: new Date(),
-        },
-    });
+    const mesa = found === null || found === void 0 ? void 0 : found[0];
+    if (!(mesa === null || mesa === void 0 ? void 0 : mesa.id)) {
+        throw new ValidationError(`Mesa ${number} no existe para este restaurante`);
+    }
+    return mesa;
 }
 /**
  * Devuelve la sesión ABIERTA para esa mesa.
@@ -88,9 +85,15 @@ async function createItems(pedidoId, items) {
         const quantity = Number((_b = (_a = it === null || it === void 0 ? void 0 : it.qty) !== null && _a !== void 0 ? _a : it === null || it === void 0 ? void 0 : it.quantity) !== null && _b !== void 0 ? _b : 0);
         const unitPrice = Number((_d = (_c = it === null || it === void 0 ? void 0 : it.unitPrice) !== null && _c !== void 0 ? _c : it === null || it === void 0 ? void 0 : it.price) !== null && _d !== void 0 ? _d : 0);
         const total = Number.isFinite(quantity * unitPrice) ? quantity * unitPrice : 0;
-        const productId = Number((_e = it === null || it === void 0 ? void 0 : it.productId) !== null && _e !== void 0 ? _e : it === null || it === void 0 ? void 0 : it.id);
-        if (!productId)
-            throw new ValidationError('Item sin productId');
+        const rawProductId = (_e = it === null || it === void 0 ? void 0 : it.productId) !== null && _e !== void 0 ? _e : it === null || it === void 0 ? void 0 : it.id;
+        const productId = rawProductId !== undefined &&
+            rawProductId !== null &&
+            typeof rawProductId === 'string' &&
+            /^\d+$/.test(rawProductId)
+            ? Number(rawProductId)
+            : typeof rawProductId === 'number'
+                ? rawProductId
+                : null;
         return strapi.entityService.create('api::item-pedido.item-pedido', {
             data: {
                 quantity,
@@ -98,7 +101,7 @@ async function createItems(pedidoId, items) {
                 UnitPrice: Number.isFinite(unitPrice) ? unitPrice : 0,
                 totalPrice: total,
                 order: pedidoId,
-                product: productId,
+                ...(productId ? { product: productId } : {}),
                 publishedAt: new Date(),
             },
         });

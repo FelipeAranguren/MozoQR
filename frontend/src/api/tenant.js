@@ -1,9 +1,12 @@
 import { client } from './client';
+import axios from 'axios';
 
 const baseURL = import.meta.env?.VITE_API_URL || 'http://localhost:1337/api';
 const IDEM_ON = String(import.meta.env?.VITE_IDEMPOTENCY || '').toLowerCase() === 'on';
 
 export const http = client;
+// Instancia sin interceptores para peticiones públicas (evita errores 401 por tokens viejos/inválidos)
+const publicHttp = axios.create({ baseURL });
 
 
 /* ---------------- UTILS ---------------- */
@@ -324,7 +327,7 @@ export async function fetchOrderDetails(slug, payload) {
     params.append('sort[0]', 'createdAt:asc');
     params.append('pagination[pageSize]', '100');
 
-    const { data } = await http.get(`/pedidos?${params.toString()}`);
+    const { data } = await publicHttp.get(`/pedidos?${params.toString()}`);
     const rows = data?.data || [];
 
     // Filtrar por mesa (ignoramos sesión para mostrar todo lo acumulado de la mesa)

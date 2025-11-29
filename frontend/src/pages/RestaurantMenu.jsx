@@ -1,6 +1,6 @@
 // src/pages/RestaurantMenu.jsx
 import React, { useEffect, useState, useMemo } from 'react';
-import { useParams } from 'react-router-dom';
+import { useParams, useNavigate } from 'react-router-dom';
 import {
   Box,
   Container,
@@ -24,10 +24,12 @@ import { motion, AnimatePresence } from 'framer-motion';
 
 import { useCart } from '../context/CartContext';
 import { fetchMenus } from '../api/tenant';
+import { fetchTables } from '../api/tables';
 import { http } from '../api/tenant';
 import useTableSession from '../hooks/useTableSession';
 import StickyFooter from '../components/StickyFooter';
 import QtyStepper from '../components/QtyStepper';
+import TableSelector from '../components/TableSelector';
 
 const PLACEHOLDER = 'https://via.placeholder.com/600x400?text=No+Image';
 const money = (n) =>
@@ -64,6 +66,7 @@ const getMediaUrl = (img, base) => {
 export default function RestaurantMenu() {
   const { slug } = useParams();
   const { table, tableSessionId } = useTableSession();
+  const navigate = useNavigate();
 
   const [productos, setProductos] = useState(null);
   const [productosTodos, setProductosTodos] = useState([]);
@@ -72,6 +75,7 @@ export default function RestaurantMenu() {
   const [categoriaSeleccionada, setCategoriaSeleccionada] = useState(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [loading, setLoading] = useState(true);
+  const [isTableValid, setIsTableValid] = useState(undefined); // undefined = chequeando, true = ok, false = no existe
 
   const { items, addItem, removeItem } = useCart();
 
@@ -158,6 +162,40 @@ export default function RestaurantMenu() {
       return [];
     }
   };
+
+  // Validar que la mesa exista en la BD cuando viene en la URL (?t=...)
+  useEffect(() => {
+    let cancelled = false;
+
+    async function validateTable() {
+      // Si no hay mesa en la URL, no hay nada que validar
+      if (!table || !slug) {
+        setIsTableValid(true);
+        return;
+      }
+
+      try {
+        const mesas = await fetchTables(slug);
+        const exists = Array.isArray(mesas)
+          ? mesas.some((m) => Number(m.number) === Number(table))
+          : false;
+        if (!cancelled) {
+          setIsTableValid(exists);
+        }
+      } catch (err) {
+        console.error('Error validando mesa seleccionada:', err);
+        if (!cancelled) {
+          setIsTableValid(false);
+        }
+      }
+    }
+
+    validateTable();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [slug, table]);
 
   useEffect(() => {
     async function loadMenu() {
@@ -366,6 +404,42 @@ export default function RestaurantMenu() {
       </Box>
     </Card>
   );
+
+  // Si hay número de mesa en la URL pero no existe en la BD -> mostrar mensaje de error
+  if (table && isTableValid === false) {
+    return (
+      <Container
+        component="main"
+        maxWidth="sm"
+        disableGutters
+        sx={{
+          px: { xs: 1.25, sm: 2 },
+          py: { xs: 3, sm: 4 },
+          textAlign: 'center',
+          mt: 8,
+        }}
+      >
+        <Typography variant="h6" color="text.secondary" sx={{ mb: 2 }}>
+          La mesa {table} no existe en este restaurante.
+        </Typography>
+        <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
+          Volvé atrás y elegí una mesa válida de la lista.
+        </Typography>
+        <Button
+          variant="contained"
+          onClick={() => navigate(`/${slug}/menu`)}
+          sx={{ textTransform: 'none', borderRadius: 999 }}
+        >
+          Volver a seleccionar mesa
+        </Button>
+      </Container>
+    );
+  }
+
+  // Si no hay mesa seleccionada, mostrar el selector de mesas
+  if (!table) {
+    return <TableSelector />;
+  }
 
   // --------- Estados de carga / vacío
   if (loading && productos === null) {

@@ -114,7 +114,7 @@ export default function Mostrador() {
         `&filters[order_status][$in][0]=served&filters[order_status][$in][1]=paid` +
         `&publicationState=preview` +
         `&fields[0]=id&fields[1]=documentId&fields[2]=order_status&fields[3]=total&fields[4]=createdAt&fields[5]=updatedAt&fields[6]=customerNotes&fields[7]=staffNotes` +
-        `&populate[mesa_sesion][populate][mesa][fields][0]=number` +
+        `&populate[mesa_sesion][populate][mesa]=true` +
         `&sort[0]=updatedAt:desc` +
         `&pagination[pageSize]=100`;
 
@@ -122,9 +122,22 @@ export default function Mostrador() {
       const base = res?.data?.data ?? [];
       const planos = base.map(mapPedidoRow);
 
+      // Hidratar mesa_sesion para pedidos que no la tienen
+      const planosConMesa = await Promise.all(
+        planos.map(async (p) => {
+          // Si ya tiene mesa_sesion con mesa y número, no hacer request
+          if (p.mesa_sesion?.mesa?.number != null) return p;
+          // Intentar hidratar si no tiene mesa_sesion
+          if (!p.mesa_sesion) {
+            return await hydrateMesaSesionIfMissing(p);
+          }
+          return p;
+        })
+      );
+
       // Cargar items para cada pedido
       const planosConItems = await Promise.all(
-        planos.map(async (p) => {
+        planosConMesa.map(async (p) => {
           try {
             const items = await fetchItemsDePedido(p.id);
             return { ...p, items: items || [] };
@@ -134,20 +147,32 @@ export default function Mostrador() {
         })
       );
 
-      // Agrupar por sesión para cuentas
+      // Agrupar por sesión o por mesa para cuentas
       const grupos = new Map();
       planosConItems.forEach((p) => {
+        let key;
+        const mesaNum = p.mesa_sesion?.mesa?.number;
+        
         if (p.mesa_sesion?.id != null) {
-          const key = `sesion:${p.mesa_sesion.id}`;
-          const arr = grupos.get(key) || [];
-          arr.push(p);
-          grupos.set(key, arr);
+          // Priorizar agrupación por sesión
+          key = `sesion:${p.mesa_sesion.id}`;
+        } else if (mesaNum != null) {
+          // Si no hay sesión pero hay mesa, agrupar por mesa
+          key = `mesa:${mesaNum}`;
+        } else {
+          // Si no hay ni sesión ni mesa, agrupar por pedido individual
+          key = `pedido:${p.id}`;
         }
+        
+        const arr = grupos.get(key) || [];
+        arr.push(p);
+        grupos.set(key, arr);
       });
 
       const cuentasArr = Array.from(grupos, ([groupKey, arr]) => {
         const total = arr.reduce((sum, it) => sum + Number(it.total || 0), 0);
         const lastUpdated = arr.reduce((max, it) => Math.max(max, new Date(it.updatedAt).getTime()), 0);
+        // Intentar obtener número de mesa de cualquier pedido del grupo
         const mesaNumber = arr.find((x) => Number.isFinite(Number(x.mesa_sesion?.mesa?.number)))?.mesa_sesion?.mesa?.number ?? null;
         return {
           groupKey,
@@ -190,10 +215,28 @@ export default function Mostrador() {
 
   const mapPedidoRow = (row) => {
     const a = row.attributes || row;
-    const ses = a.mesa_sesion?.data || a.mesa_sesion || null;
-    const sesAttrs = ses?.attributes || ses || {};
-    const mesa = sesAttrs?.mesa?.data || sesAttrs?.mesa || null;
-    const mesaAttrs = mesa?.attributes || mesa || {};
+    
+    // Extraer mesa_sesion con múltiples variantes de estructura
+    let ses = a.mesa_sesion?.data || a.mesa_sesion || null;
+    let sesAttrs = ses?.attributes || ses || {};
+    
+    // Extraer mesa con múltiples variantes de estructura
+    let mesa = sesAttrs?.mesa?.data || sesAttrs?.mesa || null;
+    let mesaAttrs = mesa?.attributes || mesa || {};
+    
+    // Si mesa está directamente en sesAttrs sin .data
+    if (!mesa && sesAttrs.mesa) {
+      mesa = sesAttrs.mesa;
+      mesaAttrs = mesa?.attributes || mesa || {};
+    }
+    
+    // Extraer número de mesa con múltiples variantes
+    let mesaNumber = mesaAttrs.number || mesaAttrs.numero || mesa?.number || null;
+    
+    // Si no encontramos el número, intentar otras rutas
+    if (!mesaNumber && mesa) {
+      mesaNumber = mesa.number || mesa.numero || null;
+    }
 
     // Extraer items si vienen en la respuesta del backend
     let items = [];
@@ -219,6 +262,21 @@ export default function Mostrador() {
       }).filter((it) => it.id); // Filtrar items sin ID válido
     }
 
+    // Construir objeto mesa_sesion con toda la información disponible
+    const mesaSesionObj = ses
+      ? {
+          id: ses.id || sesAttrs.id || ses.documentId,
+          session_status: sesAttrs.session_status || ses.session_status,
+          code: sesAttrs.code || ses.code,
+          mesa: mesa && mesaNumber != null
+            ? {
+                id: mesa.id || mesaAttrs.id || mesa.documentId,
+                number: mesaNumber,
+              }
+            : null,
+        }
+      : null;
+
     return {
       id: row.id || a.id,
       documentId: a.documentId,
@@ -228,34 +286,37 @@ export default function Mostrador() {
       updatedAt: a.updatedAt,
       total: a.total,
       items: items, // Incluir items si vienen del backend
-      mesa_sesion: ses
-        ? {
-          id: ses.id,
-          session_status: sesAttrs.session_status,
-          code: sesAttrs.code,
-          mesa: mesa ? { id: mesa.id, number: mesaAttrs.number } : null,
-        }
-        : null,
+      mesa_sesion: mesaSesionObj,
     };
   };
 
   const hydrateMesaSesionIfMissing = async (pedido) => {
-    if (pedido.mesa_sesion) return pedido;
+    // Si ya tiene mesa_sesion con mesa y número, no hacer request
+    if (pedido.mesa_sesion?.mesa?.number != null) return pedido;
+    // Si no tiene ID válido, no intentar cargar
+    if (!pedido.id) return pedido;
+    // Si el pedido no tiene mesa_sesion.id, probablemente nunca tuvo una, no intentar cargar
+    if (!pedido.mesa_sesion?.id && pedido.mesa_sesion === null) {
+      // Este pedido claramente no tiene mesa_sesion, no hacer request
+      return pedido;
+    }
+    
     try {
       const qs =
         `?publicationState=preview` +
         `&fields[0]=id&fields[1]=documentId&fields[2]=order_status&fields[3]=customerNotes&fields[4]=total&fields[5]=createdAt&fields[6]=updatedAt` +
-        `&populate[mesa_sesion][fields][0]=id` +
-        `&populate[mesa_sesion][fields][1]=session_status` +
-        `&populate[mesa_sesion][fields][2]=code` +
-        `&populate[mesa_sesion][populate][mesa][fields][0]=id` +
-        `&populate[mesa_sesion][populate][mesa][fields][1]=number`;
+        `&populate[mesa_sesion][populate][mesa]=true`;
       const r = await api.get(`/pedidos/${pedido.id}${qs}`);
       const data = r?.data?.data;
       if (!data) return pedido;
       const filled = mapPedidoRow({ id: data.id, ...(data.attributes ? data : { attributes: data }) });
       return filled.mesa_sesion ? filled : pedido;
-    } catch {
+    } catch (err) {
+      // Solo loggear errores que no sean 404 (pedido no encontrado es esperado en algunos casos)
+      if (err?.response?.status !== 404) {
+        console.warn(`[Mostrador] No se pudo cargar mesa_sesion para pedido ${pedido.id}:`, err?.response?.status || err?.message);
+      }
+      // Si es 404, el pedido no existe o no está publicado, simplemente retornar el pedido original
       return pedido;
     }
   };
@@ -317,19 +378,41 @@ export default function Mostrador() {
         statusFilter +
         `&publicationState=preview` +
         `&fields[0]=id&fields[1]=documentId&fields[2]=order_status&fields[3]=customerNotes&fields[4]=staffNotes&fields[5]=total&fields[6]=createdAt&fields[7]=updatedAt` +
-        `&populate[mesa_sesion][fields][0]=id` +
-        `&populate[mesa_sesion][fields][1]=session_status` +
-        `&populate[mesa_sesion][fields][2]=code` +
-        `&populate[mesa_sesion][populate][mesa][fields][0]=id` +
-        `&populate[mesa_sesion][populate][mesa][fields][1]=number` +
+        `&populate[mesa_sesion][populate][mesa]=true` +
         `&sort[0]=${encodeURIComponent(sort)}` +
         `&pagination[pageSize]=100`;
 
       const res = await api.get(`/pedidos${listQS}`);
       const base = res?.data?.data ?? [];
 
+      // Debug: Log primer pedido para ver estructura (solo en primera carga)
+      if (base.length > 0 && !hasLoadedRef.current) {
+        console.log('[Mostrador] Estructura del primer pedido:', JSON.stringify(base[0], null, 2));
+      }
+
       const planos = base.map(mapPedidoRow);
-      const planosFilled = await Promise.all(planos.map(hydrateMesaSesionIfMissing));
+      
+      // Debug: Log primer pedido mapeado (solo en primera carga)
+      if (planos.length > 0 && !hasLoadedRef.current) {
+        console.log('[Mostrador] Primer pedido mapeado:', planos[0]);
+        console.log('[Mostrador] Mesa número extraído:', planos[0]?.mesa_sesion?.mesa?.number);
+        console.log('[Mostrador] Mesa_sesion completa:', planos[0]?.mesa_sesion);
+      }
+      
+      // Solo hidratar pedidos que realmente necesitan la información
+      // (que tienen mesa_sesion.id pero no tienen mesa.number)
+      const planosFilled = await Promise.all(
+        planos.map(async (p) => {
+          // Si ya tiene número de mesa, no hidratar
+          if (p.mesa_sesion?.mesa?.number != null) return p;
+          // Si tiene mesa_sesion.id pero no mesa.number, intentar hidratar
+          if (p.mesa_sesion?.id) {
+            return await hydrateMesaSesionIfMissing(p);
+          }
+          // Si no tiene mesa_sesion para nada, no intentar hidratar (evita 404)
+          return p;
+        })
+      );
 
       // cargar items (priorizar items del backend, luego intentar cargar si faltan)
       const prevByKey = new Map(pedidosRef.current.map((p) => [keyOf(p), p]));
@@ -403,9 +486,12 @@ export default function Mostrador() {
       pedidosRef.current = visibles;
       setPedidos(visibles);
 
-      // ---- agrupar cuentas (solo activas)
+      // ---- agrupar cuentas (solo activas, excluyendo pedidos del sistema)
       const grupos = new Map();
       ordenados.forEach((p) => {
+        // Ignorar pedidos del sistema (llamar mozo / solicitud de cobro / asistencia)
+        if (isSystemOrder(p)) return;
+
         const mesaNum = p.mesa_sesion?.mesa?.number;
         let key;
         if (mesaNum != null) {
@@ -533,6 +619,37 @@ export default function Mostrador() {
     } catch { }
   };
 
+  // Marcar como atendidas todas las llamadas de mozo / solicitudes del sistema de una mesa
+  const marcarLlamadasAtendidas = async (mesa) => {
+    const systemPedidos = mesa?.systemPedidos || [];
+    if (!systemPedidos.length) return;
+
+    try {
+      await Promise.all(systemPedidos.map((p) => putEstado(p, 'paid')));
+      setSnack({
+        open: true,
+        msg: 'Llamada atendida. La mesa volverá a su estado normal en unos instantes.',
+        severity: 'success',
+      });
+      // Refrescar pedidos para que desaparezca el estado de llamada
+      fetchPedidos();
+      // Limpiar las llamadas del estado local del diálogo
+      setTableDetailDialog((prev) => ({
+        ...prev,
+        mesa: prev.mesa
+          ? { ...prev.mesa, systemPedidos: [] }
+          : prev.mesa,
+      }));
+    } catch (err) {
+      console.error('Error al marcar llamadas atendidas:', err?.response?.data || err);
+      setSnack({
+        open: true,
+        msg: 'No se pudo marcar la llamada como atendida. Intentá de nuevo.',
+        severity: 'error',
+      });
+    }
+  };
+
   const marcarComoRecibido = async (pedido) => {
     try {
       setPedidos((prev) => {
@@ -616,16 +733,26 @@ export default function Mostrador() {
 
   const cancelarPedido = async (pedido, reason = '') => {
     try {
-      await api.patch(`/pedidos/${pedido.id}`, {
-        data: {
-          order_status: 'cancelled',
-          cancellationReason: reason
+      // Reutilizar la lógica robusta de putEstado (maneja PATCH/PUT y el bug de 405)
+      await putEstado(pedido, 'cancelled');
+
+      // Guardar razón de cancelación si viene algo
+      const trimmed = (reason || '').trim();
+      if (trimmed) {
+        try {
+          await api.patch(`/pedidos/${pedido.id}`, {
+            data: { cancellationReason: trimmed },
+          });
+        } catch (err) {
+          // Si falla solo la razón, lo registramos pero no rompemos la cancelación
+          console.warn('No se pudo guardar la razón de cancelación:', err?.response?.data || err);
         }
-      });
+      }
+
       setSnack({ open: true, msg: 'Pedido cancelado ✅', severity: 'success' });
       await fetchPedidos();
     } catch (err) {
-      console.error('Error al cancelar pedido:', err);
+      console.error('Error al cancelar pedido:', err?.response?.data || err);
       setSnack({ open: true, msg: 'No se pudo cancelar el pedido ❌', severity: 'error' });
     }
   };
@@ -734,9 +861,16 @@ export default function Mostrador() {
 
     // Check customer notes for payment requests
     const notes = (pedido.customerNotes || '').toUpperCase();
-    if (notes.includes('SOLICITA COBRAR') || notes.includes('CUENTA') || notes.includes('PAGAR')) {
-      return true;
-    }
+    const systemNoteKeywords = [
+      'SOLICITA COBRAR',
+      'SOLICITUD DE COBRO',
+      'CUENTA',
+      'PAGAR',
+      'SOLICITUD DE ASISTENCIA',
+      'LLAMAR MOZO',
+      'MOZO',
+    ];
+    if (systemNoteKeywords.some((kw) => notes.includes(kw))) return true;
 
     return false;
   };
@@ -1371,11 +1505,19 @@ export default function Mostrador() {
         <Box sx={{ mt: 3 }}>
           <TablesStatusGridEnhanced
             tables={mesas}
-            orders={pedidos}
+          // Para el estado de mesas usamos SOLO pedidos "reales" (no pedidos del sistema)
+          orders={pedidos.filter((p) => !isSystemOrder(p))}
             systemOrders={pedidosSistema}
             onTableClick={(table) => {
               // Abrir modal con detalles de la mesa
+              // Solo mostrar en el detalle los pedidos "reales" (no de sistema)
               const mesaPedidos = pedidos.filter(p =>
+                !isSystemOrder(p) &&
+                p.mesa_sesion?.mesa?.number === table.number
+              );
+              // Y agrupar también las llamadas del sistema para poder limpiarlas
+              const mesaSystemPedidos = pedidos.filter(p =>
+                isSystemOrder(p) &&
                 p.mesa_sesion?.mesa?.number === table.number
               );
               const mesaCuenta = cuentas.find(c => c.mesaNumber === table.number);
@@ -1384,7 +1526,8 @@ export default function Mostrador() {
                 mesa: {
                   ...table,
                   pedidos: mesaPedidos,
-                  cuenta: mesaCuenta
+                  cuenta: mesaCuenta,
+                  systemPedidos: mesaSystemPedidos,
                 }
               });
             }}
@@ -1781,6 +1924,51 @@ export default function Mostrador() {
 
           {tableDetailDialog.mesa && (
             <>
+              {/* Llamadas del sistema (mozo / pago / asistencia) */}
+              {tableDetailDialog.mesa.systemPedidos && tableDetailDialog.mesa.systemPedidos.length > 0 && (
+                <Box sx={{ mb: 3 }}>
+                  <Typography variant="h6" sx={{ fontWeight: 600, mb: 1 }}>
+                    Llamadas de la mesa
+                  </Typography>
+                  <Typography variant="body2" color="text.secondary" sx={{ mb: 1.5 }}>
+                    Esta mesa hizo una llamada al mozo o una solicitud especial. Marcala como atendida cuando ya la hayas gestionado.
+                  </Typography>
+                  <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
+                    {tableDetailDialog.mesa.systemPedidos.map((pedido) => (
+                      <Card key={pedido.id}>
+                        <CardContent sx={{ p: 1.5 }}>
+                          <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1 }}>
+                            <Typography variant="subtitle2" sx={{ fontWeight: 600 }}>
+                              Llamada #{pedido.id}
+                            </Typography>
+                            <Chip
+                              label="Atención requerida"
+                              size="small"
+                              color="error"
+                            />
+                          </Box>
+                          {pedido.customerNotes && (
+                            <Typography variant="body2" color="text.secondary">
+                              {pedido.customerNotes}
+                            </Typography>
+                          )}
+                        </CardContent>
+                      </Card>
+                    ))}
+                  </Box>
+                  <Button
+                    variant="contained"
+                    color="error"
+                    fullWidth
+                    sx={{ mt: 2 }}
+                    onClick={() => marcarLlamadasAtendidas(tableDetailDialog.mesa)}
+                  >
+                    Marcar llamadas como atendidas
+                  </Button>
+                  <Divider sx={{ my: 3 }} />
+                </Box>
+              )}
+
               {/* Pedidos activos de la mesa */}
               {tableDetailDialog.mesa.pedidos && tableDetailDialog.mesa.pedidos.length > 0 && (
                 <Box sx={{ mb: 3 }}>

@@ -23,7 +23,8 @@ export default function DemoLanding() {
             description: 'Experimenta la carta digital, pedidos QR y pagos online como un cliente real.',
             icon: <RestaurantMenuIcon sx={{ fontSize: 40 }} />,
             color: '#FF9800', // Orange
-            action: () => navigate(`/${DEMO_SLUG}/menu?t=1`),
+            // Ir al menú SIN número de mesa para que aparezca el selector de mesas
+            action: () => navigate(`/${DEMO_SLUG}/menu`),
             buttonText: 'Ver como Comensal',
             features: ['Menú Digital', 'Pedidos QR', 'Pagos Online']
         },

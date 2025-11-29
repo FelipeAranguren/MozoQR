@@ -113,7 +113,8 @@ export default function TablesList() {
       handleCloseDialog();
     } catch (error) {
       console.error('Error saving table:', error);
-      alert('Error al guardar la mesa');
+      const errorMessage = error?.message || error?.response?.data?.error?.message || 'Error al guardar la mesa';
+      alert(errorMessage);
     }
   };
 
@@ -190,20 +191,7 @@ export default function TablesList() {
         </Box>
       )}
 
-      {/* Vista de estado en tiempo real */}
-      {!loading && (
-        <Box sx={{ mb: 4 }}>
-          <TablesStatusGrid
-            tables={tables}
-            orders={activeOrders}
-            onTableClick={(table) => {
-              navigate(`/staff/${slug}/orders?table=${table.number}`);
-            }}
-          />
-        </Box>
-      )}
-
-      {/* Lista de mesas */}
+      {/* Lista de mesas con su estado en tiempo real */}
       <Box sx={{ mb: 3, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         <Typography variant="body2" color="text.secondary">
           {tables.length} mesa{tables.length !== 1 ? 's' : ''} configurada{tables.length !== 1 ? 's' : ''}

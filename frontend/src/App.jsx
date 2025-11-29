@@ -31,10 +31,10 @@ import AdminDashboard from './pages/AdminDashboard';
 import GlobalAdmin from './pages/admin/GlobalAdmin';
 import DemoLanding from './pages/DemoLanding';
 
-// Redirige rutas viejas /restaurantes/:slug -> /:slug/menu?t=1
+// Redirige rutas viejas /restaurantes/:slug -> /:slug/menu (usa selector de mesas)
 function LegacyRestaurantesRoute() {
   const { slug } = useParams();
-  return <Navigate to={`/${slug}/menu?t=1`} replace />;
+  return <Navigate to={`/${slug}/menu`} replace />;
 }
 
 // Componente que muestra el Header solo en rutas públicas

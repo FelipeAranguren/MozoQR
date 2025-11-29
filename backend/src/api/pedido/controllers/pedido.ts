@@ -3,17 +3,9 @@ import { factories } from '@strapi/strapi';
 
 export default factories.createCoreController('api::pedido.pedido', ({ strapi: strapiInstance }) => ({
 
-  async find(ctx) {
-    if (!ctx.state.user) return ctx.unauthorized();
-    const { data, meta } = await super.find(ctx);
-    return { data, meta };
-  },
+  // find y findOne eliminados para permitir acceso público según permisos del panel
+  // Si se necesita lógica custom, asegurarse de no bloquear usuarios públicos si es necesario.
 
-  async findOne(ctx) {
-    if (!ctx.state.user) return ctx.unauthorized();
-    const { data, meta } = await super.findOne(ctx);
-    return { data, meta };
-  },
 
   /**
    * PUT /api/pedidos/:id

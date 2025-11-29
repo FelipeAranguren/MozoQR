@@ -36,23 +36,23 @@ async function getRestaurantBySlug(slug: string) {
   return { id: r.id as ID, name: r.name as string };
 }
 
-/** Crea (si no existe) o devuelve la Mesa (por restaurante + number) */
+/**
+ * Devuelve la Mesa existente (por restaurante + number).
+ * Ya no crea mesas automáticamente: si no existe, lanza ValidationError.
+ */
 async function getOrCreateMesa(restauranteId: ID, number: number) {
   const found = await strapi.entityService.findMany('api::mesa.mesa', {
     filters: { restaurante: { id: Number(restauranteId) }, number },
     fields: ['id', 'number'],
     limit: 1,
   });
-  if (found?.[0]?.id) return found[0];
 
-  return await strapi.entityService.create('api::mesa.mesa', {
-    data: {
-      number,
-      isActive: true,
-      restaurante: restauranteId,
-      publishedAt: new Date(),
-    },
-  });
+  const mesa = found?.[0];
+  if (!mesa?.id) {
+    throw new ValidationError(`Mesa ${number} no existe para este restaurante`);
+  }
+
+  return mesa;
 }
 
 /**
@@ -102,8 +102,16 @@ async function createItems(pedidoId: ID, items: any[]) {
       const quantity = Number(it?.qty ?? it?.quantity ?? 0);
       const unitPrice = Number(it?.unitPrice ?? it?.price ?? 0);
       const total = Number.isFinite(quantity * unitPrice) ? quantity * unitPrice : 0;
-      const productId = Number(it?.productId ?? it?.id);
-      if (!productId) throw new ValidationError('Item sin productId');
+      const rawProductId = it?.productId ?? it?.id;
+      const productId =
+        rawProductId !== undefined &&
+        rawProductId !== null &&
+        typeof rawProductId === 'string' &&
+        /^\d+$/.test(rawProductId)
+          ? Number(rawProductId)
+          : typeof rawProductId === 'number'
+          ? rawProductId
+          : null;
 
       return strapi.entityService.create('api::item-pedido.item-pedido', {
         data: {
@@ -112,7 +120,7 @@ async function createItems(pedidoId: ID, items: any[]) {
           UnitPrice: Number.isFinite(unitPrice) ? unitPrice : 0,
           totalPrice: total,
           order: pedidoId,
-          product: productId,
+          ...(productId ? { product: productId } : {}),
           publishedAt: new Date(),
         },
       });
