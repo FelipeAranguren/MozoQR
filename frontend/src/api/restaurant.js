@@ -67,6 +67,27 @@ export async function fetchRestaurant(slug) {
 /**
  * Actualiza los datos del restaurante
  */
+/**
+ * Limpia sesiones antiguas del restaurante
+ * @param {string} slug - Slug del restaurante
+ * @param {object} options - Opciones de limpieza { daysOpen: 7, daysClosed: 30 }
+ * @returns {Promise<object>} Resultado de la limpieza
+ */
+export async function cleanOldSessions(slug, options = {}) {
+  const { daysOpen = 7, daysClosed = 30 } = options;
+  
+  try {
+    const res = await api.post(`/restaurants/${slug}/cleanup/old-sessions`, {
+      daysOpen,
+      daysClosed,
+    });
+    return res?.data || res;
+  } catch (err) {
+    console.error('Error limpiando sesiones antiguas:', err?.response?.data || err);
+    throw err;
+  }
+}
+
 export async function updateRestaurant(slug, restaurantData) {
   if (!slug) throw new Error('slug requerido');
 

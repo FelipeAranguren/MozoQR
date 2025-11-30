@@ -22,6 +22,7 @@ import {
 } from '../api/analytics';
 import { fetchTables, fetchActiveOrders } from '../api/tables';
 import { client } from '../api/client';
+import { createOwnerComment } from '../api/comments';
 // Aliases for compatibility with existing code
 const api = client;
 const http = client;
@@ -350,6 +351,13 @@ export default function OwnerDashboard() {
   const [selectedInvoice, setSelectedInvoice] = useState(null);
   const [filters, setFilters] = useState({ query: '', paymentMethod: '' });
 
+  // Estados para comentarios
+  const [restaurantInfo, setRestaurantInfo] = useState({ id: null, name: '' });
+  const [commentText, setCommentText] = useState('');
+  const [isSubmittingComment, setIsSubmittingComment] = useState(false);
+  const [commentSuccess, setCommentSuccess] = useState(false);
+  const [commentError, setCommentError] = useState(null);
+
   const end = useMemo(() => {
     return isCustom ? endOfDay(fromISODateInputLocal(customEnd)) : endOfDay(new Date());
   }, [periodKey, customEnd, isCustom]);
@@ -477,6 +485,11 @@ export default function OwnerDashboard() {
           const attr = restaurant.attributes || restaurant;
           const mesas = attr.mesas?.data || attr.mesas || [];
           const categorias = attr.categorias?.data || attr.categorias || [];
+
+          // Guardar información del restaurante para el formulario de comentarios
+          const restaurantId = restaurant.id || restaurant.documentId;
+          const restaurantName = attr.name || restaurant.name || prettyName(slug);
+          setRestaurantInfo({ id: restaurantId, name: restaurantName });
 
           // Usar los productos activos obtenidos con fetchProducts (mismo método que cliente)
           const productsWithoutImage = productos.filter(p => !p.image).length;
@@ -655,6 +668,40 @@ export default function OwnerDashboard() {
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
   }, []);
+
+  // Función para manejar el envío de comentarios
+  const handleSubmitComment = async (e) => {
+    e.preventDefault();
+    if (!commentText.trim() || !restaurantInfo.id) {
+      setCommentError('Por favor, completa el comentario');
+      return;
+    }
+
+    setIsSubmittingComment(true);
+    setCommentError(null);
+    setCommentSuccess(false);
+
+    try {
+      await createOwnerComment({
+        restaurantId: restaurantInfo.id,
+        restaurantName: restaurantInfo.name,
+        comment: commentText.trim(),
+      });
+      setCommentText('');
+      setCommentSuccess(true);
+      setTimeout(() => setCommentSuccess(false), 3000);
+    } catch (error) {
+      console.error('Error al enviar comentario:', error);
+      const errorMessage = 
+        error.response?.data?.error?.message || 
+        error.response?.data?.message ||
+        error.message ||
+        'Error al enviar el comentario. Por favor, intenta nuevamente.';
+      setCommentError(errorMessage);
+    } finally {
+      setIsSubmittingComment(false);
+    }
+  };
 
   if (!slug) {
     return (
@@ -896,6 +943,74 @@ export default function OwnerDashboard() {
           <TopProductsChart products={topProducts} limit={5} />
         </Grid>
       </Grid>
+
+      {/* Sección de Comentarios */}
+      <Box
+        sx={{
+          border: `1px solid ${MARANA_COLORS.border}`,
+          borderRadius: 3,
+          background: '#fff',
+          p: 3,
+          boxShadow: '0px 1px 3px rgba(0,0,0,0.05)',
+          mb: 3
+        }}
+      >
+        <Typography variant="h6" sx={{ fontWeight: 600, mb: 2 }}>
+          Enviar Comentario al Administrador
+        </Typography>
+        <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+          Comparte tus comentarios, sugerencias o solicitudes con el equipo de administración.
+        </Typography>
+        <form onSubmit={handleSubmitComment}>
+          <Box sx={{ mb: 2 }}>
+            <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
+              Restaurante: <strong>{restaurantInfo.name || prettyName(slug)}</strong>
+            </Typography>
+            <textarea
+              value={commentText}
+              onChange={(e) => {
+                setCommentText(e.target.value);
+                setCommentError(null);
+              }}
+              placeholder="Escribe tu comentario, feedback, solicitud o sugerencia aquí..."
+              rows={4}
+              style={{
+                width: '100%',
+                padding: '12px',
+                borderRadius: 8,
+                border: `1px solid ${commentError ? '#f44336' : MARANA_COLORS.border}`,
+                fontFamily: 'Inter, sans-serif',
+                fontSize: '14px',
+                resize: 'vertical',
+                boxSizing: 'border-box'
+              }}
+              disabled={isSubmittingComment}
+            />
+            {commentError && (
+              <Typography variant="caption" color="error" sx={{ mt: 0.5, display: 'block' }}>
+                {commentError}
+              </Typography>
+            )}
+            {commentSuccess && (
+              <Typography variant="caption" color="success.main" sx={{ mt: 0.5, display: 'block' }}>
+                ✓ Comentario enviado correctamente
+              </Typography>
+            )}
+          </Box>
+          <Button
+            type="submit"
+            variant="contained"
+            disabled={isSubmittingComment || !commentText.trim()}
+            sx={{
+              bgcolor: MARANA_COLORS.primary,
+              '&:hover': { bgcolor: MARANA_COLORS.primary, opacity: 0.9 },
+              '&:disabled': { bgcolor: '#ccc' }
+            }}
+          >
+            {isSubmittingComment ? 'Enviando...' : 'Enviar Comentario'}
+          </Button>
+        </form>
+      </Box>
 
       {/* Facturas del período */}
       <Box

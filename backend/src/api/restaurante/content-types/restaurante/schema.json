@@ -101,6 +101,12 @@
     },
     "owner_email": {
       "type": "email"
+    },
+    "owner_comments": {
+      "type": "relation",
+      "relation": "oneToMany",
+      "target": "api::owner-comment.owner-comment",
+      "mappedBy": "restaurante"
     }
   }
 }

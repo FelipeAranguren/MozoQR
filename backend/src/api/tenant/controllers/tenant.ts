@@ -83,21 +83,44 @@ async function getOrCreateOpenSession(opts: {
     sort: ['openedAt:desc', 'createdAt:desc'],
     limit: 1,
   });
-  if (existingOpen?.[0]?.id) return existingOpen[0];
+
+  if (existingOpen?.[0]?.id) {
+    const session = existingOpen[0];
+    const openedAt = session.openedAt ? new Date(session.openedAt).getTime() : 0;
+    const now = Date.now();
+    const hoursDiff = (now - openedAt) / (1000 * 60 * 60);
+
+    console.log(`[getOrCreateOpenSession] Mesa ${mesaId} - Sesión encontrada: ${session.id}`);
+    console.log(`[getOrCreateOpenSession] OpenedAt: ${session.openedAt} (${openedAt}), Now: ${now}, DiffHours: ${hoursDiff}`);
+
+    // Si la sesión tiene más de 24 horas, la cerramos y creamos una nueva
+    if (hoursDiff > 24) {
+      console.log(`[getOrCreateOpenSession] Sesión ${session.id} es antigua (>24h). Cerrando y creando nueva.`);
+      await strapi.entityService.update('api::mesa-sesion.mesa-sesion', session.id, {
+        data: { session_status: 'closed', closedAt: new Date() },
+      });
+      // Continuamos para crear una nueva sesión...
+    } else {
+      console.log(`[getOrCreateOpenSession] Sesión ${session.id} es válida (<24h). Retornando.`);
+      return session;
+    }
+  } else {
+    console.log(`[getOrCreateOpenSession] No se encontró sesión abierta para Mesa ${mesaId}. Creando nueva.`);
+  }
 
   // 2) Crear una nueva
   const newCode = Math.random().toString(36).slice(2, 8) + '-' + Date.now().toString(36).slice(-4);
 
   return await strapi.entityService.create('api::mesa-sesion.mesa-sesion', {
-  data: {
-    code: newCode,
-    session_status: 'open',
-    openedAt: new Date(),
-    restaurante: { id: Number(restauranteId) }, // <= así
-    mesa: { id: Number(mesaId) },               // <= así
-    publishedAt: new Date(),
-  },
-});
+    data: {
+      code: newCode,
+      session_status: 'open',
+      openedAt: new Date(),
+      restaurante: { id: Number(restauranteId) }, // <= así
+      mesa: { id: Number(mesaId) },               // <= así
+      publishedAt: new Date(),
+    },
+  });
 }
 
 /** Crea los ítems de un pedido (ids planos) */
@@ -110,13 +133,13 @@ async function createItems(pedidoId: ID, items: any[]) {
       const rawProductId = it?.productId ?? it?.id;
       const productId =
         rawProductId !== undefined &&
-        rawProductId !== null &&
-        typeof rawProductId === 'string' &&
-        /^\d+$/.test(rawProductId)
+          rawProductId !== null &&
+          typeof rawProductId === 'string' &&
+          /^\d+$/.test(rawProductId)
           ? Number(rawProductId)
           : typeof rawProductId === 'number'
-          ? rawProductId
-          : null;
+            ? rawProductId
+            : null;
 
       return strapi.entityService.create('api::item-pedido.item-pedido', {
         data: {
@@ -173,11 +196,11 @@ export default {
       data?.total !== undefined && data?.total !== null && data?.total !== ''
         ? Number(data.total)
         : items.reduce((s, it) => {
-            const q = Number(it?.qty ?? it?.quantity ?? 0);
-            const p = Number(it?.unitPrice ?? it?.price ?? 0);
-            const line = q * p;
-            return s + (Number.isFinite(line) ? line : 0);
-          }, 0);
+          const q = Number(it?.qty ?? it?.quantity ?? 0);
+          const p = Number(it?.unitPrice ?? it?.price ?? 0);
+          const line = q * p;
+          return s + (Number.isFinite(line) ? line : 0);
+        }, 0);
 
     // Crear pedido vinculado a la sesión (usar objeto { id } para la relación)
     const pedido = await strapi.entityService.create('api::pedido.pedido', {

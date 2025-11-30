@@ -521,6 +521,41 @@ export interface ApiMesaMesa extends Struct.CollectionTypeSchema {
   };
 }
 
+export interface ApiOwnerCommentOwnerComment
+  extends Struct.CollectionTypeSchema {
+  collectionName: 'owner_comments';
+  info: {
+    displayName: 'Owner_comment';
+    pluralName: 'owner-comments';
+    singularName: 'owner-comment';
+  };
+  options: {
+    draftAndPublish: true;
+  };
+  attributes: {
+    archived: Schema.Attribute.Boolean & Schema.Attribute.DefaultTo<false>;
+    comment: Schema.Attribute.Text;
+    createdAt: Schema.Attribute.DateTime;
+    createdBy: Schema.Attribute.Relation<'oneToOne', 'admin::user'> &
+      Schema.Attribute.Private;
+    locale: Schema.Attribute.String & Schema.Attribute.Private;
+    localizations: Schema.Attribute.Relation<
+      'oneToMany',
+      'api::owner-comment.owner-comment'
+    > &
+      Schema.Attribute.Private;
+    publishedAt: Schema.Attribute.DateTime;
+    restaurante: Schema.Attribute.Relation<
+      'manyToOne',
+      'api::restaurante.restaurante'
+    >;
+    restaurantName: Schema.Attribute.String;
+    updatedAt: Schema.Attribute.DateTime;
+    updatedBy: Schema.Attribute.Relation<'oneToOne', 'admin::user'> &
+      Schema.Attribute.Private;
+  };
+}
+
 export interface ApiPaymentsPayment extends Struct.CollectionTypeSchema {
   collectionName: 'payments';
   info: {
@@ -741,6 +776,10 @@ export interface ApiRestauranteRestaurante extends Struct.CollectionTypeSchema {
     mp_access_token: Schema.Attribute.Text & Schema.Attribute.Private;
     mp_public_key: Schema.Attribute.String & Schema.Attribute.Private;
     name: Schema.Attribute.String & Schema.Attribute.Required;
+    owner_comments: Schema.Attribute.Relation<
+      'oneToMany',
+      'api::owner-comment.owner-comment'
+    >;
     owner_email: Schema.Attribute.Email;
     pedidos: Schema.Attribute.Relation<'oneToMany', 'api::pedido.pedido'>;
     primaryColoraccentColor: Schema.Attribute.String;
@@ -1278,6 +1317,7 @@ declare module '@strapi/strapi' {
       'api::item-pedido.item-pedido': ApiItemPedidoItemPedido;
       'api::mesa-sesion.mesa-sesion': ApiMesaSesionMesaSesion;
       'api::mesa.mesa': ApiMesaMesa;
+      'api::owner-comment.owner-comment': ApiOwnerCommentOwnerComment;
       'api::payments.payment': ApiPaymentsPayment;
       'api::pedido.pedido': ApiPedidoPedido;
       'api::producto.producto': ApiProductoProducto;

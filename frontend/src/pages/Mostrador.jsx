@@ -4,6 +4,7 @@ import { useParams } from 'react-router-dom';
 import { api } from '../api';
 import { closeAccount } from '../api/tenant';
 import { fetchTables } from '../api/tables';
+import { cleanOldSessions } from '../api/restaurant';
 import TablesStatusGridEnhanced from '../components/TablesStatusGridEnhanced';
 import {
   Box, Typography, Card, CardContent, List, ListItem, Button,
@@ -25,6 +26,7 @@ import LocalOfferIcon from '@mui/icons-material/LocalOffer';
 import FreeBreakfastIcon from '@mui/icons-material/FreeBreakfast';
 import TableRestaurantIcon from '@mui/icons-material/TableRestaurant';
 import CheckCircleIcon from '@mui/icons-material/CheckCircle';
+import CleaningServicesIcon from '@mui/icons-material/CleaningServices';
 
 const money = (n) =>
   new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS' })
@@ -52,6 +54,7 @@ export default function Mostrador() {
   const [completeOrderDialog, setCompleteOrderDialog] = useState({ open: false, pedido: null, staffNotes: '' });
   const [cancelOrderDialog, setCancelOrderDialog] = useState({ open: false, pedido: null, reason: '' });
   const [tableDetailDialog, setTableDetailDialog] = useState({ open: false, mesa: null });
+  const [cleanupDialog, setCleanupDialog] = useState({ open: false, loading: false });
 
   // ----- refs auxiliares (SOLO AQUÍ ARRIBA; no dentro de funciones) -----
   const pedidosRef = useRef([]);
@@ -578,71 +581,231 @@ export default function Mostrador() {
       const params = new URLSearchParams();
       params.append('filters[restaurante][id][$eq]', restaurante.id);
       params.append('filters[session_status][$eq]', 'open');
-      params.append('populate[mesa]', 'true'); // Poblar completamente la mesa
+      // Poblar mesa completamente (no solo campos específicos)
+      params.append('populate[mesa]', 'true');
       params.append('pagination[pageSize]', '200');
 
       const { data } = await api.get(`/mesa-sesions?${params.toString()}`);
       const sessions = data?.data || [];
 
-      // DIAGNÓSTICO: Log único de la primera sesión para ver su estructura
-      if (sessions.length > 0 && !window._debugSessionLogged) {
-        console.log('🔍 [DIAGNÓSTICO] Primera sesión encontrada:', JSON.stringify(sessions[0], null, 2));
-        window._debugSessionLogged = true;
+      // DIAGNÓSTICO: Log cada vez que se obtienen sesiones
+      console.log(`[fetchOpenSessions] Se obtuvieron ${sessions.length} sesión(es) abierta(s) del backend`);
+      
+      // DIAGNÓSTICO: Buscar específicamente la sesión de la mesa 9
+      const mesa9Session = sessions.find(s => {
+        const sessionAttr = s.attributes || s;
+        const mesa = s.mesa || sessionAttr.mesa;
+        if (!mesa) return false;
+        
+        // Intentar extraer el número de mesa
+        const mesaData = mesa.data || mesa;
+        const mesaAttr = mesaData?.attributes || mesaData;
+        const mesaNumber = mesaAttr?.number || mesaData?.number || mesa.number;
+        
+        return Number(mesaNumber) === 9;
+      });
+      
+      if (mesa9Session) {
+        console.log('🔍 [DIAGNÓSTICO] Sesión de Mesa 9 encontrada en respuesta del backend:', {
+          id: mesa9Session.id,
+          documentId: mesa9Session.documentId,
+          mesa: mesa9Session.mesa,
+          session_status: mesa9Session.attributes?.session_status || mesa9Session.session_status,
+          openedAt: mesa9Session.attributes?.openedAt || mesa9Session.openedAt,
+        });
+      } else {
+        console.log('⚠️ [DIAGNÓSTICO] Sesión de Mesa 9 NO encontrada en las 100 sesiones del backend');
+        // Log de las primeras 5 sesiones para ver su estructura
+        if (sessions.length > 0) {
+          console.log('🔍 [DIAGNÓSTICO] Estructura de las primeras sesiones:', sessions.slice(0, 5).map(s => ({
+            id: s.id,
+            mesa: s.mesa,
+            mesaType: typeof s.mesa,
+            hasMesaData: !!s.mesa?.data,
+            hasMesaAttributes: !!s.mesa?.attributes,
+            mesaNumber: s.mesa?.data?.attributes?.number || s.mesa?.attributes?.number || s.mesa?.number
+          })));
+        }
       }
 
-      // Incluir TODAS las sesiones abiertas (con o sin pedidos activos)
-      // La lógica en TablesStatusGridEnhanced ya maneja correctamente los pedidos activos
-      const allOpenSessions = sessions.map((session) => {
-        // Manejar diferentes estructuras de respuesta de Strapi
-        // Según el log de diagnóstico, la estructura es: session.mesa.number directamente
-        let mesaNumber = null;
-        const sessionAttr = session.attributes || session;
-        
-        // PRIORIDAD 1: Buscar directamente en session.mesa (estructura real según el log)
-        if (session.mesa) {
-          const mesa = session.mesa;
-          if (typeof mesa.number === 'number' || typeof mesa.number === 'string') {
-            mesaNumber = Number(mesa.number);
-          } else if (mesa.data?.number) {
-            mesaNumber = Number(mesa.data.number);
-          } else if (mesa.attributes?.number) {
-            mesaNumber = Number(mesa.attributes.number);
-          }
-        }
-        
-        // PRIORIDAD 2: Si no encontramos, buscar en session.attributes.mesa
-        if (!mesaNumber) {
-          const mesa = sessionAttr.mesa;
-          if (mesa) {
-            if (typeof mesa.number === 'number' || typeof mesa.number === 'string') {
-              mesaNumber = Number(mesa.number);
-            } else if (mesa.data?.number) {
-              mesaNumber = Number(mesa.data.number);
-            } else if (mesa.attributes?.number) {
-              mesaNumber = Number(mesa.attributes.number);
+      // Incluir sesiones abiertas RECIENTES (últimas 24 horas)
+      // Solo ignorar sesiones muy antiguas (más de 24 horas) para evitar mostrar mesas ocupadas por sesiones olvidadas
+      const now = Date.now();
+      const oneDayAgo = now - (24 * 60 * 60 * 1000); // 24 horas en milisegundos
+      let ignoredCount = 0; // Contador para no loguear cada una
+      
+      const recentOpenSessions = sessions
+        .map((session) => {
+          // Manejar diferentes estructuras de respuesta de Strapi
+          let mesaNumber = null;
+          const sessionAttr = session.attributes || session;
+          
+          // Función auxiliar para extraer número de mesa (mejorada)
+          const extractMesaNumber = (mesaObj) => {
+            if (!mesaObj) return null;
+            
+            // Caso 1: mesa.number directamente (objeto plano)
+            if (typeof mesaObj.number === 'number' || typeof mesaObj.number === 'string') {
+              return Number(mesaObj.number);
+            }
+            
+            // Caso 2: mesa.data (Strapi v4 populate con estructura data)
+            if (mesaObj.data) {
+              const data = Array.isArray(mesaObj.data) ? mesaObj.data[0] : mesaObj.data;
+              
+              // data.number directamente
+              if (data?.number != null) {
+                return Number(data.number);
+              }
+              
+              // data.attributes.number
+              if (data?.attributes?.number != null) {
+                return Number(data.attributes.number);
+              }
+              
+              // Si data es un objeto completo, intentar acceder directamente
+              if (data && typeof data === 'object') {
+                // Intentar todas las posibles rutas
+                const possiblePaths = [
+                  data.number,
+                  data.attributes?.number,
+                  data.data?.number,
+                  data.data?.attributes?.number
+                ];
+                
+                for (const num of possiblePaths) {
+                  if (num != null) {
+                    return Number(num);
+                  }
+                }
+              }
+            }
+            
+            // Caso 3: mesa.attributes.number
+            if (mesaObj.attributes?.number != null) {
+              return Number(mesaObj.attributes.number);
+            }
+            
+            // Caso 4: Si mesa es solo un ID numérico, no podemos obtener el número aquí
+            if (typeof mesaObj === 'number' || (typeof mesaObj === 'string' && !isNaN(Number(mesaObj)) && !mesaObj.includes('-'))) {
+              // Es solo un ID, no podemos obtener el número sin otra consulta
+              return null;
+            }
+            
+            // Caso 5: Intentar acceder recursivamente a cualquier propiedad "number"
+            const findNumberRecursively = (obj, depth = 0) => {
+              if (depth > 3 || !obj || typeof obj !== 'object') return null;
+              
+              if (obj.number != null) {
+                return Number(obj.number);
+              }
+              
+              for (const key in obj) {
+                if (obj.hasOwnProperty(key)) {
+                  const result = findNumberRecursively(obj[key], depth + 1);
+                  if (result != null) return result;
+                }
+              }
+              
+              return null;
+            };
+            
+            const recursiveResult = findNumberRecursively(mesaObj);
+            if (recursiveResult != null) {
+              return recursiveResult;
+            }
+            
+            return null;
+          };
+          
+          // PRIORIDAD 1: Buscar directamente en session.mesa
+          if (session.mesa) {
+            mesaNumber = extractMesaNumber(session.mesa);
+            // DIAGNÓSTICO: Log específico para sesiones que podrían ser de la mesa 9
+            if (session.id && !mesaNumber) {
+              const sessionId = session.id || session.documentId;
+              console.log(`[DIAGNÓSTICO] Sesión ${sessionId} tiene mesa pero no se pudo extraer número:`, {
+                mesa: session.mesa,
+                mesaType: typeof session.mesa,
+                hasData: !!session.mesa.data,
+                hasAttributes: !!session.mesa.attributes
+              });
             }
           }
-        }
+          
+          // PRIORIDAD 2: Si no encontramos, buscar en session.attributes.mesa
+          if (!mesaNumber && sessionAttr.mesa) {
+            mesaNumber = extractMesaNumber(sessionAttr.mesa);
+          }
 
-        if (!mesaNumber || isNaN(Number(mesaNumber))) {
-          return null;
-        }
+          if (!mesaNumber || isNaN(Number(mesaNumber))) {
+            // Solo loguear la primera vez que falla el parseo para no saturar
+            if (ignoredCount === 0) {
+              console.warn('[fetchOpenSessions] No se pudo extraer número de mesa de una sesión (puede que la mesa no esté poblada):', {
+                id: session.id,
+                documentId: session.documentId,
+                hasMesa: !!session.mesa,
+                hasMesaInAttr: !!sessionAttr.mesa,
+                mesaType: typeof session.mesa,
+                sessionMesa: session.mesa
+              });
+            }
+            ignoredCount++;
+            return null;
+          }
+          
+          // DIAGNÓSTICO: Log cuando encontramos la mesa 9
+          if (Number(mesaNumber) === 9) {
+            console.log(`🔍 [DIAGNÓSTICO] Mesa 9 encontrada en sesión:`, {
+              sessionId: session.id,
+              documentId: session.documentId,
+              mesaNumber: Number(mesaNumber),
+              openedAt: sessionAttr.openedAt || sessionAttr.createdAt
+            });
+          }
 
-        const sessionId = session.id || session.documentId;
+          const sessionId = session.id || session.documentId;
+          const sessionDocId = session.documentId || session.id;
+          const openedAt = sessionAttr.openedAt || sessionAttr.createdAt;
+          const openedAtTime = openedAt ? new Date(openedAt).getTime() : null;
 
-        return {
-          id: sessionId,
-          mesaNumber: Number(mesaNumber),
-          openedAt: sessionAttr.openedAt || sessionAttr.createdAt,
-        };
-      });
+          // Filtrar sesiones muy antiguas (más de 24 horas) - solo loguear resumen
+          if (openedAtTime && openedAtTime < oneDayAgo) {
+            ignoredCount++;
+            return null; // Sesión muy antigua, ignorar
+          }
 
-      const validSessions = allOpenSessions.filter(Boolean);
+          return {
+            id: sessionId,
+            documentId: sessionDocId,
+            mesaNumber: Number(mesaNumber),
+            openedAt: openedAt,
+          };
+        })
+        .filter(Boolean);
       
-      // DIAGNÓSTICO: Log único cuando hay sesiones válidas
-      if (validSessions.length > 0 && !window._debugValidSessionsLogged) {
-        console.log('✅ [DIAGNÓSTICO] Sesiones abiertas sin pedidos encontradas:', validSessions);
-        window._debugValidSessionsLogged = true;
+      // Log resumen de sesiones ignoradas (solo si hay muchas)
+      if (ignoredCount > 0 && ignoredCount % 10 === 0) {
+        console.log(`[fetchOpenSessions] ${ignoredCount} sesión(es) ignorada(s) (muy antiguas o sin número de mesa)`);
+      }
+
+      // Incluir todas las sesiones abiertas recientes
+      // La lógica de getTableStatus en TablesStatusGridEnhanced ya verifica si hay pedidos activos
+      // antes de mostrar la mesa como ocupada por sesión abierta, así que es seguro incluir todas
+      const validSessions = recentOpenSessions;
+      
+      // Log solo cuando hay sesiones válidas o cambios significativos
+      if (validSessions.length > 0) {
+        console.log(`✅ [fetchOpenSessions] ${validSessions.length} sesión(es) abierta(s):`, validSessions.map(s => `Mesa ${s.mesaNumber}`).join(', '));
+        // DIAGNÓSTICO: Verificar si la mesa 9 está en las sesiones
+        const mesa9Session = validSessions.find(s => s.mesaNumber === 9);
+        if (mesa9Session) {
+          console.log(`🔍 [DIAGNÓSTICO] Mesa 9 encontrada en openSessions:`, mesa9Session);
+        } else {
+          console.log(`⚠️ [DIAGNÓSTICO] Mesa 9 NO encontrada en openSessions. Sesiones disponibles:`, validSessions.map(s => s.mesaNumber));
+        }
+      } else {
+        console.log(`ℹ️ [fetchOpenSessions] No hay sesiones abiertas recientes. Total sesiones del backend: ${sessions.length}`);
       }
       
       setOpenSessions(validSessions);
@@ -684,6 +847,38 @@ export default function Mostrador() {
     } catch (err) {
       console.error('Error al liberar mesa:', err);
       setSnack({ open: true, msg: 'No se pudo liberar la mesa ❌', severity: 'error' });
+    }
+  };
+
+  // Limpiar sesiones antiguas
+  const handleCleanupOldSessions = async () => {
+    setCleanupDialog({ open: true, loading: false });
+  };
+
+  const confirmCleanup = async () => {
+    setCleanupDialog({ open: true, loading: true });
+    try {
+      const result = await cleanOldSessions(slug, { daysOpen: 7, daysClosed: 30 });
+      const deleted = result?.deleted || result?.data?.deleted || 0;
+      setSnack({
+        open: true,
+        msg: `✅ Limpieza completada: ${deleted} sesión(es) eliminada(s)`,
+        severity: 'success',
+      });
+      setCleanupDialog({ open: false, loading: false });
+      // Refrescar datos
+      await fetchOpenSessions();
+      await fetchPedidos();
+    } catch (err) {
+      console.error('Error limpiando sesiones antiguas:', err);
+      const errorMsg = err?.response?.data?.error?.message || err?.response?.data?.message || err?.message || 'Error desconocido';
+      const statusCode = err?.response?.status;
+      setSnack({
+        open: true,
+        msg: `❌ Error al limpiar sesiones: ${errorMsg}${statusCode ? ` (${statusCode})` : ''}`,
+        severity: 'error',
+      });
+      setCleanupDialog({ open: false, loading: false });
     }
   };
 
@@ -1635,6 +1830,17 @@ export default function Mostrador() {
         >
           Historial completo
         </Button>
+
+        <Button
+          variant="outlined"
+          color="secondary"
+          startIcon={<CleaningServicesIcon />}
+          onClick={handleCleanupOldSessions}
+          sx={{ borderRadius: 2, px: 2.5 }}
+          title="Limpiar sesiones antiguas (más de 7 días abiertas o 30 días cerradas)"
+        >
+          Limpiar sesiones
+        </Button>
       </Box>
 
       {error && <Typography color="error">{error}</Typography>}
@@ -2450,6 +2656,50 @@ export default function Mostrador() {
         <DialogActions>
           <Button onClick={() => setAccountDetailDialog({ open: false, cuenta: null })}>
             Cerrar
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Dialog de limpieza de sesiones antiguas */}
+      <Dialog
+        open={cleanupDialog.open}
+        onClose={() => !cleanupDialog.loading && setCleanupDialog({ open: false, loading: false })}
+        maxWidth="sm"
+        fullWidth
+      >
+        <DialogTitle>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+            <CleaningServicesIcon />
+            Limpiar sesiones antiguas
+          </Box>
+        </DialogTitle>
+        <DialogContent>
+          <DialogContentText>
+            Esta acción eliminará permanentemente las sesiones antiguas:
+            <ul style={{ marginTop: '8px', paddingLeft: '20px' }}>
+              <li>Sesiones abiertas con más de <strong>7 días</strong></li>
+              <li>Sesiones cerradas con más de <strong>30 días</strong></li>
+            </ul>
+            <Typography variant="body2" color="warning.main" sx={{ mt: 2, fontWeight: 600 }}>
+              ⚠️ Esta acción no se puede deshacer
+            </Typography>
+          </DialogContentText>
+        </DialogContent>
+        <DialogActions>
+          <Button
+            onClick={() => setCleanupDialog({ open: false, loading: false })}
+            disabled={cleanupDialog.loading}
+          >
+            Cancelar
+          </Button>
+          <Button
+            onClick={confirmCleanup}
+            variant="contained"
+            color="secondary"
+            startIcon={cleanupDialog.loading ? null : <CleaningServicesIcon />}
+            disabled={cleanupDialog.loading}
+          >
+            {cleanupDialog.loading ? 'Limpiando...' : 'Confirmar limpieza'}
           </Button>
         </DialogActions>
       </Dialog>

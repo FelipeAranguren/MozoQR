@@ -1,0 +1,31 @@
+{
+  "kind": "collectionType",
+  "collectionName": "owner_comments",
+  "info": {
+    "singularName": "owner-comment",
+    "pluralName": "owner-comments",
+    "displayName": "Owner_comment"
+  },
+  "options": {
+    "draftAndPublish": true
+  },
+  "pluginOptions": {},
+  "attributes": {
+    "restaurante": {
+      "type": "relation",
+      "relation": "manyToOne",
+      "target": "api::restaurante.restaurante",
+      "inversedBy": "owner_comments"
+    },
+    "restaurantName": {
+      "type": "string"
+    },
+    "comment": {
+      "type": "text"
+    },
+    "archived": {
+      "type": "boolean",
+      "default": false
+    }
+  }
+}

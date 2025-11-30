@@ -64,8 +64,29 @@ async function getOrCreateOpenSession(opts) {
         sort: ['openedAt:desc', 'createdAt:desc'],
         limit: 1,
     });
-    if ((_a = existingOpen === null || existingOpen === void 0 ? void 0 : existingOpen[0]) === null || _a === void 0 ? void 0 : _a.id)
-        return existingOpen[0];
+    if ((_a = existingOpen === null || existingOpen === void 0 ? void 0 : existingOpen[0]) === null || _a === void 0 ? void 0 : _a.id) {
+        const session = existingOpen[0];
+        const openedAt = session.openedAt ? new Date(session.openedAt).getTime() : 0;
+        const now = Date.now();
+        const hoursDiff = (now - openedAt) / (1000 * 60 * 60);
+        console.log(`[getOrCreateOpenSession] Mesa ${mesaId} - Sesión encontrada: ${session.id}`);
+        console.log(`[getOrCreateOpenSession] OpenedAt: ${session.openedAt} (${openedAt}), Now: ${now}, DiffHours: ${hoursDiff}`);
+        // Si la sesión tiene más de 24 horas, la cerramos y creamos una nueva
+        if (hoursDiff > 24) {
+            console.log(`[getOrCreateOpenSession] Sesión ${session.id} es antigua (>24h). Cerrando y creando nueva.`);
+            await strapi.entityService.update('api::mesa-sesion.mesa-sesion', session.id, {
+                data: { session_status: 'closed', closedAt: new Date() },
+            });
+            // Continuamos para crear una nueva sesión...
+        }
+        else {
+            console.log(`[getOrCreateOpenSession] Sesión ${session.id} es válida (<24h). Retornando.`);
+            return session;
+        }
+    }
+    else {
+        console.log(`[getOrCreateOpenSession] No se encontró sesión abierta para Mesa ${mesaId}. Creando nueva.`);
+    }
     // 2) Crear una nueva
     const newCode = Math.random().toString(36).slice(2, 8) + '-' + Date.now().toString(36).slice(-4);
     return await strapi.entityService.create('api::mesa-sesion.mesa-sesion', {

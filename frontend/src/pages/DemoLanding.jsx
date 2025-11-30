@@ -85,9 +85,19 @@ export default function DemoLanding() {
         <Box sx={{
             minHeight: '100vh',
             bgcolor: '#f5f7fa',
-            py: { xs: 4, md: 8 }
+            display: 'flex',
+            justifyContent: 'center',
+            alignItems: 'flex-start',
+            pt: { xs: 4, md: 8 },
+            pb: { xs: 4, md: 8 }
         }}>
-            <Container maxWidth="lg">
+            <Box sx={{
+                transform: 'scale(0.75)',
+                transformOrigin: 'top center',
+                width: '100%',
+                maxWidth: '1200px'
+            }}>
+                <Container maxWidth="lg">
                 {/* Header */}
                 <Box sx={{ textAlign: 'center', mb: 8 }}>
                     <motion.div
@@ -228,7 +238,8 @@ export default function DemoLanding() {
                         Para reiniciar la demo, puedes volver a esta página en cualquier momento.
                     </Typography>
                 </Box>
-            </Container>
+                </Container>
+            </Box>
         </Box>
     );
 }

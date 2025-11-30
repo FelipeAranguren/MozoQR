@@ -20,11 +20,10 @@ export default function TablesStatusGridEnhanced({
   openSessions = [],
   onTableClick
 }) {
-  // DIAGNÓSTICO: Log único cuando se reciben openSessions
+  // DIAGNÓSTICO: Log cuando se reciben openSessions (sin el flag único para debugging)
   React.useEffect(() => {
-    if (openSessions.length > 0 && !window._debugOpenSessionsReceived) {
-      console.log('📊 [DIAGNÓSTICO] TablesStatusGrid recibió openSessions:', openSessions);
-      window._debugOpenSessionsReceived = true;
+    if (openSessions.length > 0) {
+      console.log(`📊 [TablesStatusGrid] Recibidas ${openSessions.length} sesión(es) abierta(s):`, openSessions.map(s => `Mesa ${s.mesaNumber}`).join(', '));
     }
   }, [openSessions]);
 
@@ -80,10 +79,13 @@ export default function TablesStatusGridEnhanced({
     const systemCalls = systemOrdersByTable.get(table.number) || [];
     const hasOpenSession = openSessions.some((s) => {
       const matches = Number(s.mesaNumber) === Number(table.number);
-      // DIAGNÓSTICO: Log único cuando se detecta una sesión abierta
-      if (matches && !window._debugSessionDetected) {
-        console.log(`🎯 [DIAGNÓSTICO] Mesa ${table.number} tiene sesión abierta detectada!`, s);
-        window._debugSessionDetected = true;
+      // Solo loguear la primera vez que se detecta (usar un Set para trackear)
+      if (matches && !window._loggedSessions) {
+        window._loggedSessions = new Set();
+      }
+      if (matches && !window._loggedSessions?.has(table.number)) {
+        console.log(`🎯 [TablesStatusGrid] Mesa ${table.number} tiene sesión abierta:`, s);
+        window._loggedSessions.add(table.number);
       }
       return matches;
     });

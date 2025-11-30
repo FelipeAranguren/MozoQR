@@ -58,8 +58,11 @@ import {
   Save as SaveIcon,
   Cancel as CancelIcon,
   Refresh as RefreshIcon,
+  Archive as ArchiveIcon,
+  Unarchive as UnarchiveIcon,
 } from '@mui/icons-material';
 import { useRestaurantes } from '../hooks/useRestaurantes';
+import { getAllOwnerComments, toggleArchiveComment } from '../api/comments';
 import axios from 'axios';
 
 const API_URL = import.meta.env?.VITE_API_URL || 'http://localhost:1337/api';
@@ -174,6 +177,33 @@ function getSubscriptionBarColor(suscripcion) {
 export default function AdminDashboard() {
   const { restaurantes, loading, error, refetch } = useRestaurantes();
   const [activeTab, setActiveTab] = useState(0);
+  
+  // Estados para comentarios
+  const [ownerComments, setOwnerComments] = useState([]);
+  const [commentsLoading, setCommentsLoading] = useState(false);
+  const [commentsError, setCommentsError] = useState(null);
+  const [commentsFilter, setCommentsFilter] = useState('active'); // 'active', 'archived', 'all'
+  
+  // Cargar comentarios cuando se monta el componente o cuando se cambia al tab de comentarios
+  useEffect(() => {
+    if (activeTab === 3) {
+      const loadComments = async () => {
+        setCommentsLoading(true);
+        setCommentsError(null);
+        try {
+          const archived = commentsFilter === 'archived' ? true : commentsFilter === 'active' ? false : undefined;
+          const comments = await getAllOwnerComments({ archived });
+          setOwnerComments(comments);
+        } catch (err) {
+          console.error('Error loading comments:', err);
+          setCommentsError('Error al cargar los comentarios');
+        } finally {
+          setCommentsLoading(false);
+        }
+      };
+      loadComments();
+    }
+  }, [activeTab, commentsFilter]);
   const [filterSubscription, setFilterSubscription] = useState('all');
   const [searchQuery, setSearchQuery] = useState('');
   const [openRestaurantDialog, setOpenRestaurantDialog] = useState(false);
@@ -406,6 +436,7 @@ export default function AdminDashboard() {
           <Tab icon={<DashboardIcon />} iconPosition="start" label="Resumen" />
           <Tab icon={<RestaurantIcon />} iconPosition="start" label="Restaurantes" />
           <Tab icon={<SubscriptionsIcon />} iconPosition="start" label="Suscripciones" />
+          <Tab icon={<MessageIcon />} iconPosition="start" label="Comentarios" />
           <Tab icon={<SettingsIcon />} iconPosition="start" label="Configuración" />
         </Tabs>
       </Card>
@@ -474,6 +505,54 @@ export default function AdminDashboard() {
       )}
 
       {activeTab === 3 && (
+        <CommentsTab
+          comments={ownerComments}
+          loading={commentsLoading}
+          error={commentsError}
+          filter={commentsFilter}
+          onFilterChange={setCommentsFilter}
+          onRefresh={async () => {
+            setCommentsLoading(true);
+            setCommentsError(null);
+            try {
+              const archived = commentsFilter === 'archived' ? true : commentsFilter === 'active' ? false : undefined;
+              const comments = await getAllOwnerComments({ archived });
+              setOwnerComments(comments);
+            } catch (err) {
+              console.error('Error loading comments:', err);
+              setCommentsError('Error al cargar los comentarios');
+            } finally {
+              setCommentsLoading(false);
+            }
+          }}
+          onArchive={async (commentId) => {
+            try {
+              console.log('Intentando archivar comentario con ID:', commentId);
+              const result = await toggleArchiveComment(commentId);
+              console.log('Resultado del archivo:', result);
+              // Recargar comentarios
+              const archived = commentsFilter === 'archived' ? true : commentsFilter === 'active' ? false : undefined;
+              const comments = await getAllOwnerComments({ archived });
+              setOwnerComments(comments);
+              setSnackbar({
+                open: true,
+                message: 'Comentario archivado/desarchivado correctamente',
+                severity: 'success',
+              });
+            } catch (err) {
+              console.error('Error archiving comment:', err);
+              console.error('Error details:', err.response?.data);
+              setSnackbar({
+                open: true,
+                message: err.response?.data?.error?.message || err.message || 'Error al archivar el comentario',
+                severity: 'error',
+              });
+            }
+          }}
+        />
+      )}
+
+      {activeTab === 4 && (
         <SettingsTab
           planPrices={planPrices}
           onPlanPricesChange={(newPrices) => {
@@ -1368,5 +1447,199 @@ function RestaurantDialog({ open, onClose, restaurant, onSave }) {
         </Button>
       </DialogActions>
     </Dialog>
+  );
+}
+
+// Tab de Comentarios
+function CommentsTab({ comments, loading, error, onRefresh, filter, onFilterChange, onArchive }) {
+  const [page, setPage] = useState(0);
+  const [rowsPerPage, setRowsPerPage] = useState(10);
+
+  const handleChangePage = (event, newPage) => {
+    setPage(newPage);
+  };
+
+  const handleChangeRowsPerPage = (event) => {
+    setRowsPerPage(parseInt(event.target.value, 10));
+    setPage(0);
+  };
+
+  const formatDateTime = (dateString) => {
+    if (!dateString) return 'N/A';
+    return new Date(dateString).toLocaleString('es-AR', {
+      year: 'numeric',
+      month: 'short',
+      day: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit'
+    });
+  };
+
+  if (loading) {
+    return (
+      <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '40vh' }}>
+        <CircularProgress />
+      </Box>
+    );
+  }
+
+  if (error) {
+    return (
+      <Card>
+        <CardContent>
+          <Alert 
+            severity="error" 
+            action={
+              <Button color="inherit" size="small" onClick={onRefresh}>
+                Reintentar
+              </Button>
+            }
+          >
+            {error}
+          </Alert>
+        </CardContent>
+      </Card>
+    );
+  }
+
+  return (
+    <Box>
+      {/* Header con filtros y botón de actualizar */}
+      <Box sx={{ mb: 3, display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 2 }}>
+        <Typography variant="h6" sx={{ fontWeight: 600 }}>
+          Comentarios de Dueños
+        </Typography>
+        <Box sx={{ display: 'flex', gap: 1, alignItems: 'center' }}>
+          {/* Filtros */}
+          <Button
+            variant={filter === 'active' ? 'contained' : 'outlined'}
+            size="small"
+            onClick={() => onFilterChange('active')}
+          >
+            Activos
+          </Button>
+          <Button
+            variant={filter === 'archived' ? 'contained' : 'outlined'}
+            size="small"
+            onClick={() => onFilterChange('archived')}
+          >
+            Archivados
+          </Button>
+          <Button
+            variant={filter === 'all' ? 'contained' : 'outlined'}
+            size="small"
+            onClick={() => onFilterChange('all')}
+          >
+            Todos
+          </Button>
+          <Button
+            variant="outlined"
+            startIcon={<RefreshIcon />}
+            onClick={onRefresh}
+            sx={{ ml: 1 }}
+          >
+            Actualizar
+          </Button>
+        </Box>
+      </Box>
+
+      {/* Tabla de comentarios */}
+      <Card>
+        <TableContainer>
+          <Table>
+            <TableHead>
+              <TableRow>
+                <TableCell>Restaurante</TableCell>
+                <TableCell>Comentario</TableCell>
+                <TableCell>Fecha</TableCell>
+                <TableCell align="right">Acciones</TableCell>
+              </TableRow>
+            </TableHead>
+            <TableBody>
+              {comments.length === 0 ? (
+                <TableRow>
+                  <TableCell colSpan={4} align="center" sx={{ py: 4 }}>
+                    <Typography color="text.secondary">
+                      {filter === 'archived' 
+                        ? 'No hay comentarios archivados' 
+                        : filter === 'active'
+                        ? 'No hay comentarios activos'
+                        : 'No hay comentarios aún'}
+                    </Typography>
+                  </TableCell>
+                </TableRow>
+              ) : (
+                comments
+                  .slice(page * rowsPerPage, page * rowsPerPage + rowsPerPage)
+                  .map((comment) => {
+                    const attr = comment.attributes || comment;
+                    const isArchived = attr.archived || comment.archived || false;
+                    // Obtener el ID correcto (puede ser comment.id o comment.documentId)
+                    const commentId = comment.id || comment.documentId || attr.id;
+                    return (
+                      <TableRow 
+                        key={comment.id || comment.documentId} 
+                        hover
+                        sx={{
+                          opacity: isArchived ? 0.6 : 1,
+                          bgcolor: isArchived ? 'action.hover' : 'transparent',
+                        }}
+                      >
+                        <TableCell>
+                          <Typography variant="body2" sx={{ fontWeight: 600 }}>
+                            {attr.restaurantName || 'N/A'}
+                            {isArchived && (
+                              <Chip 
+                                label="Archivado" 
+                                size="small" 
+                                sx={{ ml: 1, height: 20, fontSize: '0.7rem' }}
+                                color="default"
+                              />
+                            )}
+                          </Typography>
+                        </TableCell>
+                        <TableCell>
+                          <Typography variant="body2" sx={{ whiteSpace: 'pre-wrap', maxWidth: 500 }}>
+                            {attr.comment || 'Sin comentario'}
+                          </Typography>
+                        </TableCell>
+                        <TableCell>
+                          <Typography variant="body2" color="text.secondary">
+                            {formatDateTime(attr.createdAt || comment.createdAt)}
+                          </Typography>
+                        </TableCell>
+                        <TableCell align="right">
+                          <Tooltip title={isArchived ? 'Desarchivar' : 'Archivar'}>
+                            <IconButton
+                              size="small"
+                              onClick={() => {
+                                console.log('Archivando comentario:', commentId, comment);
+                                onArchive(commentId);
+                              }}
+                              color={isArchived ? 'default' : 'primary'}
+                            >
+                              {isArchived ? <UnarchiveIcon /> : <ArchiveIcon />}
+                            </IconButton>
+                          </Tooltip>
+                        </TableCell>
+                      </TableRow>
+                    );
+                  })
+              )}
+            </TableBody>
+          </Table>
+        </TableContainer>
+        <TablePagination
+          component="div"
+          count={comments.length}
+          page={page}
+          onPageChange={handleChangePage}
+          rowsPerPage={rowsPerPage}
+          onRowsPerPageChange={handleChangeRowsPerPage}
+          rowsPerPageOptions={[5, 10, 25, 50]}
+          labelRowsPerPage="Filas por página:"
+        />
+      </Card>
+    </Box>
   );
 }
