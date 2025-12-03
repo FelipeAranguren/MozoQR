@@ -202,8 +202,9 @@ export default function RestaurantMenu() {
     let cancelled = false;
 
     async function openTableSession() {
-      // Solo abrir sesión si la mesa es válida y existe
-      if (!table || !slug || isTableValid !== true) {
+      // Intentar abrir sesión directamente. El backend validará si la mesa existe.
+      // No dependemos de isTableValid porque fetchTables puede fallar por permisos en vista pública.
+      if (!table || !slug) {
         return;
       }
 
@@ -222,7 +223,7 @@ export default function RestaurantMenu() {
       }
     }
 
-    // Esperar un poco para asegurar que la validación terminó
+    // Esperar un poco para no saturar en montajes rápidos
     const timer = setTimeout(() => {
       if (!cancelled) {
         openTableSession();
@@ -233,7 +234,7 @@ export default function RestaurantMenu() {
       cancelled = true;
       clearTimeout(timer);
     };
-  }, [slug, table, isTableValid]);
+  }, [slug, table]);
 
   useEffect(() => {
     async function loadMenu() {

@@ -28,5 +28,11 @@ exports.default = {
             handler: 'tenant.openSession',
             config: { policies: [], middlewares: [] },
         },
+        {
+            method: 'PUT',
+            path: '/restaurants/:slug/close-session',
+            handler: 'tenant.closeSession',
+            config: { policies: [], middlewares: [], auth: false },
+        },
     ],
 };

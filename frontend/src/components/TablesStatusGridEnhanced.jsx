@@ -8,6 +8,7 @@ import RestaurantIcon from '@mui/icons-material/Restaurant';
 import CleaningServicesIcon from '@mui/icons-material/CleaningServices';
 import EventSeatIcon from '@mui/icons-material/EventSeat';
 import NotificationsActiveIcon from '@mui/icons-material/NotificationsActive';
+import AccountBalanceWalletIcon from '@mui/icons-material/AccountBalanceWallet';
 
 /**
  * Componente mejorado para mostrar el estado de las mesas en tiempo real
@@ -20,13 +21,6 @@ export default function TablesStatusGridEnhanced({
   openSessions = [],
   onTableClick
 }) {
-  // DIAGNÓSTICO: Log cuando se reciben openSessions (sin el flag único para debugging)
-  React.useEffect(() => {
-    if (openSessions.length > 0) {
-      console.log(`📊 [TablesStatusGrid] Recibidas ${openSessions.length} sesión(es) abierta(s):`, openSessions.map(s => `Mesa ${s.mesaNumber}`).join(', '));
-    }
-  }, [openSessions]);
-
   // Agrupar pedidos por mesa
   const ordersByTable = React.useMemo(() => {
     try {
@@ -79,16 +73,9 @@ export default function TablesStatusGridEnhanced({
     const systemCalls = systemOrdersByTable.get(table.number) || [];
     const hasOpenSession = openSessions.some((s) => {
       const matches = Number(s.mesaNumber) === Number(table.number);
-      // Solo loguear la primera vez que se detecta (usar un Set para trackear)
-      if (matches && !window._loggedSessions) {
-        window._loggedSessions = new Set();
-      }
-      if (matches && !window._loggedSessions?.has(table.number)) {
-        console.log(`🎯 [TablesStatusGrid] Mesa ${table.number} tiene sesión abierta:`, s);
-        window._loggedSessions.add(table.number);
-      }
       return matches;
     });
+
     const activeOrders = tableOrders.filter(o =>
       o.order_status === 'pending' ||
       o.order_status === 'preparing' ||
@@ -101,16 +88,28 @@ export default function TablesStatusGridEnhanced({
     const hasServed = activeOrders.some(o => o.order_status === 'served');
     const hasPaid = tableOrders.some(o => o.order_status === 'paid');
 
-    // PRIORIDAD 1: Si hay llamada del sistema (mozo), mostrar como "llamando" con parpadeo
+    // PRIORIDAD 1: Si hay llamada del sistema (mozo)
     if (hasSystemCall) {
       const callType = systemCalls[0];
       const isPayRequest = callType?.items?.some(item => {
         const prodName = (item?.product?.name || item?.name || '').toUpperCase();
         return prodName.includes('SOLICITUD DE COBRO') || prodName.includes('💳');
       }) || (callType?.customerNotes || '').toUpperCase().includes('SOLICITA COBRAR') || (callType?.customerNotes || '').toUpperCase().includes('CUENTA');
+
+      if (isPayRequest) {
+        return {
+          status: 'request-payment',
+          label: 'Solicita pago',
+          color: '#9c27b0', // Púrpura
+          icon: <AccountBalanceWalletIcon />,
+          blinking: true,
+          priority: 1
+        };
+      }
+
       return {
         status: 'calling',
-        label: isPayRequest ? 'Solicita pago' : 'Llama mozo',
+        label: 'Llama mozo',
         color: '#ff1744', // Rojo vibrante
         icon: <NotificationsActiveIcon />,
         blinking: true,
@@ -118,7 +117,23 @@ export default function TablesStatusGridEnhanced({
       };
     }
 
-    // PRIORIDAD 2: Si tiene pedidos pendientes o en cocina, está ocupada
+    // Obtener la sesión de esta mesa
+    const session = openSessions.find(s => Number(s.mesaNumber) === Number(table.number));
+
+    // PRIORIDAD 2: Si la sesión está "paid", entonces está "Por limpiar" (independientemente de pedidos)
+    // Esto tiene prioridad sobre pedidos activos porque ya se cerró la cuenta
+    if (session?.session_status === 'paid') {
+      return {
+        status: 'needs-cleaning',
+        label: 'Por limpiar',
+        color: '#ff9800', // Naranja/Amber
+        icon: <CleaningServicesIcon />,
+        blinking: false,
+        priority: 2
+      };
+    }
+
+    // PRIORIDAD 3: Si tiene pedidos pendientes o en cocina, está ocupada
     if (hasPending || hasPreparing) {
       return {
         status: 'occupied',
@@ -126,64 +141,37 @@ export default function TablesStatusGridEnhanced({
         color: '#1976d2', // Azul
         icon: <RestaurantIcon />,
         blinking: false,
-        priority: 2,
+        priority: 3,
         activeOrdersCount: activeOrders.length
       };
     }
 
-    // PRIORIDAD 2.5: Si tiene sesión abierta pero sin pedidos, está ocupada (cliente entró pero no pidió)
-    if (hasOpenSession && activeOrders.length === 0 && !hasServed && !hasPaid) {
+    // PRIORIDAD 4: Si tiene pedidos servidos pero no pagados, esperando cuenta
+    if (hasServed && !hasPaid) {
+      return {
+        status: 'waiting-payment',
+        label: 'Espera pago',
+        color: '#1976d2', // Azul (mismo que ocupada para consistencia)
+        icon: <AccessTimeIcon />,
+        blinking: false,
+        priority: 4
+      };
+    }
+
+    if (hasOpenSession && activeOrders.length === 0) {
       return {
         status: 'occupied',
         label: 'Ocupada',
         color: '#1976d2', // Azul
         icon: <RestaurantIcon />,
         blinking: false,
-        priority: 2,
+        priority: 5,
         activeOrdersCount: 0
       };
     }
 
-    // PRIORIDAD 3: Si tiene pedidos servidos pero no pagados, esperando cuenta
-    if (hasServed && !hasPaid) {
-      return {
-        status: 'waiting-payment',
-        label: 'Espera pago',
-        color: '#ff9800', // Naranja
-        icon: <AccessTimeIcon />,
-        blinking: false,
-        priority: 3
-      };
-    }
-
-    // PRIORIDAD 4: Si tiene pedidos pagados recientemente, necesita limpieza
-    // (asumimos que si la última sesión fue pagada hace menos de X minutos, necesita limpieza)
-    if (hasPaid && !hasPending && !hasPreparing && !hasServed) {
-      const paidOrders = tableOrders.filter(o => o.order_status === 'paid');
-      const lastPaid = paidOrders.sort((a, b) =>
-        new Date(b.updatedAt || b.createdAt) - new Date(a.updatedAt || a.createdAt)
-      )[0];
-
-      if (lastPaid) {
-        const paidTime = new Date(lastPaid.updatedAt || lastPaid.createdAt);
-        const minutesSincePaid = (Date.now() - paidTime.getTime()) / (1000 * 60);
-
-        // Si fue pagado hace menos de 30 minutos, necesita limpieza
-        if (minutesSincePaid < 30) {
-          return {
-            status: 'needs-cleaning',
-            label: 'Por limpiar',
-            color: '#9c27b0', // Púrpura
-            icon: <CleaningServicesIcon />,
-            blinking: false,
-            priority: 4
-          };
-        }
-      }
-    }
-
     // PRIORIDAD 5: Mesa libre/disponible
-    return {
+    const finalStatus = {
       status: 'available',
       label: 'Disponible',
       color: '#4caf50', // Verde
@@ -191,6 +179,10 @@ export default function TablesStatusGridEnhanced({
       blinking: false,
       priority: 5
     };
+
+
+
+    return finalStatus;
   };
 
   if (tables.length === 0) {
@@ -215,11 +207,12 @@ export default function TablesStatusGridEnhanced({
     );
   }
 
-  // Ordenar mesas por prioridad (las que necesitan atención primero)
+  // Ordenar mesas numéricamente (1, 2, 3...) y NO por estado
   const sortedTables = [...tables].sort((a, b) => {
-    const statusA = getTableStatus(a);
-    const statusB = getTableStatus(b);
-    return statusA.priority - statusB.priority;
+    // Intentar extraer número si es string "Mesa 1"
+    const numA = Number(a.number) || Number(a.name?.replace(/\D/g, '')) || 0;
+    const numB = Number(b.number) || Number(b.name?.replace(/\D/g, '')) || 0;
+    return numA - numB;
   });
 
   return (
@@ -264,6 +257,7 @@ export default function TablesStatusGridEnhanced({
       <Grid container spacing={2}>
         {sortedTables.map((table) => {
           const tableStatus = getTableStatus(table);
+
           const tableOrders = ordersByTable.get(table.number) || [];
           const activeOrdersCount = tableOrders.filter(o =>
             o.order_status !== 'paid'
@@ -350,7 +344,9 @@ export default function TablesStatusGridEnhanced({
 
                 <Chip
                   icon={tableStatus.icon}
-                  label={tableStatus.label}
+                  label={(() => {
+                    return tableStatus.label;
+                  })()}
                   size="small"
                   sx={{
                     bgcolor: tableStatus.color,

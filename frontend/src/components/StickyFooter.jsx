@@ -13,7 +13,7 @@ import CheckCircleIcon from '@mui/icons-material/CheckCircle';
 import CancelIcon from '@mui/icons-material/Cancel';
 import { alpha } from '@mui/material/styles';
 import { motion, AnimatePresence } from 'framer-motion';
-import { useParams } from 'react-router-dom';
+import { useParams, useNavigate } from 'react-router-dom';
 import { useCart } from '../context/CartContext';
 import { createOrder, closeAccount, hasOpenAccount, fetchOrderDetails } from '../api/tenant';
 import QtyStepper from './QtyStepper';
@@ -72,6 +72,7 @@ const clearOpenOrders = (slug, table) => {
 export default function StickyFooter({ table, tableSessionId }) {
   const { items, subtotal, addItem, removeItem, clearCart } = useCart();
   const { slug } = useParams();
+  const navigate = useNavigate();
 
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [sending, setSending] = useState(false);
@@ -141,7 +142,7 @@ export default function StickyFooter({ table, tableSessionId }) {
     const baseTotal = orderDetails.length > 0
       ? orderDetails.reduce((sum, o) => sum + (Number(o.total) || 0), 0)
       : accountTotal;
-    
+
     if (couponDiscount.type === 'percent') {
       return baseTotal * (couponDiscount.value / 100);
     } else {
@@ -342,13 +343,13 @@ export default function StickyFooter({ table, tableSessionId }) {
       // Por ahora, validación simple en frontend
       // En producción, esto debería llamar a un endpoint del backend
       // const response = await api.post(`/restaurants/${slug}/coupons/validate`, { code: couponCode });
-      
+
       // Simulación: aceptar códigos que empiecen con "DESC" o "PROMO"
       // En producción, reemplazar con llamada real al backend
       await new Promise(resolve => setTimeout(resolve, 500)); // Simular delay
-      
+
       const codeUpper = couponCode.trim().toUpperCase();
-      
+
       // Ejemplo de validación (en producción esto viene del backend)
       let discount = null;
       if (codeUpper.startsWith('DESC10')) {
@@ -364,17 +365,17 @@ export default function StickyFooter({ table, tableSessionId }) {
       }
 
       setCouponDiscount(discount);
-      setSnack({ 
-        open: true, 
-        msg: `Cupón aplicado: ${discount.value}${discount.type === 'percent' ? '%' : '$'} de descuento ✅`, 
-        severity: 'success' 
+      setSnack({
+        open: true,
+        msg: `Cupón aplicado: ${discount.value}${discount.type === 'percent' ? '%' : '$'} de descuento ✅`,
+        severity: 'success'
       });
     } catch (err) {
       console.error('Error validando cupón:', err);
-      setSnack({ 
-        open: true, 
-        msg: 'Error al validar el cupón. Intentá de nuevo.', 
-        severity: 'error' 
+      setSnack({
+        open: true,
+        msg: 'Error al validar el cupón. Intentá de nuevo.',
+        severity: 'error'
       });
     } finally {
       setValidatingCoupon(false);
@@ -450,8 +451,12 @@ export default function StickyFooter({ table, tableSessionId }) {
           // Resetear form
           setPayType('online');
           setPayMethod('card');
+          setPayMethod('card');
           setPayRequestSent(false); // Resetear después de un delay
           setTimeout(() => setPayRequestSent(false), 5000); // Permitir nueva solicitud después de 5 segundos
+
+          // Redirigir a página de agradecimiento
+          navigate('/thank-you?type=presencial');
         } catch (err) {
           setPayRequestSent(false);
           throw err;
@@ -486,6 +491,9 @@ export default function StickyFooter({ table, tableSessionId }) {
         setBackendHasAccount(false);
         setPayType('online');
         setPayMethod('card');
+
+        // Redirigir a página de agradecimiento
+        navigate('/thank-you?type=online');
       }
     } catch (err) {
       console.error(err);
@@ -1464,9 +1472,9 @@ export default function StickyFooter({ table, tableSessionId }) {
               ? 'Procesando…'
               : payRequestSent
                 ? 'Solicitud enviada'
-              : payType === 'presential'
-                ? 'Solicitar Cobro'
-                : `Pagar ${money(totalWithTip)}`
+                : payType === 'presential'
+                  ? 'Solicitar Cobro'
+                  : `Pagar ${money(totalWithTip)}`
             }
           </Button>
         </DialogActions>

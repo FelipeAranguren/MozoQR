@@ -15,6 +15,7 @@ import Register from './pages/Register';
 import PagoSuccess from './pages/PagoSuccess';
 import PagoFailure from './pages/PagoFailure';
 import PagoPending from './pages/PagoPending';
+import ThankYou from './pages/ThankYou';
 import OwnerDashboard from './pages/OwnerDashboard';
 import OwnerDashboardList from './pages/OwnerDashboardList';
 import OwnerRouteGuard from './guards/OwnerRouteGuard';
@@ -66,7 +67,7 @@ export default function App() {
 
           {/* Admin Dashboard - Dashboard de administración */}
           <Route path="/admin/dashboard" element={<AuthGuard><AdminDashboard /></AuthGuard>} />
-          
+
 
           {/* Rutas del owner con layout */}
           <Route path="/owner/:slug" element={<OwnerRouteGuard><OwnerLayout /></OwnerRouteGuard>}>
@@ -94,6 +95,7 @@ export default function App() {
           <Route path="/pago/success" element={<PagoSuccess />} />
           <Route path="/pago/failure" element={<PagoFailure />} />
           <Route path="/pago/pending" element={<PagoPending />} />
+          <Route path="/thank-you" element={<ThankYou />} />
           <Route path="/no-access" element={<NoAccess />} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>

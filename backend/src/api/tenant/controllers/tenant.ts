@@ -69,43 +69,84 @@ async function getOrCreateMesa(restauranteId: ID, number: number) {
 async function getOrCreateOpenSession(opts: {
   restauranteId: ID;
   mesaId: ID;
+  includePaid?: boolean;
+  checkRecentClosed?: boolean;
 }) {
-  const { restauranteId, mesaId } = opts;
+  const { restauranteId, mesaId, includePaid = false, checkRecentClosed = false } = opts;
 
-  // 1) Buscar sesión abierta existente (única por mesa)
-  const existingOpen = await strapi.entityService.findMany('api::mesa-sesion.mesa-sesion', {
+  // 0) Si se pide chequear cerradas recientes (para evitar rebote al liberar mesa)
+  // 0) Si se pide chequear cerradas recientes (para evitar rebote al liberar mesa)
+  if (checkRecentClosed) {
+    // ESTRATEGIA "MESA LOCK":
+    // En lugar de buscar sesiones cerradas (que puede fallar si hay muchas o duplicados),
+    // verificamos cuándo fue la última vez que se tocó la MESA.
+    // Como 'closeSession' ahora actualiza la mesa (limpiando currentSession),
+    // el campo 'updatedAt' de la mesa será muy reciente.
+
+    const mesa = await strapi.entityService.findOne('api::mesa.mesa', mesaId, {
+      fields: ['updatedAt'],
+    });
+
+    if (mesa?.updatedAt) {
+      const lastUpdate = new Date(mesa.updatedAt).getTime();
+      const now = Date.now();
+      const diffSeconds = (now - lastUpdate) / 1000;
+
+      // Si la mesa se actualizó hace menos de 45 segundos, asumimos que fue una liberación reciente.
+      // Bloqueamos la creación de nuevas sesiones automáticas.
+      if (diffSeconds < 45) {
+        console.log(`[getOrCreateOpenSession] Mesa ${mesaId} - Mesa actualizada hace ${diffSeconds.toFixed(1)}s (Lock activo). Ignorando solicitud de apertura.`);
+        return null;
+      }
+    }
+  }
+
+  // 1) Buscar sesión existente (open y opcionalmente paid)
+  const statusFilters: ('open' | 'paid')[] = ['open'];
+  if (includePaid) statusFilters.push('paid');
+
+  const existingSessions = await strapi.entityService.findMany('api::mesa-sesion.mesa-sesion', {
     filters: {
       restaurante: { id: Number(restauranteId) },
       mesa: { id: Number(mesaId) },
-      session_status: 'open',
+      session_status: { $in: statusFilters },
     },
     fields: ['id', 'code', 'session_status', 'openedAt'],
     sort: ['openedAt:desc', 'createdAt:desc'],
     limit: 1,
   });
 
-  if (existingOpen?.[0]?.id) {
-    const session = existingOpen[0];
+  if (existingSessions?.[0]?.id) {
+    const session = existingSessions[0];
     const openedAt = session.openedAt ? new Date(session.openedAt).getTime() : 0;
     const now = Date.now();
     const hoursDiff = (now - openedAt) / (1000 * 60 * 60);
 
-    console.log(`[getOrCreateOpenSession] Mesa ${mesaId} - Sesión encontrada: ${session.id}`);
-    console.log(`[getOrCreateOpenSession] OpenedAt: ${session.openedAt} (${openedAt}), Now: ${now}, DiffHours: ${hoursDiff}`);
+    console.log(`[getOrCreateOpenSession] Mesa ${mesaId} - Sesión encontrada: ${session.id} (${session.session_status})`);
 
-    // Si la sesión tiene más de 24 horas, la cerramos y creamos una nueva
-    if (hoursDiff > 24) {
+    // Si la sesión tiene más de 24 horas, la cerramos y creamos una nueva (solo si es 'open')
+    // Si es 'paid', NO la cerramos automáticamente aquí, porque puede estar esperando limpieza
+    if (session.session_status === 'open' && hoursDiff > 24) {
       console.log(`[getOrCreateOpenSession] Sesión ${session.id} es antigua (>24h). Cerrando y creando nueva.`);
       await strapi.entityService.update('api::mesa-sesion.mesa-sesion', session.id, {
         data: { session_status: 'closed', closedAt: new Date() },
       });
       // Continuamos para crear una nueva sesión...
     } else {
-      console.log(`[getOrCreateOpenSession] Sesión ${session.id} es válida (<24h). Retornando.`);
+      // Si es 'paid', retornarla tal cual para mantener el estado "Por limpiar"
+      if (session.session_status === 'paid') {
+        return session;
+      }
+
+      console.log(`[getOrCreateOpenSession] Sesión ${session.id} es válida. Actualizando timestamp y retornando.`);
+      // Actualizar timestamp para que parezca reciente
+      await strapi.entityService.update('api::mesa-sesion.mesa-sesion', session.id, {
+        data: { openedAt: new Date() },
+      });
       return session;
     }
   } else {
-    console.log(`[getOrCreateOpenSession] No se encontró sesión abierta para Mesa ${mesaId}. Creando nueva.`);
+    console.log(`[getOrCreateOpenSession] No se encontró sesión activa para Mesa ${mesaId}. Creando nueva.`);
   }
 
   // 2) Crear una nueva
@@ -116,8 +157,8 @@ async function getOrCreateOpenSession(opts: {
       code: newCode,
       session_status: 'open',
       openedAt: new Date(),
-      restaurante: { id: Number(restauranteId) }, // <= así
-      mesa: { id: Number(mesaId) },               // <= así
+      restaurante: { id: Number(restauranteId) },
+      mesa: { id: Number(mesaId) },
       publishedAt: new Date(),
     },
   });
@@ -189,6 +230,12 @@ export default {
     const sesion = await getOrCreateOpenSession({
       restauranteId: restaurante.id,
       mesaId: mesa.id,
+      includePaid: false,       // Al crear pedido, queremos una sesión 'open'. Si hay 'paid', se creará una nueva 'open' (?)
+      // OJO: Si hay una 'paid' (por limpiar) y entra un pedido nuevo, ¿deberíamos reabrirla o crear nueva?
+      // Lo estándar es crear nueva o reabrir. Por ahora dejamos comportamiento default:
+      // Si hay 'paid' pero no 'open', getOrCreateOpenSession (con includePaid=false) no la ve,
+      // así que crea una nueva 'open'. Esto es correcto: nueva gente se sienta en mesa sucia.
+      checkRecentClosed: false, // Si van a pedir, ignoramos el bloqueo de "recién cerrada".
     });
 
     // Total (del cliente o calculado)
@@ -325,8 +372,94 @@ export default {
     const sesion = await getOrCreateOpenSession({
       restauranteId: restaurante.id,
       mesaId: mesa.id,
+      includePaid: true,        // Reutilizar sesión 'paid' si existe (para que siga "Por limpiar")
+      checkRecentClosed: true,  // No reabrir si se cerró hace poco (para evitar rebote al liberar)
     });
 
-    ctx.body = { data: { sessionId: sesion.id, code: sesion.code } };
+    if (!sesion) {
+      // Se ignoró la apertura (ej. porque se cerró hace poco)
+      ctx.body = { data: { status: 'ignored', message: 'Table recently released' } };
+      return;
+    }
+
+    ctx.body = { data: { sessionId: sesion.id, code: sesion.code, status: sesion.session_status } };
+  },
+
+  /**
+   * PUT /restaurants/:slug/close-session
+   * Body: { table: number }
+   * Cierra la sesión de una mesa (liberar mesa)
+   */
+  async closeSession(ctx: Ctx) {
+    const { slug } = ctx.params || {};
+    if (!slug) throw new ValidationError('Missing restaurant slug');
+
+    const data = getPayload(ctx.request.body);
+    const table = data?.table;
+
+    if (table === undefined || table === null || table === '') {
+      throw new ValidationError('Missing table');
+    }
+
+    // Restaurante
+    const restaurante = await getRestaurantBySlug(String(slug));
+    // "Hard Close" Reloaded: Búsqueda Profunda
+    // En lugar de buscar IDs de mesa y luego sesiones, buscamos directamente
+    // sesiones cuya mesa tenga el número indicado. Esto salta cualquier problema de IDs.
+    const openList = await strapi.entityService.findMany('api::mesa-sesion.mesa-sesion', {
+      filters: {
+        restaurante: { id: Number(restaurante.id) }, // Filtramos por restaurante para seguridad
+        mesa: { number: Number(table) }, // Filtro profundo: sesiones de mesas con este número
+        session_status: { $in: ['open', 'paid'] },
+      },
+      fields: ['id', 'session_status'],
+      populate: { mesa: { fields: ['id', 'number'] } },
+      limit: 100,
+    });
+
+    console.log(`[closeSession] DEBUG: Sessions found to close:`, openList.map((s: any) => ({ id: s.id, status: s.session_status, mesaId: s.mesa?.id })));
+
+    if (!openList || openList.length === 0) {
+      console.log(`[closeSession] DEBUG: No active sessions found. Checking if we need to clear mesa state anyway.`);
+    } else {
+      // Cerrar TODAS las sesiones encontradas
+      await Promise.all(
+        openList.map(async (sesion: any) => {
+          console.log(`[closeSession] FORCE CLOSING session ${sesion.id}`);
+          try {
+            await strapi.entityService.update('api::mesa-sesion.mesa-sesion', sesion.id, {
+              data: { session_status: 'closed', closedAt: new Date() },
+            });
+          } catch (err) {
+            console.error(`[closeSession] Error closing session ${sesion.id}:`, err);
+          }
+        })
+      );
+    }
+
+    // LIMPIEZA PROFUNDA: Desvincular sesión actual de las mesas
+    // Extraer IDs de mesa de las sesiones encontradas
+    const mesaIds = [...new Set(openList.map((s: any) => s.mesa?.id).filter(Boolean))];
+
+    if (mesaIds.length > 0) {
+      console.log(`[closeSession] Clearing currentSession for mesas: ${mesaIds.join(', ')}`);
+      await Promise.all(
+        mesaIds.map(async (mId: any) => {
+          try {
+            await strapi.entityService.update('api::mesa.mesa', mId, {
+              data: { currentSession: null },
+            });
+          } catch (err) {
+            // Ignoramos error si el campo no existe, pero lo intentamos
+            console.warn(`[closeSession] Could not clear currentSession for mesa ${mId} (might not exist in schema)`);
+          }
+        })
+      );
+    }
+
+    console.log(`[closeSession] Hard Close completed for Table ${table}`);
+
+    // Respuesta final
+    ctx.body = { data: { status: 'closed', message: 'Table released and sessions closed' } };
   },
 };
