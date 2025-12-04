@@ -21,17 +21,17 @@ export async function fetchTables(slug) {
     const restauranteRes = await api.get(
       `/restaurantes?filters[slug][$eq]=${slug}&populate[mesas]=true&fields[0]=id`
     );
-    
+
     const restauranteData = restauranteRes?.data?.data?.[0];
     if (restauranteData) {
       const attr = restauranteData.attributes || restauranteData;
       const mesasData = attr.mesas?.data || attr.mesas || [];
-      
+
       // Debug: log para ver qué estamos obteniendo
       if (mesasData.length > 0) {
         console.log(`[tables.js] Obtenidas ${mesasData.length} mesas desde restaurante para ${slug}`);
       }
-      
+
       // Si hay mesas, retornarlas
       if (mesasData.length > 0) {
         const mesas = mesasData.map(item => {
@@ -41,13 +41,14 @@ export async function fetchTables(slug) {
             documentId: item.documentId,
             number: mesaAttr.number || mesaAttr.numero || item.id,
             name: mesaAttr.name || mesaAttr.displayName || `Mesa ${mesaAttr.number || item.id}`,
-            displayName: mesaAttr.displayName || mesaAttr.name || `Mesa ${mesaAttr.number || item.id}`
+            displayName: mesaAttr.displayName || mesaAttr.name || `Mesa ${mesaAttr.number || item.id}`,
+            status: mesaAttr.status || 'disponible'
           };
         }).sort((a, b) => (a.number || 0) - (b.number || 0));
-        
+
         return mesas;
       }
-      
+
       // Si no hay mesas pero el restaurante existe, retornar array vacío (válido)
       console.log(`[tables.js] Restaurante ${slug} encontrado pero sin mesas`);
       return [];
@@ -69,7 +70,7 @@ export async function fetchTables(slug) {
     }
 
     const res = await api.get(
-      `/mesas?filters[restaurante][id][$eq]=${restauranteId}&fields[0]=id&fields[1]=number&fields[2]=name&fields[3]=displayName&sort[0]=number:asc`
+      `/mesas?filters[restaurante][id][$eq]=${restauranteId}&fields[0]=id&fields[1]=number&fields[2]=name&fields[3]=displayName&fields[4]=status&sort[0]=number:asc`
     );
 
     const data = res?.data?.data || [];
@@ -80,7 +81,8 @@ export async function fetchTables(slug) {
         documentId: item.documentId,
         number: attr.number || attr.numero || item.id,
         name: attr.name || attr.displayName || `Mesa ${attr.number || item.id}`,
-        displayName: attr.displayName || attr.name || `Mesa ${attr.number || item.id}`
+        displayName: attr.displayName || attr.name || `Mesa ${attr.number || item.id}`,
+        status: attr.status || 'disponible'
       };
     });
   } catch (err) {

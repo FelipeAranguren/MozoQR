@@ -88,6 +88,48 @@ export default function TablesStatusGridEnhanced({
     const hasServed = activeOrders.some(o => o.order_status === 'served');
     const hasPaid = tableOrders.some(o => o.order_status === 'paid');
 
+    // PRIORIDAD 0: Estado explícito de la base de datos (Nueva implementación)
+    if (table.status) {
+      if (table.status === 'ocupada') {
+        return {
+          status: 'occupied',
+          label: 'Ocupada',
+          color: '#1976d2', // Azul
+          icon: <RestaurantIcon />,
+          blinking: false,
+          priority: 3,
+          activeOrdersCount: activeOrders.length
+        };
+      }
+      if (table.status === 'por_limpiar') {
+        return {
+          status: 'needs-cleaning',
+          label: 'Por limpiar',
+          color: '#ff9800', // Naranja/Amber
+          icon: <CleaningServicesIcon />,
+          blinking: false,
+          priority: 2
+        };
+      }
+      if (table.status === 'disponible') {
+        // SAFETY CHECK: Si hay pedidos activos o sesión abierta, ignorar 'disponible' (datos legacy o desincronizados)
+        const hasActiveOrders = activeOrders.length > 0;
+        const hasOpenSession = openSessions.some(s => Number(s.mesaNumber) === Number(table.number));
+
+        if (!hasActiveOrders && !hasOpenSession) {
+          return {
+            status: 'available',
+            label: 'Disponible',
+            color: '#4caf50', // Verde
+            icon: <CheckCircleIcon />,
+            blinking: false,
+            priority: 5
+          };
+        }
+        // Si hay actividad, dejamos que fluya a la lógica de abajo para determinar si es 'ocupada', 'por limpiar', etc.
+      }
+    }
+
     // PRIORIDAD 1: Si hay llamada del sistema (mozo)
     if (hasSystemCall) {
       const callType = systemCalls[0];

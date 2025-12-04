@@ -10,6 +10,8 @@ type ID = number | string;
 
 const { ValidationError, NotFoundError } = errors;
 
+declare var strapi: any;
+
 type Ctx = {
   params?: Record<string, any>;
   request: { body: any };
@@ -152,7 +154,7 @@ async function getOrCreateOpenSession(opts: {
   // 2) Crear una nueva
   const newCode = Math.random().toString(36).slice(2, 8) + '-' + Date.now().toString(36).slice(-4);
 
-  return await strapi.entityService.create('api::mesa-sesion.mesa-sesion', {
+  const newSession = await strapi.entityService.create('api::mesa-sesion.mesa-sesion', {
     data: {
       code: newCode,
       session_status: 'open',
@@ -162,6 +164,13 @@ async function getOrCreateOpenSession(opts: {
       publishedAt: new Date(),
     },
   });
+
+  // Actualizar estado de mesa a 'ocupada'
+  await strapi.entityService.update('api::mesa.mesa', mesaId, {
+    data: { status: 'ocupada' },
+  });
+
+  return newSession;
 }
 
 /** Crea los ítems de un pedido (ids planos) */
@@ -261,6 +270,13 @@ export default {
       },
     });
 
+    // Asegurar que la mesa esté marcada como ocupada
+    if (mesa.status !== 'ocupada') {
+      await strapi.entityService.update('api::mesa.mesa', mesa.id, {
+        data: { status: 'ocupada' },
+      });
+    }
+
     // Ítems
     await createItems(pedido.id, items);
 
@@ -329,7 +345,7 @@ export default {
     // Limpia la referencia de sesión actual en la mesa (si la usás)
     try {
       await strapi.entityService.update('api::mesa.mesa', mesa.id, {
-        data: { currentSession: null },
+        data: { currentSession: null, status: 'por_limpiar' },
       });
     } catch {
       // opcional: si no existe el campo, ignorar
@@ -403,13 +419,30 @@ export default {
 
     // Restaurante
     const restaurante = await getRestaurantBySlug(String(slug));
-    // "Hard Close" Reloaded: Búsqueda Profunda
-    // En lugar de buscar IDs de mesa y luego sesiones, buscamos directamente
-    // sesiones cuya mesa tenga el número indicado. Esto salta cualquier problema de IDs.
+
+    // 1. Buscar TODAS las mesas con ese número (por si hay duplicados)
+    const mesas = await strapi.entityService.findMany('api::mesa.mesa', {
+      filters: {
+        restaurante: { id: Number(restaurante.id) },
+        number: Number(table)
+      },
+      fields: ['id', 'number'],
+    });
+
+    const mesaIds = mesas.map((m: any) => m.id);
+    console.log(`[closeSession] Mesas encontradas para número ${table}:`, mesaIds);
+
+    if (mesaIds.length === 0) {
+      // Si no hay mesa, no hay nada que cerrar, pero devolvemos éxito para no romper el front
+      ctx.body = { data: { status: 'closed', message: 'Table not found, nothing to close' } };
+      return;
+    }
+
+    // 2. Buscar sesiones abiertas de ESAS mesas (usando IDs explícitos)
     const openList = await strapi.entityService.findMany('api::mesa-sesion.mesa-sesion', {
       filters: {
-        restaurante: { id: Number(restaurante.id) }, // Filtramos por restaurante para seguridad
-        mesa: { number: Number(table) }, // Filtro profundo: sesiones de mesas con este número
+        restaurante: { id: Number(restaurante.id) },
+        mesa: { id: { $in: mesaIds } },
         session_status: { $in: ['open', 'paid'] },
       },
       fields: ['id', 'session_status'],
@@ -417,12 +450,10 @@ export default {
       limit: 100,
     });
 
-    console.log(`[closeSession] DEBUG: Sessions found to close:`, openList.map((s: any) => ({ id: s.id, status: s.session_status, mesaId: s.mesa?.id })));
+    console.log(`[closeSession] DEBUG: Sessions found to close for Mesa ${table} (IDs: ${mesaIds.join(',')}):`, openList.map((s: any) => s.id));
 
-    if (!openList || openList.length === 0) {
-      console.log(`[closeSession] DEBUG: No active sessions found. Checking if we need to clear mesa state anyway.`);
-    } else {
-      // Cerrar TODAS las sesiones encontradas
+    // 3. Cerrar TODAS las sesiones encontradas
+    if (openList.length > 0) {
       await Promise.all(
         openList.map(async (sesion: any) => {
           console.log(`[closeSession] FORCE CLOSING session ${sesion.id}`);
@@ -437,29 +468,38 @@ export default {
       );
     }
 
-    // LIMPIEZA PROFUNDA: Desvincular sesión actual de las mesas
-    // Extraer IDs de mesa de las sesiones encontradas
-    const mesaIds = [...new Set(openList.map((s: any) => s.mesa?.id).filter(Boolean))];
-
-    if (mesaIds.length > 0) {
-      console.log(`[closeSession] Clearing currentSession for mesas: ${mesaIds.join(', ')}`);
-      await Promise.all(
-        mesaIds.map(async (mId: any) => {
-          try {
-            await strapi.entityService.update('api::mesa.mesa', mId, {
-              data: { currentSession: null },
-            });
-          } catch (err) {
-            // Ignoramos error si el campo no existe, pero lo intentamos
-            console.warn(`[closeSession] Could not clear currentSession for mesa ${mId} (might not exist in schema)`);
-          }
-        })
-      );
-    }
+    // 4. Actualizar TODAS las mesas a 'disponible'
+    console.log(`[closeSession] Setting status 'disponible' for mesas: ${mesaIds.join(', ')}`);
+    await Promise.all(
+      mesaIds.map(async (mId: any) => {
+        try {
+          await strapi.entityService.update('api::mesa.mesa', mId, {
+            data: { currentSession: null, status: 'disponible' },
+          });
+        } catch (err) {
+          console.warn(`[closeSession] Could not update mesa ${mId}`, err);
+        }
+      })
+    );
 
     console.log(`[closeSession] Hard Close completed for Table ${table}`);
 
-    // Respuesta final
-    ctx.body = { data: { status: 'closed', message: 'Table released and sessions closed' } };
+    // Respuesta final con DEBUG info
+    ctx.body = {
+      data: {
+        status: 'closed',
+        message: 'Table released and sessions closed',
+        debug: {
+          slug,
+          tableNumber: table,
+          restauranteId: restaurante.id,
+          mesasFound: mesaIds.length,
+          mesaIds: mesaIds,
+          sessionsFound: openList.length,
+          sessionIds: openList.map((s: any) => s.id),
+          clearedMesas: mesaIds.length
+        }
+      }
+    };
   },
 };

@@ -2,7 +2,7 @@
 import React, { useEffect, useRef, useState, useMemo } from 'react';
 import { useParams } from 'react-router-dom';
 import { api } from '../api';
-import { closeAccount } from '../api/tenant';
+import { closeAccount, openSession } from '../api/tenant';
 import { fetchTables } from '../api/tables';
 import { cleanOldSessions } from '../api/restaurant';
 import TablesStatusGridEnhanced from '../components/TablesStatusGridEnhanced';
@@ -839,6 +839,9 @@ export default function Mostrador() {
         },
       });
       console.log(`[liberarMesa] Respuesta del backend al cerrar sesión:`, closeResponse?.data);
+      if (closeResponse?.data?.data?.debug) {
+        console.log(`[liberarMesa] DEBUG INFO:`, closeResponse.data.data.debug);
+      }
 
       // Actualizar estado inmediatamente para que la UI responda rápido
       setOpenSessions(prev => {
@@ -1005,6 +1008,26 @@ export default function Mostrador() {
     } catch (err) {
       console.error('Error al marcar mesa como disponible:', err);
       setSnack({ open: true, msg: 'No se pudo marcar la mesa como disponible ❌', severity: 'error' });
+    }
+  };
+
+  // Abrir sesión manualmente (Ocupar Mesa)
+  const handleOpenSession = async (mesaNumber) => {
+    try {
+      console.log(`[handleOpenSession] Abriendo sesión para Mesa ${mesaNumber}...`);
+      await openSession(slug, { table: mesaNumber });
+
+      setSnack({ open: true, msg: `Mesa ${mesaNumber} ocupada ✅`, severity: 'success' });
+
+      // Refrescar datos
+      await fetchOpenSessions();
+      await fetchMesas();
+
+      // Cerrar el diálogo
+      setTableDetailDialog({ open: false, mesa: null });
+    } catch (err) {
+      console.error('Error al ocupar mesa:', err);
+      setSnack({ open: true, msg: 'No se pudo ocupar la mesa ❌', severity: 'error' });
     }
   };
 
@@ -2598,6 +2621,22 @@ export default function Mostrador() {
                         Liberar Mesa
                       </Button>
                     )}
+                  </Box>
+                )}
+
+              {/* Botón para Ocupar Mesa si está disponible (sin pedidos ni sesión) */}
+              {(!tableDetailDialog.mesa.pedidos || tableDetailDialog.mesa.pedidos.length === 0) &&
+                !tableDetailDialog.mesa.cuenta &&
+                !openSessions.some((s) => Number(s.mesaNumber) === Number(tableDetailDialog.mesa?.number)) && (
+                  <Box sx={{ mt: 2 }}>
+                    <Button
+                      variant="contained"
+                      color="primary"
+                      fullWidth
+                      onClick={() => handleOpenSession(tableDetailDialog.mesa.number)}
+                    >
+                      Ocupar Mesa
+                    </Button>
                   </Box>
                 )}
             </>

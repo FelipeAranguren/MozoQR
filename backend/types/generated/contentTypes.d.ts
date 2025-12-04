@@ -515,6 +515,10 @@ export interface ApiMesaMesa extends Struct.CollectionTypeSchema {
       'manyToOne',
       'api::restaurante.restaurante'
     >;
+    status: Schema.Attribute.Enumeration<
+      ['disponible', 'ocupada', 'por_limpiar']
+    > &
+      Schema.Attribute.DefaultTo<'disponible'>;
     updatedAt: Schema.Attribute.DateTime;
     updatedBy: Schema.Attribute.Relation<'oneToOne', 'admin::user'> &
       Schema.Attribute.Private;
