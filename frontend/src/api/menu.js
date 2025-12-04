@@ -398,18 +398,51 @@ export async function getRestaurantId(slug) {
     }
 
     // Intentar obtener el ID de múltiples formas (Strapi v4 y v5)
-    const restauranteId =
+    let restauranteId =
       data?.id ||
       data?.documentId ||
       (data?.attributes && (data.attributes.id || data.attributes.documentId)) ||
       null;
 
+    // Asegurarse de que el ID sea un número limpio
+    if (restauranteId) {
+      // Si es un string, intentar extraer solo el número
+      if (typeof restauranteId === 'string') {
+        // Extraer solo dígitos del string
+        const numMatch = restauranteId.match(/^\d+$/);
+        if (numMatch) {
+          restauranteId = parseInt(numMatch[0], 10);
+        } else {
+          console.warn('⚠️ [getRestaurantId] ID string con formato inesperado:', restauranteId);
+          // Intentar extraer cualquier número del string
+          const anyNum = restauranteId.match(/\d+/);
+          if (anyNum) {
+            restauranteId = parseInt(anyNum[0], 10);
+            console.warn('⚠️ [getRestaurantId] ID extraído parcialmente:', restauranteId, 'de:', data?.id);
+          }
+        }
+      }
+      
+      // Validar que sea un número válido
+      if (typeof restauranteId !== 'number' || isNaN(restauranteId) || restauranteId <= 0) {
+        console.error('❌ [getRestaurantId] ID inválido después de procesar:', {
+          original: data?.id,
+          processed: restauranteId,
+          type: typeof restauranteId
+        });
+        restauranteId = null;
+      }
+    }
+
     console.log('🔍 [getRestaurantId] Restaurante encontrado:', {
       slug,
       restauranteId,
+      restauranteIdType: typeof restauranteId,
+      originalId: data?.id,
+      originalIdType: typeof data?.id,
+      documentId: data?.documentId,
       dataKeys: Object.keys(data || {}),
-      hasAttributes: !!data?.attributes,
-      rawData: data
+      hasAttributes: !!data?.attributes
     });
 
     if (!restauranteId) {

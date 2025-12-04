@@ -21,6 +21,7 @@ import { fetchRestaurant, updateRestaurant } from '../../../api/restaurant';
 export default function RestaurantSettings() {
   const { slug } = useParams();
   const fileInputRef = useRef(null);
+  const logoObjectUrlRef = useRef(null); // Ref para almacenar la URL del objeto y poder acceder desde cualquier función
   
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -35,6 +36,15 @@ export default function RestaurantSettings() {
     loadRestaurant();
   }, [slug]);
 
+  // Limpiar URL de objeto al desmontar
+  useEffect(() => {
+    return () => {
+      if (logoObjectUrlRef.current) {
+        URL.revokeObjectURL(logoObjectUrlRef.current);
+      }
+    };
+  }, []);
+
   const loadRestaurant = async () => {
     setLoading(true);
     try {
@@ -42,7 +52,23 @@ export default function RestaurantSettings() {
       if (data) {
         setRestaurant(data);
         setName(data.name || '');
+        
+        // Limpiar URL de objeto si existe antes de establecer el nuevo preview
+        // (el nuevo preview será una URL del servidor, no un objeto URL)
+        if (logoObjectUrlRef.current) {
+          URL.revokeObjectURL(logoObjectUrlRef.current);
+          logoObjectUrlRef.current = null;
+        }
+        
+        // Si hay un logo, usar la URL del servidor, si no, null
         setLogoPreview(data.logo || null);
+        // Limpiar estados de edición
+        setLogoFile(null);
+        setRemoveLogo(false);
+        // Limpiar input de archivo
+        if (fileInputRef.current) {
+          fileInputRef.current.value = '';
+        }
       }
     } catch (error) {
       console.error('Error loading restaurant:', error);
@@ -68,13 +94,25 @@ export default function RestaurantSettings() {
       return;
     }
 
+    // Limpiar URL de objeto anterior si existe
+    if (logoObjectUrlRef.current) {
+      URL.revokeObjectURL(logoObjectUrlRef.current);
+    }
+
+    const objectUrl = URL.createObjectURL(file);
     setLogoFile(file);
-    setLogoPreview(URL.createObjectURL(file));
+    setLogoPreview(objectUrl);
+    logoObjectUrlRef.current = objectUrl;
     setRemoveLogo(false); // Si hay nueva imagen, no eliminar
     setMessage({ type: '', text: '' });
   };
 
   const handleRemoveLogo = () => {
+    // Limpiar URL de objeto si existe
+    if (logoObjectUrlRef.current) {
+      URL.revokeObjectURL(logoObjectUrlRef.current);
+      logoObjectUrlRef.current = null;
+    }
     setLogoFile(null);
     setLogoPreview(null);
     setRemoveLogo(true);
@@ -101,13 +139,21 @@ export default function RestaurantSettings() {
         removeLogo: removeLogo && !logoFile // Solo eliminar si no hay nueva imagen
       });
       
+      // Limpiar URL de objeto si existe (para evitar memory leaks)
+      if (logoObjectUrlRef.current) {
+        URL.revokeObjectURL(logoObjectUrlRef.current);
+        logoObjectUrlRef.current = null;
+      }
+      
       setMessage({ type: 'success', text: 'Configuración guardada correctamente' });
       setLogoFile(null); // Limpiar el archivo después de guardar
       setRemoveLogo(false);
-      await loadRestaurant(); // Recargar datos
+      
+      // Recargar datos del servidor (esto obtendrá el logo actualizado o la ausencia de logo)
+      await loadRestaurant();
     } catch (error) {
       console.error('Error saving restaurant:', error);
-      setMessage({ type: 'error', text: 'Error al guardar la configuración' });
+      setMessage({ type: 'error', text: error.response?.data?.error?.message || 'Error al guardar la configuración' });
     } finally {
       setSaving(false);
     }
@@ -242,7 +288,7 @@ export default function RestaurantSettings() {
                         size="small"
                         onClick={(e) => {
                           e.stopPropagation();
-                          handleRemoveLogo();
+                          fileInputRef.current?.click();
                         }}
                         sx={{ mr: 1 }}
                       >
