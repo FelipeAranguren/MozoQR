@@ -35,6 +35,15 @@ export default function TablesStatusGridEnhanced({
             map.get(tableNum).push(order);
           }
         });
+        // Log resumen para debugging
+        if (orders.length > 0) {
+          const summary = Array.from(map.entries()).map(([num, ords]) => ({
+            mesa: num,
+            total: ords.length,
+            estados: ords.map(o => o.order_status).join(', ')
+          }));
+          console.log(`[TablesStatusGrid] ${orders.length} pedidos agrupados en ${map.size} mesa(s):`, summary);
+        }
       }
       return map;
     } catch (error) {
@@ -67,6 +76,10 @@ export default function TablesStatusGridEnhanced({
 
   /**
    * Determina el estado completo de una mesa
+   * REGLAS CRÍTICAS:
+   * 1. Si hay sesión abierta → Mesa OCUPADA (cliente sentado)
+   * 2. Si hay pedidos sin pagar (pending, preparing, served) → Mesa OCUPADA
+   * 3. Solo si no hay sesión ni pedidos sin pagar → respetar estado del backend
    */
   const getTableStatus = (table) => {
     const tableOrders = ordersByTable.get(table.number) || [];
@@ -76,58 +89,56 @@ export default function TablesStatusGridEnhanced({
       return matches;
     });
 
-    const activeOrders = tableOrders.filter(o =>
-      o.order_status === 'pending' ||
-      o.order_status === 'preparing' ||
-      o.order_status === 'served'
-    );
+    // Pedidos sin pagar (cualquier estado que no sea 'paid')
+    const unpaidOrders = tableOrders.filter(o => o.order_status !== 'paid');
 
     const hasSystemCall = systemCalls.length > 0;
-    const hasPending = activeOrders.some(o => o.order_status === 'pending');
-    const hasPreparing = activeOrders.some(o => o.order_status === 'preparing');
-    const hasServed = activeOrders.some(o => o.order_status === 'served');
+    const hasServed = unpaidOrders.some(o => o.order_status === 'served');
     const hasPaid = tableOrders.some(o => o.order_status === 'paid');
+    
+    // LOG para debugging
+    if (tableOrders.length > 0 || hasOpenSession) {
+      console.log(`[TablesStatusGrid] Mesa ${table.number}: ${tableOrders.length} pedido(s), ${unpaidOrders.length} sin pagar, sesión abierta: ${hasOpenSession}`);
+    }
+    
+    // REGLA CRÍTICA #1: Si hay sesión abierta, la mesa SIEMPRE está ocupada (cliente sentado)
+    if (hasOpenSession) {
+      console.log(`[TablesStatusGrid] Mesa ${table.number}: Tiene sesión abierta → FORZANDO estado OCUPADA`);
+      return {
+        status: 'occupied',
+        label: 'Ocupada',
+        color: '#1976d2', // Azul
+        icon: <RestaurantIcon />,
+        blinking: false,
+        priority: 1,
+        activeOrdersCount: unpaidOrders.length
+      };
+    }
+    
+    // REGLA CRÍTICA #2: Si hay pedidos sin pagar, la mesa SIEMPRE está ocupada
+    if (unpaidOrders.length > 0) {
+      console.log(`[TablesStatusGrid] Mesa ${table.number}: Tiene ${unpaidOrders.length} pedido(s) sin pagar (estados: ${unpaidOrders.map(o => o.order_status).join(', ')}) → FORZANDO estado OCUPADA`);
+      return {
+        status: 'occupied',
+        label: hasServed && !hasPaid ? 'Espera pago' : 'Ocupada',
+        color: '#1976d2', // Azul
+        icon: hasServed && !hasPaid ? <AccessTimeIcon /> : <RestaurantIcon />,
+        blinking: false,
+        priority: 1,
+        activeOrdersCount: unpaidOrders.length
+      };
+    }
 
-    // PRIORIDAD 0: Estado explícito de la base de datos (Nueva implementación)
-    if (table.status) {
-      if (table.status === 'ocupada') {
-        return {
-          status: 'occupied',
-          label: 'Ocupada',
-          color: '#1976d2', // Azul
-          icon: <RestaurantIcon />,
-          blinking: false,
-          priority: 3,
-          activeOrdersCount: activeOrders.length
-        };
-      }
-      if (table.status === 'por_limpiar') {
-        return {
-          status: 'needs-cleaning',
-          label: 'Por limpiar',
-          color: '#ff9800', // Naranja/Amber
-          icon: <CleaningServicesIcon />,
-          blinking: false,
-          priority: 2
-        };
-      }
-      if (table.status === 'disponible') {
-        // SAFETY CHECK: Si hay pedidos activos o sesión abierta, ignorar 'disponible' (datos legacy o desincronizados)
-        const hasActiveOrders = activeOrders.length > 0;
-        const hasOpenSession = openSessions.some(s => Number(s.mesaNumber) === Number(table.number));
-
-        if (!hasActiveOrders && !hasOpenSession) {
-          return {
-            status: 'available',
-            label: 'Disponible',
-            color: '#4caf50', // Verde
-            icon: <CheckCircleIcon />,
-            blinking: false,
-            priority: 5
-          };
-        }
-        // Si hay actividad, dejamos que fluya a la lógica de abajo para determinar si es 'ocupada', 'por limpiar', etc.
-      }
+    // PRIORIDAD 0: Estado por limpiar (máxima prioridad visual)
+    if (table.status === 'por_limpiar') {
+      return {
+        status: 'needs-cleaning',
+        label: 'Por limpiar',
+        color: '#ff9800', // Naranja/Amber
+        icon: <CleaningServicesIcon />,
+        blinking: false,
+        priority: 2
+      };
     }
 
     // PRIORIDAD 1: Si hay llamada del sistema (mozo)
@@ -159,61 +170,42 @@ export default function TablesStatusGridEnhanced({
       };
     }
 
-    // Obtener la sesión de esta mesa
-    const session = openSessions.find(s => Number(s.mesaNumber) === Number(table.number));
 
-    // PRIORIDAD 2: Si la sesión está "paid", entonces está "Por limpiar" (independientemente de pedidos)
-    // Esto tiene prioridad sobre pedidos activos porque ya se cerró la cuenta
-    if (session?.session_status === 'paid') {
-      return {
-        status: 'needs-cleaning',
-        label: 'Por limpiar',
-        color: '#ff9800', // Naranja/Amber
-        icon: <CleaningServicesIcon />,
-        blinking: false,
-        priority: 2
-      };
+    // PRIORIDAD 5: Verificar estado del backend SOLO si no hay pedidos sin pagar ni sesión abierta
+    // El backend es la fuente de verdad después de pagar
+    if (table.status) {
+      if (table.status === 'ocupada') {
+        return {
+          status: 'occupied',
+          label: 'Ocupada',
+          color: '#1976d2', // Azul
+          icon: <RestaurantIcon />,
+          blinking: false,
+          priority: 3,
+          activeOrdersCount: unpaidOrders.length
+        };
+      }
+      
+      if (table.status === 'disponible') {
+        // Solo mostrar como disponible si TODOS los pedidos están pagados Y no hay sesión abierta
+        const allOrdersPaid = tableOrders.length === 0 || tableOrders.every(o => o.order_status === 'paid');
+        
+        if (allOrdersPaid && !hasOpenSession) {
+          console.log(`[TablesStatusGrid] Mesa ${table.number}: Backend dice 'disponible', todos los pedidos están 'paid' y no hay sesión abierta. Mostrando como disponible.`);
+          return {
+            status: 'available',
+            label: 'Disponible',
+            color: '#4caf50', // Verde
+            icon: <CheckCircleIcon />,
+            blinking: false,
+            priority: 5
+          };
+        }
+      }
     }
 
-    // PRIORIDAD 3: Si tiene pedidos pendientes o en cocina, está ocupada
-    if (hasPending || hasPreparing) {
-      return {
-        status: 'occupied',
-        label: 'Ocupada',
-        color: '#1976d2', // Azul
-        icon: <RestaurantIcon />,
-        blinking: false,
-        priority: 3,
-        activeOrdersCount: activeOrders.length
-      };
-    }
-
-    // PRIORIDAD 4: Si tiene pedidos servidos pero no pagados, esperando cuenta
-    if (hasServed && !hasPaid) {
-      return {
-        status: 'waiting-payment',
-        label: 'Espera pago',
-        color: '#1976d2', // Azul (mismo que ocupada para consistencia)
-        icon: <AccessTimeIcon />,
-        blinking: false,
-        priority: 4
-      };
-    }
-
-    if (hasOpenSession && activeOrders.length === 0) {
-      return {
-        status: 'occupied',
-        label: 'Ocupada',
-        color: '#1976d2', // Azul
-        icon: <RestaurantIcon />,
-        blinking: false,
-        priority: 5,
-        activeOrdersCount: 0
-      };
-    }
-
-    // PRIORIDAD 5: Mesa libre/disponible
-    const finalStatus = {
+    // PRIORIDAD 6: Mesa libre/disponible (sin sesión abierta y sin pedidos)
+    return {
       status: 'available',
       label: 'Disponible',
       color: '#4caf50', // Verde
@@ -221,10 +213,6 @@ export default function TablesStatusGridEnhanced({
       blinking: false,
       priority: 5
     };
-
-
-
-    return finalStatus;
   };
 
   if (tables.length === 0) {

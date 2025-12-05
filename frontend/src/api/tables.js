@@ -36,13 +36,21 @@ export async function fetchTables(slug) {
       if (mesasData.length > 0) {
         const mesas = mesasData.map(item => {
           const mesaAttr = item.attributes || item;
+          const mesaStatus = mesaAttr.status || 'disponible';
+          const mesaNumber = mesaAttr.number || mesaAttr.numero || item.id;
+          
+          // Log para debugging (solo para mesas que cambian de estado)
+          if (mesaStatus === 'disponible' || mesaStatus === 'ocupada') {
+            console.log(`[tables.js] Mesa ${mesaNumber} - Estado: ${mesaStatus}`);
+          }
+          
           return {
             id: item.id || item.documentId,
             documentId: item.documentId,
-            number: mesaAttr.number || mesaAttr.numero || item.id,
-            name: mesaAttr.name || mesaAttr.displayName || `Mesa ${mesaAttr.number || item.id}`,
-            displayName: mesaAttr.displayName || mesaAttr.name || `Mesa ${mesaAttr.number || item.id}`,
-            status: mesaAttr.status || 'disponible'
+            number: mesaNumber,
+            name: mesaAttr.name || mesaAttr.displayName || `Mesa ${mesaNumber}`,
+            displayName: mesaAttr.displayName || mesaAttr.name || `Mesa ${mesaNumber}`,
+            status: mesaStatus
           };
         }).sort((a, b) => (a.number || 0) - (b.number || 0));
 

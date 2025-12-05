@@ -470,7 +470,9 @@ export default function StickyFooter({ table, tableSessionId }) {
           closePayload.discount = couponDiscount.value;
           closePayload.discountType = couponDiscount.type;
         }
-        await closeAccount(slug, closePayload);
+        console.log(`[StickyFooter] Cerrando cuenta para mesa ${table}...`);
+        const closeResult = await closeAccount(slug, closePayload);
+        console.log(`[StickyFooter] ✅ Cuenta cerrada. Resultado:`, closeResult);
 
         // Limpiamos la lista local (ya no hay pedidos abiertos)
         if (slug && table) {

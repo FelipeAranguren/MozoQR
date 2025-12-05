@@ -37,6 +37,7 @@ export default function Mostrador() {
 
   // ----- estado principal -----
   const [pedidos, setPedidos] = useState([]);
+  const [todosPedidosSinPagar, setTodosPedidosSinPagar] = useState([]); // TODOS los pedidos sin pagar (incluyendo "served")
   const [cuentas, setCuentas] = useState([]);
   const [mesas, setMesas] = useState([]);
   const [openSessions, setOpenSessions] = useState([]); // Sesiones abiertas sin pedidos
@@ -487,9 +488,16 @@ export default function Mostrador() {
       const idsAAgregar = hasLoadedRef.current ? nuevosVisibles : visibles;
       idsAAgregar.forEach((p) => seenIdsRef.current.add(p.id));
 
-      // guardar visibles
+      // guardar visibles (solo para mostrar en la lista de pedidos activos)
       pedidosRef.current = visibles;
       setPedidos(visibles);
+
+      // CRÍTICO: Guardar TODOS los pedidos sin pagar (incluyendo "served") para el estado de mesas
+      // Los pedidos "served" también deben considerarse para determinar si una mesa está ocupada
+      const todosLosPedidosSinPagar = conItems.filter((p) => p.order_status !== 'paid' && !isSystemOrder(p));
+      setTodosPedidosSinPagar(todosLosPedidosSinPagar);
+      console.log(`[Mostrador] Pedidos sin pagar para estado de mesas: ${todosLosPedidosSinPagar.length} (incluyendo served)`);
+      console.log(`[Mostrador] Pedidos sin pagar (incluyendo served): ${todosLosPedidosSinPagar.length}`);
 
       // ---- agrupar cuentas (solo activas, excluyendo pedidos del sistema)
       const grupos = new Map();
@@ -560,10 +568,20 @@ export default function Mostrador() {
   // Cargar mesas
   const fetchMesas = async () => {
     try {
+      console.log(`[Mostrador] fetchMesas: Obteniendo mesas para ${slug}...`);
       const mesasData = await fetchTables(slug);
+      console.log(`[Mostrador] fetchMesas: Obtenidas ${mesasData.length} mesas`);
+      
+      // Log de estados de mesas para debugging
+      const estados = mesasData.reduce((acc, m) => {
+        acc[m.status] = (acc[m.status] || 0) + 1;
+        return acc;
+      }, {});
+      console.log(`[Mostrador] fetchMesas: Estados de mesas:`, estados);
+      
       setMesas(mesasData);
     } catch (err) {
-      console.error('Error al obtener mesas:', err);
+      console.error('[Mostrador] Error al obtener mesas:', err);
     }
   };
 
@@ -580,9 +598,9 @@ export default function Mostrador() {
 
       const params = new URLSearchParams();
       params.append('filters[restaurante][id][$eq]', restaurante.id);
-      // Traer sesiones 'open' (ocupadas) y 'paid' (por limpiar)
+      // Traer solo sesiones 'open' (ocupadas)
+      // Las sesiones 'paid' y 'closed' ya no se consideran abiertas
       params.append('filters[session_status][$in][0]', 'open');
-      params.append('filters[session_status][$in][1]', 'paid');
       // Especificar campos explícitamente para asegurar que session_status y openedAt estén incluidos
       params.append('fields[0]', 'id');
       params.append('fields[1]', 'documentId');
@@ -724,10 +742,13 @@ export default function Mostrador() {
 
 
 
-          // Filtrar sesiones muy antiguas (más de 24 horas) PERO:
-          // - NO filtrar sesiones en estado 'paid' (por limpiar) - estas necesitan atención
-          // - Solo filtrar sesiones 'open' que sean muy antiguas
-          if (sessionStatus !== 'paid' && openedAtTime && openedAtTime < oneDayAgo) {
+          // Filtrar sesiones muy antiguas (más de 24 horas)
+          // Solo considerar sesiones 'open' como activas
+          if (sessionStatus !== 'open') {
+            ignoredCount++;
+            return null; // Solo sesiones 'open' son válidas
+          }
+          if (openedAtTime && openedAtTime < oneDayAgo) {
             ignoredCount++;
             return null; // Sesión muy antigua, ignorar
           }
@@ -754,22 +775,18 @@ export default function Mostrador() {
 
 
       // Eliminar duplicados: mantener solo la sesión más reciente por mesa
-      // Prioridad: sesiones 'paid' (por limpiar) sobre 'open', y luego por fecha más reciente
+      // Todas las sesiones aquí son 'open' (ya filtramos las demás)
       const sessionsByTable = new Map();
       recentOpenSessions.forEach(session => {
         const existing = sessionsByTable.get(session.mesaNumber);
         if (!existing) {
           sessionsByTable.set(session.mesaNumber, session);
         } else {
-          // Priorizar sesiones 'paid' sobre 'open'
-          const existingIsPaid = existing.session_status === 'paid';
-          const currentIsPaid = session.session_status === 'paid';
-
-          if (currentIsPaid && !existingIsPaid) {
-            // La sesión actual es 'paid' y la existente no, usar la actual
-            if (currentTime > existingTime) {
-              sessionsByTable.set(session.mesaNumber, session);
-            }
+          // Usar la sesión más reciente (por openedAt)
+          const currentTime = session.openedAt ? new Date(session.openedAt).getTime() : 0;
+          const existingTime = existing.openedAt ? new Date(existing.openedAt).getTime() : 0;
+          if (currentTime > existingTime) {
+            sessionsByTable.set(session.mesaNumber, session);
           }
         }
       });
@@ -868,7 +885,6 @@ export default function Mostrador() {
           const verifyParams = new URLSearchParams();
           verifyParams.append('filters[restaurante][id][$eq]', restaurante.id);
           verifyParams.append('filters[session_status][$in][0]', 'open');
-          verifyParams.append('filters[session_status][$in][1]', 'paid');
           verifyParams.append('populate[mesa][fields][0]', 'number');
           verifyParams.append('pagination[pageSize]', '100');
 
@@ -970,7 +986,7 @@ export default function Mostrador() {
       // Cerrar todas las sesiones pendientes de esta mesa
       const sessionsToClose = mesaSessions.filter((session) => {
         const sessionAttr = session.attributes || session;
-        return sessionAttr.session_status === 'open' || sessionAttr.session_status === 'paid';
+        return sessionAttr.session_status === 'open';
       });
 
       if (sessionsToClose.length === 0) {
@@ -1033,13 +1049,8 @@ export default function Mostrador() {
 
   // Verificar si una mesa necesita limpieza (tiene pedidos pagados recientemente)
   const mesaNecesitaLimpieza = (mesaNumber) => {
-    // Verificar si hay una sesión con estado 'paid' para esta mesa
-    const hasPaidSession = openSessions.some(session =>
-      Number(session.mesaNumber) === Number(mesaNumber) &&
-      session.session_status === 'paid'
-    );
-
-    if (hasPaidSession) return true;
+    // Ya no buscamos sesiones 'paid' porque se cierran como 'closed' al pagar
+    // Las sesiones 'paid' ya no existen en openSessions
 
     // Fallback: verificar pedidos pagados (lógica anterior)
     const mesaPedidos = pedidos.filter(p =>
@@ -1345,9 +1356,37 @@ export default function Mostrador() {
       }
 
       handleClosePayDialog();
-      // Refrescar pedidos y sesiones para actualizar el estado de las mesas
-      await fetchPedidos();
-      await fetchOpenSessions(); // Importante: actualizar sesiones para que la mesa pase a "por limpiar"
+      
+      // Log para debugging
+      console.log(`[Mostrador] Cuenta pagada para mesa ${cuenta.mesaNumber}. Refrescando datos...`);
+      
+      // Esperar un momento para que el backend procese el cambio completamente
+      await new Promise(resolve => setTimeout(resolve, 1000));
+      
+      // Refrescar TODO en paralelo para obtener el estado más reciente
+      await Promise.all([
+        fetchPedidos(),      // Actualizar pedidos (deberían estar todos 'paid' ahora)
+        fetchOpenSessions(), // Actualizar sesiones (deberían estar todas 'closed' ahora)
+        fetchMesas()         // Actualizar mesas (debería estar 'disponible' ahora)
+      ]);
+      
+      // Verificar que la mesa se actualizó - hacer una segunda verificación después de un momento
+      await new Promise(resolve => setTimeout(resolve, 500));
+      const mesasActualizadas = await fetchTables(slug);
+      const mesaPagada = mesasActualizadas.find(m => m.number === cuenta.mesaNumber);
+      console.log(`[Mostrador] ✅ Mesa ${cuenta.mesaNumber} después del pago - Estado: ${mesaPagada?.status || 'N/A'}`);
+      
+      if (mesaPagada?.status !== 'disponible') {
+        console.warn(`[Mostrador] ⚠️ ADVERTENCIA: Mesa ${cuenta.mesaNumber} no está en estado 'disponible' después del pago. Estado actual: ${mesaPagada?.status}`);
+        // Forzar otro refresh después de 2 segundos más
+        setTimeout(async () => {
+          await fetchMesas();
+          console.log(`[Mostrador] Re-refresh de mesas después de 2 segundos adicionales`);
+        }, 2000);
+      } else {
+        // Forzar actualización del componente de mesas
+        await fetchMesas();
+      }
     } catch (err) {
       console.error('Error al procesar cuenta:', err?.response?.data || err);
       setSnack({
@@ -2031,8 +2070,9 @@ export default function Mostrador() {
         <Box sx={{ mt: 3 }}>
           <TablesStatusGridEnhanced
             tables={mesas}
-            // Para el estado de mesas usamos SOLO pedidos "reales" (no pedidos del sistema)
-            orders={pedidos.filter((p) => !isSystemOrder(p))}
+            // CRÍTICO: Usar TODOS los pedidos sin pagar (incluyendo "served") para determinar estado de mesas
+            // Los pedidos "served" también hacen que la mesa esté ocupada hasta que se paguen
+            orders={todosPedidosSinPagar}
             systemOrders={pedidosSistema}
             openSessions={openSessions}
             onTableClick={(table) => {

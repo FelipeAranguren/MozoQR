@@ -198,6 +198,7 @@ export default function RestaurantMenu() {
   }, [slug, table]);
 
   // Abrir sesión de mesa cuando el cliente entra (marca la mesa como ocupada)
+  // IMPORTANTE: Esto debe ejecutarse inmediatamente cuando se selecciona una mesa
   useEffect(() => {
     let cancelled = false;
 
@@ -209,30 +210,47 @@ export default function RestaurantMenu() {
       }
 
       try {
+        console.log(`[RestaurantMenu] Abriendo sesión para Mesa ${table}...`);
         const result = await openSession(slug, { table });
-        console.log(`✅ Sesión abierta para Mesa ${table}:`, result);
+        console.log(`[RestaurantMenu] ✅ Sesión abierta para Mesa ${table}:`, result);
+        
+        // Verificar que la sesión se abrió correctamente
+        if (result?.status === 'ignored' || result?.status === 'partial') {
+          console.warn(`[RestaurantMenu] ⚠️ Sesión para Mesa ${table} tuvo estado: ${result.status}. Mensaje: ${result.message}`);
+        }
       } catch (err) {
-        // No mostramos error al usuario, solo logueamos
-        // Si falla (403, etc.), la sesión se abrirá automáticamente cuando haga el primer pedido
-        // Esto es opcional y no crítico para el funcionamiento
+        // Si falla, intentar de nuevo después de un momento
+        // Esto es importante porque marca la mesa como ocupada
         if (err?.response?.status === 403) {
-          console.info(`ℹ️ No se pudo abrir sesión de mesa (permisos). Se abrirá automáticamente al hacer el primer pedido.`);
+          console.warn(`[RestaurantMenu] ⚠️ No se pudo abrir sesión de mesa ${table} (permisos). La sesión se abrirá automáticamente al hacer el primer pedido.`);
         } else {
-          console.warn('No se pudo abrir sesión de mesa (puede que ya esté abierta):', err?.response?.data || err?.message || err);
+          console.error(`[RestaurantMenu] ❌ Error al abrir sesión de mesa ${table}:`, err?.response?.data || err?.message || err);
+          // Reintentar después de 1 segundo si no fue un error de permisos
+          if (err?.response?.status !== 403) {
+            setTimeout(async () => {
+              if (!cancelled) {
+                try {
+                  console.log(`[RestaurantMenu] Reintentando abrir sesión para Mesa ${table}...`);
+                  await openSession(slug, { table });
+                  console.log(`[RestaurantMenu] ✅ Sesión abierta en reintento para Mesa ${table}`);
+                } catch (retryErr) {
+                  console.error(`[RestaurantMenu] ❌ Error en reintento para Mesa ${table}:`, retryErr?.response?.data || retryErr?.message);
+                }
+              }
+            }, 1000);
+          }
         }
       }
     }
 
-    // Esperar un poco para no saturar en montajes rápidos
-    const timer = setTimeout(() => {
-      if (!cancelled) {
-        openTableSession();
-      }
-    }, 500);
+    // Ejecutar inmediatamente cuando se selecciona una mesa (sin delay)
+    // Esto asegura que la mesa se marque como ocupada tan pronto como el cliente la selecciona
+    if (table && slug) {
+      openTableSession();
+    }
 
     return () => {
       cancelled = true;
-      clearTimeout(timer);
     };
   }, [slug, table]);
 
