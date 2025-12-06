@@ -3,7 +3,7 @@ import React, { useEffect, useRef, useState, useMemo } from 'react';
 import { useParams } from 'react-router-dom';
 import { api } from '../api';
 import { closeAccount, openSession } from '../api/tenant';
-import { fetchTables } from '../api/tables';
+import { fetchTables, resetTables } from '../api/tables';
 import { cleanOldSessions } from '../api/restaurant';
 import TablesStatusGridEnhanced from '../components/TablesStatusGridEnhanced';
 import {
@@ -100,7 +100,20 @@ export default function Mostrador() {
         next.delete(documentId);
         return next;
       });
-    }, 1200);
+    }, 2000);
+  };
+
+  const handleResetSystem = async () => {
+    if (!window.confirm('WARNING: Esto borrará TODAS las mesas y sesiones y las recreará (1-20). ¿Seguro?')) return;
+    try {
+      setSnack({ open: true, msg: 'Reseteando sistema...', severity: 'info' });
+      await resetTables(slug);
+      setSnack({ open: true, msg: 'Sistema reseteado. Recargando...', severity: 'success' });
+      setTimeout(() => window.location.reload(), 2000);
+    } catch (err) {
+      console.error(err);
+      setSnack({ open: true, msg: 'Error al resetear', severity: 'error' });
+    }
   };
 
   const updateCachedView = (nextPedidos, nextCuentas = null) => {
@@ -571,14 +584,14 @@ export default function Mostrador() {
       console.log(`[Mostrador] fetchMesas: Obteniendo mesas para ${slug}...`);
       const mesasData = await fetchTables(slug);
       console.log(`[Mostrador] fetchMesas: Obtenidas ${mesasData.length} mesas`);
-      
+
       // Log de estados de mesas para debugging
       const estados = mesasData.reduce((acc, m) => {
         acc[m.status] = (acc[m.status] || 0) + 1;
         return acc;
       }, {});
       console.log(`[Mostrador] fetchMesas: Estados de mesas:`, estados);
-      
+
       setMesas(mesasData);
     } catch (err) {
       console.error('[Mostrador] Error al obtener mesas:', err);
@@ -598,31 +611,39 @@ export default function Mostrador() {
 
       const params = new URLSearchParams();
       params.append('filters[restaurante][id][$eq]', restaurante.id);
-      // Traer solo sesiones 'open' (ocupadas)
-      // Las sesiones 'paid' y 'closed' ya no se consideran abiertas
-      params.append('filters[session_status][$in][0]', 'open');
+      // Traer solo sesiones 'open' (ocupadas) - Usar $eq para mayor seguridad
+      params.append('filters[session_status][$eq]', 'open');
+
       // Especificar campos explícitamente para asegurar que session_status y openedAt estén incluidos
       params.append('fields[0]', 'id');
       params.append('fields[1]', 'documentId');
       params.append('fields[2]', 'session_status');
       params.append('fields[3]', 'openedAt');
       params.append('fields[4]', 'closedAt');
-      params.append('fields[5]', 'createdAt');
-      params.append('fields[6]', 'updatedAt');
-      // Poblar mesa completamente (no solo campos específicos)
+      // Poblar mesa
       params.append('populate[mesa]', 'true');
       params.append('pagination[pageSize]', '200');
-      // Ordenar por fecha de actualización descendente para obtener las sesiones más recientes primero
       params.append('sort[0]', 'updatedAt:desc');
+      // CACHE BUSTING: Force fresh request
+      params.append('_t', Date.now());
 
       const { data } = await api.get(`/mesa-sesions?${params.toString()}`);
-      const sessions = data?.data || [];
+      const rawSessions = data?.data || [];
+
+      // FILTRO ROBUSTO EN MEMORIA: Descartar cualquier cosa que no sea 'open'
+      // Esto protege contra bugs de filtrado en Strapi o caché, y "Zombies" cerrados
+      const sessions = rawSessions.filter(s => {
+        const status = s.attributes?.session_status || s.session_status;
+        return status === 'open';
+      });
+
+      if (rawSessions.length !== sessions.length) {
+        console.warn(`[Mostrador] ⚠️ fetchOpenSessions: Ignored ${rawSessions.length - sessions.length} non-open sessions (Zombie Protection)`);
+      }
 
       // Incluir sesiones abiertas RECIENTES (últimas 24 horas)
-      // Solo ignorar sesiones muy antiguas (más de 24 horas) para evitar mostrar mesas ocupadas por sesiones olvidadas
       const now = Date.now();
       const oneDayAgo = now - (24 * 60 * 60 * 1000); // 24 horas en milisegundos
-      let ignoredCount = 0; // Contador para no loguear cada una
 
       const recentOpenSessions = sessions
         .map((session) => {
@@ -630,147 +651,45 @@ export default function Mostrador() {
           let mesaNumber = null;
           const sessionAttr = session.attributes || session;
 
-          // Función auxiliar para extraer número de mesa (mejorada)
+          // Función auxiliar para extraer número de mesa
           const extractMesaNumber = (mesaObj) => {
             if (!mesaObj) return null;
-
-            // Caso 1: mesa.number directamente (objeto plano)
-            if (typeof mesaObj.number === 'number' || typeof mesaObj.number === 'string') {
-              return Number(mesaObj.number);
-            }
-
-            // Caso 2: mesa.data (Strapi v4 populate con estructura data)
+            // Caso 1: mesa.number directamente
+            if (typeof mesaObj.number === 'number' || typeof mesaObj.number === 'string') return Number(mesaObj.number);
+            // Caso 2: mesa.data
             if (mesaObj.data) {
-              const data = Array.isArray(mesaObj.data) ? mesaObj.data[0] : mesaObj.data;
-
-              // data.number directamente
-              if (data?.number != null) {
-                return Number(data.number);
-              }
-
-              // data.attributes.number
-              if (data?.attributes?.number != null) {
-                return Number(data.attributes.number);
-              }
-
-              // Si data es un objeto completo, intentar acceder directamente
-              if (data && typeof data === 'object') {
-                // Intentar todas las posibles rutas
-                const possiblePaths = [
-                  data.number,
-                  data.attributes?.number,
-                  data.data?.number,
-                  data.data?.attributes?.number
-                ];
-
-                for (const num of possiblePaths) {
-                  if (num != null) {
-                    return Number(num);
-                  }
-                }
-              }
+              const d = Array.isArray(mesaObj.data) ? mesaObj.data[0] : mesaObj.data;
+              if (d?.number != null) return Number(d.number);
+              if (d?.attributes?.number != null) return Number(d.attributes.number);
             }
-
-            // Caso 3: mesa.attributes.number
-            if (mesaObj.attributes?.number != null) {
-              return Number(mesaObj.attributes.number);
-            }
-
-            // Caso 4: Si mesa es solo un ID numérico, no podemos obtener el número aquí
-            if (typeof mesaObj === 'number' || (typeof mesaObj === 'string' && !isNaN(Number(mesaObj)) && !mesaObj.includes('-'))) {
-              // Es solo un ID, no podemos obtener el número sin otra consulta
-              return null;
-            }
-
-            // Caso 5: Intentar acceder recursivamente a cualquier propiedad "number"
-            const findNumberRecursively = (obj, depth = 0) => {
-              if (depth > 3 || !obj || typeof obj !== 'object') return null;
-
-              if (obj.number != null) {
-                return Number(obj.number);
-              }
-
-              for (const key in obj) {
-                if (obj.hasOwnProperty(key)) {
-                  const result = findNumberRecursively(obj[key], depth + 1);
-                  if (result != null) return result;
-                }
-              }
-
-              return null;
-            };
-
-            const recursiveResult = findNumberRecursively(mesaObj);
-            if (recursiveResult != null) {
-              return recursiveResult;
-            }
-
+            // Caso 3: attributos directos
+            if (mesaObj.attributes?.number != null) return Number(mesaObj.attributes.number);
             return null;
           };
 
-          // PRIORIDAD 1: Buscar directamente en session.mesa
-          if (session.mesa) {
-            mesaNumber = extractMesaNumber(session.mesa);
-          }
+          mesaNumber = extractMesaNumber(sessionAttr.mesa);
 
-          // PRIORIDAD 2: Si no encontramos, buscar en session.attributes.mesa
-          if (!mesaNumber && sessionAttr.mesa) {
-            mesaNumber = extractMesaNumber(sessionAttr.mesa);
-          }
+          if (mesaNumber == null) return null;
 
-          if (!mesaNumber || isNaN(Number(mesaNumber))) {
-            // Solo loguear la primera vez que falla el parseo para no saturar
-            if (ignoredCount === 0) {
-              console.warn('[fetchOpenSessions] No se pudo extraer número de mesa de una sesión (puede que la mesa no esté poblada):', {
-                id: session.id,
-                documentId: session.documentId,
-                hasMesa: !!session.mesa,
-                hasMesaInAttr: !!sessionAttr.mesa,
-                mesaType: typeof session.mesa,
-                sessionMesa: session.mesa
-              });
-            }
-            ignoredCount++;
-            return null;
-          }
-
-          const sessionId = session.id || session.documentId;
-          const sessionDocId = session.documentId || session.id;
+          // Check stale
           const openedAt = sessionAttr.openedAt || sessionAttr.createdAt;
-          const openedAtTime = openedAt ? new Date(openedAt).getTime() : null;
-          const sessionStatus = sessionAttr.session_status || session.session_status || 'open';
+          const openedAtTime = openedAt ? new Date(openedAt).getTime() : 0;
+          if (openedAtTime > 0 && openedAtTime < oneDayAgo) return null; // Too old
 
-
-
-          // Filtrar sesiones muy antiguas (más de 24 horas)
-          // Solo considerar sesiones 'open' como activas
-          if (sessionStatus !== 'open') {
-            ignoredCount++;
-            return null; // Solo sesiones 'open' son válidas
-          }
-          if (openedAtTime && openedAtTime < oneDayAgo) {
-            ignoredCount++;
-            return null; // Sesión muy antigua, ignorar
-          }
-
-          const sessionObj = {
-            id: sessionId,
-            documentId: sessionDocId,
-            mesaNumber: Number(mesaNumber),
-            openedAt: openedAt,
-            session_status: sessionStatus,
+          return {
+            id: session.id,
+            documentId: session.documentId,
+            mesaNumber,
+            session_status: sessionAttr.session_status,
+            openedAt: sessionAttr.openedAt,
+            createdAt: sessionAttr.createdAt,
+            mesa: sessionAttr.mesa
           };
-
-
-
-          return sessionObj;
         })
         .filter(Boolean);
 
       // Log resumen de sesiones ignoradas (solo si hay muchas)
-      if (ignoredCount > 0 && ignoredCount % 10 === 0) {
-        console.log(`[fetchOpenSessions] ${ignoredCount} sesión(es) ignorada(s) (muy antiguas o sin número de mesa)`);
-      }
+
 
 
 
@@ -953,69 +872,38 @@ export default function Mostrador() {
     }
   };
 
-  // Marcar mesa como disponible después de limpiarla (cierra sesiones pendientes)
+  // Marcar mesa como disponible después de limpiarla
   const marcarMesaComoDisponible = async (mesaNumber) => {
     try {
-      // Obtener el restaurante por slug
-      const restauranteRes = await api.get(`/restaurantes?filters[slug][$eq]=${slug}&fields[0]=id`);
-      const restaurante = restauranteRes?.data?.data?.[0];
-      if (!restaurante?.id) {
-        setSnack({ open: true, msg: 'No se encontró el restaurante', severity: 'error' });
-        return;
-      }
+      console.log(`[marcarMesaComoDisponible] Limpiando mesa ${mesaNumber}...`);
 
-      // Buscar todas las sesiones de esta mesa (abiertas o cerradas recientemente)
-      const params = new URLSearchParams();
-      params.append('filters[restaurante][id][$eq]', restaurante.id);
-      params.append('populate[mesa][fields][0]', 'number');
-      params.append('populate[mesa][fields][1]', 'id');
-      params.append('pagination[pageSize]', '10');
-      params.append('sort[0]', 'openedAt:desc');
-
-      const { data } = await api.get(`/mesa-sesions?${params.toString()}`);
-      const sessions = data?.data || [];
-
-      // Filtrar sesiones de esta mesa
-      const mesaSessions = sessions.filter((session) => {
-        const sessionAttr = session.attributes || session;
-        const mesa = sessionAttr.mesa?.data || sessionAttr.mesa;
-        const mesaAttr = mesa?.attributes || mesa;
-        return Number(mesaAttr?.number) === mesaNumber;
+      // Usar el endpoint robusto del backend que cierra sesiones Y pone la mesa como disponible
+      const closeResponse = await api.put(`/restaurants/${slug}/close-session`, {
+        data: {
+          table: mesaNumber,
+        },
       });
 
-      // Cerrar todas las sesiones pendientes de esta mesa
-      const sessionsToClose = mesaSessions.filter((session) => {
-        const sessionAttr = session.attributes || session;
-        return sessionAttr.session_status === 'open';
-      });
-
-      if (sessionsToClose.length === 0) {
-        setSnack({ open: true, msg: 'No hay sesiones pendientes para cerrar', severity: 'info' });
-        return;
-      }
-
-      // Cerrar todas las sesiones
-      await Promise.all(
-        sessionsToClose.map((session) => {
-          const sessionId = session.id || session.documentId;
-          return api.put(`/mesa-sesions/${sessionId}`, {
-            data: {
-              session_status: 'closed',
-              closedAt: new Date().toISOString(),
-            },
-          });
-        })
-      );
+      console.log(`[marcarMesaComoDisponible] Respuesta backend:`, closeResponse?.data);
 
       // Actualizar estado inmediatamente para que la UI responda rápido
       setOpenSessions(prev => prev.filter(s => Number(s.mesaNumber) !== Number(mesaNumber)));
 
+      // Optimista: Actualizar el estado de la mesa localmente también
+      setMesas(prev => prev.map(m =>
+        Number(m.number) === Number(mesaNumber)
+          ? { ...m, status: 'disponible', currentSession: null }
+          : m
+      ));
+
       setSnack({ open: true, msg: `Mesa ${mesaNumber} marcada como disponible ✅`, severity: 'success' });
 
       // Refrescar datos del servidor
-      await fetchOpenSessions();
-      await fetchPedidos();
-      await fetchMesas(); // Refrescar mesas para actualizar UI
+      await Promise.all([
+        fetchOpenSessions(),
+        fetchPedidos(),
+        fetchMesas()
+      ]);
 
       // Cerrar el diálogo de detalle de mesa si está abierto
       if (tableDetailDialog.mesa?.number === mesaNumber) {
@@ -1047,12 +935,15 @@ export default function Mostrador() {
     }
   };
 
-  // Verificar si una mesa necesita limpieza (tiene pedidos pagados recientemente)
+  // Verificar si una mesa necesita limpieza (tiene pedidos pagados recientemente o estado explícito)
   const mesaNecesitaLimpieza = (mesaNumber) => {
-    // Ya no buscamos sesiones 'paid' porque se cierran como 'closed' al pagar
-    // Las sesiones 'paid' ya no existen en openSessions
+    // 1. Verificar estado explícito del backend
+    const mesa = mesas.find(m => Number(m.number) === Number(mesaNumber));
+    if (mesa && mesa.status === 'por_limpiar') {
+      return true;
+    }
 
-    // Fallback: verificar pedidos pagados (lógica anterior)
+    // 2. Fallback: lógica antigua por si acaso (pedidos pagados recientemente)
     const mesaPedidos = pedidos.filter(p =>
       !isSystemOrder(p) &&
       p.mesa_sesion?.mesa?.number === mesaNumber
@@ -1064,10 +955,12 @@ export default function Mostrador() {
       o.order_status === 'served'
     );
 
-    // Si tiene pedidos activos, no necesita limpieza
+    // Si tiene pedidos activos, no necesita limpieza (está ocupada)
     if (activeOrders.length > 0) return false;
 
     const paidOrders = mesaPedidos.filter(o => o.order_status === 'paid');
+
+    // Si no hay pedidos pagados y no está en estado 'por_limpiar', no necesita limpieza
     if (paidOrders.length === 0) return false;
 
     // Verificar si el último pedido pagado fue hace menos de 30 minutos
@@ -1098,7 +991,7 @@ export default function Mostrador() {
       fetchPedidos();
       fetchMesas();
       fetchOpenSessions();
-    }, 3000);
+    }, 10000);
     return () => clearInterval(interval);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [slug]);
@@ -1356,26 +1249,26 @@ export default function Mostrador() {
       }
 
       handleClosePayDialog();
-      
+
       // Log para debugging
       console.log(`[Mostrador] Cuenta pagada para mesa ${cuenta.mesaNumber}. Refrescando datos...`);
-      
+
       // Esperar un momento para que el backend procese el cambio completamente
       await new Promise(resolve => setTimeout(resolve, 1000));
-      
+
       // Refrescar TODO en paralelo para obtener el estado más reciente
       await Promise.all([
         fetchPedidos(),      // Actualizar pedidos (deberían estar todos 'paid' ahora)
         fetchOpenSessions(), // Actualizar sesiones (deberían estar todas 'closed' ahora)
         fetchMesas()         // Actualizar mesas (debería estar 'disponible' ahora)
       ]);
-      
+
       // Verificar que la mesa se actualizó - hacer una segunda verificación después de un momento
       await new Promise(resolve => setTimeout(resolve, 500));
       const mesasActualizadas = await fetchTables(slug);
       const mesaPagada = mesasActualizadas.find(m => m.number === cuenta.mesaNumber);
       console.log(`[Mostrador] ✅ Mesa ${cuenta.mesaNumber} después del pago - Estado: ${mesaPagada?.status || 'N/A'}`);
-      
+
       if (mesaPagada?.status !== 'disponible') {
         console.warn(`[Mostrador] ⚠️ ADVERTENCIA: Mesa ${cuenta.mesaNumber} no está en estado 'disponible' después del pago. Estado actual: ${mesaPagada?.status}`);
         // Forzar otro refresh después de 2 segundos más
@@ -2114,9 +2007,12 @@ export default function Mostrador() {
       >
         <Box sx={{ p: 3 }}>
           <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 3 }}>
-            <Typography variant="h5" sx={{ fontWeight: 700 }}>
-              Historial Completo
+            <Typography variant="h6" component="div" sx={{ flexGrow: 1 }}>
+              Panel de Control - {slug?.toUpperCase()}
             </Typography>
+            <Button color="error" variant="outlined" size="small" onClick={handleResetSystem} sx={{ mr: 2 }}>
+              RESET SYSTEM
+            </Button>
             <IconButton onClick={() => setShowHistoryDrawer(false)}>
               <CloseIcon />
             </IconButton>

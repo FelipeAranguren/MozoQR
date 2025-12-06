@@ -32,5 +32,17 @@ export default {
       handler: 'tenant.closeSession',
       config: { policies: [], middlewares: [], auth: false },
     },
+    {
+      method: 'POST',
+      path: '/restaurants/:slug/reset-tables',
+      handler: 'tenant.resetTables',
+      config: { policies: [], middlewares: [], auth: false },
+    },
+    {
+      method: 'GET',
+      path: '/restaurants/debug-session/:id',
+      handler: 'tenant.debugSession',
+      config: { policies: [], middlewares: [], auth: false },
+    },
   ],
 };

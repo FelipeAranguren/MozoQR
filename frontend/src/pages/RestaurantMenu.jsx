@@ -213,7 +213,7 @@ export default function RestaurantMenu() {
         console.log(`[RestaurantMenu] Abriendo sesión para Mesa ${table}...`);
         const result = await openSession(slug, { table });
         console.log(`[RestaurantMenu] ✅ Sesión abierta para Mesa ${table}:`, result);
-        
+
         // Verificar que la sesión se abrió correctamente
         if (result?.status === 'ignored' || result?.status === 'partial') {
           console.warn(`[RestaurantMenu] ⚠️ Sesión para Mesa ${table} tuvo estado: ${result.status}. Mensaje: ${result.message}`);
@@ -253,6 +253,30 @@ export default function RestaurantMenu() {
       cancelled = true;
     };
   }, [slug, table]);
+
+  // POLLING DE "KICK": Verificar si la mesa fue liberada por el staff
+  useEffect(() => {
+    if (!slug || !table) return;
+
+    const checkTableStatus = async () => {
+      try {
+        const mesas = await fetchTables(slug);
+        const myMesa = mesas.find(m => Number(m.number) === Number(table));
+
+        // Si la mesa está "disponible", significa que el staff la liberó
+        // DEBEMOS "ECHAR" AL CLIENTE para que no vuelva a abrir sesión automáticamente
+        if (myMesa && myMesa.status === 'disponible') {
+          console.log(`[RestaurantMenu] 🛑 KICK: Mesa ${table} fue liberada. Redirigiendo...`);
+          navigate(`/gracias/${slug}`);
+        }
+      } catch (err) {
+        console.warn("[RestaurantMenu] Error polling table status:", err);
+      }
+    };
+
+    const interval = setInterval(checkTableStatus, 5000); // Check every 5s
+    return () => clearInterval(interval);
+  }, [slug, table, navigate]);
 
   useEffect(() => {
     async function loadMenu() {

@@ -18,8 +18,9 @@ export async function fetchTables(slug) {
 
   // Método principal: obtener mesas desde el restaurante (más confiable)
   try {
+    const timestamp = Date.now();
     const restauranteRes = await api.get(
-      `/restaurantes?filters[slug][$eq]=${slug}&populate[mesas]=true&fields[0]=id`
+      `/restaurantes?filters[slug][$eq]=${slug}&populate[mesas]=true&fields[0]=id&_t=${timestamp}`
     );
 
     const restauranteData = restauranteRes?.data?.data?.[0];
@@ -38,12 +39,12 @@ export async function fetchTables(slug) {
           const mesaAttr = item.attributes || item;
           const mesaStatus = mesaAttr.status || 'disponible';
           const mesaNumber = mesaAttr.number || mesaAttr.numero || item.id;
-          
+
           // Log para debugging (solo para mesas que cambian de estado)
           if (mesaStatus === 'disponible' || mesaStatus === 'ocupada') {
             console.log(`[tables.js] Mesa ${mesaNumber} - Estado: ${mesaStatus}`);
           }
-          
+
           return {
             id: item.id || item.documentId,
             documentId: item.documentId,
@@ -245,6 +246,21 @@ export async function deleteTable(tableId) {
     if (err?.response?.status === 403) {
       throw new Error('No tienes permisos para eliminar mesas.');
     }
+    throw err;
+  }
+}
+
+/**
+ * RESETEA TODAS LAS MESAS (Debug Tool)
+ * Borra todo y crea mesas 1-20 limpias.
+ */
+export async function resetTables(slug) {
+  if (!slug) throw new Error('slug requerido');
+  try {
+    const res = await api.post(`/restaurants/${slug}/reset-tables`);
+    return res.data;
+  } catch (err) {
+    console.error('Error resetting tables:', err);
     throw err;
   }
 }
