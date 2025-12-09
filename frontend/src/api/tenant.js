@@ -184,6 +184,12 @@ export async function createOrder(slug, payload) {
   }));
 
   const total = calcCartTotal(items);
+  
+  // Ensure total is a valid number (not NaN or string)
+  const numericTotal = Number.isFinite(total) ? Number(total) : 0;
+  if (numericTotal <= 0) {
+    throw new Error('El total del pedido debe ser mayor a cero');
+  }
 
   // Clave idempotente (solo si está habilitada por env para evitar CORS hasta configurar backend)
   const idemKey = IDEM_ON
@@ -202,7 +208,7 @@ export async function createOrder(slug, payload) {
       data: {
         table: Number(table),
         customerNotes: safeNotes,
-        total, // el servidor recalcula/valida; se envía por compatibilidad con el contrato actual
+        total: numericTotal, // Ensure it's always a number, not a formatted string
         items: safeItems,
       },
     },

@@ -29,19 +29,46 @@ async function getRestaurantBySlug(slug) {
 }
 /**
  * Get Table strictly by Number. Throws if not found.
+ * Uses direct DB query to avoid entityService relation filter issues.
  */
 async function getMesaOrThrow(restauranteId, number) {
-    const found = await strapi.entityService.findMany('api::mesa.mesa', {
-        filters: { restaurante: { id: Number(restauranteId) }, number },
-        fields: ['id', 'documentId', 'number', 'status'],
-        limit: 1,
-        publicationState: 'preview' // CRITICAL: Find even if Draft
+    // Use direct DB query for more reliable relation filtering
+    const found = await strapi.db.query('api::mesa.mesa').findMany({
+        where: {
+            restaurante: Number(restauranteId),
+            number: Number(number)
+        },
+        select: ['id', 'number', 'status'],
+        limit: 1
     });
     const mesa = found === null || found === void 0 ? void 0 : found[0];
     if (!(mesa === null || mesa === void 0 ? void 0 : mesa.id)) {
+        // Debug: Try to see what mesas exist for this restaurant
+        const allMesas = await strapi.db.query('api::mesa.mesa').findMany({
+            where: { restaurante: Number(restauranteId) },
+            select: ['id', 'number']
+        });
+        console.error(`[getMesaOrThrow] Mesa ${number} no encontrada para restaurante ${restauranteId}. Mesas disponibles:`, allMesas.map(m => `ID:${m.id} number:${m.number}`).join(', '));
         throw new ValidationError(`Mesa ${number} no existe.`);
     }
-    return mesa;
+    // Get documentId using entityService if needed (for draftAndPublish)
+    let documentId;
+    try {
+        const entity = await strapi.entityService.findOne('api::mesa.mesa', mesa.id, {
+            fields: ['documentId']
+        });
+        documentId = entity === null || entity === void 0 ? void 0 : entity.documentId;
+    }
+    catch (err) {
+        // If entityService fails, try to get it from the DB result
+        documentId = mesa.documentId;
+    }
+    return {
+        id: mesa.id,
+        documentId: documentId || String(mesa.id), // Fallback to id as string if documentId not available
+        number: mesa.number,
+        status: mesa.status
+    };
 }
 /**
  * Direct DB Update for Table Status (Bypasses Entity Service)
@@ -136,35 +163,73 @@ exports.default = {
             includePaid: false,
         });
         // Create Order logic...
-        const total = items.reduce((s, it) => {
+        // Normalize items and calculate total
+        const normalizedItems = items.map(it => {
             var _a, _b, _c, _d;
             const q = Number((_b = (_a = it === null || it === void 0 ? void 0 : it.qty) !== null && _a !== void 0 ? _a : it === null || it === void 0 ? void 0 : it.quantity) !== null && _b !== void 0 ? _b : 0);
             const p = Number((_d = (_c = it === null || it === void 0 ? void 0 : it.unitPrice) !== null && _c !== void 0 ? _c : it === null || it === void 0 ? void 0 : it.price) !== null && _d !== void 0 ? _d : 0);
-            return s + (q * p);
-        }, 0);
+            return {
+                quantity: q,
+                unitPrice: p,
+                totalPrice: q * p,
+                productId: it.productId,
+                notes: (it === null || it === void 0 ? void 0 : it.notes) || ''
+            };
+        });
+        const total = normalizedItems.reduce((s, it) => s + it.totalPrice, 0);
+        // Ensure total is a valid number (not NaN)
+        if (!Number.isFinite(total) || total < 0) {
+            throw new ValidationError(`Invalid total calculated: ${total}. Check item prices and quantities.`);
+        }
+        console.log(`[createOrder] Creating order for restaurant ${restaurante.id}, table ${table}, session ${sesion.id}, total: ${total}, items: ${items.length}`);
         const pedido = await strapi.entityService.create('api::pedido.pedido', {
             data: {
                 order_status: 'pending',
                 customerNotes: (data === null || data === void 0 ? void 0 : data.customerNotes) || '',
-                total,
+                total: Number(total), // Explicitly ensure it's a number
                 restaurante: { id: Number(restaurante.id) },
                 mesa_sesion: { id: Number(sesion.id) },
                 publishedAt: new Date(),
             },
         });
-        // Create Items
-        await Promise.all(items.map(it => {
-            return strapi.entityService.create('api::item-pedido.item-pedido', {
-                data: {
-                    quantity: it.quantity,
-                    notes: it.notes,
-                    UnitPrice: it.unitPrice,
-                    totalPrice: it.quantity * it.unitPrice,
-                    order: pedido.id,
-                    product: it.productId,
-                    publishedAt: new Date()
-                }
-            });
+        console.log(`[createOrder] Order created successfully: id=${pedido.id}, documentId=${pedido.documentId}`);
+        // Create Items with normalized values
+        await Promise.all(normalizedItems.map(async (item, index) => {
+            // Ensure all values are valid numbers
+            const quantity = Number(item.quantity) || 0;
+            const unitPrice = Number(item.unitPrice) || 0;
+            const totalPrice = quantity * unitPrice;
+            if (!item.productId) {
+                throw new ValidationError(`Missing productId for item at index ${index}`);
+            }
+            if (!Number.isFinite(quantity) || quantity <= 0) {
+                throw new ValidationError(`Invalid quantity for product ${item.productId}: ${quantity}`);
+            }
+            if (!Number.isFinite(unitPrice) || unitPrice < 0) {
+                throw new ValidationError(`Invalid unitPrice for product ${item.productId}: ${unitPrice}`);
+            }
+            if (!Number.isFinite(totalPrice)) {
+                throw new ValidationError(`Invalid totalPrice calculated for product ${item.productId}: ${totalPrice}`);
+            }
+            try {
+                const createdItem = await strapi.entityService.create('api::item-pedido.item-pedido', {
+                    data: {
+                        quantity: quantity,
+                        notes: item.notes || '',
+                        UnitPrice: unitPrice,
+                        totalPrice: totalPrice,
+                        order: pedido.id,
+                        product: Number(item.productId), // Ensure productId is a number
+                        publishedAt: new Date()
+                    }
+                });
+                console.log(`[createOrder] Created item ${index + 1}/${normalizedItems.length}: productId=${item.productId}, quantity=${quantity}, unitPrice=${unitPrice}, totalPrice=${totalPrice}`);
+                return createdItem;
+            }
+            catch (err) {
+                console.error(`[createOrder] Error creating item for product ${item.productId}:`, err);
+                throw new ValidationError(`Failed to create item for product ${item.productId}: ${err.message}`);
+            }
         }));
         ctx.body = { data: { id: pedido.id } };
     },

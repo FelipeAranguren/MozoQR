@@ -398,6 +398,7 @@ export default function Mostrador() {
         `&publicationState=preview` +
         `&fields[0]=id&fields[1]=documentId&fields[2]=order_status&fields[3]=customerNotes&fields[4]=staffNotes&fields[5]=total&fields[6]=createdAt&fields[7]=updatedAt` +
         `&populate[mesa_sesion][populate][mesa]=true` +
+        `&populate[items][populate][product]=true` +
         `&sort[0]=${encodeURIComponent(sort)}` +
         `&pagination[pageSize]=100`;
 
