@@ -183,6 +183,8 @@ export default {
     const table = data?.table;
     const items: any[] = Array.isArray(data?.items) ? data.items : [];
 
+    console.log(`[createOrder] Received payload:`, JSON.stringify({ table, itemsCount: items.length, items: items.map(it => ({ productId: it.productId, name: it.name, qty: it.qty, price: it.price })) }, null, 2));
+
     if (!table || items.length === 0) throw new ValidationError('Invalid data');
 
     const restaurante = await getRestaurantBySlug(String(slug));
@@ -201,13 +203,16 @@ export default {
     const normalizedItems = items.map(it => {
       const q = Number(it?.qty ?? it?.quantity ?? 0);
       const p = Number(it?.unitPrice ?? it?.price ?? 0);
-      return {
+      const normalized = {
         quantity: q,
         unitPrice: p,
         totalPrice: q * p,
         productId: it.productId,
-        notes: it?.notes || ''
+        notes: it?.notes || '',
+        name: it?.name || '' // Preserve name for system products
       };
+      console.log(`[createOrder] Normalized item:`, JSON.stringify({ productId: normalized.productId, name: normalized.name, quantity: normalized.quantity, unitPrice: normalized.unitPrice }));
+      return normalized;
     });
 
     const total = normalizedItems.reduce((s, it) => s + it.totalPrice, 0);
@@ -242,7 +247,12 @@ export default {
       if (!item.productId) {
         throw new ValidationError(`Missing productId for item at index ${index}`);
       }
-      if (!Number.isFinite(quantity) || quantity <= 0) {
+
+      // Check if this is a system product (sys-waiter-call, sys-pay-request, etc.)
+      const isSystemProduct = typeof item.productId === 'string' && item.productId.startsWith('sys-');
+      
+      // For system products, quantity and price can be 0, but still need to be valid numbers
+      if (!Number.isFinite(quantity) || quantity < 0) {
         throw new ValidationError(`Invalid quantity for product ${item.productId}: ${quantity}`);
       }
       if (!Number.isFinite(unitPrice) || unitPrice < 0) {
@@ -252,19 +262,45 @@ export default {
         throw new ValidationError(`Invalid totalPrice calculated for product ${item.productId}: ${totalPrice}`);
       }
 
+      // For system products, we don't require quantity > 0
+      if (!isSystemProduct && quantity <= 0) {
+        throw new ValidationError(`Invalid quantity for product ${item.productId}: ${quantity} (must be > 0 for regular products)`);
+      }
+
       try {
-        const createdItem = await strapi.entityService.create('api::item-pedido.item-pedido', {
-          data: {
-            quantity: quantity,
-            notes: item.notes || '',
-            UnitPrice: unitPrice,
-            totalPrice: totalPrice,
-            order: pedido.id,
-            product: Number(item.productId), // Ensure productId is a number
-            publishedAt: new Date()
+        // Get the product name from the item if it's a system product
+        // The frontend sends 'name' field for system products
+        const systemProductName = item.name || '';
+        
+        // Build notes: include system product name if it's a system product
+        let itemNotes = item.notes || '';
+        if (isSystemProduct && systemProductName) {
+          itemNotes = systemProductName + (itemNotes ? ` - ${itemNotes}` : '');
+        }
+
+        const itemData: any = {
+          quantity: quantity,
+          notes: itemNotes,
+          UnitPrice: unitPrice,
+          totalPrice: totalPrice,
+          order: pedido.id,
+          publishedAt: new Date()
+        };
+
+        // Only set product relation if it's NOT a system product
+        if (!isSystemProduct) {
+          const numericProductId = Number(item.productId);
+          if (!Number.isFinite(numericProductId) || numericProductId <= 0) {
+            throw new ValidationError(`Invalid productId: ${item.productId} (must be a positive number for regular products)`);
           }
+          itemData.product = numericProductId;
+        }
+        // For system products, product field is left undefined/null (schema allows it)
+
+        const createdItem = await strapi.entityService.create('api::item-pedido.item-pedido', {
+          data: itemData
         });
-        console.log(`[createOrder] Created item ${index + 1}/${normalizedItems.length}: productId=${item.productId}, quantity=${quantity}, unitPrice=${unitPrice}, totalPrice=${totalPrice}`);
+        console.log(`[createOrder] Created item ${index + 1}/${normalizedItems.length}: productId=${item.productId}, isSystem=${isSystemProduct}, quantity=${quantity}, unitPrice=${unitPrice}, totalPrice=${totalPrice}`);
         return createdItem;
       } catch (err: any) {
         console.error(`[createOrder] Error creating item for product ${item.productId}:`, err);

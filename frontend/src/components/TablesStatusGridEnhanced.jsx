@@ -97,8 +97,54 @@ export default function TablesStatusGridEnhanced({
     const hasPaid = tableOrders.some(o => o.order_status === 'paid');
     
     // LOG para debugging
-    if (tableOrders.length > 0 || hasOpenSession) {
-      console.log(`[TablesStatusGrid] Mesa ${table.number}: ${tableOrders.length} pedido(s), ${unpaidOrders.length} sin pagar, sesión abierta: ${hasOpenSession}`);
+    if (tableOrders.length > 0 || hasOpenSession || hasSystemCall) {
+      console.log(`[TablesStatusGrid] Mesa ${table.number}: ${tableOrders.length} pedido(s), ${unpaidOrders.length} sin pagar, sesión abierta: ${hasOpenSession}, llamada sistema: ${hasSystemCall}`);
+    }
+    
+    // PRIORIDAD 0: Estado por limpiar (máxima prioridad visual)
+    if (table.status === 'por_limpiar') {
+      return {
+        status: 'needs-cleaning',
+        label: 'Por limpiar',
+        color: '#ff9800', // Naranja/Amber
+        icon: <CleaningServicesIcon />,
+        blinking: false,
+        priority: 2
+      };
+    }
+
+    // PRIORIDAD 1: Si hay llamada del sistema (mozo) - MÁXIMA PRIORIDAD VISUAL
+    // Esto debe mostrarse incluso si la mesa está ocupada
+    if (hasSystemCall) {
+      const callType = systemCalls[0];
+      const isPayRequest = callType?.items?.some(item => {
+        // El nombre del producto del sistema puede estar en:
+        // 1. item.product.name (producto real)
+        // 2. item.name (campo directo)
+        // 3. item.notes (para productos del sistema, el nombre se guarda en notes)
+        const prodName = (item?.product?.name || item?.name || item?.notes || '').toUpperCase();
+        return prodName.includes('SOLICITUD DE COBRO') || prodName.includes('💳');
+      }) || (callType?.customerNotes || '').toUpperCase().includes('SOLICITA COBRAR') || (callType?.customerNotes || '').toUpperCase().includes('CUENTA');
+
+      if (isPayRequest) {
+        return {
+          status: 'request-payment',
+          label: 'Solicita pago',
+          color: '#9c27b0', // Púrpura
+          icon: <AccountBalanceWalletIcon />,
+          blinking: true,
+          priority: 1
+        };
+      }
+
+      return {
+        status: 'calling',
+        label: 'Llama mozo',
+        color: '#ff1744', // Rojo vibrante
+        icon: <NotificationsActiveIcon />,
+        blinking: true,
+        priority: 1
+      };
     }
     
     // REGLA CRÍTICA #1: Si hay sesión abierta, la mesa SIEMPRE está ocupada (cliente sentado)
@@ -128,48 +174,6 @@ export default function TablesStatusGridEnhanced({
         activeOrdersCount: unpaidOrders.length
       };
     }
-
-    // PRIORIDAD 0: Estado por limpiar (máxima prioridad visual)
-    if (table.status === 'por_limpiar') {
-      return {
-        status: 'needs-cleaning',
-        label: 'Por limpiar',
-        color: '#ff9800', // Naranja/Amber
-        icon: <CleaningServicesIcon />,
-        blinking: false,
-        priority: 2
-      };
-    }
-
-    // PRIORIDAD 1: Si hay llamada del sistema (mozo)
-    if (hasSystemCall) {
-      const callType = systemCalls[0];
-      const isPayRequest = callType?.items?.some(item => {
-        const prodName = (item?.product?.name || item?.name || '').toUpperCase();
-        return prodName.includes('SOLICITUD DE COBRO') || prodName.includes('💳');
-      }) || (callType?.customerNotes || '').toUpperCase().includes('SOLICITA COBRAR') || (callType?.customerNotes || '').toUpperCase().includes('CUENTA');
-
-      if (isPayRequest) {
-        return {
-          status: 'request-payment',
-          label: 'Solicita pago',
-          color: '#9c27b0', // Púrpura
-          icon: <AccountBalanceWalletIcon />,
-          blinking: true,
-          priority: 1
-        };
-      }
-
-      return {
-        status: 'calling',
-        label: 'Llama mozo',
-        color: '#ff1744', // Rojo vibrante
-        icon: <NotificationsActiveIcon />,
-        blinking: true,
-        priority: 1
-      };
-    }
-
 
     // PRIORIDAD 5: Verificar estado del backend SOLO si no hay pedidos sin pagar ni sesión abierta
     // El backend es la fuente de verdad después de pagar

@@ -265,6 +265,15 @@ export default function Mostrador() {
         const itemAttrs = it.attributes || it;
         const prodData = itemAttrs.product?.data || itemAttrs.product || {};
         const prodAttrs = prodData.attributes || prodData;
+        
+        // For system products (sys-waiter-call, sys-pay-request), product may be null
+        // but the name is stored in notes. Extract it if it starts with the system product name.
+        const itemNotes = itemAttrs.notes || '';
+        const hasSystemProductName = itemNotes.includes('🔔 LLAMAR MOZO') || 
+                                     itemNotes.includes('LLAMAR MOZO') ||
+                                     itemNotes.includes('💳 SOLICITUD DE COBRO') ||
+                                     itemNotes.includes('SOLICITUD DE COBRO');
+        
         return {
           id: it.id || itemAttrs.id,
           quantity: itemAttrs.quantity,
@@ -276,7 +285,9 @@ export default function Mostrador() {
               id: prodData.id,
               name: prodAttrs.name || prodAttrs.nombre || null,
             }
-            : null,
+            : (hasSystemProductName ? { id: null, name: itemNotes.split(' - ')[0] } : null),
+          // Also include name directly for system products
+          name: hasSystemProductName ? itemNotes.split(' - ')[0] : (prodAttrs.name || prodAttrs.nombre || null),
         };
       }).filter((it) => it.id); // Filtrar items sin ID válido
     }
@@ -1301,7 +1312,11 @@ export default function Mostrador() {
     // Check items
     const items = pedido.items || [];
     const hasSystemItem = items.some(item => {
-      const prodName = (item?.product?.name || item?.name || '').toUpperCase();
+      // El nombre del producto del sistema puede estar en:
+      // 1. item.product.name (producto real)
+      // 2. item.name (campo directo)
+      // 3. item.notes (para productos del sistema, el nombre se guarda en notes)
+      const prodName = (item?.product?.name || item?.name || item?.notes || '').toUpperCase();
       return prodName.includes('LLAMAR MOZO') || prodName.includes('SOLICITUD DE COBRO') || prodName.includes('💳');
     });
 

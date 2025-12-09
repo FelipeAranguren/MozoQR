@@ -181,13 +181,22 @@ export async function createOrder(slug, payload) {
     qty: normQty(i),
     price: normPrice(i),
     notes: sanitizeNotes(i.notes || ''),
+    // Include name for system products (sys-waiter-call, sys-pay-request, etc.)
+    ...(i.name ? { name: i.name } : {}),
   }));
 
   const total = calcCartTotal(items);
   
+  // Check if any item is a system product (sys-waiter-call, sys-pay-request, etc.)
+  const hasSystemProduct = items.some(i => {
+    const productId = i.productId ?? i.id;
+    return typeof productId === 'string' && productId.startsWith('sys-');
+  });
+  
   // Ensure total is a valid number (not NaN or string)
   const numericTotal = Number.isFinite(total) ? Number(total) : 0;
-  if (numericTotal <= 0) {
+  // Allow total of 0 only for system products (waiter calls, payment requests, etc.)
+  if (numericTotal < 0 || (!hasSystemProduct && numericTotal <= 0)) {
     throw new Error('El total del pedido debe ser mayor a cero');
   }
 
