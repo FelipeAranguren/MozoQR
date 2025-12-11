@@ -29,6 +29,7 @@ import PlanManagement from './pages/owner/plan/PlanManagement';
 import AdvancedPanel from './pages/owner/advanced/AdvancedPanel';
 import AIPanel from './pages/owner/ai/AIPanel';
 import AdminDashboard from './pages/AdminDashboard';
+import ImpersonateCallback from './pages/ImpersonateCallback';
 import DemoLanding from './pages/DemoLanding';
 
 // Redirige rutas viejas /restaurantes/:slug -> /:slug/menu (usa selector de mesas)
@@ -67,6 +68,7 @@ export default function App() {
 
           {/* Admin Dashboard - Dashboard de administración */}
           <Route path="/admin/dashboard" element={<AuthGuard><AdminDashboard /></AuthGuard>} />
+          <Route path="/admin/impersonate" element={<ImpersonateCallback />} />
 
 
           {/* Rutas del owner con layout */}

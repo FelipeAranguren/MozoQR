@@ -107,6 +107,12 @@
             "relation": "oneToMany",
             "target": "api::owner-comment.owner-comment",
             "mappedBy": "restaurante"
+        },
+        "subscriptions": {
+            "type": "relation",
+            "relation": "oneToMany",
+            "target": "api::subscription.subscription",
+            "mappedBy": "restaurante"
         }
     }
 }

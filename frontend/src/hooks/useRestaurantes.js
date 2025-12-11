@@ -38,17 +38,17 @@ export function useRestaurantes() {
       // Mapear los datos de Strapi a un formato más usable
       const data = res.data?.data || [];
       const base = API_URL.replace('/api', '');
-      
+
       const mappedRestaurantes = data.map((r) => {
         // Strapi v4 puede tener datos en r.attributes o directamente en r
         const attr = r.attributes || r;
-        
+
         // Construir URL del logo si existe (similar a Restaurants.jsx)
         let logoUrl = null;
         if (attr.logo?.data) {
           const logoData = attr.logo.data;
           const logo = logoData.attributes || logoData;
-          const urlRel = 
+          const urlRel =
             logo.formats?.small?.url ||
             logo.formats?.thumbnail?.url ||
             logo.url ||
@@ -60,6 +60,7 @@ export function useRestaurantes() {
           id: r.id,
           name: attr.name || r.name || `Restaurante ${r.id}`,
           slug: attr.slug || r.slug || String(r.id),
+          owner_email: attr.owner_email || null,
           suscripcion: attr.Suscripcion || attr.suscripcion || 'basic',
           mp_access_token: attr.mp_access_token || null,
           mp_public_key: attr.mp_public_key || null,
@@ -70,7 +71,12 @@ export function useRestaurantes() {
           mesa_sesions: attr.mesa_sesions?.data?.length || (Array.isArray(attr.mesa_sesions) ? attr.mesa_sesions.length : 0) || 0,
           restaurant_members: attr.restaurant_members?.data?.length || (Array.isArray(attr.restaurant_members) ? attr.restaurant_members.length : 0) || 0,
           createdAt: attr.createdAt || null,
+          createdAt: attr.createdAt || null,
           updatedAt: attr.updatedAt || null,
+          subscriptions: attr.subscriptions?.data?.map(s => ({
+            id: s.id,
+            ...(s.attributes || s)
+          })) || attr.subscriptions || [],
         };
       });
 

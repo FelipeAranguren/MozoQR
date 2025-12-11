@@ -794,10 +794,62 @@ export interface ApiRestauranteRestaurante extends Struct.CollectionTypeSchema {
       'api::restaurant-member.restaurant-member'
     >;
     slug: Schema.Attribute.UID<'name'>;
+    subscriptions: Schema.Attribute.Relation<
+      'oneToMany',
+      'api::subscription.subscription'
+    >;
     Suscripcion: Schema.Attribute.Enumeration<['basic', 'pro', 'ultra']> &
       Schema.Attribute.Required &
       Schema.Attribute.DefaultTo<'basic'>;
     tipografia: Schema.Attribute.String;
+    updatedAt: Schema.Attribute.DateTime;
+    updatedBy: Schema.Attribute.Relation<'oneToOne', 'admin::user'> &
+      Schema.Attribute.Private;
+  };
+}
+
+export interface ApiSubscriptionSubscription
+  extends Struct.CollectionTypeSchema {
+  collectionName: 'subscriptions';
+  info: {
+    description: 'Modelo de suscripci\u00F3n avanzada para gesti\u00F3n SAAS';
+    displayName: 'Subscription';
+    pluralName: 'subscriptions';
+    singularName: 'subscription';
+  };
+  options: {
+    draftAndPublish: false;
+  };
+  attributes: {
+    amount: Schema.Attribute.Decimal;
+    createdAt: Schema.Attribute.DateTime;
+    createdBy: Schema.Attribute.Relation<'oneToOne', 'admin::user'> &
+      Schema.Attribute.Private;
+    currency: Schema.Attribute.String & Schema.Attribute.DefaultTo<'ARS'>;
+    endDate: Schema.Attribute.DateTime;
+    locale: Schema.Attribute.String & Schema.Attribute.Private;
+    localizations: Schema.Attribute.Relation<
+      'oneToMany',
+      'api::subscription.subscription'
+    > &
+      Schema.Attribute.Private;
+    metadata: Schema.Attribute.JSON;
+    nextBillingDate: Schema.Attribute.DateTime;
+    paymentMethod: Schema.Attribute.String &
+      Schema.Attribute.DefaultTo<'manual'>;
+    plan: Schema.Attribute.Enumeration<['basic', 'pro', 'ultra', 'custom']> &
+      Schema.Attribute.Required;
+    publishedAt: Schema.Attribute.DateTime;
+    restaurante: Schema.Attribute.Relation<
+      'manyToOne',
+      'api::restaurante.restaurante'
+    >;
+    startDate: Schema.Attribute.DateTime & Schema.Attribute.Required;
+    status: Schema.Attribute.Enumeration<
+      ['active', 'past_due', 'canceled', 'trial', 'expired']
+    > &
+      Schema.Attribute.Required &
+      Schema.Attribute.DefaultTo<'active'>;
     updatedAt: Schema.Attribute.DateTime;
     updatedBy: Schema.Attribute.Relation<'oneToOne', 'admin::user'> &
       Schema.Attribute.Private;
@@ -1327,6 +1379,7 @@ declare module '@strapi/strapi' {
       'api::producto.producto': ApiProductoProducto;
       'api::restaurant-member.restaurant-member': ApiRestaurantMemberRestaurantMember;
       'api::restaurante.restaurante': ApiRestauranteRestaurante;
+      'api::subscription.subscription': ApiSubscriptionSubscription;
       'plugin::content-releases.release': PluginContentReleasesRelease;
       'plugin::content-releases.release-action': PluginContentReleasesReleaseAction;
       'plugin::i18n.locale': PluginI18NLocale;
