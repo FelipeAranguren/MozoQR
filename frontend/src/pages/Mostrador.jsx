@@ -3,7 +3,7 @@ import React, { useEffect, useRef, useState, useMemo } from 'react';
 import { useParams } from 'react-router-dom';
 import { api } from '../api';
 import { closeAccount, openSession } from '../api/tenant';
-import { fetchTables, resetTables } from '../api/tables';
+import { fetchTables, resetTables, fetchActiveOrders } from '../api/tables';
 import { cleanOldSessions } from '../api/restaurant';
 import TablesStatusGridEnhanced from '../components/TablesStatusGridEnhanced';
 import {
@@ -38,6 +38,7 @@ export default function Mostrador() {
   // ----- estado principal -----
   const [pedidos, setPedidos] = useState([]);
   const [todosPedidosSinPagar, setTodosPedidosSinPagar] = useState([]); // TODOS los pedidos sin pagar (incluyendo "served")
+  const [activeOrders, setActiveOrders] = useState([]); // Pedidos activos (no pagados) - usado para determinar estado de mesas
   const [cuentas, setCuentas] = useState([]);
   const [mesas, setMesas] = useState([]);
   const [openSessions, setOpenSessions] = useState([]); // Sesiones abiertas sin pedidos
@@ -111,7 +112,6 @@ export default function Mostrador() {
       setSnack({ open: true, msg: 'Sistema reseteado. Recargando...', severity: 'success' });
       setTimeout(() => window.location.reload(), 2000);
     } catch (err) {
-      console.error(err);
       setSnack({ open: true, msg: 'Error al resetear', severity: 'error' });
     }
   };
@@ -205,7 +205,6 @@ export default function Mostrador() {
       setHistoryPedidos(planosConItems);
       setHistoryCuentas(cuentasArr.sort((a, b) => b.lastUpdated - a.lastUpdated));
     } catch (err) {
-      console.error('Error al obtener historial completo:', err);
     }
   };
 
@@ -344,7 +343,6 @@ export default function Mostrador() {
     } catch (err) {
       // Solo loggear errores que no sean 404 (pedido no encontrado es esperado en algunos casos)
       if (err?.response?.status !== 404) {
-        console.warn(`[Mostrador] No se pudo cargar mesa_sesion para pedido ${pedido.id}:`, err?.response?.status || err?.message);
       }
       // Si es 404, el pedido no existe o no está publicado, simplemente retornar el pedido original
       return pedido;
@@ -416,19 +414,7 @@ export default function Mostrador() {
       const res = await api.get(`/pedidos${listQS}`);
       const base = res?.data?.data ?? [];
 
-      // Debug: Log primer pedido para ver estructura (solo en primera carga)
-      if (base.length > 0 && !hasLoadedRef.current) {
-        console.log('[Mostrador] Estructura del primer pedido:', JSON.stringify(base[0], null, 2));
-      }
-
       const planos = base.map(mapPedidoRow);
-
-      // Debug: Log primer pedido mapeado (solo en primera carga)
-      if (planos.length > 0 && !hasLoadedRef.current) {
-        console.log('[Mostrador] Primer pedido mapeado:', planos[0]);
-        console.log('[Mostrador] Mesa número extraído:', planos[0]?.mesa_sesion?.mesa?.number);
-        console.log('[Mostrador] Mesa_sesion completa:', planos[0]?.mesa_sesion);
-      }
 
       // Solo hidratar pedidos que realmente necesitan la información
       // (que tienen mesa_sesion.id pero no tienen mesa.number)
@@ -469,19 +455,13 @@ export default function Mostrador() {
               // Si la carga es exitosa y hay items, usarlos
               if (fetched && Array.isArray(fetched) && fetched.length > 0) {
                 items = fetched;
-                console.log(`[Mostrador] Items cargados para pedido ${p.id}: ${fetched.length} items`);
               } else if (fetched && Array.isArray(fetched)) {
                 // Array vacío es válido, significa que el pedido no tiene items
                 items = [];
               }
             } catch (err) {
               // Si falla la carga y no hay items previos, dejar array vacío
-              console.warn(`[Mostrador] No se pudieron cargar items del pedido ${p.id}:`, err);
-              // Si hay items previos, mantenerlos (ya están en items)
             }
-          } else if (p.items && Array.isArray(p.items) && p.items.length > 0) {
-            // Items ya vienen del backend, usarlos directamente
-            console.log(`[Mostrador] Items del backend para pedido ${p.id}: ${p.items.length} items`);
           }
 
           return { ...p, items: items || [] };
@@ -521,8 +501,6 @@ export default function Mostrador() {
       // Los pedidos "served" también deben considerarse para determinar si una mesa está ocupada
       const todosLosPedidosSinPagar = conItems.filter((p) => p.order_status !== 'paid' && !isSystemOrder(p));
       setTodosPedidosSinPagar(todosLosPedidosSinPagar);
-      console.log(`[Mostrador] Pedidos sin pagar para estado de mesas: ${todosLosPedidosSinPagar.length} (incluyendo served)`);
-      console.log(`[Mostrador] Pedidos sin pagar (incluyendo served): ${todosLosPedidosSinPagar.length}`);
 
       // ---- agrupar cuentas (solo activas, excluyendo pedidos del sistema)
       const grupos = new Map();
@@ -577,7 +555,6 @@ export default function Mostrador() {
       setCuentas(filtradas);
       setError(null);
     } catch (err) {
-      console.error('Error al obtener pedidos:', err?.response?.data || err);
       setError('No se pudieron cargar los pedidos.');
     }
   };
@@ -593,20 +570,21 @@ export default function Mostrador() {
   // Cargar mesas
   const fetchMesas = async () => {
     try {
-      console.log(`[Mostrador] fetchMesas: Obteniendo mesas para ${slug}...`);
       const mesasData = await fetchTables(slug);
-      console.log(`[Mostrador] fetchMesas: Obtenidas ${mesasData.length} mesas`);
-
-      // Log de estados de mesas para debugging
-      const estados = mesasData.reduce((acc, m) => {
-        acc[m.status] = (acc[m.status] || 0) + 1;
+      // Filtrar duplicados: si hay múltiples mesas con el mismo número, usar solo la primera (más antigua)
+      const mesasUnicas = mesasData.reduce((acc, mesa) => {
+        const mesaNum = mesa.number;
+        // Si ya existe una mesa con este número, no agregar (mantener la primera)
+        if (!acc.find(m => m.number === mesaNum)) {
+          acc.push(mesa);
+        } else {
+          console.warn(`[Mostrador] Mesa duplicada detectada y filtrada: Mesa ${mesaNum} (ID: ${mesa.id})`);
+        }
         return acc;
-      }, {});
-      console.log(`[Mostrador] fetchMesas: Estados de mesas:`, estados);
-
-      setMesas(mesasData);
+      }, []);
+      setMesas(mesasUnicas);
     } catch (err) {
-      console.error('[Mostrador] Error al obtener mesas:', err);
+      // Error silencioso
     }
   };
 
@@ -649,9 +627,7 @@ export default function Mostrador() {
         return status === 'open';
       });
 
-      if (rawSessions.length !== sessions.length) {
-        console.warn(`[Mostrador] ⚠️ fetchOpenSessions: Ignored ${rawSessions.length - sessions.length} non-open sessions (Zombie Protection)`);
-      }
+      // Filtrar sesiones no abiertas (Zombie Protection)
 
       // Incluir sesiones abiertas RECIENTES (últimas 24 horas)
       const now = Date.now();
@@ -727,7 +703,7 @@ export default function Mostrador() {
 
       // Log si se eliminaron duplicados
       if (recentOpenSessions.length > validSessions.length) {
-        console.log(`[fetchOpenSessions] Eliminados ${recentOpenSessions.length - validSessions.length} duplicado(s). De ${recentOpenSessions.length} a ${validSessions.length} sesiones únicas.`);
+        // Eliminar duplicados
       }
 
       // Log solo cuando hay sesiones válidas o cambios significativos
@@ -737,7 +713,6 @@ export default function Mostrador() {
     } catch (err) {
       // Solo loguear errores críticos, no en cada intento
       if (err?.response?.status !== 404 && err?.response?.status !== 403) {
-        console.error('[fetchOpenSessions] Error al obtener sesiones abiertas:', err?.response?.data || err);
       }
       setOpenSessions([]);
     }
@@ -748,15 +723,14 @@ export default function Mostrador() {
     try {
       // Buscar la sesión abierta de esa mesa
       const session = openSessions.find((s) => s.mesaNumber === mesaNumber);
+      
       if (!session) {
         setSnack({ open: true, msg: 'No se encontró sesión abierta para esta mesa', severity: 'warning' });
         return;
       }
 
       // Cancelar todos los pedidos activos de esta mesa antes de cerrar la sesión
-      // Esto evita que la mesa vuelva a aparecer como ocupada después de liberarla
       const pedidosActivos = pedidos.filter(p => {
-        // Extraer número de mesa de diferentes estructuras posibles
         const mesaData = p?.mesa_sesion?.mesa || p?.mesa_sesion?.attributes?.mesa || p?.mesa;
         const mesaObj = mesaData?.data || mesaData?.attributes || mesaData;
         const tableNum = mesaObj?.number || mesaData?.number || p?.mesa || p?.tableNumber;
@@ -772,82 +746,52 @@ export default function Mostrador() {
           await Promise.all(
             pedidosActivos.map(pedido => putEstado(pedido, 'cancelled'))
           );
-          console.log(`[liberarMesa] Cancelados ${pedidosActivos.length} pedido(s) activo(s) de la mesa ${mesaNumber}`);
         } catch (err) {
-          console.warn('Error al cancelar algunos pedidos al liberar mesa:', err);
-          // Continuar con el cierre de sesión aunque falle la cancelación de pedidos
+          // Continuar aunque falle la cancelación
         }
       }
 
-      // Cerrar la sesión usando el endpoint custom (evita problemas de permisos)
-      console.log(`[liberarMesa] Cerrando sesión de Mesa ${mesaNumber}...`, { session });
-      const closeResponse = await api.put(`/restaurants/${slug}/close-session`, {
+      // Cerrar la sesión usando el endpoint custom
+      await api.put(`/restaurants/${slug}/close-session`, {
         data: {
           table: mesaNumber,
         },
       });
-      console.log(`[liberarMesa] Respuesta del backend al cerrar sesión:`, closeResponse?.data);
-      if (closeResponse?.data?.data?.debug) {
-        console.log(`[liberarMesa] DEBUG INFO:`, closeResponse.data.data.debug);
-      }
 
-      // Actualizar estado inmediatamente para que la UI responda rápido
-      setOpenSessions(prev => {
-        const filtered = prev.filter(s => s.mesaNumber !== mesaNumber);
-        console.log(`[liberarMesa] Estado local actualizado. Antes: ${prev.length} sesiones, Después: ${filtered.length} sesiones`);
-        return filtered;
-      });
+      // Actualizar estado local inmediatamente para que la UI responda rápido
+      setOpenSessions(prev => prev.filter(s => Number(s.mesaNumber) !== Number(mesaNumber)));
+
+      // Actualizar el estado de la mesa localmente también (optimista)
+      setMesas(prev => prev.map(m =>
+        Number(m.number) === Number(mesaNumber)
+          ? { ...m, status: 'disponible', currentSession: null }
+          : m
+      ));
+
+      // Actualizar todosPedidosSinPagar para remover pedidos de esta mesa
+      setTodosPedidosSinPagar(prev => prev.filter(p => {
+        const mesaNum = p?.mesa_sesion?.mesa?.number;
+        return mesaNum == null || Number(mesaNum) !== Number(mesaNumber);
+      }));
 
       setSnack({ open: true, msg: `Mesa ${mesaNumber} liberada ✅`, severity: 'success' });
 
-      // Esperar un momento para que el backend procese el cambio y se propague
-      // Strapi puede tener caché, así que esperamos un poco más
-      await new Promise(resolve => setTimeout(resolve, 2000));
+      // Esperar un momento para que el backend procese el cambio
+      await new Promise(resolve => setTimeout(resolve, 1000));
 
-      // Refrescar datos del servidor para verificar que la sesión se cerró
-      console.log(`[liberarMesa] Refrescando sesiones después de cerrar...`);
-      await fetchOpenSessions();
-
-      // Hacer una verificación adicional: consultar directamente al backend para confirmar
-      try {
-        const restauranteRes = await api.get(`/restaurantes?filters[slug][$eq]=${slug}&fields[0]=id`);
-        const restaurante = restauranteRes?.data?.data?.[0];
-        if (restaurante?.id) {
-          const verifyParams = new URLSearchParams();
-          verifyParams.append('filters[restaurante][id][$eq]', restaurante.id);
-          verifyParams.append('filters[session_status][$in][0]', 'open');
-          verifyParams.append('populate[mesa][fields][0]', 'number');
-          verifyParams.append('pagination[pageSize]', '100');
-
-          const verifyRes = await api.get(`/mesa-sesions?${verifyParams.toString()}`);
-          const verifySessions = verifyRes?.data?.data || [];
-
-          // Buscar todas las sesiones de esta mesa
-          const mesaSessions = verifySessions.filter((s) => {
-            const mesa = s.mesa?.data || s.mesa || s.attributes?.mesa?.data || s.attributes?.mesa;
-            const sessionMesaNumber = mesa?.attributes?.number || mesa?.number;
-            return Number(sessionMesaNumber) === Number(mesaNumber);
-          });
-
-          if (mesaSessions.length > 0) {
-            console.warn(`[liberarMesa] ⚠️ ADVERTENCIA: Mesa ${mesaNumber} todavía tiene ${mesaSessions.length} sesión(es) abierta(s) en el backend después de 2 segundos:`, mesaSessions);
-          } else {
-            console.log(`[liberarMesa] ✅ Confirmado: Mesa ${mesaNumber} ya no tiene sesiones abiertas en el backend`);
-          }
-        }
-      } catch (verifyErr) {
-        console.warn('[liberarMesa] Error al verificar sesión en backend:', verifyErr);
-      }
-
-      await fetchPedidos();
-      await fetchMesas(); // Refrescar mesas para actualizar UI
+      // Refrescar datos del servidor
+      await Promise.all([
+        fetchOpenSessions(),
+        fetchPedidos(),
+        fetchMesas(),
+        fetchActiveOrdersForTables()
+      ]);
 
       // Cerrar el diálogo de detalle de mesa si está abierto
       if (tableDetailDialog.mesa?.number === mesaNumber) {
         setTableDetailDialog({ open: false, mesa: null });
       }
     } catch (err) {
-      console.error('Error al liberar mesa:', err);
       setSnack({ open: true, msg: 'No se pudo liberar la mesa ❌', severity: 'error' });
     }
   };
@@ -871,8 +815,8 @@ export default function Mostrador() {
       // Refrescar datos
       await fetchOpenSessions();
       await fetchPedidos();
+      await fetchActiveOrdersForTables();
     } catch (err) {
-      console.error('Error limpiando sesiones antiguas:', err);
       const errorMsg = err?.response?.data?.error?.message || err?.response?.data?.message || err?.message || 'Error desconocido';
       const statusCode = err?.response?.status;
       setSnack({
@@ -887,21 +831,49 @@ export default function Mostrador() {
   // Marcar mesa como disponible después de limpiarla
   const marcarMesaComoDisponible = async (mesaNumber) => {
     try {
-      console.log(`[marcarMesaComoDisponible] Limpiando mesa ${mesaNumber}...`);
+      // CRÍTICO: Primero marcar todos los pedidos de esta mesa como 'paid'
+      // Esto es necesario porque el frontend fuerza el estado a 'ocupada' si hay pedidos sin pagar
+      // Igual que hace closeAccount cuando se paga una cuenta
+      const pedidosDeMesa = todosPedidosSinPagar.filter(p => {
+        const mesaNum = p?.mesa_sesion?.mesa?.number;
+        return mesaNum != null && Number(mesaNum) === Number(mesaNumber);
+      });
+
+      if (pedidosDeMesa.length > 0) {
+        try {
+          // Guardar los IDs de los pedidos que vamos a marcar como 'paid' para filtrarlos después
+          const pedidosIds = pedidosDeMesa.map(p => p.id).filter(Boolean);
+          
+          await Promise.all(
+            pedidosDeMesa.map(pedido => putEstado(pedido, 'paid'))
+          );
+          
+          // Actualizar inmediatamente todosPedidosSinPagar para remover estos pedidos
+          // Esto evita que el frontend los vea antes de que fetchPedidos() se ejecute
+          setTodosPedidosSinPagar(prev => {
+            const filtrados = prev.filter(p => !pedidosIds.includes(p.id));
+            return filtrados;
+          });
+        } catch (err) {
+          // Continuar aunque falle, el backend también puede hacerlo
+        }
+      }
 
       // Usar el endpoint robusto del backend que cierra sesiones Y pone la mesa como disponible
+      // Este es el mismo patrón que se usa cuando se paga una cuenta (closeAccount)
       const closeResponse = await api.put(`/restaurants/${slug}/close-session`, {
         data: {
           table: mesaNumber,
         },
       });
 
-      console.log(`[marcarMesaComoDisponible] Respuesta backend:`, closeResponse?.data);
-
       // Actualizar estado inmediatamente para que la UI responda rápido
       setOpenSessions(prev => prev.filter(s => Number(s.mesaNumber) !== Number(mesaNumber)));
 
+      // NOTA: todosPedidosSinPagar ya se actualizó arriba cuando marcamos los pedidos como 'paid'
+
       // Optimista: Actualizar el estado de la mesa localmente también
+      // Igual que cuando se paga una cuenta, actualizamos el estado a 'disponible'
       setMesas(prev => prev.map(m =>
         Number(m.number) === Number(mesaNumber)
           ? { ...m, status: 'disponible', currentSession: null }
@@ -910,19 +882,50 @@ export default function Mostrador() {
 
       setSnack({ open: true, msg: `Mesa ${mesaNumber} marcada como disponible ✅`, severity: 'success' });
 
-      // Refrescar datos del servidor
-      await Promise.all([
-        fetchOpenSessions(),
-        fetchPedidos(),
-        fetchMesas()
-      ]);
-
       // Cerrar el diálogo de detalle de mesa si está abierto
       if (tableDetailDialog.mesa?.number === mesaNumber) {
         setTableDetailDialog({ open: false, mesa: null });
       }
+
+      // Esperar un momento para que el backend procese el cambio completamente
+      await new Promise(resolve => setTimeout(resolve, 1500));
+
+      // Refrescar TODO en paralelo para obtener el estado más reciente
+      await Promise.all([
+        fetchPedidos(),      // Actualizar pedidos (deberían estar todos 'paid' ahora)
+        fetchOpenSessions(), // Actualizar sesiones (deberían estar todas 'closed' ahora)
+        fetchMesas(),        // Actualizar mesas (debería estar 'disponible' ahora)
+        fetchActiveOrdersForTables() // CRÍTICO: Actualizar pedidos activos para estado de mesas
+      ]);
+
+      // CRÍTICO: Asegurarnos de que los pedidos de esta mesa NO estén en todosPedidosSinPagar
+      // Esto es necesario porque fetchPedidos() puede traer pedidos con estado anterior si el backend aún no los actualizó
+      setTodosPedidosSinPagar(prev => {
+        const filtrados = prev.filter(p => {
+          const mesaNum = p?.mesa_sesion?.mesa?.number;
+          // Remover pedidos de esta mesa O pedidos que ya están marcados como 'paid'
+          return (mesaNum == null || Number(mesaNum) !== Number(mesaNumber)) && p.order_status !== 'paid';
+        });
+        return filtrados;
+      });
+
+      // Verificar que la mesa se actualizó - hacer una segunda verificación después de un momento
+      await new Promise(resolve => setTimeout(resolve, 500));
+      const mesasActualizadas = await fetchTables(slug);
+      const mesaActualizada = mesasActualizadas.find(m => Number(m.number) === Number(mesaNumber));
+
+      if (mesaActualizada?.status !== 'disponible') {
+        // Forzar otro refresh después de 2 segundos más
+        setTimeout(async () => {
+          await fetchMesas();
+          // Asegurarnos de que los pedidos de esta mesa no estén en todosPedidosSinPagar
+          setTodosPedidosSinPagar(prev => prev.filter(p => {
+            const mesaNum = p?.mesa_sesion?.mesa?.number;
+            return mesaNum == null || Number(mesaNum) !== Number(mesaNumber);
+          }));
+        }, 2000);
+      }
     } catch (err) {
-      console.error('Error al marcar mesa como disponible:', err);
       setSnack({ open: true, msg: 'No se pudo marcar la mesa como disponible ❌', severity: 'error' });
     }
   };
@@ -930,19 +933,44 @@ export default function Mostrador() {
   // Abrir sesión manualmente (Ocupar Mesa)
   const handleOpenSession = async (mesaNumber) => {
     try {
-      console.log(`[handleOpenSession] Abriendo sesión para Mesa ${mesaNumber}...`);
       await openSession(slug, { table: mesaNumber });
+
+      // Actualizar estado inmediatamente para que la UI responda rápido
+      // Optimista: Actualizar el estado de la mesa localmente también
+      setMesas(prev => prev.map(m =>
+        Number(m.number) === Number(mesaNumber)
+          ? { ...m, status: 'ocupada' }
+          : m
+      ));
 
       setSnack({ open: true, msg: `Mesa ${mesaNumber} ocupada ✅`, severity: 'success' });
 
-      // Refrescar datos
-      await fetchOpenSessions();
-      await fetchMesas();
-
       // Cerrar el diálogo
       setTableDetailDialog({ open: false, mesa: null });
+
+      // Esperar un momento para que el backend procese el cambio completamente
+      await new Promise(resolve => setTimeout(resolve, 1000));
+
+      // Refrescar TODO en paralelo para obtener el estado más reciente
+      await Promise.all([
+        fetchPedidos(),      // Actualizar pedidos
+        fetchOpenSessions(), // Actualizar sesiones (debería tener una sesión 'open' ahora)
+        fetchMesas(),        // Actualizar mesas (debería estar 'ocupada' ahora)
+        fetchActiveOrdersForTables() // Actualizar pedidos activos para estado de mesas
+      ]);
+
+      // Verificar que la mesa se actualizó - hacer una segunda verificación después de un momento
+      await new Promise(resolve => setTimeout(resolve, 500));
+      const mesasActualizadas = await fetchTables(slug);
+      const mesaActualizada = mesasActualizadas.find(m => Number(m.number) === Number(mesaNumber));
+
+      if (mesaActualizada?.status !== 'ocupada') {
+        // Forzar otro refresh después de 2 segundos más
+        setTimeout(async () => {
+          await fetchMesas();
+        }, 2000);
+      }
     } catch (err) {
-      console.error('Error al ocupar mesa:', err);
       setSnack({ open: true, msg: 'No se pudo ocupar la mesa ❌', severity: 'error' });
     }
   };
@@ -989,6 +1017,36 @@ export default function Mostrador() {
     return false;
   };
 
+  // Función para obtener pedidos activos (no pagados) - usado para determinar estado de mesas
+  // Esta función usa fetchActiveOrders que solo trae pedidos que NO están pagados,
+  // igual que OwnerDashboard.jsx, asegurando que una vez que un pedido se marca como "paid",
+  // ya no aparece en la lista y la mesa se muestra como libre
+  const fetchActiveOrdersForTables = async () => {
+    try {
+      const orders = await fetchActiveOrders(slug);
+      console.log('[Mostrador] fetchActiveOrdersForTables - Pedidos activos recibidos:', orders.length, orders);
+      // Convertir a formato compatible con TablesStatusGridEnhanced
+      const formattedOrders = orders.map(order => ({
+        id: order.id,
+        order_status: order.order_status,
+        total: order.total,
+        createdAt: order.createdAt,
+        mesa_sesion: {
+          mesa: {
+            number: order.mesa || order.tableNumber
+          }
+        },
+        mesa: order.mesa || order.tableNumber,
+        tableNumber: order.mesa || order.tableNumber
+      }));
+      console.log('[Mostrador] fetchActiveOrdersForTables - Pedidos formateados:', formattedOrders.length, formattedOrders);
+      setActiveOrders(formattedOrders);
+    } catch (err) {
+      console.warn('Error fetching active orders for tables:', err);
+      setActiveOrders([]);
+    }
+  };
+
   useEffect(() => {
     const cached = cachedViewsRef.current.active ?? { pedidos: [], cuentas: [] };
     const nextPedidos = Array.isArray(cached.pedidos) ? [...cached.pedidos] : [];
@@ -999,10 +1057,12 @@ export default function Mostrador() {
     fetchPedidos();
     fetchMesas();
     fetchOpenSessions();
+    fetchActiveOrdersForTables();
     const interval = setInterval(() => {
       fetchPedidos();
       fetchMesas();
       fetchOpenSessions();
+      fetchActiveOrdersForTables();
     }, 10000);
     return () => clearInterval(interval);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -1070,7 +1130,6 @@ export default function Mostrador() {
           : prev.mesa,
       }));
     } catch (err) {
-      console.error('Error al marcar llamadas atendidas:', err?.response?.data || err);
       setSnack({
         open: true,
         msg: 'No se pudo marcar la llamada como atendida. Intentá de nuevo.',
@@ -1093,7 +1152,6 @@ export default function Mostrador() {
       await putEstado(pedido, 'preparing');
       await refreshItemsDe(pedido.id);
     } catch (err) {
-      console.error('Error al marcar como Recibido:', err?.response?.data || err);
       setError('No se pudo actualizar el pedido.');
       setPedidos((prev) => {
         const next = prev.map((p) =>
@@ -1134,6 +1192,7 @@ export default function Mostrador() {
       }
 
       await fetchPedidos();
+      await fetchActiveOrdersForTables();
       setSnack({
         open: true,
         msg: staffNotes && staffNotes.trim()
@@ -1142,7 +1201,6 @@ export default function Mostrador() {
         severity: 'success'
       });
     } catch (err) {
-      console.error('Error al marcar como servido:', err?.response?.data || err);
       setError('No se pudo actualizar el pedido.');
       setSnack({
         open: true,
@@ -1174,14 +1232,13 @@ export default function Mostrador() {
           });
         } catch (err) {
           // Si falla solo la razón, lo registramos pero no rompemos la cancelación
-          console.warn('No se pudo guardar la razón de cancelación:', err?.response?.data || err);
         }
       }
 
       setSnack({ open: true, msg: 'Pedido cancelado ✅', severity: 'success' });
       await fetchPedidos();
+      await fetchActiveOrdersForTables();
     } catch (err) {
-      console.error('Error al cancelar pedido:', err?.response?.data || err);
       setSnack({ open: true, msg: 'No se pudo cancelar el pedido ❌', severity: 'error' });
     }
   };
@@ -1263,7 +1320,6 @@ export default function Mostrador() {
       handleClosePayDialog();
 
       // Log para debugging
-      console.log(`[Mostrador] Cuenta pagada para mesa ${cuenta.mesaNumber}. Refrescando datos...`);
 
       // Esperar un momento para que el backend procese el cambio completamente
       await new Promise(resolve => setTimeout(resolve, 1000));
@@ -1272,28 +1328,26 @@ export default function Mostrador() {
       await Promise.all([
         fetchPedidos(),      // Actualizar pedidos (deberían estar todos 'paid' ahora)
         fetchOpenSessions(), // Actualizar sesiones (deberían estar todas 'closed' ahora)
-        fetchMesas()         // Actualizar mesas (debería estar 'disponible' ahora)
+        fetchMesas(),        // Actualizar mesas (debería estar 'disponible' ahora)
+        fetchActiveOrdersForTables() // CRÍTICO: Actualizar pedidos activos para estado de mesas
       ]);
 
       // Verificar que la mesa se actualizó - hacer una segunda verificación después de un momento
       await new Promise(resolve => setTimeout(resolve, 500));
       const mesasActualizadas = await fetchTables(slug);
       const mesaPagada = mesasActualizadas.find(m => m.number === cuenta.mesaNumber);
-      console.log(`[Mostrador] ✅ Mesa ${cuenta.mesaNumber} después del pago - Estado: ${mesaPagada?.status || 'N/A'}`);
-
       if (mesaPagada?.status !== 'disponible') {
-        console.warn(`[Mostrador] ⚠️ ADVERTENCIA: Mesa ${cuenta.mesaNumber} no está en estado 'disponible' después del pago. Estado actual: ${mesaPagada?.status}`);
         // Forzar otro refresh después de 2 segundos más
         setTimeout(async () => {
           await fetchMesas();
-          console.log(`[Mostrador] Re-refresh de mesas después de 2 segundos adicionales`);
+          await fetchActiveOrdersForTables();
         }, 2000);
       } else {
         // Forzar actualización del componente de mesas
         await fetchMesas();
+        await fetchActiveOrdersForTables();
       }
     } catch (err) {
-      console.error('Error al procesar cuenta:', err?.response?.data || err);
       setSnack({
         open: true,
         msg: 'No se pudo procesar la cuenta ❌',
@@ -1429,13 +1483,13 @@ export default function Mostrador() {
       // Marcar como servido para sacarlo de la vista activa
       await putEstado(pedido, 'served');
       await fetchPedidos();
+      await fetchActiveOrdersForTables();
       setSnack({
         open: true,
         msg: 'Solicitud atendida ✅',
         severity: 'success'
       });
     } catch (err) {
-      console.error('Error al marcar como atendido:', err);
       setSnack({
         open: true,
         msg: 'No se pudo marcar como atendido',
@@ -1979,9 +2033,10 @@ export default function Mostrador() {
         <Box sx={{ mt: 3 }}>
           <TablesStatusGridEnhanced
             tables={mesas}
-            // CRÍTICO: Usar TODOS los pedidos sin pagar (incluyendo "served") para determinar estado de mesas
-            // Los pedidos "served" también hacen que la mesa esté ocupada hasta que se paguen
-            orders={todosPedidosSinPagar}
+            // CRÍTICO: Usar activeOrders (pedidos no pagados desde fetchActiveOrders) para determinar estado de mesas
+            // Esto asegura que una vez que un pedido se marca como "paid", ya no aparece en la lista
+            // y la mesa se muestra como libre, igual que en OwnerDashboard.jsx
+            orders={activeOrders}
             systemOrders={pedidosSistema}
             openSessions={openSessions}
             onTableClick={(table) => {

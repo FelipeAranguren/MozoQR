@@ -28,22 +28,12 @@ export async function fetchTables(slug) {
       const attr = restauranteData.attributes || restauranteData;
       const mesasData = attr.mesas?.data || attr.mesas || [];
 
-      // Debug: log para ver qué estamos obteniendo
-      if (mesasData.length > 0) {
-        console.log(`[tables.js] Obtenidas ${mesasData.length} mesas desde restaurante para ${slug}`);
-      }
-
       // Si hay mesas, retornarlas
       if (mesasData.length > 0) {
         const mesas = mesasData.map(item => {
           const mesaAttr = item.attributes || item;
           const mesaStatus = mesaAttr.status || 'disponible';
           const mesaNumber = mesaAttr.number || mesaAttr.numero || item.id;
-
-          // Log para debugging (solo para mesas que cambian de estado)
-          if (mesaStatus === 'disponible' || mesaStatus === 'ocupada') {
-            console.log(`[tables.js] Mesa ${mesaNumber} - Estado: ${mesaStatus}`);
-          }
 
           return {
             id: item.id || item.documentId,
@@ -55,18 +45,33 @@ export async function fetchTables(slug) {
           };
         }).sort((a, b) => (a.number || 0) - (b.number || 0));
 
-        return mesas;
+        // Filtrar duplicados: si hay múltiples mesas con el mismo número, usar solo la primera (más antigua por ID)
+        const mesasUnicas = mesas.reduce((acc, mesa) => {
+          const mesaNum = mesa.number;
+          const existing = acc.find(m => m.number === mesaNum);
+          if (!existing) {
+            acc.push(mesa);
+          } else {
+            // Si encontramos un duplicado, mantener el que tiene el ID más bajo (más antiguo)
+            if (mesa.id < existing.id) {
+              const index = acc.indexOf(existing);
+              acc[index] = mesa;
+              console.warn(`[fetchTables] Mesa duplicada detectada: Mesa ${mesaNum}. Manteniendo la más antigua (ID: ${mesa.id})`);
+            } else {
+              console.warn(`[fetchTables] Mesa duplicada detectada: Mesa ${mesaNum} (ID: ${mesa.id}). Ya existe una más antigua (ID: ${existing.id})`);
+            }
+          }
+          return acc;
+        }, []);
+
+        return mesasUnicas;
       }
 
       // Si no hay mesas pero el restaurante existe, retornar array vacío (válido)
-      console.log(`[tables.js] Restaurante ${slug} encontrado pero sin mesas`);
       return [];
-    } else {
-      console.warn(`[tables.js] Restaurante ${slug} no encontrado`);
     }
   } catch (restErr) {
-    // Si hay un error real (no solo que no hay mesas), loguearlo pero continuar con fallback
-    console.warn('[tables.js] Error al obtener mesas desde restaurante:', restErr?.response?.status || restErr?.message);
+    // Si hay un error real, continuar con fallback
   }
 
   // Fallback: intentar endpoint directo de mesas (solo si el método principal no funcionó)
@@ -83,7 +88,7 @@ export async function fetchTables(slug) {
     );
 
     const data = res?.data?.data || [];
-    return data.map(item => {
+    const mesas = data.map(item => {
       const attr = item.attributes || item;
       return {
         id: item.id || item.documentId,
@@ -94,6 +99,27 @@ export async function fetchTables(slug) {
         status: attr.status || 'disponible'
       };
     });
+
+    // Filtrar duplicados: si hay múltiples mesas con el mismo número, usar solo la primera (más antigua por ID)
+    const mesasUnicas = mesas.reduce((acc, mesa) => {
+      const mesaNum = mesa.number;
+      const existing = acc.find(m => m.number === mesaNum);
+      if (!existing) {
+        acc.push(mesa);
+      } else {
+        // Si encontramos un duplicado, mantener el que tiene el ID más bajo (más antiguo)
+        if (mesa.id < existing.id) {
+          const index = acc.indexOf(existing);
+          acc[index] = mesa;
+          console.warn(`[fetchTables] Mesa duplicada detectada: Mesa ${mesaNum}. Manteniendo la más antigua (ID: ${mesa.id})`);
+        } else {
+          console.warn(`[fetchTables] Mesa duplicada detectada: Mesa ${mesaNum} (ID: ${mesa.id}). Ya existe una más antigua (ID: ${existing.id})`);
+        }
+      }
+      return acc;
+    }, []);
+
+    return mesasUnicas;
   } catch (err) {
     // Si el fallback también falla, solo loguear si no es 403 (403 es esperado si no hay permisos)
     if (err?.response?.status === 403) {

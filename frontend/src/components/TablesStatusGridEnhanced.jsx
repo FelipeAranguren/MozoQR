@@ -26,6 +26,7 @@ export default function TablesStatusGridEnhanced({
     try {
       const map = new Map();
       if (Array.isArray(orders)) {
+        console.log('[TablesStatusGridEnhanced] Agrupando pedidos por mesa. Total pedidos recibidos:', orders.length);
         orders.forEach(order => {
           const tableNum = order?.mesa_sesion?.mesa?.number || order?.mesa || order?.tableNumber || null;
           if (tableNum != null) {
@@ -33,17 +34,12 @@ export default function TablesStatusGridEnhanced({
               map.set(tableNum, []);
             }
             map.get(tableNum).push(order);
+            console.log(`[TablesStatusGridEnhanced] Pedido ${order.id} (status: ${order.order_status}) agregado a mesa ${tableNum}`);
           }
         });
-        // Log resumen para debugging
-        if (orders.length > 0) {
-          const summary = Array.from(map.entries()).map(([num, ords]) => ({
-            mesa: num,
-            total: ords.length,
-            estados: ords.map(o => o.order_status).join(', ')
-          }));
-          console.log(`[TablesStatusGrid] ${orders.length} pedidos agrupados en ${map.size} mesa(s):`, summary);
-        }
+        console.log('[TablesStatusGridEnhanced] Pedidos agrupados por mesa:', Array.from(map.entries()).map(([num, ords]) => `Mesa ${num}: ${ords.length} pedidos (${ords.map(o => o.order_status).join(', ')})`));
+      } else {
+        console.log('[TablesStatusGridEnhanced] orders no es un array:', orders);
       }
       return map;
     } catch (error) {
@@ -69,7 +65,6 @@ export default function TablesStatusGridEnhanced({
       }
       return map;
     } catch (error) {
-      console.error('Error grouping system orders by table:', error);
       return new Map();
     }
   }, [systemOrders]);
@@ -95,11 +90,6 @@ export default function TablesStatusGridEnhanced({
     const hasSystemCall = systemCalls.length > 0;
     const hasServed = unpaidOrders.some(o => o.order_status === 'served');
     const hasPaid = tableOrders.some(o => o.order_status === 'paid');
-    
-    // LOG para debugging
-    if (tableOrders.length > 0 || hasOpenSession || hasSystemCall) {
-      console.log(`[TablesStatusGrid] Mesa ${table.number}: ${tableOrders.length} pedido(s), ${unpaidOrders.length} sin pagar, sesión abierta: ${hasOpenSession}, llamada sistema: ${hasSystemCall}`);
-    }
     
     // PRIORIDAD 0: Estado por limpiar (máxima prioridad visual)
     if (table.status === 'por_limpiar') {
@@ -147,23 +137,20 @@ export default function TablesStatusGridEnhanced({
       };
     }
     
-    // REGLA CRÍTICA #1: Si hay sesión abierta, la mesa SIEMPRE está ocupada (cliente sentado)
-    if (hasOpenSession) {
-      console.log(`[TablesStatusGrid] Mesa ${table.number}: Tiene sesión abierta → FORZANDO estado OCUPADA`);
-      return {
-        status: 'occupied',
-        label: 'Ocupada',
-        color: '#1976d2', // Azul
-        icon: <RestaurantIcon />,
-        blinking: false,
-        priority: 1,
-        activeOrdersCount: unpaidOrders.length
-      };
-    }
-    
-    // REGLA CRÍTICA #2: Si hay pedidos sin pagar, la mesa SIEMPRE está ocupada
+    // Debug: Log del estado de la mesa
+    console.log(`[TablesStatusGridEnhanced] Mesa ${table.number}:`, {
+      tableOrders: tableOrders.length,
+      unpaidOrders: unpaidOrders.length,
+      hasOpenSession,
+      tableStatus: table.status,
+      orders: tableOrders.map(o => ({ id: o.id, status: o.order_status }))
+    });
+
+    // REGLA CRÍTICA #1: Si hay pedidos sin pagar, la mesa SIEMPRE está ocupada
+    // CRÍTICO: Esta es la fuente de verdad principal, igual que en OwnerDashboard
+    // Los pedidos vienen de fetchActiveOrders que solo trae pedidos no pagados
     if (unpaidOrders.length > 0) {
-      console.log(`[TablesStatusGrid] Mesa ${table.number}: Tiene ${unpaidOrders.length} pedido(s) sin pagar (estados: ${unpaidOrders.map(o => o.order_status).join(', ')}) → FORZANDO estado OCUPADA`);
+      console.log(`[TablesStatusGridEnhanced] Mesa ${table.number} está OCUPADA por ${unpaidOrders.length} pedidos sin pagar`);
       return {
         status: 'occupied',
         label: hasServed && !hasPaid ? 'Espera pago' : 'Ocupada',
@@ -174,6 +161,18 @@ export default function TablesStatusGridEnhanced({
         activeOrdersCount: unpaidOrders.length
       };
     }
+    
+    // REGLA CRÍTICA #2: Si NO hay pedidos sin pagar, la mesa está DISPONIBLE
+    // CRÍTICO: NO usar openSessions para determinar ocupación después de pagar
+    // Si activeOrders viene vacío (porque fetchActiveOrders solo trae pedidos no pagados),
+    // entonces la mesa está disponible, independientemente de si hay sesión abierta o no
+    // Las sesiones "zombie" no deben hacer que una mesa se muestre como ocupada
+    // 
+    // NOTA: Si hay una sesión abierta pero NO hay pedidos sin pagar, significa que:
+    // 1. La cuenta ya fue pagada (pedidos pasaron a 'paid' y no aparecen en activeOrders)
+    // 2. La sesión no se cerró correctamente (bug del backend o delay)
+    // En ambos casos, la mesa debe mostrarse como DISPONIBLE porque no hay pedidos pendientes
+    console.log(`[TablesStatusGridEnhanced] Mesa ${table.number} está DISPONIBLE (sin pedidos sin pagar, ignorando sesión abierta si existe)`);
 
     // PRIORIDAD 5: Verificar estado del backend SOLO si no hay pedidos sin pagar ni sesión abierta
     // El backend es la fuente de verdad después de pagar
@@ -191,11 +190,12 @@ export default function TablesStatusGridEnhanced({
       }
       
       if (table.status === 'disponible') {
-        // Solo mostrar como disponible si TODOS los pedidos están pagados Y no hay sesión abierta
+        // Solo mostrar como disponible si NO hay pedidos sin pagar
+        // CRÍTICO: No verificar hasOpenSession porque las sesiones pueden quedar abiertas después de pagar
+        // La única fuente de verdad es si hay pedidos sin pagar o no
         const allOrdersPaid = tableOrders.length === 0 || tableOrders.every(o => o.order_status === 'paid');
         
-        if (allOrdersPaid && !hasOpenSession) {
-          console.log(`[TablesStatusGrid] Mesa ${table.number}: Backend dice 'disponible', todos los pedidos están 'paid' y no hay sesión abierta. Mostrando como disponible.`);
+        if (allOrdersPaid) {
           return {
             status: 'available',
             label: 'Disponible',
@@ -208,7 +208,9 @@ export default function TablesStatusGridEnhanced({
       }
     }
 
-    // PRIORIDAD 6: Mesa libre/disponible (sin sesión abierta y sin pedidos)
+    // PRIORIDAD 6: Mesa libre/disponible (sin pedidos sin pagar)
+    // CRÍTICO: Si llegamos aquí, significa que no hay pedidos sin pagar
+    // Por lo tanto, la mesa está disponible, independientemente de sesiones abiertas
     return {
       status: 'available',
       label: 'Disponible',

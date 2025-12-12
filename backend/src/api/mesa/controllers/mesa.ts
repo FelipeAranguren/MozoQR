@@ -157,6 +157,33 @@ export default factories.createCoreController('api::mesa.mesa', ({ strapi }) => 
       return;
     }
 
+    // Validar que no existe una mesa con el mismo número en el mismo restaurante
+    const tableNumber = payload.number;
+    if (tableNumber !== undefined && tableNumber !== null) {
+      const restauranteIdNum = typeof restauranteId === 'string' && /^\d+$/.test(restauranteId) 
+        ? Number(restauranteId) 
+        : restauranteId;
+      
+      const existingMesas = await strapi.db.query('api::mesa.mesa').findMany({
+        where: {
+          restaurante: restauranteIdNum,
+          number: Number(tableNumber)
+        },
+        select: ['id', 'number'],
+        limit: 1
+      });
+
+      if (existingMesas.length > 0) {
+        console.log('❌ [mesa.create] Mesa duplicada detectada', {
+          tableNumber,
+          restauranteId: restauranteIdNum,
+          existingMesaId: existingMesas[0].id
+        });
+        ctx.badRequest(`Ya existe una mesa con el número ${tableNumber} en este restaurante`);
+        return;
+      }
+    }
+
     // Crear la mesa
     try {
       console.log('✅ [mesa.create] Creando mesa con payload:', payload);
