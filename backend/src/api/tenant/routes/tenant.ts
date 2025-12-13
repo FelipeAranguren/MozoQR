@@ -24,7 +24,7 @@ export default {
       method: 'POST',
       path: '/restaurants/:slug/open-session',
       handler: 'tenant.openSession',
-      config: { policies: [], middlewares: [] },
+      config: { policies: [], middlewares: [], auth: false }, // Público - no requiere autenticación
     },
     {
       method: 'PUT',

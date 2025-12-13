@@ -181,6 +181,9 @@ async function getMesaOrThrow(restauranteId, number) {
  * Update Table Status using Entity Service to ensure proper publication
  */
 async function setTableStatus(mesaId, status, currentSessionId = null) {
+    var _a;
+    // Guardar el currentSessionId original para usar en caso de error
+    const originalCurrentSessionId = currentSessionId;
     // First, get the documentId to use with entityService
     let documentId;
     try {
@@ -199,39 +202,123 @@ async function setTableStatus(mesaId, status, currentSessionId = null) {
     }
     // If we still don't have documentId, use id as fallback
     const idToUse = documentId || String(mesaId);
-    // Prepare update data
-    const updateData = {
-        status,
-        publishedAt: new Date() // Ensure it's published
-    };
-    // Only set currentSession if provided
-    if (currentSessionId !== null) {
-        updateData.currentSession = currentSessionId;
-    }
-    else {
-        // If currentSessionId is null, we need to clear the relation
-        // In Strapi, setting to null clears the relation
-        updateData.currentSession = null;
-    }
-    // Use entityService to update and publish properly
+    console.log(`[setTableStatus] Actualizando mesa ${mesaId} (documentId: ${idToUse}) - status: ${status}, currentSession: ${currentSessionId}`);
+    // ESTRATEGIA: Actualizar directamente en la base de datos para evitar problemas con draft & publish
+    // entityService.update puede tener problemas con draft & publish, así que usamos DB query directamente
     try {
-        const result = await strapi.entityService.update('api::mesa.mesa', idToUse, {
-            data: updateData
-        });
-        return result;
-    }
-    catch (err) {
-        // Fallback to DB query if entityService fails
-        console.warn('[setTableStatus] entityService failed, using DB query fallback:', err);
-        const result = await strapi.db.query('api::mesa.mesa').update({
+        const updateResult = await strapi.db.query('api::mesa.mesa').update({
             where: { id: mesaId },
             data: {
                 status,
-                currentSession: currentSessionId,
                 publishedAt: new Date()
             }
         });
-        return result;
+        console.log(`[setTableStatus] ✅ Status actualizado vía DB query: ${status}`, {
+            affectedRows: (updateResult === null || updateResult === void 0 ? void 0 : updateResult.count) || 0
+        });
+        // Verificar inmediatamente que se actualizó
+        const immediateCheck = await strapi.db.query('api::mesa.mesa').findOne({
+            where: { id: mesaId },
+            select: ['id', 'status', 'publishedAt']
+        });
+        console.log(`[setTableStatus] Verificación inmediata:`, {
+            id: immediateCheck === null || immediateCheck === void 0 ? void 0 : immediateCheck.id,
+            status: immediateCheck === null || immediateCheck === void 0 ? void 0 : immediateCheck.status,
+            publishedAt: immediateCheck === null || immediateCheck === void 0 ? void 0 : immediateCheck.publishedAt
+        });
+        if ((immediateCheck === null || immediateCheck === void 0 ? void 0 : immediateCheck.status) !== status) {
+            console.error(`[setTableStatus] ❌ La actualización no se aplicó correctamente. Esperado: ${status}, Actual: ${immediateCheck === null || immediateCheck === void 0 ? void 0 : immediateCheck.status}`);
+            // Intentar de nuevo con entityService como fallback
+            try {
+                await strapi.entityService.update('api::mesa.mesa', idToUse, {
+                    data: {
+                        status,
+                        publishedAt: new Date()
+                    }
+                });
+                console.log(`[setTableStatus] ✅ Status actualizado vía entityService (fallback): ${status}`);
+            }
+            catch (entityErr) {
+                console.error(`[setTableStatus] ❌ Error también con entityService:`, (entityErr === null || entityErr === void 0 ? void 0 : entityErr.message) || entityErr);
+            }
+        }
+    }
+    catch (err) {
+        console.error(`[setTableStatus] ❌ Error actualizando status con DB query:`, (err === null || err === void 0 ? void 0 : err.message) || err);
+        throw new ValidationError(`No se pudo actualizar el status de la mesa: ${(err === null || err === void 0 ? void 0 : err.message) || 'Error desconocido'}`);
+    }
+    // Paso 2: Actualizar la relación currentSession usando DB query directo (más confiable)
+    try {
+        if (currentSessionId !== null) {
+            // Verificar que la sesión existe
+            const sessionExists = await strapi.db.query('api::mesa-sesion.mesa-sesion').findOne({
+                where: { id: Number(currentSessionId) },
+                select: ['id']
+            });
+            if (!(sessionExists === null || sessionExists === void 0 ? void 0 : sessionExists.id)) {
+                console.warn(`[setTableStatus] ⚠️ Sesión ${currentSessionId} no existe, no se puede asociar`);
+                // Limpiar la relación si la sesión no existe
+                await strapi.db.query('api::mesa.mesa').update({
+                    where: { id: mesaId },
+                    data: { currentSession: null }
+                });
+            }
+            else {
+                // Actualizar la relación usando DB query directo
+                await strapi.db.query('api::mesa.mesa').update({
+                    where: { id: mesaId },
+                    data: { currentSession: Number(currentSessionId) }
+                });
+                console.log(`[setTableStatus] ✅ Relación currentSession actualizada: ${currentSessionId}`);
+            }
+        }
+        else {
+            // Limpiar relación
+            await strapi.db.query('api::mesa.mesa').update({
+                where: { id: mesaId },
+                data: { currentSession: null }
+            });
+            console.log(`[setTableStatus] ✅ Relación currentSession limpiada`);
+        }
+    }
+    catch (relErr) {
+        console.error(`[setTableStatus] ❌ Error actualizando relación currentSession:`, (relErr === null || relErr === void 0 ? void 0 : relErr.message) || relErr);
+        // No lanzar error aquí, solo loguear - el status ya se actualizó
+    }
+    // Obtener el resultado final para verificar usando DB query directo
+    // Esperar un momento para que la actualización se propague
+    await new Promise(resolve => setTimeout(resolve, 100));
+    try {
+        const finalResult = await strapi.db.query('api::mesa.mesa').findOne({
+            where: { id: mesaId },
+            select: ['id', 'status', 'publishedAt'],
+            populate: ['currentSession']
+        });
+        if (!finalResult) {
+            console.warn(`[setTableStatus] ⚠️ No se encontró la mesa ${mesaId} después de actualizar`);
+            return { id: mesaId, status, currentSession: originalCurrentSessionId };
+        }
+        const verifiedCurrentSessionId = ((_a = finalResult === null || finalResult === void 0 ? void 0 : finalResult.currentSession) === null || _a === void 0 ? void 0 : _a.id) || (finalResult === null || finalResult === void 0 ? void 0 : finalResult.currentSession) || null;
+        console.log(`[setTableStatus] ✅ Mesa actualizada. Estado final:`, {
+            id: finalResult === null || finalResult === void 0 ? void 0 : finalResult.id,
+            status: finalResult === null || finalResult === void 0 ? void 0 : finalResult.status,
+            publishedAt: finalResult === null || finalResult === void 0 ? void 0 : finalResult.publishedAt,
+            currentSession: verifiedCurrentSessionId
+        });
+        // Si el status no coincide, loguear advertencia
+        if ((finalResult === null || finalResult === void 0 ? void 0 : finalResult.status) !== status) {
+            console.warn(`[setTableStatus] ⚠️ El status no coincide: esperado=${status}, actual=${finalResult === null || finalResult === void 0 ? void 0 : finalResult.status}`);
+        }
+        return {
+            id: (finalResult === null || finalResult === void 0 ? void 0 : finalResult.id) || mesaId,
+            status: (finalResult === null || finalResult === void 0 ? void 0 : finalResult.status) || status,
+            currentSession: verifiedCurrentSessionId
+        };
+    }
+    catch (err) {
+        console.warn(`[setTableStatus] No se pudo verificar el resultado final:`, (err === null || err === void 0 ? void 0 : err.message) || err);
+        // Retornar un objeto básico si no se puede obtener el resultado completo
+        return { id: mesaId, status, currentSession: originalCurrentSessionId };
     }
 }
 /**
@@ -241,15 +328,13 @@ async function setTableStatus(mesaId, status, currentSessionId = null) {
 async function getOrCreateOpenSession(opts) {
     var _a;
     const { restauranteId, mesaId, mesaDocumentId, includePaid = false } = opts;
-    // 1. Search for existing session
-    const statusFilters = ['open'];
-    if (includePaid)
-        statusFilters.push('paid');
+    // 1. Buscar sesión existente SOLO con status 'open'
+    // NOTA: includePaid está deprecado - nunca debemos reutilizar sesiones 'paid'
     const existingSessions = await strapi.entityService.findMany('api::mesa-sesion.mesa-sesion', {
         filters: {
             restaurante: { id: Number(restauranteId) },
             mesa: { id: Number(mesaId) },
-            session_status: { $in: statusFilters },
+            session_status: 'open', // SOLO 'open', nunca 'paid' o 'closed'
         },
         fields: ['id', 'documentId', 'code', 'session_status', 'openedAt'],
         sort: ['openedAt:desc'],
@@ -258,21 +343,17 @@ async function getOrCreateOpenSession(opts) {
     });
     if ((_a = existingSessions === null || existingSessions === void 0 ? void 0 : existingSessions[0]) === null || _a === void 0 ? void 0 : _a.id) {
         const session = existingSessions[0];
-        const hoursDiff = (Date.now() - new Date(session.openedAt).getTime()) / (1000 * 60 * 60);
-        // Auto-close old sessions (>24h)
-        if (session.session_status === 'open' && hoursDiff > 24) {
-            await strapi.entityService.update('api::mesa-sesion.mesa-sesion', session.documentId, {
-                data: { session_status: 'closed', closedAt: new Date() },
-            });
-            // Fall through to create new
-        }
-        else {
-            // Valid session found -> Ensure table is 'ocupada'
+        // Verificar que la sesión esté realmente en estado 'open' (doble verificación)
+        if (session.session_status === 'open') {
+            // Sesión válida encontrada -> Asegurar que la mesa esté ocupada
+            console.log(`[getOrCreateOpenSession] Reutilizando sesión existente ${session.id} para mesa ${mesaId}`);
             await setTableStatus(mesaId, 'ocupada', session.id);
             return session;
         }
+        // Si por alguna razón la sesión no está 'open', continuar para crear una nueva
     }
-    // 2. Create new session
+    // 2. No hay sesión abierta válida -> Crear nueva
+    console.log(`[getOrCreateOpenSession] Creando nueva sesión para mesa ${mesaId}`);
     const newCode = Math.random().toString(36).slice(2, 8).toUpperCase();
     const newSession = await strapi.entityService.create('api::mesa-sesion.mesa-sesion', {
         data: {
@@ -284,7 +365,8 @@ async function getOrCreateOpenSession(opts) {
             publishedAt: new Date(),
         },
     });
-    // Mark table Occupied (Low Level)
+    console.log(`[getOrCreateOpenSession] ✅ Sesión creada: ${newSession.id} para mesa ${mesaId}`);
+    // Marcar mesa como ocupada y asociar currentSession
     await setTableStatus(mesaId, 'ocupada', newSession.id);
     return newSession;
 }
@@ -405,61 +487,172 @@ exports.default = {
     },
     /**
      * POST /restaurants/:slug/open-session
+     *
+     * REGLAS:
+     * - Si ya existe sesión 'open' válida, la reutiliza (no crea duplicado)
+     * - Cierra sesiones 'paid' antes de abrir nueva (transición limpia)
+     * - Garantiza que mesa.status = 'ocupada' y mesa.currentSession = sessionId
      */
     async openSession(ctx) {
-        const { slug } = ctx.params || {};
-        const data = getPayload(ctx.request.body);
-        const table = data === null || data === void 0 ? void 0 : data.table;
-        if (!table)
-            throw new ValidationError('Missing table');
-        const restaurante = await getRestaurantBySlug(String(slug));
-        const mesa = await getMesaOrThrow(restaurante.id, Number(table));
-        // Cerrar cualquier sesión 'paid' existente antes de abrir una nueva
-        // Esto es similar a cómo funciona cuando se paga una cuenta
-        const paidSessions = await strapi.db.query('api::mesa-sesion.mesa-sesion').findMany({
-            where: {
-                mesa: mesa.id,
-                session_status: 'paid'
+        var _a, _b, _c, _d;
+        try {
+            const { slug } = ctx.params || {};
+            // Logging detallado para diagnóstico
+            console.log(`[openSession] Request recibido:`, {
+                slug,
+                body: ctx.request.body,
+                bodyType: typeof ctx.request.body,
+                hasData: 'data' in (ctx.request.body || {}),
+                bodyKeys: ctx.request.body ? Object.keys(ctx.request.body) : []
+            });
+            // Intentar extraer el payload de múltiples formas posibles
+            let data = null;
+            let table = null;
+            // Forma 1: body.data.table (formato Strapi estándar)
+            if (((_b = (_a = ctx.request.body) === null || _a === void 0 ? void 0 : _a.data) === null || _b === void 0 ? void 0 : _b.table) !== undefined) {
+                data = ctx.request.body.data;
+                table = data.table;
+                console.log(`[openSession] ✅ Table extraído de body.data.table:`, table);
             }
-        });
-        if (paidSessions.length > 0) {
-            await strapi.db.query('api::mesa-sesion.mesa-sesion').updateMany({
-                where: { id: { $in: paidSessions.map((s) => s.id) } },
-                data: {
-                    session_status: 'closed',
-                    closedAt: new Date(),
-                    publishedAt: new Date()
+            // Forma 2: body.table (formato directo)
+            else if (((_c = ctx.request.body) === null || _c === void 0 ? void 0 : _c.table) !== undefined) {
+                data = ctx.request.body;
+                table = data.table;
+                console.log(`[openSession] ✅ Table extraído de body.table:`, table);
+            }
+            // Forma 3: usar getPayload helper
+            else {
+                data = getPayload(ctx.request.body);
+                table = data === null || data === void 0 ? void 0 : data.table;
+                console.log(`[openSession] Table extraído vía getPayload:`, table, `(tipo: ${typeof table})`);
+            }
+            // Validación más robusta del parámetro table
+            if (table === undefined || table === null || table === '') {
+                console.error(`[openSession] ❌ Table faltante o inválido. Body completo:`, JSON.stringify(ctx.request.body, null, 2));
+                const errorMsg = `Missing or invalid table parameter. Received: ${JSON.stringify(ctx.request.body)}`;
+                ctx.status = 400;
+                ctx.body = {
+                    error: {
+                        message: errorMsg,
+                        status: 400,
+                        name: 'ValidationError'
+                    }
+                };
+                return;
+            }
+            // Convertir a número y validar
+            const tableNumber = Number(table);
+            if (!Number.isFinite(tableNumber) || tableNumber <= 0) {
+                console.error(`[openSession] ❌ Table no es un número válido:`, table);
+                const errorMsg = `Table must be a positive number. Received: ${table}`;
+                ctx.status = 400;
+                ctx.body = {
+                    error: {
+                        message: errorMsg,
+                        status: 400,
+                        name: 'ValidationError'
+                    }
+                };
+                return;
+            }
+            console.log(`[openSession] Iniciando apertura de sesión para mesa ${tableNumber} en restaurante ${slug}`);
+            const restaurante = await getRestaurantBySlug(String(slug));
+            const mesa = await getMesaOrThrow(restaurante.id, tableNumber);
+            console.log(`[openSession] Mesa encontrada: ID=${mesa.id}, documentId=${mesa.documentId}, status actual=${mesa.status}`);
+            // Cerrar cualquier sesión 'paid' existente antes de abrir una nueva
+            // Esto permite que un cliente pueda volver a usar una mesa después de pagar
+            const paidSessions = await strapi.db.query('api::mesa-sesion.mesa-sesion').findMany({
+                where: {
+                    mesa: mesa.id,
+                    session_status: 'paid'
                 }
             });
+            if (paidSessions.length > 0) {
+                console.log(`[openSession] Cerrando ${paidSessions.length} sesión(es) 'paid' antes de abrir nueva`);
+                await strapi.db.query('api::mesa-sesion.mesa-sesion').updateMany({
+                    where: { id: { $in: paidSessions.map((s) => s.id) } },
+                    data: {
+                        session_status: 'closed',
+                        closedAt: new Date(),
+                        publishedAt: new Date()
+                    }
+                });
+            }
+            // getOrCreateOpenSession:
+            // - Si ya hay sesión 'open', la reutiliza y asegura que mesa esté ocupada
+            // - Si no hay, crea nueva y marca mesa como ocupada
+            console.log(`[openSession] Llamando a getOrCreateOpenSession para mesa ${mesa.id}`);
+            const sesion = await getOrCreateOpenSession({
+                restauranteId: restaurante.id,
+                mesaId: mesa.id,
+                mesaDocumentId: mesa.documentId
+            });
+            console.log(`[openSession] ✅ Sesión obtenida/creada: ${sesion.id}, status: ${sesion.session_status}`);
+            // Verificar que la mesa se actualizó correctamente usando DB query directo
+            // Filtramos por publishedAt para obtener solo el publicado (más reciente después de actualizar)
+            try {
+                const mesaVerificada = await strapi.db.query('api::mesa.mesa').findOne({
+                    where: {
+                        id: mesa.id,
+                        publishedAt: { $notNull: true } // Solo obtener el publicado
+                    },
+                    select: ['id', 'status'],
+                    populate: ['currentSession']
+                });
+                const currentSessionId = ((_d = mesaVerificada === null || mesaVerificada === void 0 ? void 0 : mesaVerificada.currentSession) === null || _d === void 0 ? void 0 : _d.id) || (mesaVerificada === null || mesaVerificada === void 0 ? void 0 : mesaVerificada.currentSession) || null;
+                console.log(`[openSession] ✅ Estado de mesa verificado:`, {
+                    mesaId: mesaVerificada === null || mesaVerificada === void 0 ? void 0 : mesaVerificada.id,
+                    status: mesaVerificada === null || mesaVerificada === void 0 ? void 0 : mesaVerificada.status,
+                    currentSession: currentSessionId
+                });
+                // Si la mesa no se actualizó correctamente, intentar corregir
+                if ((mesaVerificada === null || mesaVerificada === void 0 ? void 0 : mesaVerificada.status) !== 'ocupada') {
+                    console.warn(`[openSession] ⚠️ La mesa no está 'ocupada' después de abrir sesión. Estado actual: ${mesaVerificada === null || mesaVerificada === void 0 ? void 0 : mesaVerificada.status}. Intentando corregir...`);
+                    await setTableStatus(mesa.id, 'ocupada', sesion.id);
+                }
+            }
+            catch (verifyErr) {
+                console.warn(`[openSession] ⚠️ No se pudo verificar el estado de la mesa:`, (verifyErr === null || verifyErr === void 0 ? void 0 : verifyErr.message) || verifyErr);
+                // Continuar sin verificación - la mesa debería estar actualizada por setTableStatus
+            }
+            ctx.body = { data: { sessionId: sesion.id, status: sesion.session_status } };
         }
-        const sesion = await getOrCreateOpenSession({
-            restauranteId: restaurante.id,
-            mesaId: mesa.id,
-            mesaDocumentId: mesa.documentId
-        });
-        ctx.body = { data: { sessionId: sesion.id, status: sesion.session_status } };
+        catch (err) {
+            console.error(`[openSession] ❌ Error inesperado:`, err);
+            ctx.status = (err === null || err === void 0 ? void 0 : err.status) || 500;
+            ctx.body = {
+                error: {
+                    message: (err === null || err === void 0 ? void 0 : err.message) || 'Internal server error',
+                    status: ctx.status,
+                    name: (err === null || err === void 0 ? void 0 : err.name) || 'Error'
+                }
+            };
+        }
     },
     /**
      * PUT /restaurants/:slug/close-session
-     * "Soft Close & Publish" Strategy
+     *
+     * REGLAS:
+     * - Cierra TODAS las sesiones 'open' y 'paid' de la mesa
+     * - Marca mesa.status = 'disponible' y mesa.currentSession = null
+     * - NO borra sesiones (solo cambia status a 'closed')
      */
     async closeSession(ctx) {
-        var _a;
+        var _a, _b, _c;
         try {
             const { slug } = ctx.params || {};
             const data = getPayload(ctx.request.body);
             const table = data === null || data === void 0 ? void 0 : data.table;
             if (!table)
                 throw new ValidationError('Missing table');
+            console.log(`[closeSession] Iniciando cierre de sesión para mesa ${table} en restaurante ${slug}`);
             const restaurante = await getRestaurantBySlug(String(slug));
             const mesa = await getMesaOrThrow(restaurante.id, Number(table));
-            // 2. Soft Close & Publish Sessions
+            console.log(`[closeSession] Mesa encontrada: ID=${mesa.id}, documentId=${mesa.documentId}, status actual=${mesa.status}`);
+            // Cerrar todas las sesiones activas (open o paid) de esta mesa
             const updateRes = await strapi.db.query('api::mesa-sesion.mesa-sesion').updateMany({
                 where: {
-                    $or: [
-                        { mesa: { id: mesa.id } },
-                        { mesa: { documentId: mesa.documentId } }
-                    ],
+                    mesa: mesa.id,
                     session_status: { $in: ['open', 'paid'] }
                 },
                 data: {
@@ -468,11 +661,42 @@ exports.default = {
                     publishedAt: new Date()
                 }
             });
-            // 3. Update Table Status
+            console.log(`[closeSession] Sesiones cerradas: ${(_a = updateRes === null || updateRes === void 0 ? void 0 : updateRes.count) !== null && _a !== void 0 ? _a : 0}`);
+            // Liberar la mesa: status = 'disponible' y currentSession = null
+            console.log(`[closeSession] Liberando mesa ${mesa.id}`);
             await setTableStatus(mesa.id, 'disponible', null);
-            ctx.body = { data: { success: true, updated: (_a = updateRes === null || updateRes === void 0 ? void 0 : updateRes.count) !== null && _a !== void 0 ? _a : 0 } };
+            // Verificar que la mesa se actualizó correctamente
+            // Verificar usando DB query directo
+            // Filtramos por publishedAt para obtener solo el publicado (más reciente después de actualizar)
+            let mesaVerificada = null;
+            try {
+                mesaVerificada = await strapi.db.query('api::mesa.mesa').findOne({
+                    where: {
+                        id: mesa.id,
+                        publishedAt: { $notNull: true } // Solo obtener el publicado
+                    },
+                    select: ['id', 'status'],
+                    populate: ['currentSession']
+                });
+                const currentSessionId = ((_b = mesaVerificada === null || mesaVerificada === void 0 ? void 0 : mesaVerificada.currentSession) === null || _b === void 0 ? void 0 : _b.id) || (mesaVerificada === null || mesaVerificada === void 0 ? void 0 : mesaVerificada.currentSession) || null;
+                console.log(`[closeSession] ✅ Mesa liberada. Estado verificado:`, {
+                    mesaId: mesaVerificada === null || mesaVerificada === void 0 ? void 0 : mesaVerificada.id,
+                    status: mesaVerificada === null || mesaVerificada === void 0 ? void 0 : mesaVerificada.status,
+                    currentSession: currentSessionId
+                });
+            }
+            catch (verifyErr) {
+                console.warn(`[closeSession] ⚠️ No se pudo verificar el estado de la mesa:`, (verifyErr === null || verifyErr === void 0 ? void 0 : verifyErr.message) || verifyErr);
+            }
+            // Si la mesa no se actualizó correctamente, intentar corregir
+            if (mesaVerificada && (mesaVerificada === null || mesaVerificada === void 0 ? void 0 : mesaVerificada.status) !== 'disponible') {
+                console.warn(`[closeSession] ⚠️ La mesa no está 'disponible' después de cerrar sesión. Estado actual: ${mesaVerificada === null || mesaVerificada === void 0 ? void 0 : mesaVerificada.status}. Intentando corregir...`);
+                await setTableStatus(mesa.id, 'disponible', null);
+            }
+            ctx.body = { data: { success: true, updated: (_c = updateRes === null || updateRes === void 0 ? void 0 : updateRes.count) !== null && _c !== void 0 ? _c : 0 } };
         }
         catch (err) {
+            console.error(`[closeSession] ❌ Error:`, (err === null || err === void 0 ? void 0 : err.message) || err);
             // Return 200 with error info to avoid generic 500 handling in browser
             ctx.body = {
                 data: { success: false },

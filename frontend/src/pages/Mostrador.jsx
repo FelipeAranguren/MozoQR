@@ -721,11 +721,13 @@ export default function Mostrador() {
   // Liberar mesa (cerrar sesión sin pedidos)
   const liberarMesa = async (mesaNumber) => {
     try {
-      // Buscar la sesión abierta de esa mesa
-      const session = openSessions.find((s) => s.mesaNumber === mesaNumber);
-      
-      if (!session) {
-        setSnack({ open: true, msg: 'No se encontró sesión abierta para esta mesa', severity: 'warning' });
+      // Verificar que la mesa esté realmente ocupada antes de intentar liberarla
+      const mesaActual = mesas.find(m => Number(m.number) === Number(mesaNumber));
+      if (mesaActual?.status !== 'ocupada') {
+        console.warn(`[liberarMesa] Mesa ${mesaNumber} no está ocupada (status: ${mesaActual?.status}). No se puede liberar.`);
+        setSnack({ open: true, msg: `La mesa ${mesaNumber} no está ocupada`, severity: 'warning' });
+        // Refrescar mesas por si acaso el estado está desactualizado
+        await fetchMesas();
         return;
       }
 
@@ -752,16 +754,15 @@ export default function Mostrador() {
       }
 
       // Cerrar la sesión usando el endpoint custom
+      // Este endpoint cierra todas las sesiones activas y marca la mesa como 'disponible'
       await api.put(`/restaurants/${slug}/close-session`, {
         data: {
           table: mesaNumber,
         },
       });
 
-      // Actualizar estado local inmediatamente para que la UI responda rápido
+      // Actualizar estado local inmediatamente para que la UI responda rápido (optimista)
       setOpenSessions(prev => prev.filter(s => Number(s.mesaNumber) !== Number(mesaNumber)));
-
-      // Actualizar el estado de la mesa localmente también (optimista)
       setMesas(prev => prev.map(m =>
         Number(m.number) === Number(mesaNumber)
           ? { ...m, status: 'disponible', currentSession: null }
@@ -779,7 +780,7 @@ export default function Mostrador() {
       // Esperar un momento para que el backend procese el cambio
       await new Promise(resolve => setTimeout(resolve, 1000));
 
-      // Refrescar datos del servidor
+      // Refrescar datos del servidor para obtener el estado real
       await Promise.all([
         fetchOpenSessions(),
         fetchPedidos(),
@@ -792,7 +793,10 @@ export default function Mostrador() {
         setTableDetailDialog({ open: false, mesa: null });
       }
     } catch (err) {
-      setSnack({ open: true, msg: 'No se pudo liberar la mesa ❌', severity: 'error' });
+      console.error(`[liberarMesa] Error:`, err);
+      setSnack({ open: true, msg: `No se pudo liberar la mesa ❌: ${err?.response?.data?.error || err?.message || 'Error desconocido'}`, severity: 'error' });
+      // Refrescar mesas por si acaso
+      await fetchMesas();
     }
   };
 
@@ -2041,6 +2045,9 @@ export default function Mostrador() {
             openSessions={openSessions}
             onTableClick={(table) => {
               // Abrir modal con detalles de la mesa
+              // Obtener el estado más actualizado de la mesa desde el array mesas (fuente de verdad)
+              const mesaActual = mesas.find(m => Number(m.number) === Number(table.number)) || table;
+              
               // Solo mostrar en el detalle los pedidos "reales" (no de sistema)
               const mesaPedidos = pedidos.filter(p =>
                 !isSystemOrder(p) &&
@@ -2055,7 +2062,8 @@ export default function Mostrador() {
               setTableDetailDialog({
                 open: true,
                 mesa: {
-                  ...table,
+                  ...mesaActual, // Usar mesaActual para tener el status más actualizado
+                  ...table, // Mantener otros campos de table
                   pedidos: mesaPedidos,
                   cuenta: mesaCuenta,
                   systemPedidos: mesaSystemPedidos,
@@ -2617,33 +2625,53 @@ export default function Mostrador() {
                     <Typography variant="body1" color="text.secondary" sx={{ mb: 2 }}>
                       Esta mesa no tiene pedidos activos ni cuenta abierta
                     </Typography>
-                    {/* Botón para liberar mesa si tiene sesión abierta */}
-                    {openSessions.some((s) => s.mesaNumber === tableDetailDialog.mesa?.number) && (
-                      <Button
-                        variant="contained"
-                        color="warning"
-                        onClick={() => liberarMesa(tableDetailDialog.mesa.number)}
-                        sx={{ mt: 2 }}
-                      >
-                        Liberar Mesa
-                      </Button>
-                    )}
-                  </Box>
-                )}
-
-              {/* Botón para Ocupar Mesa si está disponible (sin pedidos ni sesión) */}
-              {(!tableDetailDialog.mesa.pedidos || tableDetailDialog.mesa.pedidos.length === 0) &&
-                !tableDetailDialog.mesa.cuenta &&
-                !openSessions.some((s) => Number(s.mesaNumber) === Number(tableDetailDialog.mesa?.number)) && (
-                  <Box sx={{ mt: 2 }}>
-                    <Button
-                      variant="contained"
-                      color="primary"
-                      fullWidth
-                      onClick={() => handleOpenSession(tableDetailDialog.mesa.number)}
-                    >
-                      Ocupar Mesa
-                    </Button>
+                    {(() => {
+                      // Obtener el estado REAL de la mesa desde el array mesas (fuente de verdad)
+                      const mesaActual = mesas.find(m => Number(m.number) === Number(tableDetailDialog.mesa?.number));
+                      const mesaStatus = mesaActual?.status || tableDetailDialog.mesa?.status || 'disponible';
+                      
+                      console.log(`[Mostrador] Estado de mesa ${tableDetailDialog.mesa?.number}:`, {
+                        mesaStatus,
+                        tieneOpenSession: openSessions.some((s) => Number(s.mesaNumber) === Number(tableDetailDialog.mesa?.number)),
+                        mesaActual: mesaActual
+                      });
+                      
+                      // REGLA SIMPLE: Usar SOLO el status de la mesa como fuente de verdad
+                      // Si status === 'ocupada' → mostrar "Liberar Mesa"
+                      // Si status === 'disponible' → mostrar "Ocupar Mesa"
+                      const isOcupada = mesaStatus === 'ocupada';
+                      const isDisponible = mesaStatus === 'disponible';
+                      
+                      return (
+                        <>
+                          {/* Botón para LIBERAR mesa si está OCUPADA */}
+                          {isOcupada && (
+                            <Button
+                              variant="contained"
+                              color="warning"
+                              onClick={() => liberarMesa(tableDetailDialog.mesa.number)}
+                              sx={{ mt: 2 }}
+                            >
+                              Liberar Mesa
+                            </Button>
+                          )}
+                          
+                          {/* Botón para OCUPAR mesa si está DISPONIBLE */}
+                          {isDisponible && (
+                            <Box sx={{ mt: 2 }}>
+                              <Button
+                                variant="contained"
+                                color="primary"
+                                fullWidth
+                                onClick={() => handleOpenSession(tableDetailDialog.mesa.number)}
+                              >
+                                Ocupar Mesa
+                              </Button>
+                            </Box>
+                          )}
+                        </>
+                      );
+                    })()}
                   </Box>
                 )}
             </>
