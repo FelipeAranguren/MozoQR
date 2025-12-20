@@ -1,6 +1,6 @@
 export default async (policyContext, _config, { strapi }) => {
   const user = policyContext.state?.user;
-  if (!user) return true; 
+  if (!user) return false;
 
   const slug = policyContext.params?.slug;
   if (!slug) return false;

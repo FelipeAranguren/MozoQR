@@ -16,5 +16,50 @@ export default {
    * This gives you an opportunity to set up your data model,
    * run jobs, or perform some special logic.
    */
-  bootstrap(/* { strapi }: { strapi: Core.Strapi } */) {},
+  async bootstrap({ strapi } /*: { strapi: Core.Strapi } */) {
+    // Auto-migration (safe): ensure new mesa state columns exist.
+    // This prevents runtime 500s when DB schema is older than the content-type.
+    try {
+      const knex = strapi?.db?.connection;
+      if (!knex?.schema) return;
+
+      const hasMesas = await knex.schema.hasTable('mesas');
+      if (!hasMesas) return;
+
+      const hasActiveSessionCode = await knex.schema.hasColumn('mesas', 'active_session_code');
+      const hasOccupiedAt = await knex.schema.hasColumn('mesas', 'occupied_at');
+
+      if (!hasActiveSessionCode || !hasOccupiedAt) {
+        await knex.schema.alterTable('mesas', (table: any) => {
+          if (!hasActiveSessionCode) table.string('active_session_code');
+          if (!hasOccupiedAt) table.dateTime('occupied_at');
+        });
+        strapi?.log?.info?.('[bootstrap] ✅ Added missing columns to mesas: active_session_code / occupied_at');
+      }
+
+      // Normalize legacy/contaminated data:
+      // If a table is marked 'ocupada' but has no active session code, it's a "ghost occupied" state.
+      // We safely reset it to 'disponible' (no destructive deletes).
+      if (await knex.schema.hasColumn('mesas', 'active_session_code')) {
+        try {
+          const res = await knex('mesas')
+            .where({ status: 'ocupada' })
+            .whereNull('active_session_code')
+            .update({
+              status: 'disponible',
+              occupied_at: null,
+              published_at: knex.fn.now(),
+            });
+          if (res) {
+            strapi?.log?.info?.(`[bootstrap] ✅ Normalized ghost occupied mesas: ${res}`);
+          }
+        } catch (e) {
+          // best-effort
+        }
+      }
+    } catch (err: any) {
+      // Do not crash boot; log and continue (app can still run with legacy behavior).
+      strapi?.log?.warn?.('[bootstrap] ⚠️ Could not auto-migrate mesas columns: ' + (err?.message || err));
+    }
+  },
 };

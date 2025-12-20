@@ -24,7 +24,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 
 import { useCart } from '../context/CartContext';
 import { fetchMenus, openSession } from '../api/tenant';
-import { fetchTables } from '../api/tables';
+import { fetchTables, fetchTable } from '../api/tables';
 import { http } from '../api/tenant';
 import useTableSession from '../hooks/useTableSession';
 import StickyFooter from '../components/StickyFooter';
@@ -211,7 +211,7 @@ export default function RestaurantMenu() {
 
       try {
         console.log(`[RestaurantMenu] Abriendo sesión para Mesa ${table}...`);
-        const result = await openSession(slug, { table });
+        const result = await openSession(slug, { table, tableSessionId });
         console.log(`[RestaurantMenu] ✅ Sesión abierta para Mesa ${table}:`, result);
 
         // Verificar que la sesión se abrió correctamente
@@ -221,8 +221,15 @@ export default function RestaurantMenu() {
       } catch (err) {
         // Si falla, intentar de nuevo después de un momento
         // Esto es importante porque marca la mesa como ocupada
-        if (err?.response?.status === 403) {
-          console.warn(`[RestaurantMenu] ⚠️ No se pudo abrir sesión de mesa ${table} (permisos). La sesión se abrirá automáticamente al hacer el primer pedido.`);
+        if (err?.response?.status === 409) {
+          // Mesa no disponible o ya ocupada por otra sesión
+          console.warn(`[RestaurantMenu] ⚠️ No se pudo ocupar Mesa ${table} (409). Volviendo al selector...`);
+          navigate(`/${slug}/menu`);
+          return;
+        } else if (err?.response?.status === 404) {
+          console.warn(`[RestaurantMenu] ⚠️ Mesa ${table} no existe/configurada (404). Volviendo al selector...`);
+          navigate(`/${slug}/menu`);
+          return;
         } else {
           console.error(`[RestaurantMenu] ❌ Error al abrir sesión de mesa ${table}:`, err?.response?.data || err?.message || err);
           // Reintentar después de 1 segundo si no fue un error de permisos
@@ -231,7 +238,7 @@ export default function RestaurantMenu() {
               if (!cancelled) {
                 try {
                   console.log(`[RestaurantMenu] Reintentando abrir sesión para Mesa ${table}...`);
-                  await openSession(slug, { table });
+                  await openSession(slug, { table, tableSessionId });
                   console.log(`[RestaurantMenu] ✅ Sesión abierta en reintento para Mesa ${table}`);
                 } catch (retryErr) {
                   console.error(`[RestaurantMenu] ❌ Error en reintento para Mesa ${table}:`, retryErr?.response?.data || retryErr?.message);
@@ -252,7 +259,7 @@ export default function RestaurantMenu() {
     return () => {
       cancelled = true;
     };
-  }, [slug, table]);
+  }, [slug, table, tableSessionId, navigate]);
 
   // POLLING DE "KICK": Verificar si el cliente debe ser expulsado
   // REGLA ESTRICTA: SOLO expulsar cuando se cumplen las 3 condiciones:
@@ -267,15 +274,14 @@ export default function RestaurantMenu() {
 
     const checkIfShouldEject = async () => {
       try {
-        // 1. Verificar estado de la mesa
-        const mesas = await fetchTables(slug);
-        const myMesa = mesas.find(m => Number(m.number) === Number(table));
-        
-        if (!myMesa || myMesa.status !== 'disponible') {
-          return; // Mesa no disponible = no expulsar
+        // 1. Verificar estado real de la mesa (fuente de verdad del backend)
+        const myMesa = await fetchTable(slug, table);
+        if (!myMesa) return; // conservador
+        if (myMesa.status !== 'disponible') {
+          return; // si sigue ocupada/por limpiar, no expulsar
         }
 
-        // 2. Verificar si hay pedidos activos
+        // 2. Verificar si hay pedidos activos (conservador: si hay, no expulsar)
         const { hasOpenAccount } = await import('../api/tenant');
         const hasActiveOrders = await hasOpenAccount(slug, { table, tableSessionId });
         
@@ -284,47 +290,9 @@ export default function RestaurantMenu() {
           return;
         }
 
-        // 3. Obtener la SESIÓN MÁS RECIENTE (sin filtrar por estado)
-        // Esto es crítico: necesitamos la sesión actual, no una sesión antigua 'paid'/'closed'
-        try {
-          const params = new URLSearchParams();
-          params.append('filters[mesa][number][$eq]', String(table));
-          params.append('filters[restaurante][slug][$eq]', slug);
-          // NO filtrar por session_status - obtener TODAS las sesiones para encontrar la más reciente
-          params.append('fields[0]', 'id');
-          params.append('fields[1]', 'session_status');
-          params.append('fields[2]', 'openedAt');
-          params.append('sort[0]', 'openedAt:desc'); // Más reciente primero
-          params.append('pagination[pageSize]', '1'); // Solo la más reciente
-          params.append('publicationState', 'preview');
-
-          const { data } = await http.get(`/mesa-sesions?${params.toString()}`);
-          const sessions = data?.data || [];
-          const latestSession = sessions[0];
-          
-          // Si no hay sesión, no expulsar (caso conservador)
-          if (!latestSession) {
-            return;
-          }
-          
-          // Manejar estructura anidada de Strapi (attributes)
-          const sessionStatus = latestSession?.session_status || 
-                                latestSession?.attributes?.session_status;
-          
-          // VERIFICACIÓN CRÍTICA: Solo expulsar si la sesión MÁS RECIENTE está 'paid' o 'closed'
-          // Si está 'open', significa que el usuario recién entró - NO expulsar
-          if (sessionStatus === 'paid' || sessionStatus === 'closed') {
-            console.log(`[RestaurantMenu] 🛑 KICK: Mesa ${table} disponible + sin pedidos activos + sesión más reciente ${sessionStatus}. Redirigiendo...`);
-            navigate(`/gracias/${slug}`);
-          } else {
-            // Sesión está 'open' u otro estado = usuario está activo, NO expulsar
-            console.log(`[RestaurantMenu] Mesa ${table} disponible pero sesión más reciente está '${sessionStatus}'. No expulsando.`);
-          }
-        } catch (sessionErr) {
-          // Si falla la verificación de sesión, ser conservador y NO expulsar
-          console.warn(`[RestaurantMenu] Error verificando sesión para mesa ${table}:`, sessionErr);
-          // NO expulsar si hay error - comportamiento conservador
-        }
+        // 3. Mesa está disponible + sin pedidos activos => expulsar (source of truth)
+        console.log(`[RestaurantMenu] 🛑 KICK: Mesa ${table} disponible + sin pedidos activos. Redirigiendo al selector...`);
+        navigate(`/${slug}/menu`);
       } catch (err) {
         console.warn("[RestaurantMenu] Error polling table status:", err);
         // NO expulsar si hay error - comportamiento conservador

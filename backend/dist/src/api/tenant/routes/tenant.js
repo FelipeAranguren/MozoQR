@@ -3,6 +3,31 @@ Object.defineProperty(exports, "__esModule", { value: true });
 // src/api/tenant/routes/tenant.ts
 exports.default = {
     routes: [
+        // ---------------- Tables (Source of Truth) ----------------
+        {
+            method: 'GET',
+            path: '/restaurants/:slug/tables',
+            handler: 'tenant.listTables',
+            config: { policies: [], middlewares: [], auth: false },
+        },
+        {
+            method: 'GET',
+            path: '/restaurants/:slug/tables/:number',
+            handler: 'tenant.getTable',
+            config: { policies: [], middlewares: [], auth: false },
+        },
+        {
+            method: 'POST',
+            path: '/restaurants/:slug/tables/claim',
+            handler: 'tenant.claimTable',
+            config: { policies: [], middlewares: [], auth: false },
+        },
+        {
+            method: 'POST',
+            path: '/restaurants/:slug/tables/release',
+            handler: 'tenant.releaseTable',
+            config: { policies: [], middlewares: [], auth: false },
+        },
         {
             method: 'POST',
             path: '/restaurants/:slug/orders',
@@ -32,7 +57,7 @@ exports.default = {
             method: 'PUT',
             path: '/restaurants/:slug/close-session',
             handler: 'tenant.closeSession',
-            config: { policies: [], middlewares: [], auth: false },
+            config: { auth: {}, policies: ['global::by-restaurant-owner'], middlewares: [] },
         },
         {
             method: 'POST',

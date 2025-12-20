@@ -173,6 +173,7 @@ export async function createOrder(slug, payload) {
   const { table, tableSessionId, items = [], notes } = payload || {};
   if (!table) throw new Error('Falta número de mesa');
   if (!Array.isArray(items) || items.length === 0) throw new Error('El carrito está vacío');
+  if (!tableSessionId) throw new Error('Falta tableSessionId');
 
   // Sanitizar notas antes de enviar (defensivo; el servidor también debe sanitizar)
   const safeNotes = sanitizeNotes(notes || '');
@@ -216,6 +217,7 @@ export async function createOrder(slug, payload) {
     {
       data: {
         table: Number(table),
+        tableSessionId: String(tableSessionId),
         customerNotes: safeNotes,
         total: numericTotal, // Ensure it's always a number, not a formatted string
         items: safeItems,
@@ -231,14 +233,16 @@ export async function createOrder(slug, payload) {
  * Abre una sesión de mesa (marca la mesa como ocupada) aunque no haya pedido todavía
  */
 export async function openSession(slug, payload) {
-  const { table } = payload || {};
+  const { table, tableSessionId } = payload || {};
   if (table === undefined || table === null || table === '') {
     throw new Error('table requerido');
   }
+  if (!tableSessionId) throw new Error('tableSessionId requerido');
 
   try {
-    const res = await publicHttp.post(`/restaurants/${slug}/open-session`, {
-      data: { table },
+    // Nuevo flujo: claim table (source of truth)
+    const res = await publicHttp.post(`/restaurants/${slug}/tables/claim`, {
+      data: { table: Number(table), tableSessionId: String(tableSessionId) },
     });
     return res?.data?.data || res?.data;
   } catch (err) {

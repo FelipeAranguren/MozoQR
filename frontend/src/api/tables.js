@@ -16,6 +16,26 @@ function getAuthHeaders() {
 export async function fetchTables(slug) {
   if (!slug) return [];
 
+  // ✅ Nuevo endpoint estable (source of truth) - público
+  try {
+    const res = await publicHttp.get(`/restaurants/${slug}/tables`);
+    const rows = res?.data?.data || [];
+    if (Array.isArray(rows)) {
+      return rows
+        .map((t) => ({
+          id: t.id ?? t.documentId ?? t.number,
+          number: Number(t.number),
+          name: t.displayName || `Mesa ${t.number}`,
+          displayName: t.displayName || `Mesa ${t.number}`,
+          status: t.status || 'disponible',
+          occupiedAt: t.occupiedAt || null,
+        }))
+        .sort((a, b) => (a.number || 0) - (b.number || 0));
+    }
+  } catch (_e) {
+    // fall through to legacy strategies
+  }
+
   // Método principal: obtener mesas desde el restaurante (más confiable)
   try {
     const timestamp = Date.now();
@@ -131,6 +151,46 @@ export async function fetchTables(slug) {
     console.warn('[tables.js] Error en fallback de mesas:', err?.response?.status || err?.message);
     return [];
   }
+}
+
+/**
+ * Claim (ocupar) una mesa de forma atómica.
+ * body: { table, tableSessionId }
+ */
+export async function claimTable(slug, { table, tableSessionId }) {
+  if (!slug) throw new Error('slug requerido');
+  if (!table) throw new Error('table requerido');
+  if (!tableSessionId) throw new Error('tableSessionId requerido');
+
+  const res = await publicHttp.post(`/restaurants/${slug}/tables/claim`, {
+    data: { table: Number(table), tableSessionId: String(tableSessionId) },
+  });
+  return res?.data?.data || res?.data;
+}
+
+/**
+ * Release (liberar) una mesa (idempotente).
+ * body: { table, tableSessionId }
+ */
+export async function releaseTable(slug, { table, tableSessionId }) {
+  if (!slug) throw new Error('slug requerido');
+  if (!table) throw new Error('table requerido');
+  if (!tableSessionId) throw new Error('tableSessionId requerido');
+
+  const res = await publicHttp.post(`/restaurants/${slug}/tables/release`, {
+    data: { table: Number(table), tableSessionId: String(tableSessionId) },
+  });
+  return res?.data?.data || res?.data;
+}
+
+/**
+ * Obtiene el estado de una mesa (público).
+ */
+export async function fetchTable(slug, table) {
+  if (!slug) throw new Error('slug requerido');
+  if (!table) throw new Error('table requerido');
+  const res = await publicHttp.get(`/restaurants/${slug}/tables/${Number(table)}`);
+  return res?.data?.data || null;
 }
 
 /**

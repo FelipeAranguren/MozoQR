@@ -2,7 +2,7 @@
 import { useState, useCallback, useMemo } from 'react';
 import { createOrder } from '../api/tenant';
 
-export const useOrderFlow = (slug, table) => {
+export const useOrderFlow = (slug, table, tableSessionId) => {
   const [cart, setCart] = useState([]);
   const [orders, setOrders] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -58,6 +58,10 @@ export const useOrderFlow = (slug, table) => {
       setError('El carrito está vacío');
       return null;
     }
+    if (!tableSessionId) {
+      setError('Sesión de mesa inválida (tableSessionId faltante)');
+      return null;
+    }
 
     setLoading(true);
     setError(null);
@@ -65,6 +69,7 @@ export const useOrderFlow = (slug, table) => {
     try {
       const order = await createOrder(slug, {
         table,
+        tableSessionId,
         items: cart.map(item => ({
           productId: item.id,
           qty: item.qty,
@@ -83,7 +88,7 @@ export const useOrderFlow = (slug, table) => {
     } finally {
       setLoading(false);
     }
-  }, [slug, table, cart]);
+  }, [slug, table, tableSessionId, cart]);
 
   return {
     cart,

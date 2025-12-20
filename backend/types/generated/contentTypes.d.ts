@@ -492,6 +492,7 @@ export interface ApiMesaMesa extends Struct.CollectionTypeSchema {
     draftAndPublish: true;
   };
   attributes: {
+    activeSessionCode: Schema.Attribute.String;
     createdAt: Schema.Attribute.DateTime;
     createdBy: Schema.Attribute.Relation<'oneToOne', 'admin::user'> &
       Schema.Attribute.Private;
@@ -510,6 +511,7 @@ export interface ApiMesaMesa extends Struct.CollectionTypeSchema {
     >;
     notes: Schema.Attribute.String;
     number: Schema.Attribute.Integer & Schema.Attribute.Required;
+    occupiedAt: Schema.Attribute.DateTime;
     publishedAt: Schema.Attribute.DateTime;
     restaurante: Schema.Attribute.Relation<
       'manyToOne',

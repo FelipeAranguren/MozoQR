@@ -42,6 +42,12 @@
             "relation": "oneToOne",
             "target": "api::mesa-sesion.mesa-sesion"
         },
+        "activeSessionCode": {
+            "type": "string"
+        },
+        "occupiedAt": {
+            "type": "datetime"
+        },
         "status": {
             "type": "enumeration",
             "enum": [

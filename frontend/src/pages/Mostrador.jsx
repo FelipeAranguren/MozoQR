@@ -937,7 +937,10 @@ export default function Mostrador() {
   // Abrir sesión manualmente (Ocupar Mesa)
   const handleOpenSession = async (mesaNumber) => {
     try {
-      await openSession(slug, { table: mesaNumber });
+      // Staff override: ocupar mesa con una sesión "técnica" (no es sesión de cliente).
+      // Esto evita que el backend cree sesiones sin identificador y mantiene consistencia.
+      const staffSessionId = `staff_${Date.now()}_${Math.random().toString(36).slice(2)}`;
+      await openSession(slug, { table: mesaNumber, tableSessionId: staffSessionId });
 
       // Actualizar estado inmediatamente para que la UI responda rápido
       // Optimista: Actualizar el estado de la mesa localmente también

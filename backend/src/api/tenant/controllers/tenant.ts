@@ -1,17 +1,25 @@
 /**
  * Custom tenant controller
  * Endpoints:
+ *  - GET  /api/restaurants/:slug/tables
+ *  - GET  /api/restaurants/:slug/tables/:number
+ *  - POST /api/restaurants/:slug/tables/claim
+ *  - POST /api/restaurants/:slug/tables/release
  *  - POST /api/restaurants/:slug/orders
  *  - POST|PUT /api/restaurants/:slug/close-account
  *  - POST /api/restaurants/:slug/open-session
  *  - PUT /api/restaurants/:slug/close-session
  */
-import { errors } from '@strapi/utils';
+// eslint-disable-next-line @typescript-eslint/no-var-requires
+const { errors } = require('@strapi/utils');
 type ID = number | string;
 
 const { ValidationError, NotFoundError } = errors;
 
 declare var strapi: any;
+// Some editors in this repo run TS without node typings installed; keep this local and harmless at runtime.
+declare const process: any;
+declare const require: any;
 
 type Ctx = {
   params?: Record<string, any>;
@@ -30,6 +38,51 @@ function getPayload(raw: any) {
   return raw && typeof raw === 'object' && 'data' in raw ? raw.data : raw;
 }
 
+type MesaColumnSupport = {
+  activeSessionCode: boolean;
+  occupiedAt: boolean;
+  publishedAt: boolean;
+  displayName: boolean;
+  isActive: boolean;
+};
+
+let mesaColumnSupportCache: MesaColumnSupport | null = null;
+
+async function getMesaColumnSupport(): Promise<MesaColumnSupport> {
+  if (mesaColumnSupportCache) return mesaColumnSupportCache;
+  const knex = strapi?.db?.connection;
+  // default conservative: only fields we know existed previously
+  const base: MesaColumnSupport = {
+    activeSessionCode: false,
+    occupiedAt: false,
+    publishedAt: true,
+    displayName: true,
+    isActive: true,
+  };
+  if (!knex?.schema?.hasColumn) {
+    mesaColumnSupportCache = base;
+    return base;
+  }
+  try {
+    const hasActiveSessionCode = await knex.schema.hasColumn('mesas', 'active_session_code');
+    const hasOccupiedAt = await knex.schema.hasColumn('mesas', 'occupied_at');
+    const hasPublishedAt = await knex.schema.hasColumn('mesas', 'published_at');
+    const hasDisplayName = await knex.schema.hasColumn('mesas', 'display_name');
+    const hasIsActive = await knex.schema.hasColumn('mesas', 'is_active');
+    mesaColumnSupportCache = {
+      activeSessionCode: !!hasActiveSessionCode,
+      occupiedAt: !!hasOccupiedAt,
+      publishedAt: hasPublishedAt !== false,
+      displayName: hasDisplayName !== false,
+      isActive: hasIsActive !== false,
+    };
+    return mesaColumnSupportCache;
+  } catch (_e) {
+    mesaColumnSupportCache = base;
+    return base;
+  }
+}
+
 /* -------------------------------------------------------
  * Helpers
  * ----------------------------------------------------- */
@@ -46,9 +99,12 @@ async function getRestaurantBySlug(slug: string) {
 }
 
 /**
- * Get Table strictly by Number. Creates it if not found (with duplicate protection).
+ * Get Table strictly by Number (NO auto-create).
+ *
+ * ✅ Mesas deben existir solo si el owner las creó.
+ * ❌ Nunca crear mesas automáticamente por tráfico público.
+ *
  * Uses direct DB query to avoid entityService relation filter issues.
- * PROTECCIÓN CONTRA DUPLICADOS: Verifica antes de crear y maneja race conditions.
  */
 async function getMesaOrThrow(restauranteId: ID, number: number) {
   const restauranteIdNum = Number(restauranteId);
@@ -62,108 +118,35 @@ async function getMesaOrThrow(restauranteId: ID, number: number) {
     throw new ValidationError(`Número de mesa inválido: ${number}`);
   }
 
-  // Use direct DB query for more reliable relation filtering (searches all, including unpublished)
-  // Buscar todas las mesas con ese número para detectar duplicados
-  let found = await strapi.db.query('api::mesa.mesa').findMany({
+  const col = await getMesaColumnSupport();
+  const select: string[] = ['id', 'number', 'status', 'documentId'];
+  if (col.publishedAt) select.push('publishedAt');
+  if (col.activeSessionCode) select.push('activeSessionCode');
+  if (col.occupiedAt) select.push('occupiedAt');
+  if (col.displayName) select.push('displayName');
+
+  // Use direct DB query for more reliable relation filtering (include unpublished)
+  const found = await strapi.db.query('api::mesa.mesa').findMany({
     where: {
       restaurante: restauranteIdNum,
       number: numberNum
     },
-    select: ['id', 'number', 'status', 'documentId'],
+    select,
     orderBy: { id: 'asc' } // Ordenar por ID para consistencia
   });
 
-  // Verificar si hay duplicados (más de una mesa con el mismo número)
+  if (!found?.length) {
+    throw new NotFoundError(`Mesa ${numberNum} no configurada en este restaurante`);
+  }
+
   if (found.length > 1) {
-    console.error(`[getMesaOrThrow] ⚠️ DUPLICADO DETECTADO: ${found.length} mesas encontradas con número ${numberNum} para restaurante ${restauranteIdNum}`);
-    console.error(`[getMesaOrThrow] IDs de mesas duplicadas:`, found.map(m => m.id));
-    // Usar la primera mesa encontrada (la más antigua por ID), pero loguear el error
-    // TODO: En el futuro, podría implementarse una limpieza de duplicados
+    // No arreglamos duplicados aquí (eso requiere migración/operación del owner),
+    // pero evitamos romper el runtime: usamos la más antigua por ID y logueamos.
+    console.error(`[getMesaOrThrow] ⚠️ DUPLICADO DETECTADO: ${found.length} mesas con número ${numberNum} en restaurante ${restauranteIdNum}`);
+    console.error(`[getMesaOrThrow] IDs:`, found.map((m: any) => m.id));
   }
 
-  let mesa = found?.[0];
-  
-  // Si la mesa no existe, intentar crearla (con protección robusta contra duplicados)
-  if (!mesa?.id) {
-    // Estrategia: Intentar crear, y si falla o si después de crear encontramos duplicados,
-    // buscar de nuevo y usar la primera (más antigua)
-    let created = false;
-    try {
-      // Verificar una vez más antes de crear (protección contra race conditions)
-      const preCreateCheck = await strapi.db.query('api::mesa.mesa').findMany({
-        where: {
-          restaurante: restauranteIdNum,
-          number: numberNum
-        },
-        select: ['id', 'number', 'status', 'documentId'],
-        limit: 1
-      });
-
-      if (preCreateCheck.length > 0) {
-        // La mesa fue creada entre búsquedas (race condition)
-        mesa = preCreateCheck[0];
-        console.log(`[getMesaOrThrow] Mesa ${numberNum} encontrada en verificación pre-creación (evitó duplicado)`);
-      } else {
-        // Crear la mesa solo si realmente no existe
-        const newMesa = await strapi.entityService.create('api::mesa.mesa', {
-          data: {
-            number: numberNum,
-            name: `Mesa ${numberNum}`,
-            displayName: `Mesa ${numberNum}`,
-            status: 'disponible',
-            isActive: true,
-            restaurante: { id: restauranteIdNum },
-            publishedAt: new Date()
-          }
-        });
-        created = true;
-        console.log(`[getMesaOrThrow] Mesa ${numberNum} creada automáticamente para restaurante ${restauranteIdNum}`);
-        
-        // Después de crear, verificar si hay duplicados (otro proceso pudo crear una al mismo tiempo)
-        const postCreateCheck = await strapi.db.query('api::mesa.mesa').findMany({
-          where: {
-            restaurante: restauranteIdNum,
-            number: numberNum
-          },
-          select: ['id', 'number', 'status', 'documentId'],
-          orderBy: { id: 'asc' }
-        });
-
-        if (postCreateCheck.length > 1) {
-          // Se creó un duplicado - usar la primera (más antigua) y loguear
-          console.error(`[getMesaOrThrow] ⚠️ DUPLICADO CREADO: Se detectaron ${postCreateCheck.length} mesas después de crear. Usando la más antigua.`);
-          console.error(`[getMesaOrThrow] IDs:`, postCreateCheck.map(m => m.id));
-          mesa = postCreateCheck[0]; // Usar la primera (más antigua)
-        } else {
-          mesa = {
-            id: newMesa.id,
-            number: newMesa.number || numberNum,
-            status: newMesa.status || 'disponible',
-            documentId: newMesa.documentId
-          };
-        }
-      }
-    } catch (createErr: any) {
-      // Si falla la creación, buscar de nuevo (otro proceso pudo haberla creado)
-      const errorRetryCheck = await strapi.db.query('api::mesa.mesa').findMany({
-        where: {
-          restaurante: restauranteIdNum,
-          number: numberNum
-        },
-        select: ['id', 'number', 'status', 'documentId'],
-        orderBy: { id: 'asc' },
-        limit: 1
-      });
-
-      if (errorRetryCheck.length > 0) {
-        mesa = errorRetryCheck[0];
-        console.log(`[getMesaOrThrow] Mesa ${numberNum} encontrada después de error de creación (evitó duplicado)`);
-      } else {
-        // Si realmente no se pudo crear ni encontrar, lanzar error
-        throw new ValidationError(`No se pudo crear ni encontrar la mesa ${numberNum}: ${createErr.message}`);
-      }
-    }
-  }
+  const mesa: any = found[0];
 
   // Get documentId using entityService if needed (for draftAndPublish)
   let documentId: string | undefined = (mesa as any).documentId;
@@ -180,10 +163,12 @@ async function getMesaOrThrow(restauranteId: ID, number: number) {
     }
   }
 
-  // Asegurar que la mesa esté publicada (pero NO modificar otros campos)
-  if (documentId && documentId !== String(mesa.id)) {
+  // Asegurar que la mesa esté publicada (solo si está en draft) para que sea visible en endpoints públicos.
+  // No tocamos número/restaurante ni re-creamos nada.
+  if (col.publishedAt && !mesa?.publishedAt) {
     try {
-      await strapi.entityService.update('api::mesa.mesa', documentId, {
+      await strapi.db.query('api::mesa.mesa').update({
+        where: { id: mesa.id },
         data: {
           publishedAt: new Date()
         }
@@ -198,224 +183,349 @@ async function getMesaOrThrow(restauranteId: ID, number: number) {
     id: mesa.id,
     documentId: documentId || String(mesa.id), // Fallback to id as string if documentId not available
     number: mesa.number,
-    status: mesa.status
+    status: mesa.status,
+    activeSessionCode: col.activeSessionCode ? (mesa.activeSessionCode ?? null) : null,
+    occupiedAt: col.occupiedAt ? (mesa.occupiedAt ?? null) : null,
+    displayName: (mesa as any).displayName ?? null,
   };
 }
 
-/**
- * Update Table Status using Entity Service to ensure proper publication
- */
-async function setTableStatus(mesaId: ID, status: 'ocupada' | 'disponible' | 'por_limpiar', currentSessionId: ID | null = null) {
-  // Guardar el currentSessionId original para usar en caso de error
-  const originalCurrentSessionId = currentSessionId;
-  
-  // First, get the documentId to use with entityService
-  let documentId: string | undefined;
-  try {
-    const mesa = await strapi.entityService.findOne('api::mesa.mesa', mesaId, {
-      fields: ['documentId']
-    });
-    documentId = mesa?.documentId;
-  } catch (err) {
-    // If entityService fails, try direct DB query
-    const dbMesa = await strapi.db.query('api::mesa.mesa').findOne({
-      where: { id: mesaId },
-      select: ['documentId']
-    });
-    documentId = (dbMesa as any)?.documentId;
-  }
-
-  // If we still don't have documentId, use id as fallback
-  const idToUse = documentId || String(mesaId);
-
-  console.log(`[setTableStatus] Actualizando mesa ${mesaId} (documentId: ${idToUse}) - status: ${status}, currentSession: ${currentSessionId}`);
-  
-  // ESTRATEGIA: Actualizar directamente en la base de datos para evitar problemas con draft & publish
-  // entityService.update puede tener problemas con draft & publish, así que usamos DB query directamente
-  try {
-    const updateResult = await strapi.db.query('api::mesa.mesa').update({
-      where: { id: mesaId },
-      data: {
-        status,
-        publishedAt: new Date()
-      }
-    });
-    console.log(`[setTableStatus] ✅ Status actualizado vía DB query: ${status}`, {
-      affectedRows: updateResult?.count || 0
-    });
-    
-    // Verificar inmediatamente que se actualizó
-    const immediateCheck = await strapi.db.query('api::mesa.mesa').findOne({
-      where: { id: mesaId },
-      select: ['id', 'status', 'publishedAt']
-    });
-    console.log(`[setTableStatus] Verificación inmediata:`, {
-      id: immediateCheck?.id,
-      status: immediateCheck?.status,
-      publishedAt: immediateCheck?.publishedAt
-    });
-    
-    if (immediateCheck?.status !== status) {
-      console.error(`[setTableStatus] ❌ La actualización no se aplicó correctamente. Esperado: ${status}, Actual: ${immediateCheck?.status}`);
-      // Intentar de nuevo con entityService como fallback
-      try {
-        await strapi.entityService.update('api::mesa.mesa', idToUse, {
-          data: {
-            status,
-            publishedAt: new Date()
-          }
-        });
-        console.log(`[setTableStatus] ✅ Status actualizado vía entityService (fallback): ${status}`);
-      } catch (entityErr: any) {
-        console.error(`[setTableStatus] ❌ Error también con entityService:`, entityErr?.message || entityErr);
-      }
-    }
-  } catch (err: any) {
-    console.error(`[setTableStatus] ❌ Error actualizando status con DB query:`, err?.message || err);
-    throw new ValidationError(`No se pudo actualizar el status de la mesa: ${err?.message || 'Error desconocido'}`);
-  }
-
-  // Paso 2: Actualizar la relación currentSession usando DB query directo (más confiable)
-  try {
-    if (currentSessionId !== null) {
-      // Verificar que la sesión existe
-      const sessionExists = await strapi.db.query('api::mesa-sesion.mesa-sesion').findOne({
-        where: { id: Number(currentSessionId) },
-        select: ['id']
-      });
-      
-      if (!sessionExists?.id) {
-        console.warn(`[setTableStatus] ⚠️ Sesión ${currentSessionId} no existe, no se puede asociar`);
-        // Limpiar la relación si la sesión no existe
-        await strapi.db.query('api::mesa.mesa').update({
-          where: { id: mesaId },
-          data: { currentSession: null }
-        });
-      } else {
-        // Actualizar la relación usando DB query directo
-        await strapi.db.query('api::mesa.mesa').update({
-          where: { id: mesaId },
-          data: { currentSession: Number(currentSessionId) }
-        });
-        console.log(`[setTableStatus] ✅ Relación currentSession actualizada: ${currentSessionId}`);
-      }
-    } else {
-      // Limpiar relación
-      await strapi.db.query('api::mesa.mesa').update({
-        where: { id: mesaId },
-        data: { currentSession: null }
-      });
-      console.log(`[setTableStatus] ✅ Relación currentSession limpiada`);
-    }
-  } catch (relErr: any) {
-    console.error(`[setTableStatus] ❌ Error actualizando relación currentSession:`, relErr?.message || relErr);
-    // No lanzar error aquí, solo loguear - el status ya se actualizó
-  }
-
-  // Obtener el resultado final para verificar usando DB query directo
-  // Esperar un momento para que la actualización se propague
-  await new Promise(resolve => setTimeout(resolve, 100));
-  
-  try {
-    const finalResult = await strapi.db.query('api::mesa.mesa').findOne({
-      where: { id: mesaId },
-      select: ['id', 'status', 'publishedAt'],
-      populate: ['currentSession']
-    });
-    
-    if (!finalResult) {
-      console.warn(`[setTableStatus] ⚠️ No se encontró la mesa ${mesaId} después de actualizar`);
-      return { id: mesaId, status, currentSession: originalCurrentSessionId };
-    }
-    
-    const verifiedCurrentSessionId = finalResult?.currentSession?.id || finalResult?.currentSession || null;
-    
-    console.log(`[setTableStatus] ✅ Mesa actualizada. Estado final:`, { 
-      id: finalResult?.id, 
-      status: finalResult?.status,
-      publishedAt: finalResult?.publishedAt,
-      currentSession: verifiedCurrentSessionId
-    });
-    
-    // Si el status no coincide, loguear advertencia
-    if (finalResult?.status !== status) {
-      console.warn(`[setTableStatus] ⚠️ El status no coincide: esperado=${status}, actual=${finalResult?.status}`);
-    }
-    
-    return { 
-      id: finalResult?.id || mesaId, 
-      status: finalResult?.status || status, 
-      currentSession: verifiedCurrentSessionId 
-    };
-  } catch (err: any) {
-    console.warn(`[setTableStatus] No se pudo verificar el resultado final:`, err?.message || err);
-    // Retornar un objeto básico si no se puede obtener el resultado completo
-    return { id: mesaId, status, currentSession: originalCurrentSessionId };
-  }
+function normalizeMesaStatus(raw: any): 'disponible' | 'ocupada' | 'por_limpiar' {
+  if (raw === 'ocupada' || raw === 'por_limpiar' || raw === 'disponible') return raw;
+  return 'disponible';
 }
 
-/**
- * Get active session or create new one.
- * Ensures strict State Management: If session is open, Table MUST be 'ocupada'.
- */
-async function getOrCreateOpenSession(opts: {
-  restauranteId: ID;
-  mesaId: ID;
-  mesaDocumentId: string;
-  includePaid?: boolean;
-}) {
-  const { restauranteId, mesaId, mesaDocumentId, includePaid = false } = opts;
+function mesaToPublicDTO(mesa: any) {
+  return {
+    id: mesa.id,
+    number: mesa.number,
+    status: normalizeMesaStatus(mesa.status),
+    displayName: mesa.displayName || `Mesa ${mesa.number}`,
+    occupiedAt: mesa.occupiedAt ?? null,
+  };
+}
 
-  // 1. Buscar sesión existente SOLO con status 'open'
-  // NOTA: includePaid está deprecado - nunca debemos reutilizar sesiones 'paid'
-  const existingSessions = await strapi.entityService.findMany('api::mesa-sesion.mesa-sesion', {
+async function getMesaRowByNumber(restauranteId: ID, number: number) {
+  const restauranteIdNum = Number(restauranteId);
+  const numberNum = Number(number);
+  const col = await getMesaColumnSupport();
+  const select: string[] = ['id', 'number', 'status'];
+  if (col.displayName) select.push('displayName');
+  if (col.activeSessionCode) select.push('activeSessionCode');
+  if (col.occupiedAt) select.push('occupiedAt');
+  if (col.publishedAt) select.push('publishedAt');
+  const rows = await strapi.db.query('api::mesa.mesa').findMany({
+    where: { restaurante: restauranteIdNum, number: numberNum },
+    select,
+    orderBy: { id: 'asc' },
+    limit: 1,
+  });
+  return rows?.[0] || null;
+}
+
+async function getOrCreateOpenSessionByCode(opts: { restauranteId: ID; mesaId: ID; code: string }) {
+  const { restauranteId, mesaId, code } = opts;
+  const existing = await strapi.entityService.findMany('api::mesa-sesion.mesa-sesion', {
     filters: {
       restaurante: { id: Number(restauranteId) },
       mesa: { id: Number(mesaId) },
-      session_status: 'open', // SOLO 'open', nunca 'paid' o 'closed'
-    },
-    fields: ['id', 'documentId', 'code', 'session_status', 'openedAt'],
-    sort: ['openedAt:desc'],
-    limit: 1,
-    publicationState: 'preview'
-  });
-
-  if (existingSessions?.[0]?.id) {
-    const session = existingSessions[0];
-    
-    // Verificar que la sesión esté realmente en estado 'open' (doble verificación)
-    if (session.session_status === 'open') {
-      // Sesión válida encontrada -> Asegurar que la mesa esté ocupada
-      console.log(`[getOrCreateOpenSession] Reutilizando sesión existente ${session.id} para mesa ${mesaId}`);
-      await setTableStatus(mesaId, 'ocupada', session.id);
-      return session;
-    }
-    // Si por alguna razón la sesión no está 'open', continuar para crear una nueva
-  }
-
-  // 2. No hay sesión abierta válida -> Crear nueva
-  console.log(`[getOrCreateOpenSession] Creando nueva sesión para mesa ${mesaId}`);
-  const newCode = Math.random().toString(36).slice(2, 8).toUpperCase();
-  const newSession = await strapi.entityService.create('api::mesa-sesion.mesa-sesion', {
-    data: {
-      code: newCode,
+      code,
       session_status: 'open',
-      openedAt: new Date(),
-      restaurante: { id: Number(restauranteId) },
-      mesa: { id: Number(mesaId) },
-      publishedAt: new Date(),
     },
+    fields: ['id', 'code', 'session_status', 'openedAt'],
+    limit: 1,
+    publicationState: 'preview',
   });
+  if (existing?.[0]?.id) return existing[0];
 
-  console.log(`[getOrCreateOpenSession] ✅ Sesión creada: ${newSession.id} para mesa ${mesaId}`);
-  
-  // Marcar mesa como ocupada y asociar currentSession
-  await setTableStatus(mesaId, 'ocupada', newSession.id);
-
-  return newSession;
+  // Create new "open" session with code == tableSessionId (client session token).
+  try {
+    const created = await strapi.entityService.create('api::mesa-sesion.mesa-sesion', {
+      data: {
+        code,
+        session_status: 'open',
+        openedAt: new Date(),
+        restaurante: { id: Number(restauranteId) },
+        mesa: { id: Number(mesaId) },
+        publishedAt: new Date(),
+      },
+    });
+    return created;
+  } catch (_e: any) {
+    // In case of a rare race / UID collision, re-read.
+    const reread = await strapi.entityService.findMany('api::mesa-sesion.mesa-sesion', {
+      filters: {
+        restaurante: { id: Number(restauranteId) },
+        mesa: { id: Number(mesaId) },
+        code,
+        session_status: 'open',
+      },
+      fields: ['id', 'code', 'session_status', 'openedAt'],
+      limit: 1,
+      publicationState: 'preview',
+    });
+    if (reread?.[0]?.id) return reread[0];
+    throw _e;
+  }
 }
 
+async function claimTableInternal(opts: { restauranteId: ID; tableNumber: number; tableSessionId: string }) {
+  const { restauranteId, tableNumber, tableSessionId } = opts;
+  if (!tableSessionId) throw new ValidationError('Missing tableSessionId');
+  const col = await getMesaColumnSupport();
+  if (!col.activeSessionCode) {
+    // Without active_session_code column we cannot enforce session ownership safely.
+    throw new ValidationError(
+      'DB desactualizada: falta columna mesas.active_session_code. Reiniciá Strapi (para auto-migración) o borrá backend/.tmp/data.db en desarrollo.'
+    );
+  }
+
+  const mesa = await getMesaOrThrow(restauranteId, tableNumber);
+  const mesaRow = await getMesaRowByNumber(restauranteId, tableNumber);
+  const status = normalizeMesaStatus(mesaRow?.status ?? mesa.status);
+
+  // Idempotent: already claimed by same session.
+  if (status === 'ocupada' && (mesaRow?.activeSessionCode ?? mesa.activeSessionCode) === tableSessionId) {
+    return { mesaId: mesa.id, sessionId: (mesa as any).currentSession?.id || (mesa as any).currentSession || null, status: 'ok' as const };
+  }
+
+  // Legacy/contaminated data escape hatch:
+  // If mesa is 'ocupada' but has NO activeSessionCode, treat it as available only when there is no open session.
+  const activeCode = (mesaRow?.activeSessionCode ?? mesa.activeSessionCode) || null;
+  if (status !== 'disponible') {
+    if (status === 'ocupada' && !activeCode) {
+      const openSessions = await strapi.db.query('api::mesa-sesion.mesa-sesion').findMany({
+        where: { mesa: mesa.id, session_status: 'open' },
+        select: ['id'],
+        limit: 1,
+      });
+      if (!openSessions?.length) {
+        // treat as disponible (ghost occupied)
+      } else {
+        throw new ValidationError(`Mesa ${tableNumber} no disponible (${status})`);
+      }
+    } else {
+      throw new ValidationError(`Mesa ${tableNumber} no disponible (${status})`);
+    }
+  }
+
+  // Create/open session (code == tableSessionId) then persist mesa state as source of truth.
+  const sesion = await getOrCreateOpenSessionByCode({ restauranteId, mesaId: mesa.id, code: tableSessionId });
+
+  await strapi.db.query('api::mesa.mesa').update({
+    where: { id: mesa.id },
+    data: {
+      status: 'ocupada',
+      activeSessionCode: tableSessionId,
+      ...(col.occupiedAt ? { occupiedAt: new Date() } : {}),
+      ...(col.publishedAt ? { publishedAt: new Date() } : {}),
+    },
+  });
+
+  return { mesaId: mesa.id, sessionId: (sesion as any).id, status: 'ok' as const };
+}
+
+async function releaseTableInternal(opts: { restauranteId: ID; tableNumber: number; tableSessionId?: string | null; force?: boolean }) {
+  const { restauranteId, tableNumber, tableSessionId, force = false } = opts;
+  const col = await getMesaColumnSupport();
+  if (!col.activeSessionCode) {
+    throw new ValidationError(
+      'DB desactualizada: falta columna mesas.active_session_code. Reiniciá Strapi (para auto-migración) o borrá backend/.tmp/data.db en desarrollo.'
+    );
+  }
+  const mesa = await getMesaOrThrow(restauranteId, tableNumber);
+  const mesaRow = await getMesaRowByNumber(restauranteId, tableNumber);
+  const status = normalizeMesaStatus(mesaRow?.status ?? mesa.status);
+  const activeCode = (mesaRow?.activeSessionCode ?? mesa.activeSessionCode) || null;
+
+  // Idempotent release
+  if (status === 'disponible') return { mesaId: mesa.id, released: true, status: 'ok' as const };
+
+  if (!force) {
+    if (!tableSessionId) throw new ValidationError('Missing tableSessionId');
+    if (activeCode && tableSessionId !== activeCode) {
+      throw new ValidationError('tableSessionId no coincide con la sesión activa');
+    }
+  }
+
+  // Close open session(s) for this mesa & active code (best-effort).
+  try {
+    const where: any = { mesa: mesa.id, session_status: 'open' };
+    if (activeCode) where.code = activeCode;
+    await strapi.db.query('api::mesa-sesion.mesa-sesion').updateMany({
+      where,
+      data: { session_status: 'closed', closedAt: new Date(), publishedAt: new Date() },
+    });
+  } catch (e) {
+    // ignore (mesa is still source of truth)
+  }
+
+  await strapi.db.query('api::mesa.mesa').update({
+    where: { id: mesa.id },
+    data: {
+      status: 'disponible',
+      activeSessionCode: null,
+      ...(col.occupiedAt ? { occupiedAt: null } : {}),
+      ...(col.publishedAt ? { publishedAt: new Date() } : {}),
+    },
+  });
+
+  return { mesaId: mesa.id, released: true, status: 'ok' as const };
+}
+
+// NOTE: legacy helpers `setTableStatus` / `getOrCreateOpenSession` were removed in favor of:
+// - `claimTableInternal` (atomic claim with tableSessionId)
+// - `releaseTableInternal` (idempotent release)
+// - `activeSessionCode` + `occupiedAt` persisted on `mesa` as source of truth
+
 export default {
+  /**
+   * GET /restaurants/:slug/tables
+   * Public read-only list. Backend is the source of truth.
+   */
+  async listTables(ctx: Ctx) {
+    const { slug } = ctx.params || {};
+    if (!slug) throw new ValidationError('Missing slug');
+
+    const restaurante = await getRestaurantBySlug(String(slug));
+    const col = await getMesaColumnSupport();
+    const select: string[] = ['id', 'number', 'status'];
+    if (col.displayName) select.push('displayName');
+    if (col.occupiedAt) select.push('occupiedAt');
+
+    const where: any = {
+      restaurante: Number(restaurante.id),
+    };
+    if (col.isActive) where.isActive = true;
+    if (col.publishedAt) where.publishedAt = { $notNull: true };
+
+    const rows = await strapi.db.query('api::mesa.mesa').findMany({
+      where,
+      select,
+      orderBy: { number: 'asc', id: 'asc' },
+    });
+
+    // Defensive: if legacy data has duplicates (same number), keep the oldest by id.
+    const seen = new Set<number>();
+    const deduped = (rows || []).filter((r: any) => {
+      const n = Number(r?.number);
+      if (!Number.isFinite(n)) return false;
+      if (seen.has(n)) return false;
+      seen.add(n);
+      return true;
+    });
+
+    ctx.body = { data: deduped.map(mesaToPublicDTO) };
+  },
+
+  /**
+   * GET /restaurants/:slug/tables/:number
+   * Public read-only. Does NOT expose activeSessionCode.
+   */
+  async getTable(ctx: Ctx) {
+    const { slug, number } = ctx.params || {};
+    if (!slug) throw new ValidationError('Missing slug');
+
+    const restaurante = await getRestaurantBySlug(String(slug));
+    const col = await getMesaColumnSupport();
+    const tableNumber = Number(number);
+    if (!Number.isFinite(tableNumber) || tableNumber <= 0) throw new ValidationError('Invalid table number');
+
+    const select: string[] = ['id', 'number', 'status'];
+    if (col.displayName) select.push('displayName');
+    if (col.occupiedAt) select.push('occupiedAt');
+    const where: any = { restaurante: Number(restaurante.id), number: tableNumber };
+    if (col.publishedAt) where.publishedAt = { $notNull: true };
+
+    const row = await strapi.db.query('api::mesa.mesa').findOne({
+      where,
+      select,
+    });
+    if (!row) throw new NotFoundError('Mesa no encontrada');
+
+    ctx.body = { data: mesaToPublicDTO(row) };
+  },
+
+  /**
+   * POST /restaurants/:slug/tables/claim
+   * body: { table, tableSessionId }
+   *
+   * Atomic at business-level: only one session can claim when AVAILABLE.
+   * Idempotent: if already claimed by same tableSessionId => 200 OK.
+   */
+  async claimTable(ctx: Ctx) {
+    const { slug } = ctx.params || {};
+    if (!slug) throw new ValidationError('Missing slug');
+    const data = getPayload(ctx.request.body);
+    const table = data?.table ?? data?.number;
+    const tableSessionId = data?.tableSessionId;
+    if (!table) throw new ValidationError('Missing table');
+    if (!tableSessionId) throw new ValidationError('Missing tableSessionId');
+
+    const restaurante = await getRestaurantBySlug(String(slug));
+    const tableNumber = Number(table);
+    if (!Number.isFinite(tableNumber) || tableNumber <= 0) throw new ValidationError('Invalid table');
+
+    try {
+      const res = await claimTableInternal({ restauranteId: restaurante.id, tableNumber, tableSessionId: String(tableSessionId) });
+      const row = await strapi.db.query('api::mesa.mesa').findOne({
+        where: { id: Number(res.mesaId) },
+        select: ['id', 'number', 'status', 'displayName', 'occupiedAt'],
+      });
+      ctx.body = { data: { table: row ? mesaToPublicDTO(row) : { number: tableNumber }, sessionId: res.sessionId } };
+    } catch (e: any) {
+      const status =
+        Number(e?.status) ||
+        Number(e?.statusCode) ||
+        (String(e?.name || '').toLowerCase().includes('notfound') ? 404 : 409);
+      ctx.status = status === 404 ? 404 : 409;
+      ctx.body = { error: { message: e?.message || (ctx.status === 404 ? 'Mesa no encontrada' : 'Mesa ocupada/no disponible') } };
+    }
+  },
+
+  /**
+   * POST /restaurants/:slug/tables/release
+   * body: { table, tableSessionId }
+   *
+   * Idempotent.
+   */
+  async releaseTable(ctx: Ctx) {
+    const { slug } = ctx.params || {};
+    if (!slug) throw new ValidationError('Missing slug');
+    const data = getPayload(ctx.request.body);
+    const table = data?.table ?? data?.number;
+    const tableSessionId = data?.tableSessionId;
+    if (!table) throw new ValidationError('Missing table');
+    if (!tableSessionId) throw new ValidationError('Missing tableSessionId');
+
+    const restaurante = await getRestaurantBySlug(String(slug));
+    const tableNumber = Number(table);
+    if (!Number.isFinite(tableNumber) || tableNumber <= 0) throw new ValidationError('Invalid table');
+
+    // Public endpoint: never allow force release via body flag.
+    const force = false;
+    try {
+      const res = await releaseTableInternal({
+        restauranteId: restaurante.id,
+        tableNumber,
+        tableSessionId: String(tableSessionId),
+        force,
+      });
+      const row = await strapi.db.query('api::mesa.mesa').findOne({
+        where: { id: Number(res.mesaId) },
+        select: ['id', 'number', 'status', 'displayName', 'occupiedAt'],
+      });
+      ctx.body = { data: { released: true, table: row ? mesaToPublicDTO(row) : { number: tableNumber } } };
+    } catch (e: any) {
+      const status =
+        Number(e?.status) ||
+        Number(e?.statusCode) ||
+        (String(e?.name || '').toLowerCase().includes('notfound') ? 404 : 409);
+      ctx.status = status === 404 ? 404 : 409;
+      ctx.body = { error: { message: e?.message || (ctx.status === 404 ? 'Mesa no encontrada' : 'No se pudo liberar la mesa') } };
+    }
+  },
+
   /**
    * POST /restaurants/:slug/orders
    */
@@ -425,19 +535,31 @@ export default {
 
     const data = getPayload(ctx.request.body);
     const table = data?.table;
+    const tableSessionId = data?.tableSessionId;
     const items: any[] = Array.isArray(data?.items) ? data.items : [];
 
     if (!table || items.length === 0) throw new ValidationError('Invalid data');
+    if (!tableSessionId) throw new ValidationError('Missing tableSessionId');
 
     const restaurante = await getRestaurantBySlug(String(slug));
     const mesa = await getMesaOrThrow(restaurante.id, Number(table));
+    const mesaRow = await getMesaRowByNumber(restaurante.id, Number(table));
+    const mesaStatus = normalizeMesaStatus(mesaRow?.status ?? mesa.status);
+    const activeCode = mesaRow?.activeSessionCode ?? (mesa as any).activeSessionCode ?? null;
 
-    // Get/Create Session (implicitly sets table to 'ocupada')
-    const sesion = await getOrCreateOpenSession({
+    // Strict validation: backend source of truth. If mesa was released or session changed, reject.
+    if (mesaStatus !== 'ocupada' || !activeCode || String(activeCode) !== String(tableSessionId)) {
+      if (ctx.conflict) return ctx.conflict('Mesa liberada o sesión inválida');
+      ctx.status = 409;
+      ctx.body = { error: { message: 'Mesa liberada o sesión inválida' } };
+      return;
+    }
+
+    // Ensure open session exists with code == tableSessionId
+    const sesion = await getOrCreateOpenSessionByCode({
       restauranteId: restaurante.id,
       mesaId: mesa.id,
-      mesaDocumentId: mesa.documentId,
-      includePaid: false,
+      code: String(tableSessionId),
     });
 
     // Create Order logic...
@@ -571,23 +693,27 @@ export default {
       // Intentar extraer el payload de múltiples formas posibles
       let data: any = null;
       let table: any = null;
+      let tableSessionId: any = null;
       
       // Forma 1: body.data.table (formato Strapi estándar)
       if (ctx.request.body?.data?.table !== undefined) {
         data = ctx.request.body.data;
         table = data.table;
+        tableSessionId = data.tableSessionId;
         console.log(`[openSession] ✅ Table extraído de body.data.table:`, table);
       }
       // Forma 2: body.table (formato directo)
       else if (ctx.request.body?.table !== undefined) {
         data = ctx.request.body;
         table = data.table;
+        tableSessionId = data.tableSessionId;
         console.log(`[openSession] ✅ Table extraído de body.table:`, table);
       }
       // Forma 3: usar getPayload helper
       else {
         data = getPayload(ctx.request.body);
         table = data?.table;
+        tableSessionId = data?.tableSessionId;
         console.log(`[openSession] Table extraído vía getPayload:`, table, `(tipo: ${typeof table})`);
       }
 
@@ -622,77 +748,26 @@ export default {
         return;
       }
 
-      console.log(`[openSession] Iniciando apertura de sesión para mesa ${tableNumber} en restaurante ${slug}`);
-      
-      const restaurante = await getRestaurantBySlug(String(slug));
-      const mesa = await getMesaOrThrow(restaurante.id, tableNumber);
-
-      console.log(`[openSession] Mesa encontrada: ID=${mesa.id}, documentId=${mesa.documentId}, status actual=${mesa.status}`);
-
-      // Cerrar cualquier sesión 'paid' existente antes de abrir una nueva
-      // Esto permite que un cliente pueda volver a usar una mesa después de pagar
-      const paidSessions = await strapi.db.query('api::mesa-sesion.mesa-sesion').findMany({
-        where: {
-          mesa: mesa.id,
-          session_status: 'paid'
-        }
-      });
-
-      if (paidSessions.length > 0) {
-        console.log(`[openSession] Cerrando ${paidSessions.length} sesión(es) 'paid' antes de abrir nueva`);
-        await strapi.db.query('api::mesa-sesion.mesa-sesion').updateMany({
-          where: { id: { $in: paidSessions.map((s: any) => s.id) } },
-          data: {
-            session_status: 'closed',
-            closedAt: new Date(),
-            publishedAt: new Date()
-          }
-        });
-      }
-
-      // getOrCreateOpenSession:
-      // - Si ya hay sesión 'open', la reutiliza y asegura que mesa esté ocupada
-      // - Si no hay, crea nueva y marca mesa como ocupada
-      console.log(`[openSession] Llamando a getOrCreateOpenSession para mesa ${mesa.id}`);
-      const sesion = await getOrCreateOpenSession({
-        restauranteId: restaurante.id,
-        mesaId: mesa.id,
-        mesaDocumentId: mesa.documentId
-      });
-
-      console.log(`[openSession] ✅ Sesión obtenida/creada: ${sesion.id}, status: ${sesion.session_status}`);
-
-      // Verificar que la mesa se actualizó correctamente usando DB query directo
-      // Filtramos por publishedAt para obtener solo el publicado (más reciente después de actualizar)
-      try {
-        const mesaVerificada = await strapi.db.query('api::mesa.mesa').findOne({
-          where: { 
-            id: mesa.id,
-            publishedAt: { $notNull: true } // Solo obtener el publicado
+      if (!tableSessionId) {
+        ctx.status = 400;
+        ctx.body = {
+          error: {
+            message: 'Missing tableSessionId (cliente debe enviar su sesión para claim)',
+            status: 400,
+            name: 'ValidationError',
           },
-          select: ['id', 'status'],
-          populate: ['currentSession']
-        });
-        
-        const currentSessionId = mesaVerificada?.currentSession?.id || mesaVerificada?.currentSession || null;
-        
-        console.log(`[openSession] ✅ Estado de mesa verificado:`, {
-          mesaId: mesaVerificada?.id,
-          status: mesaVerificada?.status,
-          currentSession: currentSessionId
-        });
-
-        // Si la mesa no se actualizó correctamente, intentar corregir
-        if (mesaVerificada?.status !== 'ocupada') {
-          console.warn(`[openSession] ⚠️ La mesa no está 'ocupada' después de abrir sesión. Estado actual: ${mesaVerificada?.status}. Intentando corregir...`);
-          await setTableStatus(mesa.id, 'ocupada', sesion.id);
-        }
-      } catch (verifyErr: any) {
-        console.warn(`[openSession] ⚠️ No se pudo verificar el estado de la mesa:`, verifyErr?.message || verifyErr);
-        // Continuar sin verificación - la mesa debería estar actualizada por setTableStatus
+        };
+        return;
       }
 
-      ctx.body = { data: { sessionId: sesion.id, status: sesion.session_status } };
+      console.log(`[openSession] Iniciando claim para mesa ${tableNumber} en restaurante ${slug}`);
+      const restaurante = await getRestaurantBySlug(String(slug));
+      const claimed = await claimTableInternal({
+        restauranteId: restaurante.id,
+        tableNumber,
+        tableSessionId: String(tableSessionId),
+      });
+      ctx.body = { data: { sessionId: claimed.sessionId, status: 'open' } };
     } catch (err: any) {
       console.error(`[openSession] ❌ Error inesperado:`, err);
       ctx.status = err?.status || 500;
@@ -719,67 +794,25 @@ export default {
       const { slug } = ctx.params || {};
       const data = getPayload(ctx.request.body);
       const table = data?.table;
+      const tableSessionId = data?.tableSessionId;
 
       if (!table) throw new ValidationError('Missing table');
+      // If authenticated (staff/owner), allow force release without tableSessionId.
+      const user = (ctx as any)?.state?.user;
+      const force = !!user;
+      if (!tableSessionId && !force) throw new ValidationError('Missing tableSessionId');
 
       console.log(`[closeSession] Iniciando cierre de sesión para mesa ${table} en restaurante ${slug}`);
 
       const restaurante = await getRestaurantBySlug(String(slug));
-      const mesa = await getMesaOrThrow(restaurante.id, Number(table));
-
-      console.log(`[closeSession] Mesa encontrada: ID=${mesa.id}, documentId=${mesa.documentId}, status actual=${mesa.status}`);
-
-      // Cerrar todas las sesiones activas (open o paid) de esta mesa
-      const updateRes = await strapi.db.query('api::mesa-sesion.mesa-sesion').updateMany({
-        where: {
-          mesa: mesa.id,
-          session_status: { $in: ['open', 'paid'] }
-        },
-        data: {
-          session_status: 'closed',
-          closedAt: new Date(),
-          publishedAt: new Date()
-        }
+      await releaseTableInternal({
+        restauranteId: restaurante.id,
+        tableNumber: Number(table),
+        tableSessionId: tableSessionId ? String(tableSessionId) : null,
+        force,
       });
 
-      console.log(`[closeSession] Sesiones cerradas: ${updateRes?.count ?? 0}`);
-
-      // Liberar la mesa: status = 'disponible' y currentSession = null
-      console.log(`[closeSession] Liberando mesa ${mesa.id}`);
-      await setTableStatus(mesa.id, 'disponible', null);
-
-      // Verificar que la mesa se actualizó correctamente
-      // Verificar usando DB query directo
-      // Filtramos por publishedAt para obtener solo el publicado (más reciente después de actualizar)
-      let mesaVerificada: any = null;
-      try {
-        mesaVerificada = await strapi.db.query('api::mesa.mesa').findOne({
-          where: { 
-            id: mesa.id,
-            publishedAt: { $notNull: true } // Solo obtener el publicado
-          },
-          select: ['id', 'status'],
-          populate: ['currentSession']
-        });
-        
-        const currentSessionId = mesaVerificada?.currentSession?.id || mesaVerificada?.currentSession || null;
-        
-        console.log(`[closeSession] ✅ Mesa liberada. Estado verificado:`, {
-          mesaId: mesaVerificada?.id,
-          status: mesaVerificada?.status,
-          currentSession: currentSessionId
-        });
-      } catch (verifyErr: any) {
-        console.warn(`[closeSession] ⚠️ No se pudo verificar el estado de la mesa:`, verifyErr?.message || verifyErr);
-      }
-
-      // Si la mesa no se actualizó correctamente, intentar corregir
-      if (mesaVerificada && mesaVerificada?.status !== 'disponible') {
-        console.warn(`[closeSession] ⚠️ La mesa no está 'disponible' después de cerrar sesión. Estado actual: ${mesaVerificada?.status}. Intentando corregir...`);
-        await setTableStatus(mesa.id, 'disponible', null);
-      }
-
-      ctx.body = { data: { success: true, updated: updateRes?.count ?? 0 } };
+      ctx.body = { data: { success: true } };
     } catch (err: any) {
       console.error(`[closeSession] ❌ Error:`, err?.message || err);
       // Return 200 with error info to avoid generic 500 handling in browser
@@ -798,11 +831,23 @@ export default {
     const { slug } = ctx.params || {};
     const data = getPayload(ctx.request.body);
     const table = data?.table;
+    const tableSessionId = data?.tableSessionId;
 
     if (!table) throw new ValidationError('Missing table');
 
     const restaurante = await getRestaurantBySlug(String(slug));
     const mesa = await getMesaOrThrow(restaurante.id, Number(table));
+    const mesaRow = await getMesaRowByNumber(restaurante.id, Number(table));
+    const mesaStatus = normalizeMesaStatus(mesaRow?.status ?? mesa.status);
+    const activeCode = mesaRow?.activeSessionCode ?? (mesa as any).activeSessionCode ?? null;
+
+    // If caller provides tableSessionId (client), enforce match.
+    if (tableSessionId && activeCode && String(activeCode) !== String(tableSessionId)) {
+      if (ctx.conflict) return ctx.conflict('Sesión inválida para cerrar cuenta');
+      ctx.status = 409;
+      ctx.body = { error: { message: 'Sesión inválida para cerrar cuenta' } };
+      return;
+    }
 
     // Find sessions (using Low Level to be safe)
     const sessions = await strapi.db.query('api::mesa-sesion.mesa-sesion').findMany({
@@ -820,8 +865,16 @@ export default {
       });
     }
 
-    // Mark table as 'por_limpiar'
-    await setTableStatus(mesa.id, 'por_limpiar', null);
+    // Mark table as 'por_limpiar' and clear active session pointer (expulsa cliente)
+    await strapi.db.query('api::mesa.mesa').update({
+      where: { id: mesa.id },
+      data: {
+        status: 'por_limpiar',
+        activeSessionCode: null,
+        occupiedAt: null,
+        publishedAt: new Date(),
+      },
+    });
 
     ctx.body = { data: { success: true } };
   },
@@ -863,29 +916,35 @@ export default {
     const restaurante = await getRestaurantBySlug(String(slug));
     const restauranteId = Number(restaurante.id);
 
-    // FIX: Use DB Query for deletion
-    await strapi.db.query('api::mesa-sesion.mesa-sesion').deleteMany({
-      where: { restaurante: restauranteId }
+    // 🔒 Safety: never delete mesas here. This endpoint is for controlled demo/debug only.
+    const allow = String(process.env.ALLOW_RESET_TABLES || '').toLowerCase() === 'true';
+    const restaurantRow = await strapi.db.query('api::restaurante.restaurante').findOne({
+      where: { id: restauranteId },
+      select: ['id', 'is_demo'],
     });
-
-    await strapi.db.query('api::mesa.mesa').deleteMany({
-      where: { restaurante: restauranteId }
-    });
-
-    const created = [];
-    for (let i = 1; i <= 20; i++) {
-      const newMesa = await strapi.entityService.create('api::mesa.mesa', {
-        data: {
-          number: i,
-          name: `Mesa ${i}`,
-          status: 'disponible',
-          restaurante: restauranteId,
-          publishedAt: new Date(),
-        }
-      });
-      created.push(newMesa.id);
+    if (!allow || !(restaurantRow as any)?.is_demo) {
+      ctx.status = 404;
+      ctx.body = { error: { message: 'Not found' } };
+      return;
     }
 
-    ctx.body = { message: 'Reset done', count: created.length };
+    // Close open sessions (no delete)
+    await strapi.db.query('api::mesa-sesion.mesa-sesion').updateMany({
+      where: { restaurante: restauranteId, session_status: 'open' },
+      data: { session_status: 'closed', closedAt: new Date(), publishedAt: new Date() },
+    });
+
+    // Reset mesas state (no delete)
+    await strapi.db.query('api::mesa.mesa').updateMany({
+      where: { restaurante: restauranteId },
+      data: {
+        status: 'disponible',
+        activeSessionCode: null,
+        occupiedAt: null,
+        publishedAt: new Date(),
+      },
+    });
+
+    ctx.body = { message: 'Reset done (non-destructive)' };
   }
 };
