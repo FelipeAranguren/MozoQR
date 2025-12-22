@@ -113,9 +113,19 @@ export default function RestaurantMenu() {
       // El endpoint devuelve: { data: { restaurant: {...}, categories: [...] } }
       const categories = data?.data?.categories || [];
       console.log('Categories found:', categories.length, categories);
+      
+      // Contar total de productos en todas las categorías
+      const totalProductos = categories.reduce((sum, cat) => sum + (cat.productos?.length || 0), 0);
+      console.log(`Total productos en categorías: ${totalProductos}`);
 
       if (categories.length === 0) {
         console.warn('⚠️ No se encontraron categorías en el endpoint namespaced');
+        return [];
+      }
+      
+      // Si hay categorías pero ninguna tiene productos, también retornar vacío
+      if (totalProductos === 0) {
+        console.warn('⚠️ Se encontraron categorías pero ninguna tiene productos disponibles');
         return [];
       }
 

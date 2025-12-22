@@ -841,12 +841,78 @@ export default {
     const mesaStatus = normalizeMesaStatus(mesaRow?.status ?? mesa.status);
     const activeCode = mesaRow?.activeSessionCode ?? (mesa as any).activeSessionCode ?? null;
 
-    // If caller provides tableSessionId (client), enforce match.
-    if (tableSessionId && activeCode && String(activeCode) !== String(tableSessionId)) {
-      if (ctx.conflict) return ctx.conflict('Sesión inválida para cerrar cuenta');
-      ctx.status = 409;
-      ctx.body = { error: { message: 'Sesión inválida para cerrar cuenta' } };
-      return;
+    console.log('🔍 [closeAccount] Verificando sesión:', {
+      table,
+      tableSessionId,
+      activeCode,
+      mesaId: mesa.id,
+      mesaStatus,
+      mesaRowActiveCode: mesaRow?.activeSessionCode,
+      mesaActiveCode: (mesa as any).activeSessionCode,
+    });
+
+    // Verificar si tableSessionId es numérico (ID) o UUID (código)
+    const isNumericSessionId = tableSessionId && !isNaN(Number(tableSessionId));
+    
+    // Si hay tableSessionId, intentar validarlo (pero ser permisivo desde el mostrador)
+    if (tableSessionId) {
+      let sessionFound = false;
+      
+      if (isNumericSessionId) {
+        // Si es numérico, buscar por ID de sesión
+        console.log('🔍 [closeAccount] tableSessionId es numérico, buscando por ID:', tableSessionId);
+        const sessionById = await strapi.db.query('api::mesa-sesion.mesa-sesion').findOne({
+          where: {
+            id: Number(tableSessionId),
+            mesa: mesa.id,
+            session_status: { $in: ['open', 'paid'] }
+          }
+        });
+        
+        if (sessionById) {
+          sessionFound = true;
+          console.log('✅ [closeAccount] Sesión encontrada por ID:', tableSessionId);
+        }
+      } else {
+        // Si es UUID, buscar por código
+        console.log('🔍 [closeAccount] tableSessionId es UUID, buscando por código:', tableSessionId);
+        const sessionByCode = await strapi.db.query('api::mesa-sesion.mesa-sesion').findMany({
+          where: {
+            mesa: mesa.id,
+            code: String(tableSessionId),
+            session_status: { $in: ['open', 'paid'] }
+          },
+          limit: 1,
+        });
+        
+        if (sessionByCode && sessionByCode.length > 0) {
+          sessionFound = true;
+          console.log('✅ [closeAccount] Sesión encontrada por código:', tableSessionId);
+        }
+      }
+      
+      // Si no se encontró la sesión específica, verificar si hay sesiones abiertas en la mesa
+      // (desde el mostrador podemos cerrar cualquier sesión de la mesa)
+      if (!sessionFound) {
+        console.warn('⚠️ [closeAccount] No se encontró sesión específica con tableSessionId:', tableSessionId);
+        console.log('🔍 [closeAccount] Verificando si hay sesiones abiertas en la mesa...');
+        
+        const anyOpenSessions = await strapi.db.query('api::mesa-sesion.mesa-sesion').findMany({
+          where: {
+            mesa: mesa.id,
+            session_status: { $in: ['open', 'paid'] }
+          },
+          limit: 1,
+        });
+        
+        if (anyOpenSessions && anyOpenSessions.length > 0) {
+          console.log('✅ [closeAccount] Hay sesiones abiertas en la mesa, permitiendo cierre desde mostrador');
+          // Permitir cerrar desde el mostrador
+        } else {
+          console.warn('⚠️ [closeAccount] No hay sesiones abiertas en la mesa, pero continuando para cerrar pedidos sin pagar');
+          // Continuar de todas formas para cerrar pedidos sin pagar
+        }
+      }
     }
 
     // Find sessions (using Low Level to be safe)
@@ -857,12 +923,36 @@ export default {
       }
     });
 
+    console.log('🔍 [closeAccount] Sesiones encontradas:', sessions.length);
+
     // Pay Orders & Close Sessions
     if (sessions.length > 0) {
+      const sessionIds = sessions.map((s: any) => s.id);
+      console.log('🔍 [closeAccount] Cerrando sesiones:', sessionIds);
+      
+      // Cerrar sesiones
       await strapi.db.query('api::mesa-sesion.mesa-sesion').updateMany({
-        where: { id: { $in: sessions.map((s: any) => s.id) } },
+        where: { id: { $in: sessionIds } },
         data: { session_status: 'paid', publishedAt: new Date() }
       });
+      
+      // Cerrar pedidos asociados a estas sesiones
+      const pedidos = await strapi.db.query('api::pedido.pedido').findMany({
+        where: {
+          mesa_sesion: { id: { $in: sessionIds } },
+          order_status: { $ne: 'paid' }
+        }
+      });
+      
+      console.log('🔍 [closeAccount] Pedidos encontrados para cerrar:', pedidos.length);
+      
+      if (pedidos.length > 0) {
+        await strapi.db.query('api::pedido.pedido').updateMany({
+          where: { id: { $in: pedidos.map((p: any) => p.id) } },
+          data: { order_status: 'paid', publishedAt: new Date() }
+        });
+        console.log('✅ [closeAccount] Pedidos cerrados exitosamente');
+      }
     }
 
     // Mark table as 'por_limpiar' and clear active session pointer (expulsa cliente)

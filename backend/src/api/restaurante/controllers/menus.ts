@@ -89,14 +89,44 @@ export default {
                 return `${publicUrl}/${cleanUrl}`;
             };
 
+            // Helper para mapear productos
+            const mapProduct = (p: any, planLevel: string): Product => {
+                const a = p.attributes || p;
+                const out: Product = {
+                    id: p.id || a.id,
+                    name: a.name,
+                    price: Number(a.price || 0),
+                    available: !!a.available,
+                    sku: a.sku || null,
+                    slug: a.slug || null,
+                    description: a.description || null,
+                };
+                // Incluir imágenes para planes PRO y ULTRA
+                if (String(planLevel) === 'PRO' || String(planLevel) === 'ULTRA') {
+                    // include absolute media URL if present
+                    const img = a.image?.data || a.image;
+                    if (img) {
+                        const url = img.attributes?.url || img.url;
+                        out.image = buildImageUrl(url);
+                    } else {
+                        out.image = null;
+                    }
+                } else {
+                    out.image = null;
+                }
+                return out;
+            };
+
             // Categorías del restaurante + productos disponibles
-            const categorias = await strapi.entityService.findMany('api::categoria.categoria', {
-                filters: { restaurante: restauranteId },
+            // Primero intentar con 'live', luego con 'preview' para incluir borradores
+            // Usar formato { id: restauranteId } para evitar problemas con restaurantes no publicados
+            let categorias = await strapi.entityService.findMany('api::categoria.categoria', {
+                filters: { restaurante: { id: restauranteId } },
                 sort: { name: 'asc' },
-                fields: ['id', 'name', 'Slug'],
+                fields: ['id', 'name', 'slug'],
                 populate: {
                     productos: {
-                        filters: { available: true },
+                        // NO filtrar por available aquí - mostrar todos los productos
                         sort: { name: 'asc' },
                         fields: ['id', 'name', 'price', 'available', 'sku', 'slug', 'description'],
                         populate: { image: true },
@@ -106,41 +136,176 @@ export default {
                 limit: 200,
             });
 
-            // Sanitizar: ocultar imagen si plan !== PRO
-            const sanitized: Category[] = (categorias || []).map((cat: any) => {
-                const c = cat.attributes || cat;
-                const productos = (c.productos?.data || c.productos || []).map((p: any) => {
-                    const a = p.attributes || p;
-                    const out: Product = {
-                        id: p.id || a.id,
-                        name: a.name,
-                        price: Number(a.price || 0),
-                        available: !!a.available,
-                        sku: a.sku || null,
-                        slug: a.slug || null,
-                        description: a.description || null,
-                    };
-                    if (String(plan) === 'PRO') {
-                        // include absolute media URL if present
-                        const img = a.image?.data || a.image;
-                        if (img) {
-                            const url = img.attributes?.url || img.url;
-                            out.image = buildImageUrl(url);
-                        } else {
-                            out.image = null;
-                        }
-                    } else {
-                        out.image = null;
-                    }
-                    return out;
+            console.log(`📊 [menus.find] Found ${categorias?.length || 0} published categories`);
+
+            // Si no hay categorías publicadas, intentar con preview para incluir borradores
+            if ((categorias?.length || 0) === 0) {
+                console.warn('⚠️ [menus.find] No published categories found, checking preview mode...');
+                const categoriasPreview = await strapi.entityService.findMany('api::categoria.categoria', {
+                    filters: { restaurante: { id: restauranteId } },
+                    sort: { name: 'asc' },
+                    fields: ['id', 'name', 'slug'],
+                    populate: {
+                        productos: {
+                            // NO filtrar por available aquí
+                            sort: { name: 'asc' },
+                            fields: ['id', 'name', 'price', 'available', 'sku', 'slug', 'description'],
+                            populate: { image: true },
+                        },
+                    },
+                    publicationState: 'preview',
+                    limit: 200,
                 });
-                return {
+                if (categoriasPreview && categoriasPreview.length > 0) {
+                    console.warn(`⚠️ [menus.find] Found ${categoriasPreview.length} categories in preview mode (drafts exist but not published)`);
+                    categorias = categoriasPreview;
+                }
+            }
+
+            // También obtener TODOS los productos del restaurante directamente (sin filtro de categoría)
+            // para asegurarnos de que no se pierda ninguno
+            // Usar formato { id: restauranteId } para evitar problemas con restaurantes no publicados
+            const todosLosProductos = await strapi.entityService.findMany('api::producto.producto', {
+                filters: {
+                    restaurante: { id: restauranteId },
+                    // NO filtrar por available - mostrar todos
+                },
+                sort: { name: 'asc' },
+                fields: ['id', 'name', 'price', 'available', 'sku', 'slug', 'description'],
+                populate: { 
+                    image: true,
+                    categoria: {
+                        fields: ['id', 'name', 'slug'],
+                    },
+                },
+                publicationState: 'live',
+                limit: 500, // Aumentar límite para obtener todos
+            });
+
+            console.log(`📦 [menus.find] Found ${todosLosProductos?.length || 0} total published products (direct query)`);
+
+            // También obtener productos en preview para incluir borradores
+            // Usar formato { id: restauranteId } para evitar problemas con restaurantes no publicados
+            const productosPreview = await strapi.entityService.findMany('api::producto.producto', {
+                filters: {
+                    restaurante: { id: restauranteId },
+                },
+                sort: { name: 'asc' },
+                fields: ['id', 'name', 'price', 'available', 'sku', 'slug', 'description'],
+                populate: { 
+                    image: true,
+                    categoria: {
+                        fields: ['id', 'name', 'slug'],
+                    },
+                },
+                publicationState: 'preview',
+                limit: 500,
+            });
+
+            console.log(`📦 [menus.find] Found ${productosPreview?.length || 0} total products in preview mode (includes drafts)`);
+
+            // Combinar productos publicados y en preview, eliminando duplicados por ID
+            const productosMap = new Map<number, any>();
+            
+            // Primero agregar los publicados
+            (todosLosProductos || []).forEach((p: any) => {
+                const id = p.id || p.attributes?.id;
+                if (id) productosMap.set(id, p);
+            });
+            
+            // Luego agregar los de preview (sobrescribirán los publicados si hay duplicados, pero eso está bien)
+            (productosPreview || []).forEach((p: any) => {
+                const id = p.id || p.attributes?.id;
+                if (id) productosMap.set(id, p);
+            });
+
+            const productosTotales = Array.from(productosMap.values());
+            console.log(`📦 [menus.find] Total unique products to process: ${productosTotales.length} (${todosLosProductos?.length || 0} published + ${productosPreview?.length || 0} preview, ${productosTotales.length} unique)`);
+
+            // Reconstruir categorías desde todos los productos para asegurar que no se pierda ninguno
+            const categoriasMap = new Map<number, Category>();
+            const productosSinCategoria: any[] = [];
+
+            // Primero, agregar categorías existentes al mapa
+            (categorias || []).forEach((cat: any) => {
+                const c = cat.attributes || cat;
+                categoriasMap.set(cat.id || c.id, {
                     id: cat.id || c.id,
                     name: c.name,
-                    slug: c.Slug || c.slug || null,
-                    productos,
-                };
+                    slug: c.slug || null,
+                    productos: [],
+                });
             });
+
+            // Procesar todos los productos y asignarlos a sus categorías
+            productosTotales.forEach((p: any) => {
+                const a = p.attributes || p;
+                const categoriaId = a.categoria?.data?.id || a.categoria?.id || null;
+                const categoriaData = a.categoria?.data?.attributes || a.categoria?.attributes || a.categoria;
+
+                if (categoriaId && categoriasMap.has(categoriaId)) {
+                    // Producto tiene categoría existente
+                    const categoria = categoriasMap.get(categoriaId)!;
+                    categoria.productos.push(mapProduct(p, plan));
+                } else if (categoriaId && categoriaData) {
+                    // Producto tiene categoría que no estaba en la consulta inicial (puede ser borrador)
+                    categoriasMap.set(categoriaId, {
+                        id: categoriaId,
+                        name: categoriaData.name,
+                        slug: categoriaData.slug || null,
+                        productos: [mapProduct(p, plan)],
+                    });
+                } else {
+                    // Producto sin categoría
+                    productosSinCategoria.push(p);
+                }
+            });
+
+            // Convertir mapa a array y ordenar
+            const sanitized: Category[] = Array.from(categoriasMap.values())
+                .sort((a, b) => a.name.localeCompare(b.name))
+                .map(cat => {
+                    // Ordenar productos dentro de cada categoría
+                    cat.productos.sort((a, b) => a.name.localeCompare(b.name));
+                    console.log(`  📦 Category "${cat.name}": ${cat.productos.length} products`);
+                    return cat;
+                });
+
+            console.log(`📦 [menus.find] Found ${productosSinCategoria.length} products without category`);
+
+            // Si hay productos sin categoría, crear una categoría "Otros" o agregarlos a una existente
+            if (productosSinCategoria && productosSinCategoria.length > 0) {
+                const productosMapeados = productosSinCategoria.map((p: any) => mapProduct(p, plan));
+                
+                // Buscar si ya existe una categoría "Otros"
+                let otrosIndex = sanitized.findIndex(cat => 
+                    cat.name?.toLowerCase() === 'otros' || cat.name?.toLowerCase() === 'sin categoría'
+                );
+                
+                if (otrosIndex >= 0) {
+                    // Agregar a la categoría existente
+                    sanitized[otrosIndex].productos = [
+                        ...sanitized[otrosIndex].productos,
+                        ...productosMapeados
+                    ];
+                } else {
+                    // Crear nueva categoría "Otros"
+                    sanitized.push({
+                        id: -1, // ID temporal para productos sin categoría
+                        name: 'Otros',
+                        slug: 'otros',
+                        productos: productosMapeados,
+                    });
+                }
+            }
+
+            // Filtrar categorías vacías (opcional - comentado para debug)
+            // const categoriasConProductos = sanitized.filter(cat => cat.productos.length > 0);
+            // console.log(`✅ [menus.find] Final: ${categoriasConProductos.length} categories with products`);
+
+            // Contar total de productos
+            const totalProductos = sanitized.reduce((sum, cat) => sum + cat.productos.length, 0);
+            console.log(`✅ [menus.find] Final result: ${sanitized.length} categories, ${totalProductos} total products`);
 
             ctx.body = {
                 data: {

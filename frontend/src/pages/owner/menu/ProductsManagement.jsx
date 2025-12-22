@@ -176,6 +176,13 @@ export default function ProductsManagement({ slug }) {
         console.log('handleSaveProduct: Actualizando producto con ID:', productId, 'Datos:', productData);
         await updateProduct(productId, productData);
       } else {
+        console.log('🔍 [ProductsManagement] Creando nuevo producto');
+        console.log('🔍 [ProductsManagement] Slug:', slug);
+        console.log('🔍 [ProductsManagement] ProductData:', productData);
+        if (!slug) {
+          console.error('❌ [ProductsManagement] No hay slug disponible para crear el producto');
+          throw new Error('No se pudo obtener el slug del restaurante');
+        }
         await createProduct(slug, productData);
       }
       // Recargar datos después de guardar

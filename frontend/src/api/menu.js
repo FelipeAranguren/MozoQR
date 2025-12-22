@@ -384,18 +384,88 @@ export async function getRestaurantId(slug) {
   if (!slug) return null;
 
   try {
+    console.log('🔍 [getRestaurantId] Buscando restaurante con slug:', slug);
+    
     // Obtener el objeto completo del restaurante (sin fields para evitar problemas)
+    // Usar publicationState=live para asegurar que obtenemos el restaurante publicado
     const res = await api.get(
-      `/restaurantes?filters[slug][$eq]=${slug}`,
+      `/restaurantes?filters[slug][$eq]=${slug}&publicationState=live`,
       { headers: getAuthHeaders() }
     );
 
-    const data = res?.data?.data?.[0];
-    if (!data) {
+    const allResults = res?.data?.data || [];
+    console.log('🔍 [getRestaurantId] Respuesta de API:', {
+      totalResults: allResults.length,
+      results: allResults.map(r => ({
+        id: r.id,
+        documentId: r.documentId,
+        slug: r?.attributes?.slug || r?.slug,
+        name: r?.attributes?.name || r?.name
+      }))
+    });
+
+    // Buscar todos los restaurantes que coincidan exactamente con el slug
+    const matchingRestaurants = allResults.filter(r => {
+      const rSlug = r?.attributes?.slug || r?.slug;
+      return rSlug === slug;
+    });
+
+    if (matchingRestaurants.length === 0) {
       console.warn('⚠️ [getRestaurantId] No se encontró restaurante para slug:', slug);
       console.log('⚠️ [getRestaurantId] Respuesta completa:', res?.data);
       return null;
     }
+
+    // Si hay múltiples restaurantes con el mismo slug, priorizar:
+    // 1. El que tenga el ID más bajo (generalmente el más antiguo/principal) - ESTO ES CRÍTICO
+    // 2. Entre los publicados, el de ID más bajo
+    let data = matchingRestaurants[0];
+    
+    if (matchingRestaurants.length > 1) {
+      console.warn(`⚠️ [getRestaurantId] Se encontraron ${matchingRestaurants.length} restaurantes con el mismo slug:`, slug);
+      console.warn(`⚠️ [getRestaurantId] IDs encontrados:`, matchingRestaurants.map(r => ({
+        id: r?.id,
+        documentId: r?.documentId,
+        publishedAt: r?.attributes?.publishedAt || r?.publishedAt
+      })));
+      
+      // SIEMPRE priorizar el de ID más bajo (el más antiguo/principal)
+      // Esto es importante porque el endpoint de menús usa el restaurante con ID más bajo
+      data = matchingRestaurants.reduce((prev, curr) => {
+        const prevId = Number(prev?.id || prev?.documentId || Infinity);
+        const currId = Number(curr?.id || curr?.documentId || Infinity);
+        if (currId < prevId) {
+          return curr;
+        }
+        return prev;
+      });
+      
+      console.log('✅ [getRestaurantId] Usando restaurante con ID más bajo (principal):', data?.id);
+      
+      // Verificar que esté publicado (advertencia, pero no bloqueante)
+      const attrs = data?.attributes || data;
+      if (!attrs?.publishedAt && !data?.publishedAt) {
+        console.warn('⚠️ [getRestaurantId] El restaurante seleccionado no está publicado, pero se usará de todas formas');
+      }
+    }
+
+    // Verificar que el slug coincida exactamente
+    const dataSlug = data?.attributes?.slug || data?.slug;
+    if (dataSlug !== slug) {
+      console.error('❌ [getRestaurantId] El slug del restaurante encontrado no coincide:', {
+        esperado: slug,
+        obtenido: dataSlug,
+        restauranteId: data?.id
+      });
+      return null;
+    }
+
+    console.log('✅ [getRestaurantId] Restaurante encontrado con slug coincidente:', {
+      slug: dataSlug,
+      id: data?.id,
+      documentId: data?.documentId,
+      totalMatches: matchingRestaurants.length
+    });
 
     // Intentar obtener el ID de múltiples formas (Strapi v4 y v5)
     let restauranteId =
@@ -465,8 +535,21 @@ export async function getRestaurantId(slug) {
 export async function createProduct(slug, productData) {
   if (!slug) throw new Error('slug requerido');
 
+  console.log('🔍 [createProduct] Iniciando creación de producto para slug:', slug);
   const restauranteId = await getRestaurantId(slug);
-  if (!restauranteId) throw new Error('Restaurante no encontrado');
+  console.log('🔍 [createProduct] RestauranteId obtenido:', restauranteId, 'Tipo:', typeof restauranteId);
+  
+  if (!restauranteId) {
+    console.error('❌ [createProduct] Restaurante no encontrado para slug:', slug);
+    throw new Error('Restaurante no encontrado');
+  }
+
+  // Asegurar que restauranteId sea un número
+  const restauranteIdNum = Number(restauranteId);
+  if (isNaN(restauranteIdNum) || restauranteIdNum <= 0) {
+    console.error('❌ [createProduct] ID de restaurante inválido:', restauranteId);
+    throw new Error('ID de restaurante inválido');
+  }
 
   try {
     // Convertir descripción de texto plano a formato blocks
@@ -478,16 +561,41 @@ export async function createProduct(slug, productData) {
         price: Number(productData.price),
         description: descriptionBlocks,
         available: productData.available !== false,
-        restaurante: restauranteId,
+        restaurante: restauranteIdNum, // Asegurar que sea un número
         ...(productData.categoriaId && { categoria: productData.categoriaId }),
         ...(productData.imageId && { image: productData.imageId })
       }
     };
 
+    console.log('🔍 [createProduct] Payload a enviar:', JSON.stringify(payload, null, 2));
+
     const res = await api.post('/productos', payload, { headers: getAuthHeaders() });
-    return res?.data?.data || null;
+    
+    console.log('✅ [createProduct] Producto creado exitosamente:', res?.data?.data);
+    
+    // Verificar que el producto tenga el restaurante asociado
+    const createdProduct = res?.data?.data;
+    if (createdProduct) {
+      const productRestauranteId = createdProduct?.restaurante?.id || 
+                                   createdProduct?.restaurante?.data?.id || 
+                                   createdProduct?.restaurante ||
+                                   createdProduct?.attributes?.restaurante?.data?.id ||
+                                   createdProduct?.attributes?.restaurante?.id ||
+                                   createdProduct?.attributes?.restaurante;
+      
+      console.log('🔍 [createProduct] Restaurante asociado al producto:', productRestauranteId);
+      
+      if (!productRestauranteId || Number(productRestauranteId) !== restauranteIdNum) {
+        console.warn('⚠️ [createProduct] El producto fue creado pero el restaurante no está asociado correctamente');
+        console.warn('⚠️ [createProduct] Esperado:', restauranteIdNum, 'Obtenido:', productRestauranteId);
+      }
+    }
+    
+    return createdProduct || null;
   } catch (err) {
-    console.error('Error creating product:', err);
+    console.error('❌ [createProduct] Error creating product:', err);
+    console.error('❌ [createProduct] Error response:', err?.response?.data);
+    console.error('❌ [createProduct] Error status:', err?.response?.status);
     throw err;
   }
 }
