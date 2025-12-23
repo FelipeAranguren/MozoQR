@@ -135,25 +135,54 @@ exports.default = strapi_1.factories.createCoreController('api::mesa.mesa', ({ s
             ctx.badRequest('Restaurante es requerido');
             return;
         }
+        // Obtener el restaurante corregido (puede haber múltiples restaurantes con el mismo slug)
+        let finalRestaurantId = null;
+        // Intentar buscar el restaurante principal (el de ID más bajo si hay duplicados)
+        if (typeof restauranteId === 'number' || (typeof restauranteId === 'string' && /^\d+$/.test(restauranteId))) {
+            const numId = typeof restauranteId === 'string' ? Number(restauranteId) : restauranteId;
+            const restaurant = await strapi.entityService.findOne('api::restaurante.restaurante', numId, {
+                fields: ['id', 'slug'],
+            });
+            if (restaurant) {
+                // Si hay múltiples restaurantes con el mismo slug, usar el de ID más bajo
+                const allWithSameSlug = await strapi.db.query('api::restaurante.restaurante').findMany({
+                    where: { slug: restaurant.slug },
+                    select: ['id', 'slug'],
+                    orderBy: { id: 'asc' },
+                    limit: 10
+                });
+                if (allWithSameSlug.length > 0) {
+                    finalRestaurantId = Number(allWithSameSlug[0].id); // El de ID más bajo (principal)
+                    if (finalRestaurantId !== numId) {
+                        console.log(`🔧 [mesa.create] Corrigiendo restaurante de ${numId} a ${finalRestaurantId} (principal)`);
+                    }
+                }
+                else {
+                    finalRestaurantId = Number(restaurant.id);
+                }
+            }
+        }
+        if (!finalRestaurantId) {
+            console.log('❌ [mesa.create] No se pudo obtener el restaurante');
+            ctx.badRequest('Restaurante no válido');
+            return;
+        }
         // Validar que el usuario tiene acceso a este restaurante
-        const hasAccess = await validateRestaurantAccess(strapi, user.id, restauranteId);
+        const hasAccess = await validateRestaurantAccess(strapi, user.id, finalRestaurantId);
         if (!hasAccess) {
             console.log('❌ [mesa.create] Usuario no tiene acceso al restaurante', {
                 userId: user.id,
-                restauranteId
+                restauranteId: finalRestaurantId
             });
             ctx.forbidden('No tienes acceso a este restaurante');
             return;
         }
-        // Validar que no existe una mesa con el mismo número en el mismo restaurante
+        // Validar que no existe una mesa con el mismo número en el mismo restaurante (usar el restaurante corregido)
         const tableNumber = payload.number;
         if (tableNumber !== undefined && tableNumber !== null) {
-            const restauranteIdNum = typeof restauranteId === 'string' && /^\d+$/.test(restauranteId)
-                ? Number(restauranteId)
-                : restauranteId;
             const existingMesas = await strapi.db.query('api::mesa.mesa').findMany({
                 where: {
-                    restaurante: restauranteIdNum,
+                    restaurante: finalRestaurantId,
                     number: Number(tableNumber)
                 },
                 select: ['id', 'number'],
@@ -162,19 +191,20 @@ exports.default = strapi_1.factories.createCoreController('api::mesa.mesa', ({ s
             if (existingMesas.length > 0) {
                 console.log('❌ [mesa.create] Mesa duplicada detectada', {
                     tableNumber,
-                    restauranteId: restauranteIdNum,
+                    restauranteId: finalRestaurantId,
                     existingMesaId: existingMesas[0].id
                 });
                 ctx.badRequest(`Ya existe una mesa con el número ${tableNumber} en este restaurante`);
                 return;
             }
         }
-        // Crear la mesa
+        // Crear la mesa usando el restaurante corregido
         try {
-            console.log('✅ [mesa.create] Creando mesa con payload:', payload);
+            console.log('✅ [mesa.create] Creando mesa con payload:', { ...payload, restaurante: finalRestaurantId });
             const created = await strapi.entityService.create('api::mesa.mesa', {
                 data: {
                     ...payload,
+                    restaurante: finalRestaurantId, // Usar el restaurante corregido
                     publishedAt: payload.publishedAt || new Date().toISOString(),
                 },
             });

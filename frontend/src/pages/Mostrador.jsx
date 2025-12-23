@@ -1032,8 +1032,14 @@ export default function Mostrador() {
     try {
       const orders = await fetchActiveOrders(slug);
       console.log('[Mostrador] fetchActiveOrdersForTables - Pedidos activos recibidos:', orders.length, orders);
+      
+      // CRÍTICO: Filtrar pedidos cancelados - no deben contarse como activos
+      // Los pedidos cancelados no deben aparecer en el contador de pedidos activos de las mesas
+      const activeOrdersFiltered = orders.filter(order => order.order_status !== 'cancelled');
+      console.log('[Mostrador] fetchActiveOrdersForTables - Pedidos después de filtrar cancelados:', activeOrdersFiltered.length, activeOrdersFiltered);
+      
       // Convertir a formato compatible con TablesStatusGridEnhanced
-      const formattedOrders = orders.map(order => ({
+      const formattedOrders = activeOrdersFiltered.map(order => ({
         id: order.id,
         order_status: order.order_status,
         total: order.total,

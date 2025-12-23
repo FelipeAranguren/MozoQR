@@ -60,12 +60,21 @@ async function getMesaColumnSupport() {
  * Helpers
  * ----------------------------------------------------- */
 async function getRestaurantBySlug(slug) {
-    const rows = await strapi.entityService.findMany('api::restaurante.restaurante', {
-        filters: { slug },
-        fields: ['id', 'documentId', 'name'],
-        limit: 1,
+    // Buscar todos los restaurantes con el mismo slug y usar el de ID más bajo (principal)
+    const allRows = await strapi.db.query('api::restaurante.restaurante').findMany({
+        where: { slug },
+        select: ['id', 'documentId', 'name', 'slug'],
+        orderBy: { id: 'asc' },
+        limit: 10,
     });
-    const r = rows === null || rows === void 0 ? void 0 : rows[0];
+    if (!allRows || allRows.length === 0) {
+        throw new NotFoundError('Restaurante no encontrado');
+    }
+    // Usar el restaurante con ID más bajo (principal)
+    const r = allRows[0];
+    if (allRows.length > 1) {
+        console.warn(`⚠️ [getRestaurantBySlug] Se encontraron ${allRows.length} restaurantes con slug "${slug}". Usando el principal (ID: ${r.id})`);
+    }
     if (!(r === null || r === void 0 ? void 0 : r.id))
         throw new NotFoundError('Restaurante no encontrado');
     return { id: r.id, documentId: r.documentId, name: r.name };
@@ -353,27 +362,53 @@ exports.default = {
         if (!slug)
             throw new ValidationError('Missing slug');
         const restaurante = await getRestaurantBySlug(String(slug));
+        console.log(`🔍 [listTables] Buscando mesas para restaurante ID: ${restaurante.id}, slug: ${slug}`);
         const col = await getMesaColumnSupport();
         const select = ['id', 'number', 'status'];
         if (col.displayName)
             select.push('displayName');
         if (col.occupiedAt)
             select.push('occupiedAt');
+        // Consulta sin filtros de isActive ni publishedAt para mostrar TODAS las mesas del restaurante
         const where = {
             restaurante: Number(restaurante.id),
         };
-        if (col.isActive)
-            where.isActive = true;
-        if (col.publishedAt)
-            where.publishedAt = { $notNull: true };
+        // NO filtrar por isActive ni publishedAt para mostrar todas las mesas
+        // Las mesas sin restaurante ya están filtradas por el where anterior
+        console.log(`🔍 [listTables] Query where:`, JSON.stringify(where, null, 2));
+        // También hacer una consulta sin filtros para debugging
+        const allMesas = await strapi.db.query('api::mesa.mesa').findMany({
+            where: { restaurante: Number(restaurante.id) },
+            select: ['id', 'number', 'status', 'isActive', 'publishedAt'],
+            orderBy: { number: 'asc', id: 'asc' },
+        });
+        console.log(`🔍 [listTables] TODAS las mesas del restaurante ${restaurante.id} (sin filtros):`, allMesas.length);
+        if (allMesas.length > 0) {
+            console.log(`🔍 [listTables] Detalles de todas las mesas:`, allMesas.map((m) => ({
+                id: m.id,
+                number: m.number,
+                isActive: m.isActive,
+                publishedAt: m.publishedAt ? 'tiene' : 'null'
+            })));
+        }
         const rows = await strapi.db.query('api::mesa.mesa').findMany({
             where,
             select,
             orderBy: { number: 'asc', id: 'asc' },
         });
+        console.log(`🔍 [listTables] Mesas encontradas en DB: ${(rows === null || rows === void 0 ? void 0 : rows.length) || 0}`);
+        if (rows && rows.length > 0) {
+            console.log(`🔍 [listTables] Primeras 3 mesas:`, rows.slice(0, 3).map((r) => ({
+                id: r.id,
+                number: r.number,
+                status: r.status
+            })));
+        }
+        // El filtro de restaurante ya está en el where, así que todas las mesas retornadas tienen restaurante
+        const mesasConRestaurante = rows || [];
         // Defensive: if legacy data has duplicates (same number), keep the oldest by id.
         const seen = new Set();
-        const deduped = (rows || []).filter((r) => {
+        const deduped = mesasConRestaurante.filter((r) => {
             const n = Number(r === null || r === void 0 ? void 0 : r.number);
             if (!Number.isFinite(n))
                 return false;
@@ -382,6 +417,7 @@ exports.default = {
             seen.add(n);
             return true;
         });
+        console.log(`📊 [listTables] Mesas encontradas: ${rows.length} total, ${mesasConRestaurante.length} con restaurante, ${deduped.length} únicas`);
         ctx.body = { data: deduped.map(mesaToPublicDTO) };
     },
     /**

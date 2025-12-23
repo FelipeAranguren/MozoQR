@@ -84,8 +84,9 @@ export default function TablesStatusGridEnhanced({
       return matches;
     });
 
-    // Pedidos sin pagar (cualquier estado que no sea 'paid')
-    const unpaidOrders = tableOrders.filter(o => o.order_status !== 'paid');
+    // Pedidos sin pagar (cualquier estado que no sea 'paid' ni 'cancelled')
+    // CRÍTICO: Los pedidos cancelados NO deben contarse como activos
+    const unpaidOrders = tableOrders.filter(o => o.order_status !== 'paid' && o.order_status !== 'cancelled');
 
     const hasSystemCall = systemCalls.length > 0;
     const hasServed = unpaidOrders.some(o => o.order_status === 'served');
@@ -295,8 +296,9 @@ export default function TablesStatusGridEnhanced({
           const tableStatus = getTableStatus(table);
 
           const tableOrders = ordersByTable.get(table.number) || [];
+          // CRÍTICO: Excluir pedidos cancelados del contador - no deben aparecer en la burbuja roja
           const activeOrdersCount = tableOrders.filter(o =>
-            o.order_status !== 'paid'
+            o.order_status !== 'paid' && o.order_status !== 'cancelled'
           ).length;
 
           return (

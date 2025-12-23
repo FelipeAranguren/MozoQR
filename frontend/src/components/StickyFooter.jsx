@@ -106,23 +106,42 @@ export default function StickyFooter({ table, tableSessionId }) {
   useEffect(() => {
     let cancelled = false;
 
-    // Cargar lista local de pedidos abiertos (para total)
-    if (!slug || !table) {
-      setOpenOrders([]);
-    } else {
-      setOpenOrders(readOpenOrders(slug, table));
-    }
-
-    // Consultar al backend si hay cuenta abierta (para mostrar botón pagar)
+    // Sincronizar openOrders con el backend para eliminar pedidos cancelados
     (async () => {
       if (!slug || !table) {
+        if (!cancelled) setOpenOrders([]);
         if (!cancelled) setBackendHasAccount(false);
         return;
       }
+
+      // Cargar lista local inicial
+      const localOrders = readOpenOrders(slug, table);
+      
+      // Sincronizar con el backend: obtener pedidos activos reales
       try {
+        const orders = await fetchOrderDetails(slug, { table, tableSessionId });
+        // CRÍTICO: Filtrar pedidos cancelados
+        const activeOrders = orders.filter(order => order.order_status !== 'cancelled');
+        
+        // Actualizar localStorage solo con pedidos activos
+        const activeOrderIds = new Set(activeOrders.map(o => String(o.id)));
+        const syncedOrders = localOrders.filter(lo => activeOrderIds.has(String(lo.id)));
+        
+        // Si hay diferencias, actualizar localStorage
+        if (syncedOrders.length !== localOrders.length) {
+          writeOpenOrders(slug, table, syncedOrders);
+          if (!cancelled) setOpenOrders(syncedOrders);
+        } else {
+          if (!cancelled) setOpenOrders(localOrders);
+        }
+        
+        // Consultar si hay cuenta abierta
         const exists = await hasOpenAccount(slug, { table, tableSessionId });
         if (!cancelled) setBackendHasAccount(Boolean(exists));
-      } catch {
+      } catch (err) {
+        console.warn('Error syncing orders:', err);
+        // En caso de error, usar los locales pero filtrar cancelados manualmente
+        if (!cancelled) setOpenOrders(localOrders);
         if (!cancelled) setBackendHasAccount(false);
       }
     })();
@@ -131,10 +150,16 @@ export default function StickyFooter({ table, tableSessionId }) {
   }, [slug, table, tableSessionId]);
 
   // Total mostrado en el modal de pago (suma de pedidos registrados localmente)
-  const accountTotal = useMemo(
-    () => openOrders.reduce((acc, o) => acc + (Number(o.total) || 0), 0),
-    [openOrders]
-  );
+  // CRÍTICO: Si tenemos orderDetails (del backend), usarlos como fuente de verdad
+  // Si no, usar openOrders pero solo como fallback (orderDetails ya filtra cancelados)
+  const accountTotal = useMemo(() => {
+    // Si tenemos orderDetails, calcular desde ahí (ya filtrados cancelados)
+    if (orderDetails.length > 0) {
+      return orderDetails.reduce((sum, o) => sum + (Number(o.total) || 0), 0);
+    }
+    // Fallback: usar openOrders (que debería estar sincronizado con el backend)
+    return openOrders.reduce((acc, o) => acc + (Number(o.total) || 0), 0);
+  }, [openOrders, orderDetails]);
 
   // Calcular descuento del cupón
   const couponDiscountAmount = useMemo(() => {
@@ -159,6 +184,41 @@ export default function StickyFooter({ table, tableSessionId }) {
     return Math.max(0, totalAfterDiscount + tipAmount);
   }, [accountTotal, tipAmount, orderDetails, couponDiscountAmount]);
 
+  // Polling para sincronizar pedidos cuando hay cuenta abierta (detectar cancelaciones)
+  useEffect(() => {
+    if (!slug || !table || !backendHasAccount) return;
+
+    const syncOrders = async () => {
+      try {
+        const orders = await fetchOrderDetails(slug, { table, tableSessionId });
+        const activeOrders = orders.filter(order => order.order_status !== 'cancelled');
+        
+        // Sincronizar openOrders con el backend
+        const activeOrderIds = new Set(activeOrders.map(o => String(o.id)));
+        const currentOrders = readOpenOrders(slug, table);
+        const syncedOrders = currentOrders.filter(lo => activeOrderIds.has(String(lo.id)));
+        
+        if (syncedOrders.length !== currentOrders.length) {
+          writeOpenOrders(slug, table, syncedOrders);
+          setOpenOrders(syncedOrders);
+        }
+        
+        // Actualizar backendHasAccount
+        const exists = await hasOpenAccount(slug, { table, tableSessionId });
+        setBackendHasAccount(Boolean(exists));
+      } catch (err) {
+        console.warn('Error syncing orders in polling:', err);
+      }
+    };
+
+    // Sincronizar inmediatamente
+    syncOrders();
+    
+    // Sincronizar cada 5 segundos
+    const interval = setInterval(syncOrders, 5000);
+    return () => clearInterval(interval);
+  }, [slug, table, tableSessionId, backendHasAccount]);
+
   // Cargar detalles de pedidos cuando se abre el modal de pago
   useEffect(() => {
     if (payOpen && slug && table) {
@@ -166,9 +226,12 @@ export default function StickyFooter({ table, tableSessionId }) {
       fetchOrderDetails(slug, { table, tableSessionId })
         .then((orders) => {
           console.log('✅ Order details loaded:', orders);
-          setOrderDetails(orders);
-          // Calcular total desde los pedidos detallados
-          const calculatedTotal = orders.reduce((sum, o) => sum + (Number(o.total) || 0), 0);
+          // CRÍTICO: Filtrar pedidos cancelados - no deben aparecer en el menú del cliente
+          const activeOrders = orders.filter(order => order.order_status !== 'cancelled');
+          console.log('✅ Order details after filtering cancelled:', activeOrders);
+          setOrderDetails(activeOrders);
+          // Calcular total desde los pedidos detallados (solo activos, sin cancelados)
+          const calculatedTotal = activeOrders.reduce((sum, o) => sum + (Number(o.total) || 0), 0);
           // Actualizar propina basada en el nuevo total
           if (tipPercentage > 0) {
             setTipAmount((calculatedTotal * tipPercentage) / 100);

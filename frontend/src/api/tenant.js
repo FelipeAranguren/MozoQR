@@ -318,12 +318,13 @@ export async function hasOpenAccount(slug, payload) {
     const rows = data?.data || [];
 
     // aplanado defensivo (v4)
+    // CRÍTICO: Excluir pedidos cancelados - no deben contar como cuenta abierta
     const anyForThisTable = rows.some((row) => {
       const a = row.attributes || row;
       const ses = a.mesa_sesion?.data || a.mesa_sesion;
       const mesa = ses?.attributes?.mesa?.data || ses?.mesa;
       const num = mesa?.attributes?.number ?? mesa?.number;
-      return Number(num) === Number(table) && a.order_status !== 'paid';
+      return Number(num) === Number(table) && a.order_status !== 'paid' && a.order_status !== 'cancelled';
     });
 
     return anyForThisTable;
@@ -370,6 +371,7 @@ export async function fetchOrderDetails(slug, payload) {
     const rows = data?.data || [];
 
     // Filtrar por mesa (ignoramos sesión para mostrar todo lo acumulado de la mesa)
+    // CRÍTICO: Excluir pedidos cancelados - no deben aparecer en el menú del cliente
     const ordersForTable = rows.filter((row) => {
       const a = row.attributes || row;
       const ses = a.mesa_sesion?.data || a.mesa_sesion;
@@ -377,7 +379,8 @@ export async function fetchOrderDetails(slug, payload) {
       const num = mesa?.attributes?.number ?? mesa?.number;
 
       const matchesTable = Number(num) === Number(table);
-      return matchesTable;
+      const isNotCancelled = a.order_status !== 'cancelled';
+      return matchesTable && isNotCancelled;
     });
 
     console.log(`🔍 fetchOrderDetails filtered for table ${table}: ${ordersForTable.length}`);
