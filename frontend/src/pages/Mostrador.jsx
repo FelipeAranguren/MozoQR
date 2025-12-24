@@ -1675,7 +1675,8 @@ export default function Mostrador() {
       <Card
         key={documentId || id}
         sx={{
-          mb: 1.25,
+          mb: 0,
+          height: '100%',
           bgcolor: flashing ? 'warning.light' : 'background.paper',
           transition: 'all 0.2s ease-in-out',
           boxShadow: flashing ? 6 : 1,
@@ -1683,6 +1684,8 @@ export default function Mostrador() {
           borderColor: flashing ? 'warning.main' : 'divider',
           borderRadius: 2,
           cursor: 'pointer',
+          display: 'flex',
+          flexDirection: 'column',
           '&:hover': {
             boxShadow: 8,
             bgcolor: flashing ? 'warning.light' : 'rgba(25, 118, 210, 0.04)',
@@ -1691,8 +1694,8 @@ export default function Mostrador() {
           },
         }}
       >
-        <CardContent sx={{ p: 1.25, '&:last-child': { pb: 1.25 } }}>
-          <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 1 }}>
+        <CardContent sx={{ p: 1, '&:last-child': { pb: 1 }, flex: 1, display: 'flex', flexDirection: 'column' }}>
+          <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 0.75 }}>
             <Chip
               label={`Mesa ${mesaNumero ?? 's/n'}`}
               size="small"
@@ -1700,15 +1703,15 @@ export default function Mostrador() {
                 fontWeight: 600,
                 bgcolor: getMesaColor(mesaNumero),
                 color: 'white',
-                fontSize: '0.75rem',
-                height: 22,
+                fontSize: '0.7rem',
+                height: 20,
                 '&:hover': {
                   bgcolor: getMesaColor(mesaNumero),
                   opacity: 0.9,
                 },
               }}
             />
-            <Typography variant="body2" sx={{ color: 'text.secondary', fontSize: '0.75rem' }}>
+            <Typography variant="body2" sx={{ color: 'text.secondary', fontSize: '0.7rem' }}>
               {formatTime(createdAt)}
             </Typography>
           </Box>
@@ -1745,17 +1748,17 @@ export default function Mostrador() {
 
           {items.length > 0 ? (
             <>
-              {items.slice(0, 3).map((item) => {
+              {items.slice(0, 2).map((item) => {
                 const prod = item?.product;
                 return (
-                  <Typography key={item.id} variant="body2" sx={{ mb: 0.25, fontSize: '0.8125rem' }}>
+                  <Typography key={item.id} variant="body2" sx={{ mb: 0.2, fontSize: '0.75rem', lineHeight: 1.3 }}>
                     {item.quantity}x {prod?.name || 'Producto sin datos'}
                   </Typography>
                 );
               })}
-              {items.length > 3 && (
-                <Typography variant="caption" color="text.secondary" sx={{ fontSize: '0.75rem', fontStyle: 'italic' }}>
-                  +{items.length - 3} más...
+              {items.length > 2 && (
+                <Typography variant="caption" color="text.secondary" sx={{ fontSize: '0.7rem', fontStyle: 'italic' }}>
+                  +{items.length - 2} más...
                 </Typography>
               )}
             </>
@@ -1767,7 +1770,7 @@ export default function Mostrador() {
 
           <Typography
             variant="subtitle2"
-            sx={{ textAlign: 'right', mt: 1, mb: 0.75, fontWeight: 600, fontSize: '0.9375rem' }}
+            sx={{ textAlign: 'right', mt: 0.75, mb: 0.5, fontWeight: 600, fontSize: '0.85rem' }}
           >
             {money(total)}
           </Typography>
@@ -1838,8 +1841,8 @@ export default function Mostrador() {
                   borderRadius: 1,
                   textTransform: 'none',
                   fontWeight: 600,
-                  fontSize: '0.8125rem',
-                  py: 0.5,
+                  fontSize: '0.75rem',
+                  py: 0.4,
                   ...(order_status === 'preparing' && {
                     bgcolor: 'white',
                     color: '#f57c00',
@@ -1869,6 +1872,17 @@ export default function Mostrador() {
       sx={{
         zoom: 0.9,
         p: { xs: 2, md: 3 },
+        // Prevenir scrollbars horizontales que causan desplazamiento
+        overflowX: 'hidden',
+        width: '100%',
+        // Asegurar que el contenido no se desplace
+        position: 'relative',
+        // Prevenir que aparezcan scrollbars verticales dinámicos
+        // Esto evita que el ancho del viewport cambie
+        '& *': {
+          // Asegurar que ningún elemento cause scrollbars
+          boxSizing: 'border-box',
+        }
       }}
     >
       {/* Encabezado minimal + barrita */}
@@ -1956,8 +1970,8 @@ export default function Mostrador() {
       <>
         {/* Sección superior: Pedidos activos */}
         <Grid container spacing={1} sx={{ mb: 3 }}>
-          {/* Columna 1: Pedidos Pendientes (primera mitad) */}
-          <Grid item xs={12} md={2.25}>
+          {/* Columna 1: Pedidos Pendientes (50% del ancho, 3 por fila) */}
+          <Grid item xs={12} md={6}>
             <Box sx={{ mb: 1.5, display: 'flex', alignItems: 'center', gap: 1 }}>
               <AccessTimeIcon sx={{ fontSize: 20, color: 'text.secondary' }} />
               <Typography variant="h6" sx={{ fontWeight: 600 }}>
@@ -1974,31 +1988,18 @@ export default function Mostrador() {
                 No hay pedidos pendientes para las mesas buscadas.
               </Typography>
             )}
-            <Box>
-              {pedidosPendientes
-                .filter((_, index) => index % 2 === 0)
-                .map((pedido) => renderPedidoCard(pedido))}
-            </Box>
-          </Grid>
-
-          {/* Columna 2: Pedidos Pendientes (segunda mitad) */}
-          <Grid item xs={12} md={2.25}>
-            <Box sx={{ mb: 2, display: 'flex', alignItems: 'center', gap: 1, visibility: 'hidden' }}>
-              <AccessTimeIcon sx={{ fontSize: 20 }} />
-              <Typography variant="h6" sx={{ fontWeight: 600 }}>
-                Pendientes ({pedidosPendientes.filter((_, index) => index % 2 === 1).length})
-              </Typography>
-            </Box>
-            <Box>
-              {pedidosPendientes
-                .filter((_, index) => index % 2 === 1)
-                .map((pedido) => renderPedidoCard(pedido))}
-            </Box>
+            <Grid container spacing={1}>
+              {pedidosPendientes.map((pedido) => (
+                <Grid item xs={12} sm={6} md={4} key={pedido.documentId || pedido.id}>
+                  {renderPedidoCard(pedido)}
+                </Grid>
+              ))}
+            </Grid>
           </Grid>
 
 
-          {/* Columna 3: Pedidos en Cocina (primera mitad) */}
-          <Grid item xs={12} md={3}>
+          {/* Columna 2: Pedidos en Cocina (50% del ancho, 3 por fila) */}
+          <Grid item xs={12} md={6}>
             <Box sx={{ mb: 1.5, display: 'flex', alignItems: 'center', gap: 1 }}>
               <RestaurantIcon sx={{ fontSize: 20, color: 'text.secondary' }} />
               <Typography variant="h6" sx={{ fontWeight: 600 }}>
@@ -2015,26 +2016,13 @@ export default function Mostrador() {
                 No hay pedidos en cocina para las mesas buscadas.
               </Typography>
             )}
-            <Box>
-              {pedidosEnCocina
-                .filter((_, index) => index % 2 === 0)
-                .map((pedido) => renderPedidoCard(pedido))}
-            </Box>
-          </Grid>
-
-          {/* Columna 4: Pedidos en Cocina (segunda mitad) */}
-          <Grid item xs={12} md={3}>
-            <Box sx={{ mb: 2, display: 'flex', alignItems: 'center', gap: 1, visibility: 'hidden' }}>
-              <RestaurantIcon sx={{ fontSize: 20 }} />
-              <Typography variant="h6" sx={{ fontWeight: 600 }}>
-                Cocina ({pedidosEnCocina.length})
-              </Typography>
-            </Box>
-            <Box>
-              {pedidosEnCocina
-                .filter((_, index) => index % 2 === 1)
-                .map((pedido) => renderPedidoCard(pedido))}
-            </Box>
+            <Grid container spacing={1}>
+              {pedidosEnCocina.map((pedido) => (
+                <Grid item xs={12} sm={6} md={4} key={pedido.documentId || pedido.id}>
+                  {renderPedidoCard(pedido)}
+                </Grid>
+              ))}
+            </Grid>
           </Grid>
 
         </Grid>

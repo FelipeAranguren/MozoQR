@@ -70,6 +70,22 @@ export default function TablesStatusGridEnhanced({
   }, [systemOrders]);
 
   /**
+   * Obtiene el color oscuro para el hover según el estado de la mesa
+   */
+  const getHoverBorderColor = (status) => {
+    switch (status) {
+      case 'available':
+        return '#2e7d32'; // Verde más oscuro
+      case 'occupied':
+        return '#0d47a1'; // Azul mucho más oscuro para contraste más notorio
+      case 'needs-cleaning':
+        return '#f57c00'; // Amarillo más oscuro
+      default:
+        return '#424242'; // Gris oscuro por defecto
+    }
+  };
+
+  /**
    * Determina el estado completo de una mesa
    * REGLAS CRÍTICAS:
    * 1. Si hay sesión abierta → Mesa OCUPADA (cliente sentado)
@@ -253,7 +269,14 @@ export default function TablesStatusGridEnhanced({
   });
 
   return (
-    <Box>
+    <Box
+      sx={{
+        // Asegurar que no aparezcan scrollbars que causen desplazamiento
+        overflowX: 'hidden',
+        width: '100%',
+        position: 'relative',
+      }}
+    >
       <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 2 }}>
         <Box>
           <Typography variant="h6" sx={{ fontWeight: 700, mb: 0.5 }}>
@@ -291,7 +314,26 @@ export default function TablesStatusGridEnhanced({
         </Box>
       </Box>
 
-      <Grid container spacing={2}>
+      <Box
+        sx={{
+          // Contenedor para evitar scrollbars horizontales
+          overflowX: 'hidden',
+          width: '100%',
+          // Prevenir que aparezcan scrollbars verticales que causen desplazamiento
+          overflowY: 'visible',
+          // Asegurar que el contenido no cause scrollbars
+          maxWidth: '100%',
+        }}
+      >
+        <Grid 
+          container 
+          spacing={2}
+          sx={{
+            // Asegurar que el grid no cause scrollbars
+            width: '100%',
+            margin: 0,
+          }}
+        >
         {sortedTables.map((table) => {
           const tableStatus = getTableStatus(table);
 
@@ -306,18 +348,23 @@ export default function TablesStatusGridEnhanced({
               <Card
                 elevation={0}
                 onClick={() => onTableClick && onTableClick(table)}
+                // Eliminar cualquier title que pueda causar tooltip del navegador
+                title=""
                 sx={{
                   border: `2px solid ${tableStatus.color}`,
                   borderRadius: 2,
                   p: 2,
                   textAlign: 'center',
                   cursor: onTableClick ? 'pointer' : 'default',
-                  transition: 'all 0.3s ease',
+                  // Transición solo para box-shadow, todos los colores cambian instantáneamente
+                  transition: 'box-shadow 0.2s ease',
+                  // border-color, bgcolor, color sin transición para cambio instantáneo y simultáneo
+                  // Mantener borderWidth constante para no cambiar el tamaño
                   background: tableStatus.status === 'available'
                     ? 'linear-gradient(135deg, #ffffff 0%, #f1f8e9 100%)'
                     : `linear-gradient(135deg, ${tableStatus.color}15 0%, ${tableStatus.color}08 100%)`,
                   position: 'relative',
-                  overflow: 'visible',
+                  overflow: 'hidden',
                   animation: tableStatus.blinking
                     ? 'pulse 1.5s ease-in-out infinite'
                     : 'none',
@@ -332,10 +379,32 @@ export default function TablesStatusGridEnhanced({
                     }
                   },
                   '&:hover': onTableClick ? {
-                    transform: 'translateY(-4px)',
-                    boxShadow: `0px 8px 24px ${tableStatus.color}40`,
-                    borderColor: tableStatus.color,
-                    borderWidth: '3px'
+                    // SOLO efectos visuales que NO cambian el tamaño ni causan scrollbars
+                    boxShadow: `0px 2px 8px ${tableStatus.color}40`,
+                    // Cambiar a color oscuro según el estado (instantáneo, sin transición)
+                    borderColor: getHoverBorderColor(tableStatus.status),
+                    // Mantener borderWidth en 2px para no cambiar el tamaño del casillero
+                    borderWidth: '2px',
+                    // NO usar transform, scale, ni translateY - mantiene el tamaño exacto
+                    // border-color cambia instantáneamente (sin transición)
+                    zIndex: 1,
+                    // Cambiar color del Chip a color oscuro (sin transición)
+                    '& .MuiChip-root': {
+                      bgcolor: getHoverBorderColor(tableStatus.status),
+                      transition: 'none', // Sin transición para cambio instantáneo
+                    },
+                    // Cambiar color del Box del icono a color oscuro (sin transición)
+                    '& .table-icon-box': {
+                      bgcolor: `${getHoverBorderColor(tableStatus.status)}20`,
+                      color: getHoverBorderColor(tableStatus.status),
+                      border: `2px solid ${getHoverBorderColor(tableStatus.status)}40`,
+                      transition: 'none', // Sin transición para cambio instantáneo
+                    },
+                    // Cambiar color del Typography de estado (solo para 'calling', sin transición)
+                    '& .table-status-text': {
+                      color: getHoverBorderColor(tableStatus.status),
+                      transition: 'none', // Sin transición para cambio instantáneo
+                    }
                   } : {}
                 }}
               >
@@ -351,8 +420,23 @@ export default function TablesStatusGridEnhanced({
                     badgeContent={activeOrdersCount > 0 ? activeOrdersCount : null}
                     color="error"
                     overlap="circular"
+                    // Deshabilitar cualquier tooltip automático
+                    slotProps={{
+                      badge: {
+                        // Deshabilitar tooltip
+                        title: '',
+                        'aria-label': '',
+                      }
+                    }}
+                    sx={{
+                      // Asegurar que no aparezcan tooltips
+                      '& .MuiBadge-badge': {
+                        pointerEvents: 'none',
+                      }
+                    }}
                   >
                     <Box
+                      className="table-icon-box"
                       sx={{
                         p: 1.5,
                         borderRadius: 2,
@@ -361,7 +445,9 @@ export default function TablesStatusGridEnhanced({
                         display: 'flex',
                         alignItems: 'center',
                         justifyContent: 'center',
-                        border: `2px solid ${tableStatus.color}40`
+                        border: `2px solid ${tableStatus.color}40`,
+                        // Sin transición para cambio instantáneo de colores
+                        transition: 'none',
                       }}
                     >
                       {tableStatus.icon}
@@ -393,6 +479,8 @@ export default function TablesStatusGridEnhanced({
                     mb: 1,
                     fontSize: '0.7rem',
                     height: '24px',
+                    // Sin transición para cambio instantáneo de color
+                    transition: 'none',
                     '& .MuiChip-icon': {
                       color: 'white'
                     }
@@ -407,12 +495,15 @@ export default function TablesStatusGridEnhanced({
 
                 {tableStatus.status === 'calling' && (
                   <Typography
+                    className="table-status-text"
                     variant="caption"
                     sx={{
                       display: 'block',
                       color: tableStatus.color,
                       fontWeight: 600,
-                      mt: 0.5
+                      mt: 0.5,
+                      // Sin transición para cambio instantáneo de color
+                      transition: 'none',
                     }}
                   >
                     ⚠️ Atención requerida
@@ -422,7 +513,8 @@ export default function TablesStatusGridEnhanced({
             </Grid>
           );
         })}
-      </Grid>
+        </Grid>
+      </Box>
     </Box>
   );
 }
