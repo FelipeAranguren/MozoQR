@@ -6,7 +6,6 @@ import {
 } from '@mui/material';
 import AttachMoneyIcon from '@mui/icons-material/AttachMoney';
 import CreditCardIcon from '@mui/icons-material/CreditCard';
-import PointOfSaleIcon from '@mui/icons-material/PointOfSale';
 import RoomServiceIcon from '@mui/icons-material/RoomService';
 import LocalOfferIcon from '@mui/icons-material/LocalOffer';
 import CheckCircleIcon from '@mui/icons-material/CheckCircle';
@@ -81,8 +80,7 @@ export default function StickyFooter({ table, tableSessionId }) {
   const [callWaiterOpen, setCallWaiterOpen] = useState(false);
 
   const [payOpen, setPayOpen] = useState(false);
-  const [payType, setPayType] = useState('online'); // 'presential' | 'online' - Default: online
-  const [payMethod, setPayMethod] = useState('card'); // 'cash' | 'card' para presential, 'card' | 'mp' para online
+  const [payMethod, setPayMethod] = useState('card'); // 'card' | 'mp' | 'cash'
   const [payLoading, setPayLoading] = useState(false);
   const [payRequestSent, setPayRequestSent] = useState(false); // Prevenir múltiples solicitudes
   const [card, setCard] = useState({ number: '', expiry: '', cvv: '', name: '' });
@@ -249,7 +247,6 @@ export default function StickyFooter({ table, tableSessionId }) {
       setOrderDetails([]);
       setTipAmount(0);
       setTipPercentage(0);
-      setPayType('online');
       setPayMethod('card');
       setCouponCode('');
       setCouponDiscount(null);
@@ -447,8 +444,8 @@ export default function StickyFooter({ table, tableSessionId }) {
 
   // ---------- Pagar cuenta ----------
   const handlePay = async () => {
-    // Validar tarjeta si es necesario (SOLO si es online)
-    if (payType === 'online' && payMethod === 'card') {
+    // Validar tarjeta si es necesario (SOLO si es tarjeta)
+    if (payMethod === 'card') {
       const { number, expiry, cvv, name } = card;
       const numOk = /^\d{4} \d{4} \d{4} \d{4}$/.test(number);
       const expOk = /^(0[1-9]|1[0-2])\/\d{2}$/.test(expiry);
@@ -460,22 +457,22 @@ export default function StickyFooter({ table, tableSessionId }) {
       }
     }
 
-    // Si es Mercado Pago online, ya maneja su propio flujo
-    if (payType === 'online' && payMethod === 'mp') {
+    // Si es Mercado Pago, ya maneja su propio flujo
+    if (payMethod === 'mp') {
       return;
     }
 
     try {
       setPayLoading(true);
 
-      const isPresential = payType === 'presential';
       const methodNames = {
         cash: 'efectivo',
-        card: payType === 'presential' ? 'tarjeta presencial' : 'tarjeta online',
+        card: 'tarjeta',
         mp: 'Mercado Pago',
       };
 
-      if (isPresential) {
+      // Si es efectivo, es pago presencial (solicitud de cobro)
+      if (payMethod === 'cash') {
         // Prevenir múltiples solicitudes
         if (payRequestSent) {
           setSnack({
@@ -512,8 +509,6 @@ export default function StickyFooter({ table, tableSessionId }) {
           // No cerramos la cuenta localmente ni en backend, esperamos al mozo.
           setPayOpen(false);
           // Resetear form
-          setPayType('online');
-          setPayMethod('card');
           setPayMethod('card');
           setPayRequestSent(false); // Resetear después de un delay
           setTimeout(() => setPayRequestSent(false), 5000); // Permitir nueva solicitud después de 5 segundos
@@ -525,7 +520,7 @@ export default function StickyFooter({ table, tableSessionId }) {
           throw err;
         }
       } else {
-        // Pago Online (Simulado o real si fuera MP integrado aquí)
+        // Pago Online (Tarjeta o Mercado Pago)
         // Aquí sí cerramos la cuenta porque se asume "pagado"
         const closePayload = { table, tableSessionId };
         if (couponDiscount) {
@@ -554,7 +549,6 @@ export default function StickyFooter({ table, tableSessionId }) {
         });
         setPayOpen(false);
         setBackendHasAccount(false);
-        setPayType('online');
         setPayMethod('card');
 
         // Redirigir a página de agradecimiento
@@ -1287,149 +1281,72 @@ export default function StickyFooter({ table, tableSessionId }) {
               Método de pago
             </Typography>
 
-            {/* Primero: Tipo de pago (Online primero, luego Presencial) */}
+            {/* Opciones de pago directas: Tarjeta, Mercado Pago, Efectivo */}
             <Box sx={{ display: 'flex', gap: 1, mb: 2, flexDirection: { xs: 'column', sm: 'row' } }}>
               <Button
                 fullWidth
-                variant={payType === 'online' ? 'contained' : 'outlined'}
+                variant={payMethod === 'card' ? 'contained' : 'outlined'}
                 startIcon={<CreditCardIcon />}
-                onClick={() => {
-                  setPayType('online');
-                  setPayMethod('card'); // Resetear a tarjeta por defecto
-                }}
+                onClick={() => setPayMethod('card')}
                 sx={{
                   borderRadius: 2,
                   textTransform: 'none',
                   py: 1.5,
-                  bgcolor: payType === 'online' ? '#2196F3' : undefined,
-                  color: payType === 'online' ? 'white' : undefined,
-                  borderColor: payType === 'online' ? '#2196F3' : undefined,
+                  bgcolor: payMethod === 'card' ? '#2196F3' : undefined,
+                  color: payMethod === 'card' ? 'white' : '#2196F3',
+                  borderColor: '#2196F3',
                   '&:hover': {
-                    bgcolor: payType === 'online' ? '#0b7dda' : undefined,
-                    borderColor: payType === 'online' ? '#0b7dda' : undefined,
+                    bgcolor: payMethod === 'card' ? '#0b7dda' : alpha('#2196F3', 0.1),
+                    borderColor: '#0b7dda',
                   },
                 }}
               >
-                Online
+                Tarjeta
               </Button>
               <Button
                 fullWidth
-                variant={payType === 'presential' ? 'contained' : 'outlined'}
-                startIcon={<PointOfSaleIcon />}
-                onClick={() => {
-                  setPayType('presential');
-                  setPayMethod('card'); // Resetear a tarjeta por defecto en presencial
-                }}
+                variant={payMethod === 'mp' ? 'contained' : 'outlined'}
+                startIcon={<AttachMoneyIcon />}
+                onClick={() => setPayMethod('mp')}
                 sx={{
                   borderRadius: 2,
                   textTransform: 'none',
                   py: 1.5,
-                  bgcolor: payType === 'presential' ? '#4CAF50' : undefined,
-                  color: payType === 'presential' ? 'white' : undefined,
-                  borderColor: payType === 'presential' ? '#4CAF50' : undefined,
+                  bgcolor: payMethod === 'mp' ? '#2196F3' : undefined,
+                  color: payMethod === 'mp' ? 'white' : '#2196F3',
+                  borderColor: '#2196F3',
                   '&:hover': {
-                    bgcolor: payType === 'presential' ? '#45a049' : undefined,
-                    borderColor: payType === 'presential' ? '#45a049' : undefined,
+                    bgcolor: payMethod === 'mp' ? '#0b7dda' : alpha('#2196F3', 0.1),
+                    borderColor: '#0b7dda',
                   },
                 }}
               >
-                Presencial
+                Mercado Pago
+              </Button>
+              <Button
+                fullWidth
+                variant={payMethod === 'cash' ? 'contained' : 'outlined'}
+                startIcon={<AttachMoneyIcon />}
+                onClick={() => setPayMethod('cash')}
+                sx={{
+                  borderRadius: 2,
+                  textTransform: 'none',
+                  py: 1.5,
+                  bgcolor: payMethod === 'cash' ? '#4CAF50' : undefined,
+                  color: payMethod === 'cash' ? 'white' : '#4CAF50',
+                  borderColor: '#4CAF50',
+                  '&:hover': {
+                    bgcolor: payMethod === 'cash' ? '#45a049' : alpha('#4CAF50', 0.1),
+                    borderColor: '#45a049',
+                  },
+                }}
+              >
+                Efectivo
               </Button>
             </Box>
 
-            {/* Segundo: Método específico según el tipo */}
-            {payType === 'presential' && (
-              <Box sx={{ display: 'flex', gap: 1, flexDirection: { xs: 'column', sm: 'row' } }}>
-                <Button
-                  fullWidth
-                  variant={payMethod === 'card' ? 'contained' : 'outlined'}
-                  startIcon={<CreditCardIcon />}
-                  onClick={() => setPayMethod('card')}
-                  sx={{
-                    borderRadius: 2,
-                    textTransform: 'none',
-                    py: 1.5,
-                    bgcolor: payMethod === 'card' ? '#4CAF50' : undefined,
-                    color: payMethod === 'card' ? 'white' : '#4CAF50',
-                    borderColor: '#4CAF50',
-                    '&:hover': {
-                      bgcolor: payMethod === 'card' ? '#45a049' : alpha('#4CAF50', 0.1),
-                      borderColor: '#45a049',
-                    },
-                  }}
-                >
-                  Tarjeta
-                </Button>
-                <Button
-                  fullWidth
-                  variant={payMethod === 'cash' ? 'contained' : 'outlined'}
-                  startIcon={<AttachMoneyIcon />}
-                  onClick={() => setPayMethod('cash')}
-                  sx={{
-                    borderRadius: 2,
-                    textTransform: 'none',
-                    py: 1.5,
-                    bgcolor: payMethod === 'cash' ? '#4CAF50' : undefined,
-                    color: payMethod === 'cash' ? 'white' : '#4CAF50',
-                    borderColor: '#4CAF50',
-                    '&:hover': {
-                      bgcolor: payMethod === 'cash' ? '#45a049' : alpha('#4CAF50', 0.1),
-                      borderColor: '#45a049',
-                    },
-                  }}
-                >
-                  Efectivo
-                </Button>
-              </Box>
-            )}
-
-            {payType === 'online' && (
-              <Box sx={{ display: 'flex', gap: 1, flexDirection: { xs: 'column', sm: 'row' } }}>
-                <Button
-                  fullWidth
-                  variant={payMethod === 'card' ? 'contained' : 'outlined'}
-                  startIcon={<CreditCardIcon />}
-                  onClick={() => setPayMethod('card')}
-                  sx={{
-                    borderRadius: 2,
-                    textTransform: 'none',
-                    py: 1.5,
-                    bgcolor: payMethod === 'card' ? '#2196F3' : undefined,
-                    color: payMethod === 'card' ? 'white' : '#2196F3',
-                    borderColor: '#2196F3',
-                    '&:hover': {
-                      bgcolor: payMethod === 'card' ? '#0b7dda' : alpha('#2196F3', 0.1),
-                      borderColor: '#0b7dda',
-                    },
-                  }}
-                >
-                  Tarjeta
-                </Button>
-                <Button
-                  fullWidth
-                  variant={payMethod === 'mp' ? 'contained' : 'outlined'}
-                  startIcon={<AttachMoneyIcon />}
-                  onClick={() => setPayMethod('mp')}
-                  sx={{
-                    borderRadius: 2,
-                    textTransform: 'none',
-                    py: 1.5,
-                    bgcolor: payMethod === 'mp' ? '#2196F3' : undefined,
-                    color: payMethod === 'mp' ? 'white' : '#2196F3',
-                    borderColor: '#2196F3',
-                    '&:hover': {
-                      bgcolor: payMethod === 'mp' ? '#0b7dda' : alpha('#2196F3', 0.1),
-                      borderColor: '#0b7dda',
-                    },
-                  }}
-                >
-                  Mercado Pago
-                </Button>
-              </Box>
-            )}
-
-            {/* Formulario de tarjeta SOLO cuando se selecciona tarjeta ONLINE */}
-            {payType === 'online' && payMethod === 'card' && (
+            {/* Formulario de tarjeta SOLO cuando se selecciona tarjeta */}
+            {payMethod === 'card' && (
               <Box sx={{ mt: 2 }}>
                 <TextField
                   label="Número de tarjeta"
@@ -1468,17 +1385,8 @@ export default function StickyFooter({ table, tableSessionId }) {
               </Box>
             )}
 
-            {/* Mensaje para pago presencial con tarjeta */}
-            {payType === 'presential' && payMethod === 'card' && (
-              <Box sx={{ mt: 2, p: 2, bgcolor: 'info.lighter', borderRadius: 1, border: '1px solid', borderColor: 'info.light' }}>
-                <Typography variant="body2" color="info.main" align="center">
-                  Solicitá el posnet al mozo para realizar el pago con tarjeta en la mesa.
-                </Typography>
-              </Box>
-            )}
-
-            {/* Mercado Pago cuando se selecciona online + MP */}
-            {payType === 'online' && payMethod === 'mp' && (
+            {/* Mercado Pago cuando se selecciona MP */}
+            {payMethod === 'mp' && (
               <Box sx={{ mt: 2 }}>
                 <PayWithMercadoPago
                   orderId={lastOrderId}
@@ -1486,6 +1394,15 @@ export default function StickyFooter({ table, tableSessionId }) {
                   label="Pagar con Mercado Pago"
                   fullWidth
                 />
+              </Box>
+            )}
+
+            {/* Mensaje para pago con efectivo */}
+            {payMethod === 'cash' && (
+              <Box sx={{ mt: 2, p: 2, bgcolor: 'info.lighter', borderRadius: 1, border: '1px solid', borderColor: 'info.light' }}>
+                <Typography variant="body2" color="info.main" align="center">
+                  Se enviará una solicitud de cobro. Un mozo se acercará a tu mesa para recibir el pago en efectivo.
+                </Typography>
               </Box>
             )}
           </Box>
@@ -1519,10 +1436,10 @@ export default function StickyFooter({ table, tableSessionId }) {
               payLoading ||
               payRequestSent ||
               (orderDetails.length === 0 && accountTotal === 0) ||
-              (payType === 'online' && payMethod === 'card' && (!card.number || !card.expiry || !card.cvv || !card.name))
+              (payMethod === 'card' && (!card.number || !card.expiry || !card.cvv || !card.name))
             }
             sx={{
-              display: (payType === 'online' && payMethod === 'mp') ? 'none' : 'inline-flex',
+              display: payMethod === 'mp' ? 'none' : 'inline-flex',
               borderRadius: 2,
               textTransform: 'none',
               px: 4,
@@ -1537,7 +1454,7 @@ export default function StickyFooter({ table, tableSessionId }) {
               ? 'Procesando…'
               : payRequestSent
                 ? 'Solicitud enviada'
-                : payType === 'presential'
+                : payMethod === 'cash'
                   ? 'Solicitar Cobro'
                   : `Pagar ${money(totalWithTip)}`
             }
