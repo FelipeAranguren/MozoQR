@@ -1870,7 +1870,7 @@ export default function Mostrador() {
   return (
     <Box
       sx={{
-        zoom: 0.9,
+        zoom: 0.85,
         p: { xs: 2, md: 3 },
         // Prevenir scrollbars horizontales que causan desplazamiento
         overflowX: 'hidden',
