@@ -1521,11 +1521,15 @@ export default function Mostrador() {
     [pedidos, mesaTokens]
   );
   const pedidosPendientes = useMemo(
-    () => pedidosFiltrados.filter((p) => p.order_status === 'pending' && !isSystemOrder(p)),
+    () => pedidosFiltrados
+      .filter((p) => p.order_status === 'pending' && !isSystemOrder(p))
+      .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt)), // Más reciente primero
     [pedidosFiltrados]
   );
   const pedidosEnCocina = useMemo(
-    () => pedidosFiltrados.filter((p) => p.order_status === 'preparing' && !isSystemOrder(p)),
+    () => pedidosFiltrados
+      .filter((p) => p.order_status === 'preparing' && !isSystemOrder(p))
+      .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt)), // Más reciente primero
     [pedidosFiltrados]
   );
   const pedidosSistema = useMemo(
@@ -1786,7 +1790,6 @@ export default function Mostrador() {
         key={documentId || id}
         sx={{
           mb: 0,
-          height: '100%',
           bgcolor: flashing ? 'warning.light' : 'background.paper',
           transition: 'all 0.2s ease-in-out',
           boxShadow: flashing ? 6 : 1,
@@ -1858,7 +1861,7 @@ export default function Mostrador() {
 
           {items.length > 0 ? (
             <>
-              {items.slice(0, 2).map((item) => {
+              {items.map((item) => {
                 const prod = item?.product;
                 return (
                   <Typography key={item.id} variant="body2" sx={{ mb: 0.2, fontSize: '0.75rem', lineHeight: 1.3 }}>
@@ -1866,11 +1869,6 @@ export default function Mostrador() {
                   </Typography>
                 );
               })}
-              {items.length > 2 && (
-                <Typography variant="caption" color="text.secondary" sx={{ fontSize: '0.7rem', fontStyle: 'italic' }}>
-                  +{items.length - 2} más...
-                </Typography>
-              )}
             </>
           ) : (
             <Typography variant="caption" color="text.secondary" sx={{ fontSize: '0.75rem', fontStyle: 'italic' }}>
@@ -2098,13 +2096,46 @@ export default function Mostrador() {
                 No hay pedidos pendientes para las mesas buscadas.
               </Typography>
             )}
-            <Grid container spacing={1}>
-              {pedidosPendientes.map((pedido) => (
-                <Grid item xs={12} sm={6} md={4} key={pedido.documentId || pedido.id}>
-                  {renderPedidoCard(pedido)}
-                </Grid>
-              ))}
-            </Grid>
+            <Box
+              sx={(theme) => ({
+                columnCount: 1,
+                columnGap: theme.spacing(1),
+                [theme.breakpoints.up('sm')]: {
+                  columnCount: 2,
+                },
+                [theme.breakpoints.up('md')]: {
+                  columnCount: 3,
+                },
+                '& > *': {
+                  breakInside: 'avoid',
+                  marginBottom: theme.spacing(1),
+                  display: 'inline-block',
+                  width: '100%',
+                },
+              })}
+            >
+              {(() => {
+                // Reorganizar para que CSS columns los muestre como filas horizontales
+                // Si tengo [1,2,3,4,5,6] y quiero filas [1,2,3] [4,5,6]
+                // Necesito reorganizar a [1,4,2,5,3,6] para CSS columns (3 cols)
+                const cols = 3; // desktop
+                const reordered = [];
+                const rows = Math.ceil(pedidosPendientes.length / cols);
+                for (let col = 0; col < cols; col++) {
+                  for (let row = 0; row < rows; row++) {
+                    const index = row * cols + col;
+                    if (index < pedidosPendientes.length) {
+                      reordered.push(pedidosPendientes[index]);
+                    }
+                  }
+                }
+                return reordered.map((pedido) => (
+                  <Box key={pedido.documentId || pedido.id}>
+                    {renderPedidoCard(pedido)}
+                  </Box>
+                ));
+              })()}
+            </Box>
           </Grid>
 
 
@@ -2126,13 +2157,44 @@ export default function Mostrador() {
                 No hay pedidos en cocina para las mesas buscadas.
               </Typography>
             )}
-            <Grid container spacing={1}>
-              {pedidosEnCocina.map((pedido) => (
-                <Grid item xs={12} sm={6} md={4} key={pedido.documentId || pedido.id}>
-                  {renderPedidoCard(pedido)}
-                </Grid>
-              ))}
-            </Grid>
+            <Box
+              sx={(theme) => ({
+                columnCount: 1,
+                columnGap: theme.spacing(1),
+                [theme.breakpoints.up('sm')]: {
+                  columnCount: 2,
+                },
+                [theme.breakpoints.up('md')]: {
+                  columnCount: 3,
+                },
+                '& > *': {
+                  breakInside: 'avoid',
+                  marginBottom: theme.spacing(1),
+                  display: 'inline-block',
+                  width: '100%',
+                },
+              })}
+            >
+              {(() => {
+                // Reorganizar para que CSS columns los muestre como filas horizontales
+                const cols = 3; // desktop
+                const reordered = [];
+                const rows = Math.ceil(pedidosEnCocina.length / cols);
+                for (let col = 0; col < cols; col++) {
+                  for (let row = 0; row < rows; row++) {
+                    const index = row * cols + col;
+                    if (index < pedidosEnCocina.length) {
+                      reordered.push(pedidosEnCocina[index]);
+                    }
+                  }
+                }
+                return reordered.map((pedido) => (
+                  <Box key={pedido.documentId || pedido.id}>
+                    {renderPedidoCard(pedido)}
+                  </Box>
+                ));
+              })()}
+            </Box>
           </Grid>
 
         </Grid>
