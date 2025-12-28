@@ -57,9 +57,34 @@ export default {
           // best-effort
         }
       }
+
+      // Auto-migration: ensure mesa_sesions has foreign key columns for relations
+      const hasMesaSesions = await knex.schema.hasTable('mesa_sesions');
+      if (hasMesaSesions) {
+        const hasMesaId = await knex.schema.hasColumn('mesa_sesions', 'mesa_id');
+        const hasRestauranteId = await knex.schema.hasColumn('mesa_sesions', 'restaurante_id');
+
+        if (!hasMesaId || !hasRestauranteId) {
+          try {
+            await knex.schema.alterTable('mesa_sesions', (table: any) => {
+              if (!hasMesaId) {
+                table.integer('mesa_id').nullable();
+                strapi?.log?.info?.('[bootstrap] ✅ Added mesa_id column to mesa_sesions');
+              }
+              if (!hasRestauranteId) {
+                table.integer('restaurante_id').nullable();
+                strapi?.log?.info?.('[bootstrap] ✅ Added restaurante_id column to mesa_sesions');
+              }
+            });
+            strapi?.log?.info?.('[bootstrap] ✅ Successfully added foreign key columns to mesa_sesions');
+          } catch (migrationErr: any) {
+            strapi?.log?.warn?.('[bootstrap] ⚠️ Could not add foreign key columns to mesa_sesions: ' + (migrationErr?.message || migrationErr));
+          }
+        }
+      }
     } catch (err: any) {
       // Do not crash boot; log and continue (app can still run with legacy behavior).
-      strapi?.log?.warn?.('[bootstrap] ⚠️ Could not auto-migrate mesas columns: ' + (err?.message || err));
+      strapi?.log?.warn?.('[bootstrap] ⚠️ Could not auto-migrate columns: ' + (err?.message || err));
     }
   },
 };

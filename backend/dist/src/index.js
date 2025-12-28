@@ -17,7 +17,7 @@ exports.default = {
      * run jobs, or perform some special logic.
      */
     async bootstrap({ strapi } /*: { strapi: Core.Strapi } */) {
-        var _a, _b, _c, _d, _e, _f, _g;
+        var _a, _b, _c, _d, _e, _f, _g, _h, _j, _k, _l;
         // Auto-migration (safe): ensure new mesa state columns exist.
         // This prevents runtime 500s when DB schema is older than the content-type.
         try {
@@ -59,10 +59,35 @@ exports.default = {
                     // best-effort
                 }
             }
+            // Auto-migration: ensure mesa_sesions has foreign key columns for relations
+            const hasMesaSesions = await knex.schema.hasTable('mesa_sesions');
+            if (hasMesaSesions) {
+                const hasMesaId = await knex.schema.hasColumn('mesa_sesions', 'mesa_id');
+                const hasRestauranteId = await knex.schema.hasColumn('mesa_sesions', 'restaurante_id');
+                if (!hasMesaId || !hasRestauranteId) {
+                    try {
+                        await knex.schema.alterTable('mesa_sesions', (table) => {
+                            var _a, _b, _c, _d;
+                            if (!hasMesaId) {
+                                table.integer('mesa_id').nullable();
+                                (_b = (_a = strapi === null || strapi === void 0 ? void 0 : strapi.log) === null || _a === void 0 ? void 0 : _a.info) === null || _b === void 0 ? void 0 : _b.call(_a, '[bootstrap] ✅ Added mesa_id column to mesa_sesions');
+                            }
+                            if (!hasRestauranteId) {
+                                table.integer('restaurante_id').nullable();
+                                (_d = (_c = strapi === null || strapi === void 0 ? void 0 : strapi.log) === null || _c === void 0 ? void 0 : _c.info) === null || _d === void 0 ? void 0 : _d.call(_c, '[bootstrap] ✅ Added restaurante_id column to mesa_sesions');
+                            }
+                        });
+                        (_g = (_f = strapi === null || strapi === void 0 ? void 0 : strapi.log) === null || _f === void 0 ? void 0 : _f.info) === null || _g === void 0 ? void 0 : _g.call(_f, '[bootstrap] ✅ Successfully added foreign key columns to mesa_sesions');
+                    }
+                    catch (migrationErr) {
+                        (_j = (_h = strapi === null || strapi === void 0 ? void 0 : strapi.log) === null || _h === void 0 ? void 0 : _h.warn) === null || _j === void 0 ? void 0 : _j.call(_h, '[bootstrap] ⚠️ Could not add foreign key columns to mesa_sesions: ' + ((migrationErr === null || migrationErr === void 0 ? void 0 : migrationErr.message) || migrationErr));
+                    }
+                }
+            }
         }
         catch (err) {
             // Do not crash boot; log and continue (app can still run with legacy behavior).
-            (_g = (_f = strapi === null || strapi === void 0 ? void 0 : strapi.log) === null || _f === void 0 ? void 0 : _f.warn) === null || _g === void 0 ? void 0 : _g.call(_f, '[bootstrap] ⚠️ Could not auto-migrate mesas columns: ' + ((err === null || err === void 0 ? void 0 : err.message) || err));
+            (_l = (_k = strapi === null || strapi === void 0 ? void 0 : strapi.log) === null || _k === void 0 ? void 0 : _k.warn) === null || _l === void 0 ? void 0 : _l.call(_k, '[bootstrap] ⚠️ Could not auto-migrate columns: ' + ((err === null || err === void 0 ? void 0 : err.message) || err));
         }
     },
 };
