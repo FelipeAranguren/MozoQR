@@ -390,70 +390,72 @@ export default function OwnerDashboard() {
       getTotalOrdersCount({ slug }),
       getSessionsCount({ slug, from: fromIso, to: toIso }),
       fetchTopProducts({ slug, from: fromIso, to: toIso, limit: 5 }),
-      // Obtener productos: intenta endpoint público, luego API directa
-      // Esto asegura sincronización con cliente pero funciona si el endpoint falla
-      Promise.resolve().then(async () => {
+      // Obtener productos: usar API directa (sin filtrar por available) para que el owner vea TODOS los productos
+      // El endpoint público filtra por available, pero el owner necesita ver todos para gestionarlos
+      (async () => {
         try {
-          // Intentar endpoint público primero
-          const res = await http.get(`/restaurants/${slug}/menus`);
-          const categories = res?.data?.data?.categories || [];
-          if (categories.length > 0) {
-            const allProducts = [];
-            categories.forEach(cat => {
-              (cat.productos || []).forEach(p => {
-                allProducts.push({
-                  id: p.id,
-                  name: p.name,
-                  price: p.price,
-                  image: p.image,
-                  available: p.available !== false,
-                  categoriaId: cat.id,
-                  categoriaName: cat.name
-                });
-              });
-            });
-            console.log('✅ [OwnerDashboard] Productos del endpoint público:', allProducts.length);
-            return allProducts;
-          }
-        } catch (e) {
-          console.warn('⚠️ [OwnerDashboard] Endpoint público falló, usando API directa:', e?.response?.status);
-        }
-
-        // Fallback: usar API directa
-        try {
+          console.log('🔍 [OwnerDashboard] Iniciando obtención de productos para slug:', slug);
           const restauranteRes = await api.get(`/restaurantes?filters[slug][$eq]=${slug}`);
           const restaurante = restauranteRes?.data?.data?.[0];
-          if (!restaurante) return [];
+          if (!restaurante) {
+            console.warn('⚠️ [OwnerDashboard] Restaurante no encontrado para slug:', slug);
+            return [];
+          }
 
           const restauranteId = restaurante.id || restaurante.documentId || restaurante.attributes?.id;
-          if (!restauranteId) return [];
+          if (!restauranteId) {
+            console.warn('⚠️ [OwnerDashboard] No se pudo obtener restauranteId del restaurante:', restaurante);
+            return [];
+          }
 
+          console.log('🔍 [OwnerDashboard] Obteniendo productos para restauranteId:', restauranteId);
+          // NO filtrar por available - el owner necesita ver TODOS los productos
           const productosRes = await api.get(
-            `/productos?filters[restaurante][id][$eq]=${restauranteId}&filters[available][$eq]=true&populate[image,categoria]&sort[0]=name:asc`,
+            `/productos?filters[restaurante][id][$eq]=${restauranteId}&populate[image,categoria]&sort[0]=name:asc`,
             { headers: { Authorization: `Bearer ${localStorage.getItem('jwt') || localStorage.getItem('strapi_jwt') || ''}` } }
           );
 
           const productos = productosRes?.data?.data || [];
-          console.log('✅ [OwnerDashboard] Productos de API directa:', productos.length);
+          console.log('✅ [OwnerDashboard] Productos obtenidos de API directa (TODOS, incluidos no disponibles):', productos.length);
+          
+          // Contar productos disponibles vs no disponibles
+          const disponibles = productos.filter(p => {
+            const attr = p.attributes || p;
+            return attr.available !== false;
+          }).length;
+          const noDisponibles = productos.length - disponibles;
+          console.log(`✅ [OwnerDashboard] Productos disponibles: ${disponibles}, No disponibles: ${noDisponibles}`);
+          
+          if (productos.length > 0) {
+            console.log('✅ [OwnerDashboard] Ejemplo de producto (primer producto):', {
+              id: productos[0].id,
+              name: productos[0].attributes?.name,
+              available: productos[0].attributes?.available,
+              availableType: typeof productos[0].attributes?.available
+            });
+          }
 
           return productos.map(p => {
             const attr = p.attributes || p;
             const categoria = attr.categoria?.data || attr.categoria;
+            // Preservar el valor exacto de available - si no existe, asumir true (comportamiento por defecto de Strapi)
+            const availableValue = attr.available !== undefined ? attr.available : true;
             return {
               id: p.id || p.documentId,
               name: attr.name || '',
               price: Number(attr.price || 0),
               image: attr.image?.data?.attributes?.url || attr.image?.url || null,
-              available: attr.available !== false,
+              available: availableValue, // Preservar el valor real de available (true, false, etc.)
               categoriaId: categoria ? (categoria.id || categoria.documentId) : null,
               categoriaName: categoria ? (categoria.attributes?.name || categoria.name) : null
             };
           });
-        } catch (fallbackErr) {
-          console.error('❌ [OwnerDashboard] Error en fallback:', fallbackErr);
+        } catch (err) {
+          console.error('❌ [OwnerDashboard] Error obteniendo productos:', err);
+          console.error('❌ [OwnerDashboard] Error details:', err?.response?.data || err?.message);
           return [];
         }
-      }),
+      })(),
       // Obtener información del restaurante (mesas, categorías, logo) para métricas
       api.get(`/restaurantes?filters[slug][$eq]=${slug}&populate[mesas]=true&populate[categorias]=true&populate[logo]=true`).catch(() => ({ data: { data: [] } })),
       // Obtener mesas y pedidos activos
@@ -491,7 +493,7 @@ export default function OwnerDashboard() {
           const restaurantName = attr.name || restaurant.name || prettyName(slug);
           setRestaurantInfo({ id: restaurantId, name: restaurantName });
 
-          // Usar los productos activos obtenidos con fetchProducts (mismo método que cliente)
+          // Usar TODOS los productos obtenidos (incluidos no disponibles) para métricas del owner
           const productsWithoutImage = productos.filter(p => !p.image).length;
           const productsWithoutCategory = productos.filter(p => !p.categoriaId).length;
 

@@ -27,7 +27,8 @@ interface Category {
 export default {
     /**
      * GET /restaurants/:slug/menus
-     * Returns categories with available products. Hides product image unless plan === 'PRO'.
+     * Returns categories with only available products (available === true).
+     * Hides product image unless plan === 'PRO'.
      */
     async find(ctx: any) {
         console.log('🚀 [menus.find] Controller START');
@@ -126,7 +127,8 @@ export default {
                 fields: ['id', 'name', 'slug'],
                 populate: {
                     productos: {
-                        // NO filtrar por available aquí - mostrar todos los productos
+                        // Filtrar solo productos disponibles (available === true)
+                        filters: { available: { $eq: true } },
                         sort: { name: 'asc' },
                         fields: ['id', 'name', 'price', 'available', 'sku', 'slug', 'description'],
                         populate: { image: true },
@@ -147,7 +149,8 @@ export default {
                     fields: ['id', 'name', 'slug'],
                     populate: {
                         productos: {
-                            // NO filtrar por available aquí
+                            // Filtrar solo productos disponibles (available === true)
+                            filters: { available: { $eq: true } },
                             sort: { name: 'asc' },
                             fields: ['id', 'name', 'price', 'available', 'sku', 'slug', 'description'],
                             populate: { image: true },
@@ -162,13 +165,13 @@ export default {
                 }
             }
 
-            // También obtener TODOS los productos del restaurante directamente (sin filtro de categoría)
+            // También obtener TODOS los productos disponibles del restaurante directamente (sin filtro de categoría)
             // para asegurarnos de que no se pierda ninguno
             // Usar formato { id: restauranteId } para evitar problemas con restaurantes no publicados
             const todosLosProductos = await strapi.entityService.findMany('api::producto.producto', {
                 filters: {
                     restaurante: { id: restauranteId },
-                    // NO filtrar por available - mostrar todos
+                    available: { $eq: true }, // Solo productos disponibles
                 },
                 sort: { name: 'asc' },
                 fields: ['id', 'name', 'price', 'available', 'sku', 'slug', 'description'],
@@ -184,11 +187,12 @@ export default {
 
             console.log(`📦 [menus.find] Found ${todosLosProductos?.length || 0} total published products (direct query)`);
 
-            // También obtener productos en preview para incluir borradores
+            // También obtener productos disponibles en preview para incluir borradores
             // Usar formato { id: restauranteId } para evitar problemas con restaurantes no publicados
             const productosPreview = await strapi.entityService.findMany('api::producto.producto', {
                 filters: {
                     restaurante: { id: restauranteId },
+                    available: { $eq: true }, // Solo productos disponibles
                 },
                 sort: { name: 'asc' },
                 fields: ['id', 'name', 'price', 'available', 'sku', 'slug', 'description'],
@@ -237,9 +241,15 @@ export default {
                 });
             });
 
-            // Procesar todos los productos y asignarlos a sus categorías
+            // Procesar todos los productos disponibles y asignarlos a sus categorías
             productosTotales.forEach((p: any) => {
                 const a = p.attributes || p;
+                // Filtrar solo productos disponibles (doble verificación por si acaso)
+                const isAvailable = a.available !== false; // true por defecto si no está definido
+                if (!isAvailable) {
+                    return; // Saltar productos no disponibles
+                }
+                
                 const categoriaId = a.categoria?.data?.id || a.categoria?.id || null;
                 const categoriaData = a.categoria?.data?.attributes || a.categoria?.attributes || a.categoria;
 
@@ -272,10 +282,35 @@ export default {
                 });
 
             console.log(`📦 [menus.find] Found ${productosSinCategoria.length} products without category`);
+            
+            // Log detallado de productos sin categoría para debugging
+            if (productosSinCategoria.length > 0) {
+                console.log(`📦 [menus.find] Products without category details:`, productosSinCategoria.map((p: any) => {
+                    const a = p.attributes || p;
+                    return {
+                        id: p.id,
+                        name: a.name,
+                        available: a.available,
+                        categoriaId: a.categoria?.data?.id || a.categoria?.id || null
+                    };
+                }));
+            }
 
             // Si hay productos sin categoría, crear una categoría "Otros" o agregarlos a una existente
             if (productosSinCategoria && productosSinCategoria.length > 0) {
-                const productosMapeados = productosSinCategoria.map((p: any) => mapProduct(p, plan));
+                // Filtrar solo productos disponibles antes de mapear (doble verificación)
+                const productosDisponibles = productosSinCategoria.filter((p: any) => {
+                    const a = p.attributes || p;
+                    const isAvailable = a.available !== false; // true por defecto si no está definido
+                    if (!isAvailable) {
+                        console.log(`⏭️ [menus.find] Saltando producto sin categoría no disponible: ${a.name} (available: ${a.available})`);
+                    }
+                    return isAvailable;
+                });
+                
+                console.log(`✅ [menus.find] Productos sin categoría disponibles: ${productosDisponibles.length} de ${productosSinCategoria.length}`);
+                
+                const productosMapeados = productosDisponibles.map((p: any) => mapProduct(p, plan));
                 
                 // Buscar si ya existe una categoría "Otros"
                 let otrosIndex = sanitized.findIndex(cat => 
@@ -284,18 +319,26 @@ export default {
                 
                 if (otrosIndex >= 0) {
                     // Agregar a la categoría existente
+                    console.log(`✅ [menus.find] Agregando ${productosMapeados.length} productos sin categoría a categoría existente "Otros"`);
                     sanitized[otrosIndex].productos = [
                         ...sanitized[otrosIndex].productos,
                         ...productosMapeados
                     ];
+                    // Reordenar productos dentro de la categoría
+                    sanitized[otrosIndex].productos.sort((a, b) => a.name.localeCompare(b.name));
                 } else {
-                    // Crear nueva categoría "Otros"
-                    sanitized.push({
-                        id: -1, // ID temporal para productos sin categoría
-                        name: 'Otros',
-                        slug: 'otros',
-                        productos: productosMapeados,
-                    });
+                    // Crear nueva categoría "Otros" solo si hay productos disponibles
+                    if (productosMapeados.length > 0) {
+                        console.log(`✅ [menus.find] Creando nueva categoría "Otros" con ${productosMapeados.length} productos`);
+                        sanitized.push({
+                            id: -1, // ID temporal para productos sin categoría
+                            name: 'Otros',
+                            slug: 'otros',
+                            productos: productosMapeados,
+                        });
+                    } else {
+                        console.log(`⚠️ [menus.find] Hay productos sin categoría pero todos están no disponibles, no se crea categoría "Otros"`);
+                    }
                 }
             }
 

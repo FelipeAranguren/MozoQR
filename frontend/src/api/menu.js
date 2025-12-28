@@ -13,79 +13,65 @@ const http = client;
 
 /**
  * Obtiene todas las categorías de un restaurante
- * Primero intenta el endpoint público, luego usa API directa como fallback
+ * Para el owner, siempre usa API directa para ver TODAS las categorías con TODOS los productos (incluidos no disponibles)
+ * El endpoint público filtra por available=true, lo cual es correcto para clientes pero no para owners
  */
 export async function fetchCategories(slug) {
   if (!slug) return [];
 
-  // Primero intentar el endpoint público (como lo ve el cliente)
+  // NOTA: NO usar el endpoint público /restaurants/menus porque filtra por available=true
+  // El owner necesita ver TODOS los productos para poder gestionarlos (incluidos no disponibles)
+  // Siempre usar API directa para el owner
+
+  // Usar API directa directamente (sin intentar endpoint público)
   try {
-    const res = await http.get(`/restaurants/${slug}/menus`);
-    const categories = res?.data?.data?.categories || [];
-
-    if (categories.length > 0) {
-      console.log('✅ [fetchCategories] Categorías obtenidas del endpoint /restaurants/menus:', categories.length);
-
-      // Mapear categorías del formato del endpoint al formato esperado
-      return categories.map(cat => {
-        const productos = (cat.productos || []).map(p => ({
-          id: p.id,
-          name: p.name,
-          price: p.price,
-          image: p.image,
-          available: p.available !== false,
-          description: p.description,
-          ...p
-        }));
-
-        return {
-          id: cat.id,
-          documentId: cat.id,
-          numericId: cat.id,
-          name: cat.name,
-          slug: cat.slug,
-          productos: productos
-        };
-      });
-    }
-  } catch (err) {
-    console.warn('⚠️ [fetchCategories] Endpoint /restaurants/menus no disponible, usando fallback:', err?.response?.status);
-  }
-
-  // Fallback: usar API directa (para owner, puede acceder a productos no publicados)
-  try {
-    console.log('🔄 [fetchCategories] Usando API directa como fallback...');
+    console.log('🔄 [fetchCategories] Usando API directa para obtener todas las categorías y productos (incluidos no disponibles)...');
     const restauranteId = await getRestaurantId(slug);
     if (!restauranteId) {
       console.warn('❌ [fetchCategories] No se encontró el restaurante con slug:', slug);
       return [];
     }
 
-    // Para owner, obtenemos categorías y luego filtramos productos disponibles
+    // Para owner, obtenemos categorías con TODOS los productos (incluidos no disponibles)
     // Primero obtener categorías
     const params = new URLSearchParams();
     params.append('filters[restaurante][id][$eq]', restauranteId);
     params.append('populate[productos][populate]', 'image');
     params.append('sort[0]', 'name:asc');
+    // NO filtrar por available - el owner necesita ver todos los productos
 
     const url = `/categorias?${params.toString()}`;
-    console.log('🔄 [fetchCategories] URL de fallback:', url);
+    console.log('🔄 [fetchCategories] URL:', url);
 
     const res = await api.get(url, { headers: getAuthHeaders() });
 
     const data = res?.data?.data || [];
-    console.log('✅ [fetchCategories] Categorías obtenidas de API directa:', data.length);
+    console.log('✅ [fetchCategories] Categorías obtenidas de API directa (con TODOS los productos):', data.length);
 
-    // Filtrar productos disponibles en el frontend (más confiable)
+    // NO filtrar por available - el owner necesita ver todos los productos para poder editarlos
     return data.map(item => {
       const attr = item.attributes || item;
       const categoryId = item.documentId || item.id || attr?.id;
       const productosRaw = attr.productos?.data || attr.productos || [];
 
-      // Filtrar solo productos disponibles
-      const productos = productosRaw.filter(p => {
+      // Mapear todos los productos (incluidos los no disponibles) y convertir descripciones
+      const productos = productosRaw.map(p => {
         const pAttr = p.attributes || p;
-        return pAttr.available !== false;
+        const description = Array.isArray(pAttr.description)
+          ? blocksToText(pAttr.description)
+          : typeof pAttr.description === 'string'
+            ? pAttr.description
+            : '';
+        
+        return {
+          ...p,
+          id: p.id || pAttr.id,
+          name: pAttr.name || '',
+          price: Number(pAttr.price || 0),
+          description: description,
+          available: pAttr.available !== false,
+          image: pAttr.image || null
+        };
       });
 
       return {
@@ -97,70 +83,28 @@ export async function fetchCategories(slug) {
         productos: productos
       };
     });
-  } catch (fallbackErr) {
-    console.error('❌ [fetchCategories] Error en fallback:', fallbackErr);
+  } catch (err) {
+    console.error('❌ [fetchCategories] Error obteniendo categorías:', err);
+    console.error('❌ [fetchCategories] Error details:', err?.response?.data || err?.message);
     return [];
   }
 }
 
 /**
  * Obtiene todos los productos de un restaurante
- * Estrategia híbrida: intenta endpoint público, luego API directa como fallback
+ * Para el owner, siempre usa API directa para ver TODOS los productos (incluidos no disponibles)
+ * El endpoint público filtra por available=true, lo cual es correcto para clientes pero no para owners
  */
 export async function fetchProducts(slug, categoryId = null) {
   if (!slug) return [];
 
-  // ESTRATEGIA 1: Intentar endpoint público (sincronizado con cliente)
+  // NOTA: NO usar el endpoint público /restaurants/menus porque filtra por available=true
+  // El owner necesita ver TODOS los productos para poder gestionarlos (incluidos no disponibles)
+  // Siempre usar API directa para el owner
+
+  // Usar API directa directamente (sin intentar endpoint público)
   try {
-    const res = await http.get(`/restaurants/${slug}/menus`);
-    const categories = res?.data?.data?.categories || [];
-
-    if (categories.length > 0 || res?.data?.data) {
-      console.log('✅ [fetchProducts] Usando endpoint /restaurants/menus, categorías:', categories.length);
-
-      const allProducts = [];
-      categories.forEach(cat => {
-        (cat.productos || []).forEach(p => {
-          allProducts.push({
-            id: p.id,
-            name: p.name,
-            price: p.price,
-            image: p.image,
-            available: p.available !== false,
-            description: p.description,
-            categoriaId: cat.id,
-            categoriaName: cat.name
-          });
-        });
-      });
-
-      console.log('✅ [fetchProducts] Total productos del endpoint público:', allProducts.length);
-
-      // Filtrar por categoría si se especifica
-      let filtered = allProducts;
-      if (categoryId) {
-        filtered = allProducts.filter(p => String(p.categoriaId || '') === String(categoryId));
-      }
-
-      return filtered.map(p => ({
-        id: p.id,
-        documentId: p.id,
-        name: p.name || '',
-        price: Number(p.price || 0),
-        description: typeof p.description === 'string' ? p.description : '',
-        available: p.available !== false,
-        image: p.image || null,
-        categoriaId: p.categoriaId || null,
-        categoriaName: p.categoriaName || null
-      }));
-    }
-  } catch (err) {
-    console.warn('⚠️ [fetchProducts] Endpoint público no disponible, usando fallback:', err?.response?.status);
-  }
-
-  // ESTRATEGIA 2: Fallback usando API directa (para owner, más permisos)
-  try {
-    console.log('🔄 [fetchProducts] Usando API directa como fallback...');
+    console.log('🔄 [fetchProducts] Usando API directa para obtener TODOS los productos (incluidos no disponibles)...');
     const restauranteId = await getRestaurantId(slug);
     if (!restauranteId) {
       console.warn('❌ [fetchProducts] No se encontró el restaurante con slug:', slug);
@@ -168,9 +112,10 @@ export async function fetchProducts(slug, categoryId = null) {
     }
 
     // Construir parámetros de consulta de forma segura
+    // NOTA: No filtramos por available aquí porque el owner necesita ver todos los productos para poder editarlos
     const params = new URLSearchParams();
     params.append('filters[restaurante][id][$eq]', restauranteId);
-    params.append('filters[available][$eq]', 'true');
+    // No filtrar por available - el owner necesita ver todos los productos
     params.append('populate[image]', 'true');
     params.append('populate[categoria]', 'true');
     params.append('sort[0]', 'name:asc');
@@ -180,16 +125,16 @@ export async function fetchProducts(slug, categoryId = null) {
     }
 
     const url = `/productos?${params.toString()}`;
-    console.log('🔄 [fetchProducts] URL de fallback:', url);
+    console.log('🔄 [fetchProducts] URL:', url);
 
     const res = await api.get(url, { headers: getAuthHeaders() });
 
     const data = res?.data?.data || [];
-    console.log('✅ [fetchProducts] Productos obtenidos de API directa:', data.length);
+    console.log('✅ [fetchProducts] Productos obtenidos de API directa (TODOS, incluidos no disponibles):', data.length);
 
     return mapProducts(data);
   } catch (err) {
-    console.error('❌ [fetchProducts] Error en fallback:', err);
+    console.error('❌ [fetchProducts] Error obteniendo productos:', err);
     console.error('❌ [fetchProducts] Error response:', err?.response?.data);
     console.error('❌ [fetchProducts] Error status:', err?.response?.status);
     return [];

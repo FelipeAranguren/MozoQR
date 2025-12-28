@@ -85,13 +85,14 @@ export async function fetchMenus(slug) {
   // 2) Fallback directo a Strapi (v4)
   try {
     // ESTRATEGIA ROBUSTA:
-    // 1. Pedimos SOLO los productos con su categoría e imagen.
+    // 1. Pedimos SOLO los productos disponibles con su categoría e imagen.
     // 2. Ignoramos la relación directa 'categorias' del restaurante para evitar problemas de populate/permisos.
     // 3. Reconstruimos SIEMPRE las categorías a partir de los productos.
 
     const qs =
       `?filters[slug][$eq]=${encodeURIComponent(slug)}` +
       `&publicationState=preview` +
+      `&populate[productos][filters][available][$eq]=true` +
       `&populate[productos][populate][0]=image` +
       `&populate[productos][populate][1]=categoria` +
       `&fields[0]=id&fields[1]=name`;
@@ -121,7 +122,14 @@ export async function fetchMenus(slug) {
       };
     };
 
-    const products = (restaurante?.productos || []).map(mapProduct) || [];
+    // Filtrar solo productos disponibles antes de mapear (doble verificación por si el filtro de query no funcionó)
+    const productosRaw = restaurante?.productos || [];
+    const productosDisponibles = productosRaw.filter(p => {
+      const attrs = p?.attributes || p;
+      const available = attrs?.available ?? true; // Por defecto true si no está definido
+      return available !== false; // Incluir solo si available !== false
+    });
+    const products = productosDisponibles.map(mapProduct) || [];
 
     // RECONSTRUCCIÓN FORZADA DE CATEGORÍAS
     // Agrupamos los productos por su nombre de categoría
