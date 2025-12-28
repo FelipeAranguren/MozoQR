@@ -1120,6 +1120,11 @@ export default function Mostrador() {
       }
     } catch { }
   };
+  
+  // Versión no bloqueante de refreshItemsDe para no interferir con actualizaciones rápidas
+  const refreshItemsDeBackground = (orderId) => {
+    refreshItemsDe(orderId).catch(() => {}); // Ejecutar en background sin bloquear
+  };
 
   // Marcar como atendidas todas las llamadas de mozo / solicitudes del sistema de una mesa
   const marcarLlamadasAtendidas = async (mesa) => {
@@ -1152,29 +1157,44 @@ export default function Mostrador() {
   };
 
   const marcarComoRecibido = async (pedido) => {
-    try {
-      setPedidos((prev) => {
-        const next = prev.map((p) =>
-          keyOf(p) === keyOf(pedido) ? { ...p, order_status: 'preparing' } : p
-        );
-        pedidosRef.current = next;
-        updateCachedView(next);
-        return next;
-      });
-      triggerFlash(pedido.documentId);
-      await putEstado(pedido, 'preparing');
-      await refreshItemsDe(pedido.id);
-    } catch (err) {
+    // Evitar procesar el mismo pedido múltiples veces simultáneamente
+    const pedidoKey = keyOf(pedido);
+    const currentPedidos = pedidosRef.current;
+    const currentPedido = currentPedidos.find(p => keyOf(p) === pedidoKey);
+    
+    // Si ya está en 'preparing', no hacer nada (evita duplicados)
+    if (currentPedido?.order_status === 'preparing') {
+      return;
+    }
+
+    // Actualización optimista inmediata
+    setPedidos((prev) => {
+      const next = prev.map((p) =>
+        keyOf(p) === pedidoKey ? { ...p, order_status: 'preparing' } : p
+      );
+      pedidosRef.current = next;
+      updateCachedView(next);
+      return next;
+    });
+    
+    triggerFlash(pedido.documentId);
+    
+    // Actualizar en backend sin bloquear (ejecutar en background)
+    putEstado(pedido, 'preparing').catch((err) => {
+      // Si falla, revertir el estado
       setError('No se pudo actualizar el pedido.');
       setPedidos((prev) => {
         const next = prev.map((p) =>
-          keyOf(p) === keyOf(pedido) ? { ...p, order_status: 'pending' } : p
+          keyOf(p) === pedidoKey ? { ...p, order_status: 'pending' } : p
         );
         pedidosRef.current = next;
         updateCachedView(next);
         return next;
       });
-    }
+    });
+    
+    // Refrescar items en background sin bloquear
+    refreshItemsDeBackground(pedido.id);
   };
 
   const marcarComoServido = async (pedido, staffNotes = '') => {
