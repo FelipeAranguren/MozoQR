@@ -1,16 +1,19 @@
 // frontend/src/components/RecentActivityPanel.jsx
-import React from 'react';
-import { Box, Typography, Card, CardContent, List, ListItem, ListItemText, Chip, Avatar } from '@mui/material';
+import React, { useState } from 'react';
+import { Box, Typography, Card, List, ListItem, ListItemText, Chip, Avatar, Button } from '@mui/material';
 import ReceiptIcon from '@mui/icons-material/Receipt';
 import ShoppingCartIcon from '@mui/icons-material/ShoppingCart';
 import CheckCircleIcon from '@mui/icons-material/CheckCircle';
 import AccessTimeIcon from '@mui/icons-material/AccessTime';
+import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
+import ExpandLessIcon from '@mui/icons-material/ExpandLess';
 import { MARANA_COLORS } from '../theme';
 
 /**
  * Panel de Actividad Reciente - Muestra últimos pedidos y cuentas pagadas
  */
 export default function RecentActivityPanel({ recentOrders = [], recentInvoices = [] }) {
+  const [expanded, setExpanded] = useState(false);
   const money = (n) =>
     new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS', maximumFractionDigits: 0 })
       .format(Number(n) || 0);
@@ -53,7 +56,7 @@ export default function RecentActivityPanel({ recentOrders = [], recentInvoices 
   };
 
   // Combinar y ordenar actividades recientes
-  const activities = React.useMemo(() => {
+  const allActivities = React.useMemo(() => {
     const all = [
       ...recentOrders.map(order => ({
         type: 'order',
@@ -77,10 +80,13 @@ export default function RecentActivityPanel({ recentOrders = [], recentInvoices 
       }))
     ];
 
-    return all
-      .sort((a, b) => new Date(b.time) - new Date(a.time))
-      .slice(0, 10);
+    return all.sort((a, b) => new Date(b.time) - new Date(a.time));
   }, [recentOrders, recentInvoices]);
+
+  // Mostrar 5 inicialmente, todas si está expandido
+  const INITIAL_LIMIT = 5;
+  const activities = expanded ? allActivities : allActivities.slice(0, INITIAL_LIMIT);
+  const hasMore = allActivities.length > INITIAL_LIMIT;
 
   return (
     <Card
@@ -102,7 +108,7 @@ export default function RecentActivityPanel({ recentOrders = [], recentInvoices 
         </Box>
       </Box>
 
-      {activities.length === 0 ? (
+      {allActivities.length === 0 ? (
         <Box sx={{ textAlign: 'center', py: 4 }}>
           <AccessTimeIcon sx={{ fontSize: 48, color: MARANA_COLORS.textSecondary, mb: 2, opacity: 0.5 }} />
           <Typography variant="body2" color="text.secondary">
@@ -110,67 +116,87 @@ export default function RecentActivityPanel({ recentOrders = [], recentInvoices 
           </Typography>
         </Box>
       ) : (
-        <List sx={{ p: 0 }}>
-          {activities.map((activity, idx) => (
-            <ListItem
-              key={`${activity.type}-${activity.id}-${idx}`}
-              sx={{
-                borderBottom: idx < activities.length - 1 ? `1px solid ${MARANA_COLORS.border}40` : 'none',
-                py: 2,
-                px: 0,
-                '&:hover': {
-                  bgcolor: `${MARANA_COLORS.background}80`,
-                  borderRadius: 2
-                }
-              }}
-            >
-              <Avatar
+        <>
+          <List sx={{ p: 0 }}>
+            {activities.map((activity, idx) => (
+              <ListItem
+                key={`${activity.type}-${activity.id}-${idx}`}
                 sx={{
-                  bgcolor: `${getStatusColor(activity.status)}15`,
-                  color: getStatusColor(activity.status),
-                  width: 40,
-                  height: 40,
-                  mr: 2
+                  borderBottom: idx < activities.length - 1 || (hasMore && !expanded) ? `1px solid ${MARANA_COLORS.border}40` : 'none',
+                  py: 2,
+                  px: 0,
+                  '&:hover': {
+                    bgcolor: `${MARANA_COLORS.background}80`,
+                    borderRadius: 2
+                  }
                 }}
               >
-                {activity.icon}
-              </Avatar>
-              <ListItemText
-                primary={
-                  <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 0.5 }}>
-                    <Typography variant="body1" sx={{ fontWeight: 600 }}>
-                      {activity.title}
-                    </Typography>
-                    <Typography variant="body1" sx={{ fontWeight: 700, color: MARANA_COLORS.primary }}>
-                      {money(activity.amount)}
-                    </Typography>
-                  </Box>
-                }
-                secondary={
-                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mt: 0.5 }}>
-                    <Typography variant="caption" color="text.secondary">
-                      {activity.subtitle}
-                    </Typography>
-                    <Chip
-                      label={getStatusLabel(activity.status)}
-                      size="small"
-                      sx={{
-                        bgcolor: `${getStatusColor(activity.status)}15`,
-                        color: getStatusColor(activity.status),
-                        height: 20,
-                        fontSize: '10px',
-                        fontWeight: 600
-                      }}
-                    />
-                    <Typography variant="caption" color="text.secondary" sx={{ ml: 'auto' }}>
-                      {formatTime(activity.time)}
-                    </Typography>
-                  </Box>
-                }
-              />
-            </ListItem>
-          ))}
-        </List>
+                <Avatar
+                  sx={{
+                    bgcolor: `${getStatusColor(activity.status)}15`,
+                    color: getStatusColor(activity.status),
+                    width: 40,
+                    height: 40,
+                    mr: 2
+                  }}
+                >
+                  {activity.icon}
+                </Avatar>
+                <ListItemText
+                  primary={
+                    <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 0.5 }}>
+                      <Typography variant="body1" sx={{ fontWeight: 600 }}>
+                        {activity.title}
+                      </Typography>
+                      <Typography variant="body1" sx={{ fontWeight: 700, color: MARANA_COLORS.primary }}>
+                        {money(activity.amount)}
+                      </Typography>
+                    </Box>
+                  }
+                  secondary={
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mt: 0.5 }}>
+                      <Typography variant="caption" color="text.secondary">
+                        {activity.subtitle}
+                      </Typography>
+                      <Chip
+                        label={getStatusLabel(activity.status)}
+                        size="small"
+                        sx={{
+                          bgcolor: `${getStatusColor(activity.status)}15`,
+                          color: getStatusColor(activity.status),
+                          height: 20,
+                          fontSize: '10px',
+                          fontWeight: 600
+                        }}
+                      />
+                      <Typography variant="caption" color="text.secondary" sx={{ ml: 'auto' }}>
+                        {formatTime(activity.time)}
+                      </Typography>
+                    </Box>
+                  }
+                />
+              </ListItem>
+            ))}
+          </List>
+          {hasMore && (
+            <Box sx={{ display: 'flex', justifyContent: 'center', mt: 2, pt: 2, borderTop: `1px solid ${MARANA_COLORS.border}40` }}>
+              <Button
+                onClick={() => setExpanded(!expanded)}
+                endIcon={expanded ? <ExpandLessIcon /> : <ExpandMoreIcon />}
+                sx={{
+                  textTransform: 'none',
+                  color: MARANA_COLORS.primary,
+                  fontWeight: 600,
+                  '&:hover': {
+                    bgcolor: `${MARANA_COLORS.primary}10`
+                  }
+                }}
+              >
+                {expanded ? 'Mostrar menos' : 'Mostrar más'}
+              </Button>
+            </Box>
+          )}
+        </>
       )}
     </Card>
   );

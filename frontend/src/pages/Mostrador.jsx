@@ -4,7 +4,6 @@ import { useParams } from 'react-router-dom';
 import { api } from '../api';
 import { closeAccount, openSession } from '../api/tenant';
 import { fetchTables, resetTables, fetchActiveOrders } from '../api/tables';
-import { cleanOldSessions } from '../api/restaurant';
 import TablesStatusGridEnhanced from '../components/TablesStatusGridEnhanced';
 import {
   Box, Typography, Card, CardContent, List, ListItem, Button,
@@ -808,24 +807,115 @@ export default function Mostrador() {
   const confirmCleanup = async () => {
     setCleanupDialog({ open: true, loading: true });
     try {
-      const result = await cleanOldSessions(slug, { daysOpen: 7, daysClosed: 30 });
-      const deleted = result?.deleted || result?.data?.deleted || 0;
+      // 1. Obtener TODOS los pedidos del restaurante que no estén como "paid" o "cancelled"
+      // Usar $in para incluir solo los estados activos (pending, preparing, served)
+      const qs =
+        `?filters[restaurante][slug][$eq]=${encodeURIComponent(slug)}` +
+        `&filters[order_status][$in][0]=pending` +
+        `&filters[order_status][$in][1]=preparing` +
+        `&filters[order_status][$in][2]=served` +
+        `&publicationState=preview` +
+        `&fields[0]=id&fields[1]=documentId&fields[2]=order_status` +
+        `&pagination[pageSize]=1000`; // Traer muchos pedidos
+
+      const pedidosRes = await api.get(`/pedidos${qs}`);
+      let todosLosPedidos = pedidosRes?.data?.data ?? [];
+      
+      // Si hay más páginas, obtenerlas todas
+      const totalPages = pedidosRes?.data?.meta?.pagination?.pageCount || 1;
+      if (totalPages > 1) {
+        const pedidosAdicionales = [];
+        for (let page = 2; page <= totalPages; page++) {
+          const qsPage = qs + `&pagination[page]=${page}`;
+          const resPage = await api.get(`/pedidos${qsPage}`);
+          pedidosAdicionales.push(...(resPage?.data?.data ?? []));
+        }
+        todosLosPedidos = [...todosLosPedidos, ...pedidosAdicionales];
+      }
+
+      // 2. Marcar todos los pedidos como "paid"
+      let pedidosMarcados = 0;
+      const pedidosConId = todosLosPedidos.filter(p => {
+        const raw = p.attributes || p;
+        return (p.id || raw.id || p.documentId || raw.documentId);
+      });
+
+      if (pedidosConId.length > 0) {
+        await Promise.all(
+          pedidosConId.map(async (pedido) => {
+            try {
+              const raw = pedido.attributes || pedido;
+              const pedidoId = pedido.id || raw.id || pedido.documentId || raw.documentId;
+              if (pedidoId) {
+                try {
+                  await api.patch(`/pedidos/${pedidoId}`, { data: { order_status: 'paid' } });
+                  pedidosMarcados++;
+                } catch (err) {
+                  // Si PATCH falla, intentar PUT
+                  if (err?.response?.status === 405) {
+                    await api.put(`/pedidos/${pedidoId}`, { data: { order_status: 'paid' } });
+                    pedidosMarcados++;
+                  }
+                }
+              }
+            } catch (err) {
+              // Ignorar errores individuales y continuar con los demás
+            }
+          })
+        );
+      }
+
+      // 3. Obtener todas las mesas del restaurante
+      const todasLasMesas = await fetchTables(slug);
+
+      // 4. Cerrar todas las sesiones de todas las mesas
+      let mesasLiberadas = 0;
+      for (const mesa of todasLasMesas) {
+        try {
+          await api.put(`/restaurants/${slug}/close-session`, {
+            data: {
+              table: mesa.number,
+            },
+          });
+          mesasLiberadas++;
+        } catch (err) {
+          // Continuar aunque falle alguna mesa
+        }
+      }
+
+      // 5. Limpiar estado local
+      setPedidos([]);
+      setCuentas([]);
+      setTodosPedidosSinPagar([]);
+      setActiveOrders([]);
+      setOpenSessions([]);
+      pedidosRef.current = [];
+      servingIdsRef.current = new Set();
+      seenIdsRef.current = new Set();
+
       setSnack({
         open: true,
-        msg: `✅ Limpieza completada: ${deleted} sesión(es) eliminada(s)`,
+        msg: `✅ Limpieza completada: ${pedidosMarcados} pedido(s) marcado(s) como pagados, ${mesasLiberadas} mesa(s) liberada(s)`,
         severity: 'success',
       });
       setCleanupDialog({ open: false, loading: false });
-      // Refrescar datos
-      await fetchOpenSessions();
-      await fetchPedidos();
-      await fetchActiveOrdersForTables();
+
+      // 6. Esperar un momento para que el backend procese los cambios
+      await new Promise(resolve => setTimeout(resolve, 2000));
+
+      // 7. Refrescar todos los datos
+      await Promise.all([
+        fetchPedidos(),
+        fetchMesas(),
+        fetchOpenSessions(),
+        fetchActiveOrdersForTables(),
+      ]);
     } catch (err) {
       const errorMsg = err?.response?.data?.error?.message || err?.response?.data?.message || err?.message || 'Error desconocido';
       const statusCode = err?.response?.status;
       setSnack({
         open: true,
-        msg: `❌ Error al limpiar sesiones: ${errorMsg}${statusCode ? ` (${statusCode})` : ''}`,
+        msg: `❌ Error al limpiar: ${errorMsg}${statusCode ? ` (${statusCode})` : ''}`,
         severity: 'error',
       });
       setCleanupDialog({ open: false, loading: false });
@@ -1978,9 +2068,9 @@ export default function Mostrador() {
           startIcon={<CleaningServicesIcon />}
           onClick={handleCleanupOldSessions}
           sx={{ borderRadius: 2, px: 2.5 }}
-          title="Limpiar sesiones antiguas (más de 7 días abiertas o 30 días cerradas)"
+          title="Limpiar mostrador completamente: marcar todos los pedidos como pagados y liberar todas las mesas"
         >
-          Limpiar sesiones
+          Limpiar mostrador
         </Button>
       </Box>
 
@@ -2830,15 +2920,16 @@ export default function Mostrador() {
         <DialogTitle>
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
             <CleaningServicesIcon />
-            Limpiar sesiones antiguas
+            Limpiar mostrador completamente
           </Box>
         </DialogTitle>
         <DialogContent>
           <DialogContentText>
-            Esta acción eliminará permanentemente las sesiones antiguas:
+            Esta acción realizará una limpieza completa del mostrador:
             <ul style={{ marginTop: '8px', paddingLeft: '20px' }}>
-              <li>Sesiones abiertas con más de <strong>7 días</strong></li>
-              <li>Sesiones cerradas con más de <strong>30 días</strong></li>
+              <li>Marcará <strong>TODOS</strong> los pedidos del restaurante como pagados</li>
+              <li>Liberará <strong>TODAS</strong> las mesas (cerrará todas las sesiones)</li>
+              <li>Dejará el mostrador completamente vacío</li>
             </ul>
             <Typography variant="body2" color="warning.main" sx={{ mt: 2, fontWeight: 600 }}>
               ⚠️ Esta acción no se puede deshacer
@@ -2859,7 +2950,7 @@ export default function Mostrador() {
             startIcon={cleanupDialog.loading ? null : <CleaningServicesIcon />}
             disabled={cleanupDialog.loading}
           >
-            {cleanupDialog.loading ? 'Limpiando...' : 'Confirmar limpieza'}
+            {cleanupDialog.loading ? 'Limpiando...' : 'Confirmar limpieza completa'}
           </Button>
         </DialogActions>
       </Dialog>

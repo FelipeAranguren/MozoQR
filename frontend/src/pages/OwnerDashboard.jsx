@@ -933,19 +933,6 @@ export default function OwnerDashboard() {
         </Grid>
       </Grid>
 
-      {/* Actividad Reciente y Top Productos */}
-      <Grid container spacing={2} sx={{ mb: 3 }}>
-        <Grid item xs={12} lg={6}>
-          <RecentActivityPanel
-            recentOrders={periodOrders.slice(0, 5)}
-            recentInvoices={invoices.slice(0, 5)}
-          />
-        </Grid>
-        <Grid item xs={12} lg={6}>
-          <TopProductsChart products={topProducts} limit={5} />
-        </Grid>
-      </Grid>
-
       {/* Sección de Comentarios */}
       <Box
         sx={{
@@ -1013,6 +1000,19 @@ export default function OwnerDashboard() {
           </Button>
         </form>
       </Box>
+
+      {/* Actividad Reciente y Top Productos */}
+      <Grid container spacing={2} sx={{ mb: 3 }}>
+        <Grid item xs={12} lg={6}>
+          <RecentActivityPanel
+            recentOrders={periodOrders.slice(0, 5)}
+            recentInvoices={invoices.slice(0, 5)}
+          />
+        </Grid>
+        <Grid item xs={12} lg={6}>
+          <TopProductsChart products={topProducts} limit={5} />
+        </Grid>
+      </Grid>
 
       {/* Facturas del período */}
       <Box

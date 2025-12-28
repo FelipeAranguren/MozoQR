@@ -1,31 +1,19 @@
-// frontend/src/components/TablesStatusGridEnhanced.jsx
+// frontend/src/components/TablesStatusGrid.jsx
 import React from 'react';
-import { Box, Typography, Card, Grid, Chip, Tooltip, Badge } from '@mui/material';
+import { Box, Typography, Card, Grid } from '@mui/material';
 import TableRestaurantIcon from '@mui/icons-material/TableRestaurant';
-import CheckCircleIcon from '@mui/icons-material/CheckCircle';
-import AccessTimeIcon from '@mui/icons-material/AccessTime';
-import RestaurantIcon from '@mui/icons-material/Restaurant';
-import CleaningServicesIcon from '@mui/icons-material/CleaningServices';
-import EventSeatIcon from '@mui/icons-material/EventSeat';
-import NotificationsActiveIcon from '@mui/icons-material/NotificationsActive';
 
 /**
- * Componente mejorado para mostrar el estado de las mesas en tiempo real
- * Estados: disponible, ocupada, por limpiar, reservada, llamando
+ * Componente para mostrar el estado de las mesas en tiempo real
+ * Estados: disponible (verde), ocupada (azul), por limpiar (amarillo)
  */
-export default function TablesStatusGridEnhanced({
+export default function TablesStatusGrid({
   tables = [],
   orders = [],
   systemOrders = [],
   openSessions = [],
   onTableClick
 }) {
-  // Debug: Log de sesiones abiertas recibidas
-  React.useEffect(() => {
-    if (openSessions.length > 0) {
-      console.log('[TablesStatusGrid] Sesiones abiertas recibidas:', openSessions);
-    }
-  }, [openSessions]);
 
   // Agrupar pedidos por mesa
   const ordersByTable = React.useMemo(() => {
@@ -106,8 +94,7 @@ export default function TablesStatusGridEnhanced({
       return {
         status: 'calling',
         label: isPayRequest ? 'Solicita pago' : 'Llama mozo',
-        color: '#ff1744', // Rojo vibrante
-        icon: <NotificationsActiveIcon />,
+        color: '#1976d2', // Azul (mismo que ocupada)
         blinking: true,
         priority: 1
       };
@@ -119,7 +106,6 @@ export default function TablesStatusGridEnhanced({
         status: 'occupied',
         label: 'Ocupada',
         color: '#1976d2', // Azul
-        icon: <RestaurantIcon />,
         blinking: false,
         priority: 2,
         activeOrdersCount: activeOrders.length
@@ -132,7 +118,6 @@ export default function TablesStatusGridEnhanced({
         status: 'occupied',
         label: 'Ocupada',
         color: '#1976d2', // Azul
-        icon: <RestaurantIcon />,
         blinking: false,
         priority: 2,
         activeOrdersCount: 0
@@ -144,8 +129,7 @@ export default function TablesStatusGridEnhanced({
       return {
         status: 'waiting-payment',
         label: 'Espera pago',
-        color: '#ff9800', // Naranja
-        icon: <AccessTimeIcon />,
+        color: '#ffc107', // Amarillo
         blinking: false,
         priority: 3
       };
@@ -168,8 +152,7 @@ export default function TablesStatusGridEnhanced({
           return {
             status: 'needs-cleaning',
             label: 'Por limpiar',
-            color: '#9c27b0', // Púrpura
-            icon: <CleaningServicesIcon />,
+            color: '#ffc107', // Amarillo
             blinking: false,
             priority: 4
           };
@@ -182,7 +165,6 @@ export default function TablesStatusGridEnhanced({
       status: 'available',
       label: 'Disponible',
       color: '#4caf50', // Verde
-      icon: <CheckCircleIcon />,
       blinking: false,
       priority: 5
     };
@@ -210,11 +192,11 @@ export default function TablesStatusGridEnhanced({
     );
   }
 
-  // Ordenar mesas por prioridad (las que necesitan atención primero)
+  // Ordenar mesas numéricamente (de menor a mayor)
   const sortedTables = [...tables].sort((a, b) => {
-    const statusA = getTableStatus(a);
-    const statusB = getTableStatus(b);
-    return statusA.priority - statusB.priority;
+    const numA = Number(a.number) || Number(a.name?.replace(/\D/g, '')) || 0;
+    const numB = Number(b.number) || Number(b.name?.replace(/\D/g, '')) || 0;
+    return numA - numB;
   });
 
   return (
@@ -228,157 +210,47 @@ export default function TablesStatusGridEnhanced({
             Vista en tiempo real del estado de todas las mesas
           </Typography>
         </Box>
-        <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
-          <Chip
-            icon={<CheckCircleIcon />}
-            label="Disponible"
-            size="small"
-            sx={{ bgcolor: '#4caf50', color: 'white', fontWeight: 600 }}
-          />
-          <Chip
-            icon={<RestaurantIcon />}
-            label="Ocupada"
-            size="small"
-            sx={{ bgcolor: '#1976d2', color: 'white', fontWeight: 600 }}
-          />
-          <Chip
-            icon={<CleaningServicesIcon />}
-            label="Por limpiar"
-            size="small"
-            sx={{ bgcolor: '#9c27b0', color: 'white', fontWeight: 600 }}
-          />
-          <Chip
-            icon={<NotificationsActiveIcon />}
-            label="Llamando"
-            size="small"
-            sx={{ bgcolor: '#ff1744', color: 'white', fontWeight: 600 }}
-          />
-        </Box>
       </Box>
 
-      <Grid container spacing={2}>
+      <Grid container spacing={1}>
         {sortedTables.map((table) => {
           const tableStatus = getTableStatus(table);
-          const tableOrders = ordersByTable.get(table.number) || [];
-          const activeOrdersCount = tableOrders.filter(o =>
-            o.order_status !== 'paid'
-          ).length;
 
           return (
-            <Grid item xs={6} sm={4} md={3} lg={2.4} key={table.id || table.number}>
+            <Grid item xs={2.4} sm={2} md={1.5} lg={1.2} key={table.id || table.number}>
               <Card
                 elevation={0}
                 onClick={() => onTableClick && onTableClick(table)}
                 sx={{
                   border: `2px solid ${tableStatus.color}`,
-                  borderRadius: 2,
-                  p: 2,
-                  textAlign: 'center',
+                  borderRadius: 1,
+                  p: 0.75,
+                  minHeight: '50px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
                   cursor: onTableClick ? 'pointer' : 'default',
-                  transition: 'all 0.3s ease',
-                  background: tableStatus.status === 'available'
-                    ? 'linear-gradient(135deg, #ffffff 0%, #f1f8e9 100%)'
-                    : `linear-gradient(135deg, ${tableStatus.color}15 0%, ${tableStatus.color}08 100%)`,
+                  transition: 'box-shadow 0.2s ease',
+                  background: 'transparent',
                   position: 'relative',
-                  overflow: 'visible',
-                  animation: tableStatus.blinking
-                    ? 'pulse 1.5s ease-in-out infinite'
-                    : 'none',
-                  '@keyframes pulse': {
-                    '0%, 100%': {
-                      boxShadow: `0 0 0 0 ${tableStatus.color}40`,
-                      transform: 'scale(1)'
-                    },
-                    '50%': {
-                      boxShadow: `0 0 0 8px ${tableStatus.color}00`,
-                      transform: 'scale(1.02)'
-                    }
-                  },
+                  overflow: 'hidden',
                   '&:hover': onTableClick ? {
-                    transform: 'translateY(-4px)',
-                    boxShadow: `0px 8px 24px ${tableStatus.color}40`,
-                    borderColor: tableStatus.color,
-                    borderWidth: '3px'
+                    boxShadow: `0px 2px 8px ${tableStatus.color}40`,
+                    zIndex: 1,
                   } : {}
                 }}
               >
-                <Box
-                  sx={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    mb: 1
-                  }}
-                >
-                  <Badge
-                    badgeContent={activeOrdersCount > 0 ? activeOrdersCount : null}
-                    color="error"
-                    overlap="circular"
-                  >
-                    <Box
-                      sx={{
-                        p: 1.5,
-                        borderRadius: 2,
-                        bgcolor: `${tableStatus.color}20`,
-                        color: tableStatus.color,
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        border: `2px solid ${tableStatus.color}40`
-                      }}
-                    >
-                      {tableStatus.icon}
-                    </Box>
-                  </Badge>
-                </Box>
-
                 <Typography
                   variant="h6"
                   sx={{
                     fontWeight: 700,
-                    mb: 0.5,
-                    color: tableStatus.status === 'calling' ? tableStatus.color : 'text.primary'
+                    color: tableStatus.color,
+                    fontSize: '1rem',
+                    lineHeight: 1,
                   }}
                 >
-                  Mesa {table.number || table.name || '—'}
+                  {table.number || table.name || '—'}
                 </Typography>
-
-                <Chip
-                  icon={tableStatus.icon}
-                  label={tableStatus.label}
-                  size="small"
-                  sx={{
-                    bgcolor: tableStatus.color,
-                    color: 'white',
-                    fontWeight: 600,
-                    mb: 1,
-                    fontSize: '0.7rem',
-                    height: '24px',
-                    '& .MuiChip-icon': {
-                      color: 'white'
-                    }
-                  }}
-                />
-
-                {tableStatus.status === 'occupied' && activeOrdersCount > 0 && (
-                  <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>
-                    {activeOrdersCount} pedido{activeOrdersCount > 1 ? 's' : ''} activo{activeOrdersCount > 1 ? 's' : ''}
-                  </Typography>
-                )}
-
-                {tableStatus.status === 'calling' && (
-                  <Typography
-                    variant="caption"
-                    sx={{
-                      display: 'block',
-                      color: tableStatus.color,
-                      fontWeight: 600,
-                      mt: 0.5
-                    }}
-                  >
-                    ⚠️ Atención requerida
-                  </Typography>
-                )}
               </Card>
             </Grid>
           );
