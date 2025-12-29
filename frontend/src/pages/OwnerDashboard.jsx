@@ -1,7 +1,7 @@
 // src/pages/OwnerDashboard.jsx
 import React, { useEffect, useMemo, useState, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { Box, Grid, Typography, Button } from '@mui/material';
+import { Box, Grid, Typography, Button, ToggleButtonGroup, ToggleButton, Chip } from '@mui/material';
 import SalesByDayChart from '../components/SalesByDayChart';
 import OwnerSuccessScore from '../components/OwnerSuccessScore';
 import KpiCardEnhanced from '../components/KpiCardEnhanced';
@@ -12,7 +12,11 @@ import PeakHoursHeatmap from '../components/PeakHoursHeatmap';
 import RecentActivityPanel from '../components/RecentActivityPanel';
 import ComparisonCard from '../components/ComparisonCard';
 import TopProductsChart from '../components/TopProductsChart';
+import ExecutiveKPIs from '../components/ExecutiveKPIs';
+import ExecutiveCharts from '../components/ExecutiveCharts';
+import ExecutiveSummary from '../components/ExecutiveSummary';
 import { useRestaurantPlan } from '../hooks/useRestaurantPlan';
+import { useViewMode } from '../hooks/useViewMode';
 import { calculateSuccessScore, calculateTodayVsYesterday, calculateSalesTrend } from '../utils/dashboardMetrics';
 import {
   getPaidOrders,
@@ -313,6 +317,7 @@ export default function OwnerDashboard() {
   const { slug } = useParams();
   const navigate = useNavigate();
   const { plan, loading: planLoading } = useRestaurantPlan(slug);
+  const { viewMode, isOperativa, isEjecutiva, setViewMode } = useViewMode(slug);
 
   const [periodKey, setPeriodKey] = useState('30d');
   const [periodTotal, setPeriodTotal] = useState(0);
@@ -717,17 +722,71 @@ export default function OwnerDashboard() {
   const paymentMixString = Object.entries(derivedKpis.paymentMix).map(([k, v]) => `${k}: ${v}`).join(' / ');
 
   return (
-    <Box sx={{ p: 3, background: MARANA_COLORS.background, minHeight: '100vh' }}>
+    <Box 
+      sx={{ 
+        p: isEjecutiva ? 4 : 3, 
+        background: isEjecutiva ? 'linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%)' : MARANA_COLORS.background, 
+        minHeight: '100vh',
+        transition: 'all 0.3s ease'
+      }}
+    >
       {/* Header + períodos */}
-      <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 3, flexWrap: 'wrap', gap: 2 }}>
+      <Box sx={{ 
+        display: 'flex', 
+        alignItems: 'center', 
+        justifyContent: 'space-between', 
+        mb: isEjecutiva ? 4 : 3, 
+        flexWrap: 'wrap', 
+        gap: 2,
+        pb: isEjecutiva ? 3 : 0,
+        borderBottom: isEjecutiva ? `2px solid ${MARANA_COLORS.border}` : 'none'
+      }}>
         <Box>
-          <Typography variant="h4" sx={{ fontWeight: 700, mb: 0.5 }}>
-            Dashboard — {prettyName(slug)}
-          </Typography>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 0.5 }}>
+            <Typography variant="h4" sx={{ fontWeight: 700 }}>
+              {isEjecutiva ? 'Vista Ejecutiva' : 'Dashboard'} — {prettyName(slug)}
+            </Typography>
+            <Chip 
+              label={isEjecutiva ? 'Vista Ejecutiva' : 'Vista Operativa'}
+              color={isEjecutiva ? 'secondary' : 'primary'}
+              size="small"
+              sx={{ fontWeight: 600 }}
+            />
+          </Box>
           <Typography variant="body2" color="text.secondary">
             Plan: <strong>{plan || 'BASIC'}</strong>
           </Typography>
         </Box>
+        </Box>
+        <Box sx={{ display: 'flex', gap: 2, alignItems: 'center', flexWrap: 'wrap' }}>
+          {/* Selector de Vista */}
+          <ToggleButtonGroup
+            value={viewMode}
+            exclusive
+            onChange={(e, newMode) => {
+              if (newMode !== null) setViewMode(newMode);
+            }}
+            size="small"
+            sx={{
+              '& .MuiToggleButton-root': {
+                textTransform: 'none',
+                fontWeight: 600,
+                px: 2,
+                border: `1px solid ${MARANA_COLORS.border}`,
+                '&.Mui-selected': {
+                  bgcolor: MARANA_COLORS.primary,
+                  color: '#fff',
+                  '&:hover': {
+                    bgcolor: MARANA_COLORS.primary,
+                    opacity: 0.9
+                  }
+                }
+              }
+            }}
+          >
+            <ToggleButton value="operativa">Vista Operativa</ToggleButton>
+            <ToggleButton value="ejecutiva">Vista Ejecutiva</ToggleButton>
+          </ToggleButtonGroup>
         <Box sx={{ display: 'flex', gap: 1, alignItems: 'center', flexWrap: 'wrap' }}>
           {PERIODS.filter(p => p.key !== 'custom').map((p) => (
             <Button
@@ -798,260 +857,317 @@ export default function OwnerDashboard() {
         </Box>
       </Box>
 
-      {/* Owner Success Score */}
-      <Box sx={{ mb: 3 }}>
-        <OwnerSuccessScore
-          score={successScoreData?.score ?? 100}
-          alerts={successScoreData?.alerts ?? []}
-          metrics={successScoreData?.metrics ?? {}}
-        />
-      </Box>
-
-      {/* KPIs mejorados */}
-      <Grid container spacing={2} sx={{ mb: 3 }}>
-        <Grid item xs={12} sm={6} md={3}>
-          <KpiCardEnhanced
-            title="Ingresos del Día"
-            value={derivedKpis.ingresosHoy}
-            formatter={money}
-            trend={derivedKpis.todayVsYesterday && Math.abs(derivedKpis.todayVsYesterday.percentChange) > 0.1 ? {
-              value: Math.round(derivedKpis.todayVsYesterday.percentChange * 10) / 10,
-              label: 'vs ayer'
-            } : undefined}
-            icon={<AttachMoneyIcon />}
-            color={MARANA_COLORS.primary}
-            loading={isLoading}
-          />
-        </Grid>
-        <Grid item xs={12} sm={6} md={3}>
-          <KpiCardEnhanced
-            title="Ticket Promedio"
-            value={derivedKpis.ticketPromedio}
-            formatter={money}
-            icon={<ShoppingCartIcon />}
-            color={MARANA_COLORS.secondary}
-            loading={isLoading}
-          />
-        </Grid>
-        <Grid item xs={12} sm={6} md={3}>
-          <KpiCardEnhanced
-            title="Pedidos Históricos"
-            value={lifetimeOrders}
-            formatter={(n) => String(Math.round(n))}
-            icon={<TrendingUpIcon />}
-            color={MARANA_COLORS.primary}
-            loading={isLoading}
-          />
-        </Grid>
-        <Grid item xs={12} sm={6} md={3}>
-          <KpiCardEnhanced
-            title="Clientes Atendidos"
-            value={sessionsCount}
-            formatter={(n) => String(Math.round(n))}
-            icon={<PeopleIcon />}
-            color={MARANA_COLORS.accent}
-            loading={isLoading}
-          />
-        </Grid>
-      </Grid>
-
-      {/* Gráfico de ventas */}
-      <Box sx={{ mb: 3 }}>
-        <SalesByDayChart
-          slug={slug}
-          start={start}
-          end={end}
-          periodKey={periodKey + (isCustom ? ` ${customStart}-${customEnd}` : '')}
-          onTotalChange={setPeriodTotal}
-        />
-      </Box>
-
-      {/* Comparativas mejoradas */}
-      <Grid container spacing={2} sx={{ mb: 3 }}>
-        <Grid item xs={12} sm={6} md={4}>
-          <ComparisonCard
-            title="HOY vs AYER"
-            currentValue={derivedKpis.todayVsYesterday?.today || 0}
-            previousValue={derivedKpis.todayVsYesterday?.yesterday || 0}
-            formatter={money}
-            currentLabel="Hoy"
-            previousLabel="Ayer"
-          />
-        </Grid>
-        <Grid item xs={12} sm={6} md={4}>
-          <ComparisonCard
-            title="Esta Semana vs Semana Pasada"
-            currentValue={derivedKpis.weeklyComparison?.thisWeek || 0}
-            previousValue={derivedKpis.weeklyComparison?.lastWeek || 0}
-            formatter={money}
-            currentLabel="Esta semana"
-            previousLabel="Semana pasada"
-          />
-        </Grid>
-        <Grid item xs={12} sm={6} md={4}>
-          <ComparisonCard
-            title="Tendencia 7 días"
-            currentValue={derivedKpis.salesTrend?.recent || 0}
-            previousValue={derivedKpis.salesTrend?.previous || 0}
-            formatter={money}
-            currentLabel="Últimos 7 días"
-            previousLabel="Anteriores 7 días"
-          />
-        </Grid>
-      </Grid>
-
-      {/* Health Check Panel */}
-      <Box sx={{ mb: 3 }}>
-        <HealthCheckPanel
-          metrics={restaurantMetrics}
-          onActionClick={(actionId) => {
-            // Navegar a la sección correspondiente
-            if (actionId === 'images' || actionId === 'categories') {
-              navigate(`/owner/${slug}/menu`);
-            } else if (actionId === 'tables') {
-              navigate(`/owner/${slug}/tables`);
-            } else if (actionId === 'logo') {
-              navigate(`/owner/${slug}/settings`);
-            }
-          }}
-        />
-      </Box>
-
-      {/* Mesas en tiempo real y Heatmap de horas pico */}
-      <Grid container spacing={2} sx={{ mb: 3 }}>
-        <Grid item xs={12} lg={6}>
-          <TablesStatusGrid
-            tables={tables}
-            orders={activeOrders}
-            onTableClick={(table) => {
-              navigate(`/staff/${slug}/orders?table=${table.number}`);
-            }}
-          />
-        </Grid>
-        <Grid item xs={12} lg={6}>
-          <PeakHoursHeatmap orders={periodOrders} />
-        </Grid>
-      </Grid>
-
-      {/* Sección de Comentarios */}
-      <Box
-        sx={{
-          border: `1px solid ${MARANA_COLORS.border}`,
-          borderRadius: 3,
-          background: '#fff',
-          p: 3,
-          boxShadow: '0px 1px 3px rgba(0,0,0,0.05)',
-          mb: 3
-        }}
-      >
-        <Typography variant="h6" sx={{ fontWeight: 600, mb: 2 }}>
-          Enviar Comentario al Administrador
-        </Typography>
-        <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-          Comparte tus comentarios, sugerencias o solicitudes con el equipo de administración.
-        </Typography>
-        <form onSubmit={handleSubmitComment}>
-          <Box sx={{ mb: 2 }}>
-            <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
-              Restaurante: <strong>{restaurantInfo.name || prettyName(slug)}</strong>
-            </Typography>
-            <textarea
-              value={commentText}
-              onChange={(e) => {
-                setCommentText(e.target.value);
-                setCommentError(null);
-              }}
-              placeholder="Escribe tu comentario, feedback, solicitud o sugerencia aquí..."
-              rows={4}
-              style={{
-                width: '100%',
-                padding: '12px',
-                borderRadius: 8,
-                border: `1px solid ${commentError ? '#f44336' : MARANA_COLORS.border}`,
-                fontFamily: 'Inter, sans-serif',
-                fontSize: '14px',
-                resize: 'vertical',
-                boxSizing: 'border-box'
-              }}
-              disabled={isSubmittingComment}
+      {/* Renderizado condicional: Vista Operativa vs Vista Ejecutiva */}
+      {isOperativa ? (
+        <>
+          {/* ========== VISTA OPERATIVA ========== */}
+          {/* Owner Success Score */}
+          <Box sx={{ mb: 3 }}>
+            <OwnerSuccessScore
+              score={successScoreData?.score ?? 100}
+              alerts={successScoreData?.alerts ?? []}
+              metrics={successScoreData?.metrics ?? {}}
             />
-            {commentError && (
-              <Typography variant="caption" color="error" sx={{ mt: 0.5, display: 'block' }}>
-                {commentError}
-              </Typography>
-            )}
-            {commentSuccess && (
-              <Typography variant="caption" color="success.main" sx={{ mt: 0.5, display: 'block' }}>
-                ✓ Comentario enviado correctamente
-              </Typography>
-            )}
           </Box>
-          <Button
-            type="submit"
-            variant="contained"
-            disabled={isSubmittingComment || !commentText.trim()}
+
+          {/* KPIs mejorados */}
+          <Grid container spacing={2} sx={{ mb: 3 }}>
+            <Grid item xs={12} sm={6} md={3}>
+              <KpiCardEnhanced
+                title="Ingresos del Día"
+                value={derivedKpis.ingresosHoy}
+                formatter={money}
+                trend={derivedKpis.todayVsYesterday && Math.abs(derivedKpis.todayVsYesterday.percentChange) > 0.1 ? {
+                  value: Math.round(derivedKpis.todayVsYesterday.percentChange * 10) / 10,
+                  label: 'vs ayer'
+                } : undefined}
+                icon={<AttachMoneyIcon />}
+                color={MARANA_COLORS.primary}
+                loading={isLoading}
+              />
+            </Grid>
+            <Grid item xs={12} sm={6} md={3}>
+              <KpiCardEnhanced
+                title="Ticket Promedio"
+                value={derivedKpis.ticketPromedio}
+                formatter={money}
+                icon={<ShoppingCartIcon />}
+                color={MARANA_COLORS.secondary}
+                loading={isLoading}
+              />
+            </Grid>
+            <Grid item xs={12} sm={6} md={3}>
+              <KpiCardEnhanced
+                title="Pedidos Históricos"
+                value={lifetimeOrders}
+                formatter={(n) => String(Math.round(n))}
+                icon={<TrendingUpIcon />}
+                color={MARANA_COLORS.primary}
+                loading={isLoading}
+              />
+            </Grid>
+            <Grid item xs={12} sm={6} md={3}>
+              <KpiCardEnhanced
+                title="Clientes Atendidos"
+                value={sessionsCount}
+                formatter={(n) => String(Math.round(n))}
+                icon={<PeopleIcon />}
+                color={MARANA_COLORS.accent}
+                loading={isLoading}
+              />
+            </Grid>
+          </Grid>
+
+          {/* Gráfico de ventas */}
+          <Box sx={{ mb: 3 }}>
+            <SalesByDayChart
+              slug={slug}
+              start={start}
+              end={end}
+              periodKey={periodKey + (isCustom ? ` ${customStart}-${customEnd}` : '')}
+              onTotalChange={setPeriodTotal}
+            />
+          </Box>
+
+          {/* Comparativas mejoradas */}
+          <Grid container spacing={2} sx={{ mb: 3 }}>
+            <Grid item xs={12} sm={6} md={4}>
+              <ComparisonCard
+                title="HOY vs AYER"
+                currentValue={derivedKpis.todayVsYesterday?.today || 0}
+                previousValue={derivedKpis.todayVsYesterday?.yesterday || 0}
+                formatter={money}
+                currentLabel="Hoy"
+                previousLabel="Ayer"
+              />
+            </Grid>
+            <Grid item xs={12} sm={6} md={4}>
+              <ComparisonCard
+                title="Esta Semana vs Semana Pasada"
+                currentValue={derivedKpis.weeklyComparison?.thisWeek || 0}
+                previousValue={derivedKpis.weeklyComparison?.lastWeek || 0}
+                formatter={money}
+                currentLabel="Esta semana"
+                previousLabel="Semana pasada"
+              />
+            </Grid>
+            <Grid item xs={12} sm={6} md={4}>
+              <ComparisonCard
+                title="Tendencia 7 días"
+                currentValue={derivedKpis.salesTrend?.recent || 0}
+                previousValue={derivedKpis.salesTrend?.previous || 0}
+                formatter={money}
+                currentLabel="Últimos 7 días"
+                previousLabel="Anteriores 7 días"
+              />
+            </Grid>
+          </Grid>
+
+          {/* Health Check Panel */}
+          <Box sx={{ mb: 3 }}>
+            <HealthCheckPanel
+              metrics={restaurantMetrics}
+              onActionClick={(actionId) => {
+                // Navegar a la sección correspondiente
+                if (actionId === 'images' || actionId === 'categories') {
+                  navigate(`/owner/${slug}/menu`);
+                } else if (actionId === 'tables') {
+                  navigate(`/owner/${slug}/tables`);
+                } else if (actionId === 'logo') {
+                  navigate(`/owner/${slug}/settings`);
+                }
+              }}
+            />
+          </Box>
+
+          {/* Mesas en tiempo real y Heatmap de horas pico */}
+          <Grid container spacing={2} sx={{ mb: 3 }}>
+            <Grid item xs={12} lg={6}>
+              <TablesStatusGrid
+                tables={tables}
+                orders={activeOrders}
+                onTableClick={(table) => {
+                  navigate(`/staff/${slug}/orders?table=${table.number}`);
+                }}
+              />
+            </Grid>
+            <Grid item xs={12} lg={6}>
+              <PeakHoursHeatmap orders={periodOrders} />
+            </Grid>
+          </Grid>
+
+          {/* Sección de Comentarios */}
+          <Box
             sx={{
-              bgcolor: MARANA_COLORS.primary,
-              '&:hover': { bgcolor: MARANA_COLORS.primary, opacity: 0.9 },
-              '&:disabled': { bgcolor: '#ccc' }
+              border: `1px solid ${MARANA_COLORS.border}`,
+              borderRadius: 3,
+              background: '#fff',
+              p: 3,
+              boxShadow: '0px 1px 3px rgba(0,0,0,0.05)',
+              mb: 3
             }}
           >
-            {isSubmittingComment ? 'Enviando...' : 'Enviar Comentario'}
-          </Button>
-        </form>
-      </Box>
-
-      {/* Actividad Reciente y Top Productos */}
-      <Grid container spacing={2} sx={{ mb: 3 }}>
-        <Grid item xs={12} lg={6}>
-          <RecentActivityPanel
-            recentOrders={periodOrders.slice(0, 5)}
-            recentInvoices={invoices.slice(0, 5)}
-          />
-        </Grid>
-        <Grid item xs={12} lg={6}>
-          <TopProductsChart products={topProducts} limit={5} />
-        </Grid>
-      </Grid>
-
-      {/* Facturas del período */}
-      <Box
-        sx={{
-          border: `1px solid ${MARANA_COLORS.border}`,
-          borderRadius: 3,
-          background: '#fff',
-          p: 3,
-          boxShadow: '0px 1px 3px rgba(0,0,0,0.05)',
-          mb: 3
-        }}
-      >
-        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
-          <Typography variant="h6" sx={{ fontWeight: 600 }}>
-            Facturas del período
-          </Typography>
-          <Typography variant="body2" color="text.secondary">
-            Mostrando: <strong>{filteredInvoices.length}</strong> de {invoices.length}
-          </Typography>
-        </Box>
-        <FiltersBar
-          filters={filters}
-          onFiltersChange={setFilters}
-          onExport={handleExport}
-          paymentMethods={Object.keys(derivedKpis.paymentMix)}
-        />
-        {isLoading ? (
-          <Box sx={{ textAlign: 'center', py: 4 }}>
-            <Typography color="text.secondary">Cargando facturas...</Typography>
+            <Typography variant="h6" sx={{ fontWeight: 600, mb: 2 }}>
+              Enviar Comentario al Administrador
+            </Typography>
+            <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+              Comparte tus comentarios, sugerencias o solicitudes con el equipo de administración.
+            </Typography>
+            <form onSubmit={handleSubmitComment}>
+              <Box sx={{ mb: 2 }}>
+                <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
+                  Restaurante: <strong>{restaurantInfo.name || prettyName(slug)}</strong>
+                </Typography>
+                <textarea
+                  value={commentText}
+                  onChange={(e) => {
+                    setCommentText(e.target.value);
+                    setCommentError(null);
+                  }}
+                  placeholder="Escribe tu comentario, feedback, solicitud o sugerencia aquí..."
+                  rows={4}
+                  style={{
+                    width: '100%',
+                    padding: '12px',
+                    borderRadius: 8,
+                    border: `1px solid ${commentError ? '#f44336' : MARANA_COLORS.border}`,
+                    fontFamily: 'Inter, sans-serif',
+                    fontSize: '14px',
+                    resize: 'vertical',
+                    boxSizing: 'border-box'
+                  }}
+                  disabled={isSubmittingComment}
+                />
+                {commentError && (
+                  <Typography variant="caption" color="error" sx={{ mt: 0.5, display: 'block' }}>
+                    {commentError}
+                  </Typography>
+                )}
+                {commentSuccess && (
+                  <Typography variant="caption" color="success.main" sx={{ mt: 0.5, display: 'block' }}>
+                    ✓ Comentario enviado correctamente
+                  </Typography>
+                )}
+              </Box>
+              <Button
+                type="submit"
+                variant="contained"
+                disabled={isSubmittingComment || !commentText.trim()}
+                sx={{
+                  bgcolor: MARANA_COLORS.primary,
+                  '&:hover': { bgcolor: MARANA_COLORS.primary, opacity: 0.9 },
+                  '&:disabled': { bgcolor: '#ccc' }
+                }}
+              >
+                {isSubmittingComment ? 'Enviando...' : 'Enviar Comentario'}
+              </Button>
+            </form>
           </Box>
-        ) : (
-          <InvoicesTable rows={filteredInvoices} onRowClick={(inv) => { setSelectedInvoice(inv); setOpenDrawer(true); }} />
-        )}
-      </Box>
+
+          {/* Actividad Reciente y Top Productos */}
+          <Grid container spacing={2} sx={{ mb: 3 }}>
+            <Grid item xs={12} lg={6}>
+              <RecentActivityPanel
+                recentOrders={periodOrders.slice(0, 5)}
+                recentInvoices={invoices.slice(0, 5)}
+              />
+            </Grid>
+            <Grid item xs={12} lg={6}>
+              <TopProductsChart products={topProducts} limit={5} />
+            </Grid>
+          </Grid>
+
+          {/* Facturas del período */}
+          <Box
+            sx={{
+              border: `1px solid ${MARANA_COLORS.border}`,
+              borderRadius: 3,
+              background: '#fff',
+              p: 3,
+              boxShadow: '0px 1px 3px rgba(0,0,0,0.05)',
+              mb: 3
+            }}
+          >
+            <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
+              <Typography variant="h6" sx={{ fontWeight: 600 }}>
+                Facturas del período
+              </Typography>
+              <Typography variant="body2" color="text.secondary">
+                Mostrando: <strong>{filteredInvoices.length}</strong> de {invoices.length}
+              </Typography>
+            </Box>
+            <FiltersBar
+              filters={filters}
+              onFiltersChange={setFilters}
+              onExport={handleExport}
+              paymentMethods={Object.keys(derivedKpis.paymentMix)}
+            />
+            {isLoading ? (
+              <Box sx={{ textAlign: 'center', py: 4 }}>
+                <Typography color="text.secondary">Cargando facturas...</Typography>
+              </Box>
+            ) : (
+              <InvoicesTable rows={filteredInvoices} onRowClick={(inv) => { setSelectedInvoice(inv); setOpenDrawer(true); }} />
+            )}
+          </Box>
+        </>
+      ) : (
+        <>
+          {/* ========== VISTA EJECUTIVA ========== */}
+          {/* Descripción de la Vista Ejecutiva */}
+          <Box sx={{ mb: 4, p: 2.5, borderRadius: 3, bgcolor: '#fff', border: `1px solid ${MARANA_COLORS.border}` }}>
+            <Typography variant="body1" color="text.secondary" sx={{ fontStyle: 'italic' }}>
+              Vista Ejecutiva: Análisis estratégico enfocado en métricas de negocio, rentabilidad y tendencias. 
+              Ideal para toma de decisiones de alto nivel y planificación estratégica.
+            </Typography>
+          </Box>
+
+          {/* KPIs Ejecutivos - Cards grandes */}
+          <ExecutiveKPIs
+            periodTotal={periodTotal}
+            ticketPromedio={derivedKpis.ticketPromedio}
+            sessionsCount={sessionsCount}
+            lifetimeOrders={lifetimeOrders}
+            todayVsYesterday={derivedKpis.todayVsYesterday}
+            weeklyComparison={derivedKpis.weeklyComparison}
+            salesTrend={derivedKpis.salesTrend}
+            loading={isLoading}
+          />
+
+          {/* Resumen Ejecutivo */}
+          <ExecutiveSummary
+            periodTotal={periodTotal}
+            ticketPromedio={derivedKpis.ticketPromedio}
+            sessionsCount={sessionsCount}
+            lifetimeOrders={lifetimeOrders}
+            invoices={invoices}
+            periodOrders={periodOrders}
+            todayVsYesterday={derivedKpis.todayVsYesterday}
+            weeklyComparison={derivedKpis.weeklyComparison}
+          />
+
+          {/* Gráficos Ejecutivos */}
+          <ExecutiveCharts
+            slug={slug}
+            start={start}
+            end={end}
+            periodKey={periodKey + (isCustom ? ` ${customStart}-${customEnd}` : '')}
+            periodTotal={periodTotal}
+            onTotalChange={setPeriodTotal}
+            topProducts={topProducts}
+            periodOrders={periodOrders}
+            todayVsYesterday={derivedKpis.todayVsYesterday}
+            weeklyComparison={derivedKpis.weeklyComparison}
+            salesTrend={derivedKpis.salesTrend}
+          />
+        </>
+      )}
 
       <InvoiceDrawer open={openDrawer} onClose={() => setOpenDrawer(false)} invoice={selectedInvoice} />
     </Box>
   );
 }
+
 
 /* ========== UI Aux ========== */
 function FiltersBar({ filters, onFiltersChange, onExport, paymentMethods }) {
@@ -1070,8 +1186,19 @@ function FiltersBar({ filters, onFiltersChange, onExport, paymentMethods }) {
         {paymentMethods.map(method => <option key={method} value={method}>{method}</option>)}
       </select>
       <button onClick={() => onFiltersChange({ query: '', paymentMethod: '' })} className="period-btn">Limpiar</button>
-      <button onClick={onExport}
-        style={{ marginLeft: 'auto', padding: '8px 16px', borderRadius: 8, border: 'none', background: '#10b981', color: '#fff', fontWeight: 600, cursor: 'pointer' }}>
+      <button 
+        onClick={onExport}
+        style={{ 
+          marginLeft: 'auto', 
+          padding: '8px 16px', 
+          borderRadius: 8, 
+          border: 'none', 
+          background: '#10b981', 
+          color: '#fff', 
+          fontWeight: 600, 
+          cursor: 'pointer' 
+        }}
+      >
         Exportar CSV
       </button>
     </div>

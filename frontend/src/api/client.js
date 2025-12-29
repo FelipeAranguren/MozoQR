@@ -11,7 +11,7 @@ export const client = axios.create({
 
 // Interceptor to add JWT token if available
 client.interceptors.request.use((config) => {
-    const token = localStorage.getItem('jwt');
+    const token = localStorage.getItem('strapi_jwt') || localStorage.getItem('jwt');
     if (token) {
         config.headers.Authorization = `Bearer ${token}`;
     }
