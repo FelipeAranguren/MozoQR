@@ -73,6 +73,9 @@
                 "paid",
                 "refunded"
             ]
+        },
+        "mesaNumber": {
+            "type": "integer"
         }
     }
 }

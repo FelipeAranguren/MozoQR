@@ -632,6 +632,7 @@ export interface ApiPedidoPedido extends Struct.CollectionTypeSchema {
       'manyToOne',
       'api::mesa-sesion.mesa-sesion'
     >;
+    mesaNumber: Schema.Attribute.Integer;
     order_status: Schema.Attribute.Enumeration<
       ['pending', 'preparing', 'served', 'paid', 'cancelled']
     > &

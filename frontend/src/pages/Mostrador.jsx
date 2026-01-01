@@ -3,7 +3,7 @@ import React, { useEffect, useRef, useState, useMemo } from 'react';
 import { useParams } from 'react-router-dom';
 import { api } from '../api';
 import { closeAccount, openSession } from '../api/tenant';
-import { fetchTables, resetTables, fetchActiveOrders } from '../api/tables';
+import { fetchTables, fetchActiveOrders } from '../api/tables';
 import TablesStatusGridEnhanced from '../components/TablesStatusGridEnhanced';
 import {
   Box, Typography, Card, CardContent, List, ListItem, Button,
@@ -103,17 +103,6 @@ export default function Mostrador() {
     }, 2000);
   };
 
-  const handleResetSystem = async () => {
-    if (!window.confirm('WARNING: Esto borrará TODAS las mesas y sesiones y las recreará (1-20). ¿Seguro?')) return;
-    try {
-      setSnack({ open: true, msg: 'Reseteando sistema...', severity: 'info' });
-      await resetTables(slug);
-      setSnack({ open: true, msg: 'Sistema reseteado. Recargando...', severity: 'success' });
-      setTimeout(() => window.location.reload(), 2000);
-    } catch (err) {
-      setSnack({ open: true, msg: 'Error al resetear', severity: 'error' });
-    }
-  };
 
   const updateCachedView = (nextPedidos, nextCuentas = null) => {
     const cuentasForCache = nextCuentas ?? cachedViewsRef.current.active?.cuentas ?? cuentas;
@@ -131,45 +120,196 @@ export default function Mostrador() {
         `?filters[restaurante][slug][$eq]=${encodeURIComponent(slug)}` +
         `&filters[order_status][$in][0]=served&filters[order_status][$in][1]=paid` +
         `&publicationState=preview` +
-        `&fields[0]=id&fields[1]=documentId&fields[2]=order_status&fields[3]=total&fields[4]=createdAt&fields[5]=updatedAt&fields[6]=customerNotes&fields[7]=staffNotes` +
+        `&fields[0]=id&fields[1]=documentId&fields[2]=order_status&fields[3]=total&fields[4]=createdAt&fields[5]=updatedAt&fields[6]=customerNotes&fields[7]=staffNotes&fields[8]=mesaNumber` +
         `&populate[mesa_sesion][populate][mesa]=true` +
+        `&populate[items][populate][product]=true` +
         `&sort[0]=updatedAt:desc` +
-        `&pagination[pageSize]=100`;
+        `&pagination[pageSize]=196`;
 
       const res = await api.get(`/pedidos${qs}`);
       const base = res?.data?.data ?? [];
+      
+      // Mapear inicialmente todos los pedidos para extraer mesaNumber de la consulta inicial
       const planos = base.map(mapPedidoRow);
 
-      // Hidratar mesa_sesion para pedidos que no la tienen
-      const planosConMesa = await Promise.all(
-        planos.map(async (p) => {
-          // Si ya tiene mesa_sesion con mesa y número, no hacer request
-          if (p.mesa_sesion?.mesa?.number != null) return p;
-          // Intentar hidratar si no tiene mesa_sesion
-          if (!p.mesa_sesion) {
-            return await hydrateMesaSesionIfMissing(p);
-          }
-          return p;
-        })
-      );
+      // IMPORTANTE: Ahora que el backend guarda mesaNumber directamente en el modelo Pedido,
+      // ya no necesitamos consultar sesiones cerradas ni hacer sincronización compleja.
+      // El campo mesaNumber viene directamente del backend y es más confiable.
+      
+      // Sincronizar mesaNumber con mesa_sesion.mesa.number solo para mantener consistencia en el objeto
+      // (el campo mesaNumber del backend es la fuente de verdad)
+      const planosConMesa = planos.map(p => {
+        // Si tiene mesaNumber del backend, asegurar que también esté en mesa_sesion.mesa.number para compatibilidad
+        if (p.mesaNumber && !p.mesa_sesion?.mesa?.number) {
+          return {
+            ...p,
+            mesa_sesion: {
+              ...(p.mesa_sesion || {}),
+              mesa: { number: p.mesaNumber }
+            }
+          };
+        }
+        return p;
+      });
 
-      // Cargar items para cada pedido
+      // Cargar items para TODOS los pedidos - SIEMPRE intentar cargar para asegurar que estén disponibles
+      // IMPORTANTE: Preservar explícitamente mesaNumber y mesa_sesion al cargar items
       const planosConItems = await Promise.all(
         planosConMesa.map(async (p) => {
+          // Preservar mesaNumber y mesa_sesion explícitamente
+          const mesaNumPreservado = p.mesaNumber;
+          const mesaSesionPreservada = p.mesa_sesion;
+          
+          // SIEMPRE intentar cargar items para asegurar que todos los pedidos los tengan
           try {
             const items = await fetchItemsDePedido(p.id);
-            return { ...p, items: items || [] };
+            // Si se cargaron items, usarlos (sobreescribir los que venían)
+            if (items && Array.isArray(items) && items.length > 0) {
+              return { 
+                ...p, 
+                items,
+                mesaNumber: mesaNumPreservado, // Preservar explícitamente
+                mesa_sesion: mesaSesionPreservada // Preservar explícitamente
+              };
+            }
+            // Si no hay items cargados pero venían en la respuesta inicial, usarlos
+            if (p.items && Array.isArray(p.items) && p.items.length > 0) {
+              return {
+                ...p,
+                mesaNumber: mesaNumPreservado, // Preservar explícitamente
+                mesa_sesion: mesaSesionPreservada // Preservar explícitamente
+              };
+            }
+            // Si no hay items en ningún lado, usar array vacío
+            return { 
+              ...p, 
+              items: [],
+              mesaNumber: mesaNumPreservado, // Preservar explícitamente
+              mesa_sesion: mesaSesionPreservada // Preservar explícitamente
+            };
           } catch {
-            return { ...p, items: [] };
+            // Si falla la carga, usar items que ya tenía o array vacío
+            return { 
+              ...p, 
+              items: p.items || [],
+              mesaNumber: mesaNumPreservado, // Preservar explícitamente
+              mesa_sesion: mesaSesionPreservada // Preservar explícitamente
+            };
           }
         })
       );
 
-      // Agrupar por sesión o por mesa para cuentas
+      // Filtrar pedidos del sistema (solicitud de cobro, llamar mozo, etc.)
+      const pedidosFiltrados = planosConItems.filter(p => !isSystemOrder(p));
+
+      // Deduplicar pedidos usando documentId (un pedido puede aparecer con estados served y paid)
+      const pedidosUnicosMap = new Map();
+      pedidosFiltrados.forEach(p => {
+        const key = keyOf(p); // documentId o id
+        const existente = pedidosUnicosMap.get(key);
+        // Si ya existe, mantener el que tiene estado 'paid' (más reciente/final) o el más reciente por updatedAt
+        if (!existente) {
+          pedidosUnicosMap.set(key, p);
+        } else {
+          // Preferir 'paid' sobre 'served', o el más reciente
+          // IMPORTANTE: Preservar mesaNumber e items del pedido que los tiene, sin importar cuál se mantiene
+          const mesaNumPreservado = p.mesaNumber || existente.mesaNumber;
+          const itemsPreservados = (p.items && Array.isArray(p.items) && p.items.length > 0) 
+            ? p.items 
+            : ((existente.items && Array.isArray(existente.items) && existente.items.length > 0) ? existente.items : []);
+          
+          // Construir mesa_sesion preservando el número de mesa
+          const construirMesaSesion = (mesaSesionOriginal, mesaNum) => {
+            if (!mesaNum) return mesaSesionOriginal;
+            // Si ya tiene mesa_sesion, asegurar que tenga mesa.number
+            if (mesaSesionOriginal) {
+              return {
+                ...mesaSesionOriginal,
+                mesa: {
+                  ...mesaSesionOriginal.mesa,
+                  number: mesaNum
+                }
+              };
+            }
+            // Si no tiene mesa_sesion, crearlo
+            return { mesa: { number: mesaNum } };
+          };
+
+          if (p.order_status === 'paid' && existente.order_status !== 'paid') {
+            // Preferir el 'paid', pero preservar mesaNumber e items del que los tiene
+            const nuevoPedido = {
+              ...p,
+              mesaNumber: mesaNumPreservado,
+              mesa_sesion: construirMesaSesion(p.mesa_sesion || existente.mesa_sesion, mesaNumPreservado),
+              items: itemsPreservados
+            };
+            pedidosUnicosMap.set(key, nuevoPedido);
+          } else if (p.order_status === existente.order_status) {
+            // Si tienen el mismo estado, mantener el más reciente pero preservar información de ambos
+            const pTime = new Date(p.updatedAt).getTime();
+            const existenteTime = new Date(existente.updatedAt).getTime();
+            if (pTime > existenteTime) {
+              const nuevoPedido = {
+                ...p,
+                mesaNumber: mesaNumPreservado,
+                mesa_sesion: construirMesaSesion(p.mesa_sesion || existente.mesa_sesion, mesaNumPreservado),
+                items: itemsPreservados
+              };
+              pedidosUnicosMap.set(key, nuevoPedido);
+            } else {
+              // Mantener el existente pero preservar mesaNumber e items del nuevo si los tiene
+              const nuevoExistente = {
+                ...existente,
+                mesaNumber: mesaNumPreservado,
+                mesa_sesion: construirMesaSesion(existente.mesa_sesion || p.mesa_sesion, mesaNumPreservado),
+                items: itemsPreservados
+              };
+              pedidosUnicosMap.set(key, nuevoExistente);
+            }
+          } else {
+            // Si el existente es 'paid' y el nuevo no, mantener el existente pero preservar mesaNumber
+            const nuevoExistente = {
+              ...existente,
+              mesaNumber: mesaNumPreservado,
+              mesa_sesion: construirMesaSesion(existente.mesa_sesion || p.mesa_sesion, mesaNumPreservado),
+              items: itemsPreservados
+            };
+            pedidosUnicosMap.set(key, nuevoExistente);
+          }
+        }
+      });
+      const pedidosUnicos = Array.from(pedidosUnicosMap.values())
+        // Ordenar por updatedAt descendente (más reciente primero) - orden de llegada al historial
+        .sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime())
+        // Paso final: Asegurar que todos los pedidos tengan mesaNumber (prioridad) y mesa_sesion reconstruida si es necesario
+        .map(p => {
+          // Priorizar mesaNumber del backend sobre mesa_sesion.mesa.number
+          const mesaNum = p.mesaNumber || p.mesa_sesion?.mesa?.number;
+          if (mesaNum) {
+            // Si tenemos mesaNumber del backend pero no está en mesa_sesion, reconstruirlo para compatibilidad
+            if (p.mesaNumber && !p.mesa_sesion?.mesa?.number) {
+              return {
+                ...p,
+                mesa_sesion: {
+                  ...(p.mesa_sesion || {}),
+                  mesa: { number: p.mesaNumber }
+                }
+              };
+            }
+            // Si no tenemos mesaNumber pero sí mesa_sesion.mesa.number, usar ese (solo para datos antiguos)
+            if (!p.mesaNumber && p.mesa_sesion?.mesa?.number) {
+              return { ...p, mesaNumber: p.mesa_sesion.mesa.number };
+            }
+          }
+          return p;
+        });
+
+      // Agrupar por sesión o por mesa para cuentas (usando pedidos únicos)
       const grupos = new Map();
-      planosConItems.forEach((p) => {
+      pedidosUnicos.forEach((p) => {
         let key;
-        const mesaNum = p.mesa_sesion?.mesa?.number;
+        // Priorizar mesaNumber del backend sobre mesa_sesion.mesa.number
+        const mesaNum = p.mesaNumber || p.mesa_sesion?.mesa?.number;
 
         if (p.mesa_sesion?.id != null) {
           // Priorizar agrupación por sesión
@@ -190,8 +330,10 @@ export default function Mostrador() {
       const cuentasArr = Array.from(grupos, ([groupKey, arr]) => {
         const total = arr.reduce((sum, it) => sum + Number(it.total || 0), 0);
         const lastUpdated = arr.reduce((max, it) => Math.max(max, new Date(it.updatedAt).getTime()), 0);
-        // Intentar obtener número de mesa de cualquier pedido del grupo
-        const mesaNumber = arr.find((x) => Number.isFinite(Number(x.mesa_sesion?.mesa?.number)))?.mesa_sesion?.mesa?.number ?? null;
+        // Intentar obtener número de mesa de cualquier pedido del grupo (priorizar mesaNumber del backend)
+        const mesaNumber = arr.find((x) => Number.isFinite(Number(x.mesaNumber)))?.mesaNumber ||
+                          arr.find((x) => Number.isFinite(Number(x.mesa_sesion?.mesa?.number)))?.mesa_sesion?.mesa?.number ||
+                          null;
         return {
           groupKey,
           mesaNumber,
@@ -201,7 +343,8 @@ export default function Mostrador() {
         };
       });
 
-      setHistoryPedidos(planosConItems);
+      // Los pedidos ya están ordenados por updatedAt descendente (línea 205-207)
+      setHistoryPedidos(pedidosUnicos);
       setHistoryCuentas(cuentasArr.sort((a, b) => b.lastUpdated - a.lastUpdated));
     } catch (err) {
     }
@@ -247,12 +390,16 @@ export default function Mostrador() {
       mesaAttrs = mesa?.attributes || mesa || {};
     }
 
-    // Extraer número de mesa con múltiples variantes
-    let mesaNumber = mesaAttrs.number || mesaAttrs.numero || mesa?.number || null;
-
-    // Si no encontramos el número, intentar otras rutas
-    if (!mesaNumber && mesa) {
-      mesaNumber = mesa.number || mesa.numero || null;
+    // Extraer número de mesa - PRIMERO usar el campo mesaNumber directo del backend (más confiable)
+    // Luego usar mesa_sesion.mesa.number como fallback para compatibilidad con datos antiguos
+    let mesaNumber = a.mesaNumber || null;
+    
+    // Si no viene en el campo directo, intentar extraer de mesa_sesion.mesa.number
+    if (!mesaNumber) {
+      mesaNumber = mesaAttrs.number || mesaAttrs.numero || mesa?.number || null;
+      if (!mesaNumber && mesa) {
+        mesaNumber = mesa.number || mesa.numero || null;
+      }
     }
 
     // Extraer items si vienen en la respuesta del backend
@@ -315,35 +462,81 @@ export default function Mostrador() {
       total: a.total,
       items: items, // Incluir items si vienen del backend
       mesa_sesion: mesaSesionObj,
+      // Preservar número de mesa directamente en el pedido para que no se pierda cuando se cierra la sesión
+      mesaNumber: mesaNumber,
     };
   };
 
   const hydrateMesaSesionIfMissing = async (pedido) => {
-    // Si ya tiene mesa_sesion con mesa y número, no hacer request
-    if (pedido.mesa_sesion?.mesa?.number != null) return pedido;
     // Si no tiene ID válido, no intentar cargar
     if (!pedido.id) return pedido;
-    // Si el pedido no tiene mesa_sesion.id, probablemente nunca tuvo una, no intentar cargar
-    if (!pedido.mesa_sesion?.id && pedido.mesa_sesion === null) {
-      // Este pedido claramente no tiene mesa_sesion, no hacer request
-      return pedido;
-    }
-
+    
+    // Preservar mesaNumber del pedido original (puede haberse extraído antes de que se cerrara la sesión)
+    const mesaNumberPreservado = pedido.mesaNumber || pedido.mesa_sesion?.mesa?.number;
+    
+    // Siempre intentar cargar la información completa del pedido para asegurar que tenga mesa e items
+    // Esto es crítico porque cuando se cierra una cuenta, los pedidos pueden perder la referencia a mesa_sesion
     try {
       const qs =
         `?publicationState=preview` +
         `&fields[0]=id&fields[1]=documentId&fields[2]=order_status&fields[3]=customerNotes&fields[4]=total&fields[5]=createdAt&fields[6]=updatedAt` +
-        `&populate[mesa_sesion][populate][mesa]=true`;
+        `&populate[mesa_sesion][populate][mesa]=true` +
+        `&populate[items][populate][product]=true`;
       const r = await api.get(`/pedidos/${pedido.id}${qs}`);
       const data = r?.data?.data;
-      if (!data) return pedido;
-      const filled = mapPedidoRow({ id: data.id, ...(data.attributes ? data : { attributes: data }) });
-      return filled.mesa_sesion ? filled : pedido;
-    } catch (err) {
-      // Solo loggear errores que no sean 404 (pedido no encontrado es esperado en algunos casos)
-      if (err?.response?.status !== 404) {
+      if (!data) {
+        // Si falla, preservar mesaNumber si lo teníamos
+        if (mesaNumberPreservado && !pedido.mesa_sesion?.mesa?.number) {
+          return {
+            ...pedido,
+            mesaNumber: mesaNumberPreservado,
+            mesa_sesion: pedido.mesa_sesion || {
+              mesa: { number: mesaNumberPreservado }
+            }
+          };
+        }
+        return pedido;
       }
-      // Si es 404, el pedido no existe o no está publicado, simplemente retornar el pedido original
+      const filled = mapPedidoRow({ id: data.id, ...(data.attributes ? data : { attributes: data }) });
+      
+      // Preservar items si el pedido original ya los tenía y están completos
+      // Si no, usar los items del pedido hidratado
+      let itemsFinales = filled.items || [];
+      if (pedido.items && Array.isArray(pedido.items) && pedido.items.length > 0) {
+        const itemsCompletos = pedido.items.every(item => item.product?.name || item.name);
+        if (itemsCompletos) {
+          itemsFinales = pedido.items;
+        }
+      }
+      
+      // Preservar mesaNumber si el pedido hidratado no lo tiene pero lo teníamos antes
+      const mesaNumberFinal = filled.mesaNumber || filled.mesa_sesion?.mesa?.number || mesaNumberPreservado;
+      
+      // Construir mesa_sesion con el número preservado si es necesario
+      let mesaSesionFinal = filled.mesa_sesion;
+      if (!mesaSesionFinal?.mesa?.number && mesaNumberFinal) {
+        mesaSesionFinal = {
+          mesa: { number: mesaNumberFinal }
+        };
+      }
+      
+      return {
+        ...filled,
+        items: itemsFinales,
+        mesaNumber: mesaNumberFinal,
+        mesa_sesion: mesaSesionFinal || filled.mesa_sesion,
+      };
+    } catch (err) {
+      // Si falla la hidratación, preservar mesaNumber si lo teníamos
+      if (mesaNumberPreservado && !pedido.mesa_sesion?.mesa?.number) {
+        return {
+          ...pedido,
+          mesaNumber: mesaNumberPreservado,
+          mesa_sesion: pedido.mesa_sesion || {
+            mesa: { number: mesaNumberPreservado }
+          }
+        };
+      }
       return pedido;
     }
   };
@@ -367,7 +560,7 @@ export default function Mostrador() {
         notes: a.notes,
         UnitPrice: a.UnitPrice,
         totalPrice: a.totalPrice,
-        product: { id: prodData.id, name: prodAttrs.name },
+        product: { id: prodData.id, name: prodAttrs.name || prodAttrs.nombre || null },
       };
     });
   };
@@ -1628,7 +1821,7 @@ export default function Mostrador() {
   // Función para renderizar una tarjeta de pedido del sistema
   const renderSystemOrderCard = (pedido) => {
     const { id, documentId, customerNotes, items = [], createdAt } = pedido;
-    const mesaNumero = pedido.mesa_sesion?.mesa?.number;
+    const mesaNumero = pedido.mesa_sesion?.mesa?.number || pedido.mesaNumber;
     const flashing = flashIds.has(documentId);
     const systemType = getSystemOrderType(pedido);
 
@@ -1782,7 +1975,7 @@ export default function Mostrador() {
     }
 
     const { id, documentId, order_status, customerNotes, items = [], total, createdAt } = pedido;
-    const mesaNumero = pedido.mesa_sesion?.mesa?.number;
+    const mesaNumero = pedido.mesa_sesion?.mesa?.number || pedido.mesaNumber;
     const flashing = flashIds.has(documentId);
 
     return (
@@ -2258,9 +2451,6 @@ export default function Mostrador() {
             <Typography variant="h6" component="div" sx={{ flexGrow: 1 }}>
               Panel de Control - {slug?.toUpperCase()}
             </Typography>
-            <Button color="error" variant="outlined" size="small" onClick={handleResetSystem} sx={{ mr: 2 }}>
-              RESET SYSTEM
-            </Button>
             <IconButton onClick={() => setShowHistoryDrawer(false)}>
               <CloseIcon />
             </IconButton>

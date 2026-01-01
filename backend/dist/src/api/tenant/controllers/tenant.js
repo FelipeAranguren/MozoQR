@@ -1011,7 +1011,7 @@ exports.default = {
      * POST /restaurants/:slug/orders
      */
     async createOrder(ctx) {
-        var _a, _b, _c, _d, _f, _g, _h, _j, _k, _l;
+        var _a, _b, _c, _d, _f, _g, _h, _j, _k, _l, _m;
         const { slug } = ctx.params || {};
         if (!slug)
             throw new ValidationError('Missing slug');
@@ -1138,12 +1138,15 @@ exports.default = {
         }
         console.log(`[createOrder] Sesión para pedido: id=${sesion.id}, type=${typeof sesion.id}, mesaId=${mesa.id}, restauranteId=${restaurante.id}`);
         console.log(`[createOrder] Creando pedido para mesa ${table}, sesión id=${sesion.id}, restaurante id=${restaurante.id}, total=${total}`);
+        // Obtener el número de mesa (preferir sesionWithMesa.mesa.number si está disponible, sino mesa.number)
+        const mesaNumber = ((_g = sesionWithMesa === null || sesionWithMesa === void 0 ? void 0 : sesionWithMesa.mesa) === null || _g === void 0 ? void 0 : _g.number) || (mesa === null || mesa === void 0 ? void 0 : mesa.number) || null;
         const pedidoData = {
             order_status: 'pending',
             customerNotes: (data === null || data === void 0 ? void 0 : data.customerNotes) || '',
             total: Number(total),
             restaurante: { id: Number(restaurante.id) },
             mesa_sesion: { id: Number(sesion.id) },
+            mesaNumber: mesaNumber ? Number(mesaNumber) : null,
             publishedAt: new Date(),
         };
         console.log(`[createOrder] Datos del pedido a crear:`, JSON.stringify(pedidoData, null, 2));
@@ -1161,7 +1164,7 @@ exports.default = {
                 },
                 publicationState: 'preview',
             });
-            console.log(`[createOrder] Verificación: pedido id=${verifyPedido === null || verifyPedido === void 0 ? void 0 : verifyPedido.id}, mesa_sesion id=${(_g = verifyPedido === null || verifyPedido === void 0 ? void 0 : verifyPedido.mesa_sesion) === null || _g === void 0 ? void 0 : _g.id}, mesa_sesion mesa id=${(_j = (_h = verifyPedido === null || verifyPedido === void 0 ? void 0 : verifyPedido.mesa_sesion) === null || _h === void 0 ? void 0 : _h.mesa) === null || _j === void 0 ? void 0 : _j.id}, mesa_sesion mesa number=${(_l = (_k = verifyPedido === null || verifyPedido === void 0 ? void 0 : verifyPedido.mesa_sesion) === null || _k === void 0 ? void 0 : _k.mesa) === null || _l === void 0 ? void 0 : _l.number}`);
+            console.log(`[createOrder] Verificación: pedido id=${verifyPedido === null || verifyPedido === void 0 ? void 0 : verifyPedido.id}, mesa_sesion id=${(_h = verifyPedido === null || verifyPedido === void 0 ? void 0 : verifyPedido.mesa_sesion) === null || _h === void 0 ? void 0 : _h.id}, mesa_sesion mesa id=${(_k = (_j = verifyPedido === null || verifyPedido === void 0 ? void 0 : verifyPedido.mesa_sesion) === null || _j === void 0 ? void 0 : _j.mesa) === null || _k === void 0 ? void 0 : _k.id}, mesa_sesion mesa number=${(_m = (_l = verifyPedido === null || verifyPedido === void 0 ? void 0 : verifyPedido.mesa_sesion) === null || _l === void 0 ? void 0 : _l.mesa) === null || _m === void 0 ? void 0 : _m.number}`);
         }
         catch (verifyErr) {
             console.error(`[createOrder] Error verificando pedido creado:`, (verifyErr === null || verifyErr === void 0 ? void 0 : verifyErr.message) || verifyErr);

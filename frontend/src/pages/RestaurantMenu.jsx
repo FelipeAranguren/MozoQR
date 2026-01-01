@@ -272,44 +272,83 @@ export default function RestaurantMenu() {
   }, [slug, table, tableSessionId, navigate]);
 
   // POLLING DE "KICK": Verificar si el cliente debe ser expulsado
-  // REGLA ESTRICTA: SOLO expulsar cuando se cumplen las 3 condiciones:
-  // 1. La mesa está disponible
-  // 2. NO hay pedidos activos (hasOpenAccount() retorna false)
-  // 3. La ÚLTIMA sesión (más reciente) tiene estado 'paid' o 'closed'
-  // 
-  // IMPORTANTE: Si la sesión más reciente está 'open', NO expulsar (usuario recién entró)
-  // Si no se puede determinar el estado de la sesión, NO expulsar (conservador)
+  // REGLA: Expulsar cuando:
+  // 1. La sesión está cerrada (status: 'closed' o 'paid') - verificación directa más confiable
+  // 2. O cuando la mesa está disponible Y NO hay pedidos activos
+  // Esto ocurre cuando se cierra/paga una sesión desde el mostrador
   useEffect(() => {
-    if (!slug || !table) return;
+    if (!slug || !table || !tableSessionId) return;
 
     const checkIfShouldEject = async () => {
       try {
-        // 1. Verificar estado real de la mesa (fuente de verdad del backend)
+        // Método 1: Verificar directamente el estado de la sesión usando tableSessionId
+        // Esto es más confiable porque verifica la sesión específica del cliente
+        try {
+          const { http } = await import('../api/tenant');
+          const sesionRes = await http.get(
+            `/mesa-sesions?filters[code][$eq]=${encodeURIComponent(tableSessionId)}&publicationState=preview&fields[0]=id&fields[1]=session_status&fields[2]=code&pagination[pageSize]=1`
+          );
+          const sesiones = sesionRes?.data?.data || [];
+          if (sesiones.length > 0) {
+            const sesion = sesiones[0];
+            const sesionAttrs = sesion.attributes || sesion;
+            const sessionStatus = sesionAttrs.session_status || sesion.session_status;
+            
+            // Si la sesión está cerrada o pagada, expulsar inmediatamente
+            if (sessionStatus === 'closed' || sessionStatus === 'paid') {
+              console.log(`[RestaurantMenu] 🛑 KICK: Sesión ${tableSessionId} está ${sessionStatus}. Redirigiendo al selector...`);
+              navigate(`/${slug}/menu`);
+              return;
+            }
+          } else {
+            // Si no se encuentra la sesión, puede que haya sido eliminada o cerrada
+            // Verificar con el método 2
+            console.log(`[RestaurantMenu] Sesión ${tableSessionId} no encontrada, verificando por mesa...`);
+          }
+        } catch (sesionErr) {
+          // Si no se puede verificar la sesión (403, 404, etc.), continuar con el método 2
+          // Esto es normal si el endpoint requiere autenticación
+          if (sesionErr?.response?.status !== 403 && sesionErr?.response?.status !== 404) {
+            console.warn("[RestaurantMenu] Error verificando estado de sesión:", sesionErr?.response?.status || sesionErr?.message);
+          }
+        }
+
+        // Método 2: Verificar estado de la mesa y pedidos activos (método principal)
+        // Este método es más confiable porque usa endpoints públicos
         const myMesa = await fetchTable(slug, table);
-        if (!myMesa) return; // conservador
-        if (myMesa.status !== 'disponible') {
-          return; // si sigue ocupada/por limpiar, no expulsar
+        if (!myMesa) {
+          console.log(`[RestaurantMenu] No se pudo obtener estado de mesa ${table}`);
+          return; // conservador: si no se puede obtener, no expulsar
         }
-
-        // 2. Verificar si hay pedidos activos (conservador: si hay, no expulsar)
-        const { hasOpenAccount } = await import('../api/tenant');
-        const hasActiveOrders = await hasOpenAccount(slug, { table, tableSessionId });
         
-        if (hasActiveOrders) {
-          // Hay pedidos activos = NO expulsar (usuario está haciendo pedidos)
-          return;
+        console.log(`[RestaurantMenu] Polling: Mesa ${table} status=${myMesa.status}`);
+        
+        // Si la mesa está disponible, verificar si hay pedidos activos
+        if (myMesa.status === 'disponible') {
+          const { hasOpenAccount } = await import('../api/tenant');
+          const hasActiveOrders = await hasOpenAccount(slug, { table, tableSessionId });
+          
+          console.log(`[RestaurantMenu] Polling: Mesa ${table} disponible, hasActiveOrders=${hasActiveOrders}`);
+          
+          // Si NO hay pedidos activos Y la mesa está disponible => la sesión fue cerrada desde el mostrador
+          if (!hasActiveOrders) {
+            console.log(`[RestaurantMenu] 🛑 KICK: Mesa ${table} disponible + sin pedidos activos (sesión cerrada desde mostrador). Redirigiendo al selector...`);
+            navigate(`/${slug}/menu`);
+            return;
+          }
+        } else {
+          // Mesa sigue ocupada, no expulsar
+          console.log(`[RestaurantMenu] Polling: Mesa ${table} sigue ${myMesa.status}, no expulsar`);
         }
-
-        // 3. Mesa está disponible + sin pedidos activos => expulsar (source of truth)
-        console.log(`[RestaurantMenu] 🛑 KICK: Mesa ${table} disponible + sin pedidos activos. Redirigiendo al selector...`);
-        navigate(`/${slug}/menu`);
       } catch (err) {
         console.warn("[RestaurantMenu] Error polling table status:", err);
         // NO expulsar si hay error - comportamiento conservador
       }
     };
 
-    const interval = setInterval(checkIfShouldEject, 5000); // Check every 5s
+    // Ejecutar inmediatamente y luego cada 2 segundos para detectar cambios más rápido
+    checkIfShouldEject();
+    const interval = setInterval(checkIfShouldEject, 2000); // Check every 2s (más responsivo)
     return () => clearInterval(interval);
   }, [slug, table, tableSessionId, navigate]);
 

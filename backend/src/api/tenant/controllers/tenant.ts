@@ -1208,12 +1208,16 @@ export default {
     console.log(`[createOrder] Sesión para pedido: id=${sesion.id}, type=${typeof sesion.id}, mesaId=${mesa.id}, restauranteId=${restaurante.id}`);
     console.log(`[createOrder] Creando pedido para mesa ${table}, sesión id=${sesion.id}, restaurante id=${restaurante.id}, total=${total}`);
     
+    // Obtener el número de mesa (preferir sesionWithMesa.mesa.number si está disponible, sino mesa.number)
+    const mesaNumber = sesionWithMesa?.mesa?.number || mesa?.number || null;
+    
     const pedidoData = {
       order_status: 'pending',
       customerNotes: data?.customerNotes || '',
       total: Number(total),
       restaurante: { id: Number(restaurante.id) },
       mesa_sesion: { id: Number(sesion.id) },
+      mesaNumber: mesaNumber ? Number(mesaNumber) : null,
       publishedAt: new Date(),
     };
     console.log(`[createOrder] Datos del pedido a crear:`, JSON.stringify(pedidoData, null, 2));

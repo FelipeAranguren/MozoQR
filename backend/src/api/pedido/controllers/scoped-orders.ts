@@ -181,6 +181,7 @@ export default {
                 customerNotes: notes || null,
                 mesa_sesion: sesion.id,
                 restaurante: restauranteId,
+                mesaNumber: mesa?.number ? Number(mesa.number) : null,
             },
         });
 
