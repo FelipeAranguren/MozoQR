@@ -5,7 +5,7 @@ module.exports = [
   {
     name: 'strapi::cors',
     config: {
-      origin: (process.env.CORS_ORIGINS || 'http://localhost:5173,http://127.0.0.1:5173')
+      origin: (process.env.CORS_ORIGINS || 'https://mozoqr.vercel.app/')
         .split(',')
         .map(s => s.trim()),
       methods: ['GET','POST','PUT','PATCH','DELETE','HEAD','OPTIONS'],
