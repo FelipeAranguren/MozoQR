@@ -36,6 +36,7 @@ import AttachMoneyIcon from '@mui/icons-material/AttachMoney';
 import ShoppingCartIcon from '@mui/icons-material/ShoppingCart';
 import PeopleIcon from '@mui/icons-material/People';
 import TrendingUpIcon from '@mui/icons-material/TrendingUp';
+import OpenInNewIcon from '@mui/icons-material/OpenInNew';
 
 /* ========== Formatos ========== */
 const money = (n) =>
@@ -759,6 +760,15 @@ export default function OwnerDashboard() {
         </Box>
         </Box>
         <Box sx={{ display: 'flex', gap: 2, alignItems: 'center', flexWrap: 'wrap' }}>
+          <Button
+            variant="outlined"
+            size="small"
+            startIcon={<OpenInNewIcon />}
+            onClick={() => window.open(`/${slug}/menu`, '_blank', 'noopener,noreferrer')}
+            sx={{ textTransform: 'none' }}
+          >
+            Ver menú
+          </Button>
           {/* Selector de Vista */}
           <ToggleButtonGroup
             value={viewMode}

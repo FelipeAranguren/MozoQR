@@ -9,12 +9,14 @@ import {
   Link,
   Box,
   Button,
+  IconButton,
 } from '@mui/material';
 import HomeIcon from '@mui/icons-material/Home';
+import MenuIcon from '@mui/icons-material/Menu';
 import NavigateNextIcon from '@mui/icons-material/NavigateNext';
 import { useAuth } from '../../context/AuthContext';
 
-export default function OwnerHeader({ slug }) {
+export default function OwnerHeader({ slug, onMenuClick }) {
   const navigate = useNavigate();
   const location = useLocation();
   const auth = useAuth();
@@ -96,8 +98,19 @@ export default function OwnerHeader({ slug }) {
         boxShadow: 1,
       }}
     >
-      <Toolbar>
-        <Box sx={{ flexGrow: 1 }}>
+      <Toolbar sx={{ px: { xs: 1.5, sm: 2 } }}>
+        {onMenuClick && (
+          <IconButton
+            color="inherit"
+            edge="start"
+            onClick={onMenuClick}
+            sx={{ mr: 1.5, display: { md: 'none' } }}
+            aria-label="Abrir menú"
+          >
+            <MenuIcon />
+          </IconButton>
+        )}
+        <Box sx={{ flexGrow: 1, minWidth: 0 }}>
           <Breadcrumbs
             separator={<NavigateNextIcon fontSize="small" />}
             aria-label="breadcrumb"

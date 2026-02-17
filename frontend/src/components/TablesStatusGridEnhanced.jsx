@@ -26,20 +26,13 @@ export default function TablesStatusGridEnhanced({
     try {
       const map = new Map();
       if (Array.isArray(orders)) {
-        console.log('[TablesStatusGridEnhanced] Agrupando pedidos por mesa. Total pedidos recibidos:', orders.length);
         orders.forEach(order => {
           const tableNum = order?.mesa_sesion?.mesa?.number || order?.mesa || order?.tableNumber || null;
           if (tableNum != null) {
-            if (!map.has(tableNum)) {
-              map.set(tableNum, []);
-            }
+            if (!map.has(tableNum)) map.set(tableNum, []);
             map.get(tableNum).push(order);
-            console.log(`[TablesStatusGridEnhanced] Pedido ${order.id} (status: ${order.order_status}) agregado a mesa ${tableNum}`);
           }
         });
-        console.log('[TablesStatusGridEnhanced] Pedidos agrupados por mesa:', Array.from(map.entries()).map(([num, ords]) => `Mesa ${num}: ${ords.length} pedidos (${ords.map(o => o.order_status).join(', ')})`));
-      } else {
-        console.log('[TablesStatusGridEnhanced] orders no es un array:', orders);
       }
       return map;
     } catch (error) {
@@ -154,20 +147,8 @@ export default function TablesStatusGridEnhanced({
       };
     }
     
-    // Debug: Log del estado de la mesa
-    console.log(`[TablesStatusGridEnhanced] Mesa ${table.number}:`, {
-      tableOrders: tableOrders.length,
-      unpaidOrders: unpaidOrders.length,
-      hasOpenSession,
-      tableStatus: table.status,
-      orders: tableOrders.map(o => ({ id: o.id, status: o.order_status }))
-    });
-
     // REGLA CRÍTICA #1: Si hay pedidos sin pagar, la mesa SIEMPRE está ocupada
-    // CRÍTICO: Esta es la fuente de verdad principal, igual que en OwnerDashboard
-    // Los pedidos vienen de fetchActiveOrders que solo trae pedidos no pagados
     if (unpaidOrders.length > 0) {
-      console.log(`[TablesStatusGridEnhanced] Mesa ${table.number} está OCUPADA por ${unpaidOrders.length} pedidos sin pagar`);
       return {
         status: 'occupied',
         label: hasServed && !hasPaid ? 'Espera pago' : 'Ocupada',
@@ -183,14 +164,6 @@ export default function TablesStatusGridEnhanced({
     // CRÍTICO: NO usar openSessions para determinar ocupación después de pagar
     // Si activeOrders viene vacío (porque fetchActiveOrders solo trae pedidos no pagados),
     // entonces la mesa está disponible, independientemente de si hay sesión abierta o no
-    // Las sesiones "zombie" no deben hacer que una mesa se muestre como ocupada
-    // 
-    // NOTA: Si hay una sesión abierta pero NO hay pedidos sin pagar, significa que:
-    // 1. La cuenta ya fue pagada (pedidos pasaron a 'paid' y no aparecen en activeOrders)
-    // 2. La sesión no se cerró correctamente (bug del backend o delay)
-    // En ambos casos, la mesa debe mostrarse como DISPONIBLE porque no hay pedidos pendientes
-    console.log(`[TablesStatusGridEnhanced] Mesa ${table.number} está DISPONIBLE (sin pedidos sin pagar, ignorando sesión abierta si existe)`);
-
     // PRIORIDAD 5: Verificar estado del backend SOLO si no hay pedidos sin pagar ni sesión abierta
     // El backend es la fuente de verdad después de pagar
     if (table.status) {
@@ -286,30 +259,30 @@ export default function TablesStatusGridEnhanced({
             Vista en tiempo real del estado de todas las mesas
           </Typography>
         </Box>
-        <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
+        <Box sx={{ display: 'flex', gap: 0.75, flexWrap: 'wrap' }}>
           <Chip
-            icon={<CheckCircleIcon />}
+            icon={<CheckCircleIcon sx={{ fontSize: 18 }} />}
             label="Disponible"
             size="small"
-            sx={{ bgcolor: '#4caf50', color: 'white', fontWeight: 600 }}
+            sx={{ bgcolor: '#4caf50', color: 'white', fontWeight: 600, fontSize: { xs: '0.75rem', sm: '0.8125rem' }, '& .MuiChip-label': { px: 0.75 } }}
           />
           <Chip
-            icon={<RestaurantIcon />}
+            icon={<RestaurantIcon sx={{ fontSize: 18 }} />}
             label="Ocupada"
             size="small"
-            sx={{ bgcolor: '#1976d2', color: 'white', fontWeight: 600 }}
+            sx={{ bgcolor: '#1976d2', color: 'white', fontWeight: 600, fontSize: { xs: '0.75rem', sm: '0.8125rem' }, '& .MuiChip-label': { px: 0.75 } }}
           />
           <Chip
-            icon={<CleaningServicesIcon />}
+            icon={<CleaningServicesIcon sx={{ fontSize: 18 }} />}
             label="Por limpiar"
             size="small"
-            sx={{ bgcolor: '#9c27b0', color: 'white', fontWeight: 600 }}
+            sx={{ bgcolor: '#9c27b0', color: 'white', fontWeight: 600, fontSize: { xs: '0.75rem', sm: '0.8125rem' }, '& .MuiChip-label': { px: 0.75 } }}
           />
           <Chip
-            icon={<NotificationsActiveIcon />}
+            icon={<NotificationsActiveIcon sx={{ fontSize: 18 }} />}
             label="Llamando"
             size="small"
-            sx={{ bgcolor: '#ff1744', color: 'white', fontWeight: 600 }}
+            sx={{ bgcolor: '#ff1744', color: 'white', fontWeight: 600, fontSize: { xs: '0.75rem', sm: '0.8125rem' }, '& .MuiChip-label': { px: 0.75 } }}
           />
         </Box>
       </Box>
@@ -348,12 +321,11 @@ export default function TablesStatusGridEnhanced({
               <Card
                 elevation={0}
                 onClick={() => onTableClick && onTableClick(table)}
-                // Eliminar cualquier title que pueda causar tooltip del navegador
                 title=""
                 sx={{
                   border: `2px solid ${tableStatus.color}`,
                   borderRadius: 2,
-                  p: 2,
+                  p: { xs: 1.25, sm: 1.5, md: 2 },
                   textAlign: 'center',
                   cursor: onTableClick ? 'pointer' : 'default',
                   // Transición solo para box-shadow, todos los colores cambian instantáneamente

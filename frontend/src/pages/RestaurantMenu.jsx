@@ -17,8 +17,15 @@ import {
   Skeleton,
   Fade,
   Grow,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
+  Fab,
 } from '@mui/material';
 import SearchIcon from '@mui/icons-material/Search';
+import SwapHorizIcon from '@mui/icons-material/SwapHoriz';
+import KeyboardArrowUpIcon from '@mui/icons-material/KeyboardArrowUp';
 import { alpha } from '@mui/material/styles';
 import { motion, AnimatePresence } from 'framer-motion';
 
@@ -28,6 +35,8 @@ import { fetchTables, fetchTable } from '../api/tables';
 import { http } from '../api/tenant';
 import useTableSession from '../hooks/useTableSession';
 import StickyFooter from '../components/StickyFooter';
+import { devLog } from '../utils/devLog';
+import { withRetry } from '../utils/retry';
 import QtyStepper from '../components/QtyStepper';
 import TableSelector from '../components/TableSelector';
 
@@ -75,9 +84,25 @@ export default function RestaurantMenu() {
   const [categoriaSeleccionada, setCategoriaSeleccionada] = useState(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [loading, setLoading] = useState(true);
+  const [menuLoadError, setMenuLoadError] = useState(null);
+  const [menuRetryKey, setMenuRetryKey] = useState(0);
   const [isTableValid, setIsTableValid] = useState(undefined); // undefined = chequeando, true = ok, false = no existe
 
   const { items, addItem, removeItem } = useCart();
+  const [changeTableDialog, setChangeTableDialog] = useState(false);
+  const [showScrollTop, setShowScrollTop] = useState(false);
+
+  useEffect(() => {
+    const onScroll = () => setShowScrollTop(window.scrollY > 300);
+    window.addEventListener('scroll', onScroll, { passive: true });
+    return () => window.removeEventListener('scroll', onScroll);
+  }, []);
+
+  useEffect(() => {
+    const base = nombreRestaurante || slug || 'Menú';
+    document.title = table ? `${base} | Mesa ${table}` : `${base} | MozoQR`;
+    return () => { document.title = 'MozoQR'; };
+  }, [nombreRestaurante, slug, table]);
 
   // Filtrar productos según búsqueda
   const productosFiltrados = useMemo(() => {
@@ -105,18 +130,15 @@ export default function RestaurantMenu() {
 
   // Función para obtener categorías desde Strapi
   const fetchCategorias = async (restaurantSlug) => {
-    // Primero intentar el endpoint namespaced (público)
     try {
-      const { data } = await http.get(`/restaurants/${restaurantSlug}/menus`);
-      console.log('✅ Response from /restaurants/menus:', data);
+      const { data } = await withRetry(
+        () => http.get(`/restaurants/${restaurantSlug}/menus`),
+        { maxRetries: 2, delayMs: 1500 }
+      );
 
       // El endpoint devuelve: { data: { restaurant: {...}, categories: [...] } }
       const categories = data?.data?.categories || [];
-      console.log('Categories found:', categories.length, categories);
-      
-      // Contar total de productos en todas las categorías
       const totalProductos = categories.reduce((sum, cat) => sum + (cat.productos?.length || 0), 0);
-      console.log(`Total productos en categorías: ${totalProductos}`);
 
       if (categories.length === 0) {
         console.warn('⚠️ No se encontraron categorías en el endpoint namespaced');
@@ -158,10 +180,7 @@ export default function RestaurantMenu() {
           slug: cat.slug,
           productos: productosCat || [],
         };
-      }); // No filtrar - mostrar todas las categorías, incluso si no tienen productos
-
-      console.log('Mapped categories:', categoriasMapeadas);
-      console.log('Categories with products:', categoriasMapeadas.map(c => ({ name: c.name, count: c.productos.length })));
+      });
       return categoriasMapeadas;
     } catch (err) {
       console.error('❌ Error obteniendo categorías desde endpoint namespaced:', err);
@@ -212,50 +231,40 @@ export default function RestaurantMenu() {
   useEffect(() => {
     let cancelled = false;
 
-    async function openTableSession() {
-      // Intentar abrir sesión directamente. El backend validará si la mesa existe.
-      // No dependemos de isTableValid porque fetchTables puede fallar por permisos en vista pública.
-      if (!table || !slug) {
-        return;
-      }
+    async function openTableSession(retryCount = 0) {
+      if (!table || !slug) return;
+      const maxRetries = 2;
 
       try {
-        console.log(`[RestaurantMenu] Abriendo sesión para Mesa ${table}...`);
+        devLog(`[RestaurantMenu] Abriendo sesión para Mesa ${table}${retryCount > 0 ? ` (reintento ${retryCount})` : ''}...`);
         const result = await openSession(slug, { table, tableSessionId });
-        console.log(`[RestaurantMenu] ✅ Sesión abierta para Mesa ${table}:`, result);
-
-        // Verificar que la sesión se abrió correctamente
+        devLog(`[RestaurantMenu] Sesión abierta para Mesa ${table}`, result);
         if (result?.status === 'ignored' || result?.status === 'partial') {
-          console.warn(`[RestaurantMenu] ⚠️ Sesión para Mesa ${table} tuvo estado: ${result.status}. Mensaje: ${result.message}`);
+          console.warn(`[RestaurantMenu] ⚠️ Sesión para Mesa ${table} tuvo estado: ${result.status}`);
         }
       } catch (err) {
-        // Si falla, intentar de nuevo después de un momento
-        // Esto es importante porque marca la mesa como ocupada
         if (err?.response?.status === 409) {
-          // Mesa no disponible o ya ocupada por otra sesión
-          console.warn(`[RestaurantMenu] ⚠️ No se pudo ocupar Mesa ${table} (409). Volviendo al selector...`);
-          navigate(`/${slug}/menu`);
-          return;
-        } else if (err?.response?.status === 404) {
-          console.warn(`[RestaurantMenu] ⚠️ Mesa ${table} no existe/configurada (404). Volviendo al selector...`);
-          navigate(`/${slug}/menu`);
-          return;
-        } else {
-          console.error(`[RestaurantMenu] ❌ Error al abrir sesión de mesa ${table}:`, err?.response?.data || err?.message || err);
-          // Reintentar después de 1 segundo si no fue un error de permisos
-          if (err?.response?.status !== 403) {
-            setTimeout(async () => {
-              if (!cancelled) {
-                try {
-                  console.log(`[RestaurantMenu] Reintentando abrir sesión para Mesa ${table}...`);
-                  await openSession(slug, { table, tableSessionId });
-                  console.log(`[RestaurantMenu] ✅ Sesión abierta en reintento para Mesa ${table}`);
-                } catch (retryErr) {
-                  console.error(`[RestaurantMenu] ❌ Error en reintento para Mesa ${table}:`, retryErr?.response?.data || retryErr?.message);
-                }
-              }
-            }, 1000);
+          // Mesa ocupada: reintentar hasta maxRetries (puede ser race condition)
+          if (retryCount < maxRetries) {
+            console.warn(`[RestaurantMenu] Mesa ${table} ocupada (409), reintentando en 1.5s...`);
+            await new Promise(r => setTimeout(r, 1500));
+            if (!cancelled) return openTableSession(retryCount + 1);
+          } else {
+            console.warn(`[RestaurantMenu] No se pudo ocupar Mesa ${table} después de ${maxRetries + 1} intentos.`);
+            navigate(`/${slug}/menu`);
           }
+          return;
+        }
+        if (err?.response?.status === 404) {
+          console.warn(`[RestaurantMenu] Mesa ${table} no existe (404).`);
+          navigate(`/${slug}/menu`);
+          return;
+        }
+        // Otros errores: reintentar una vez
+        console.error(`[RestaurantMenu] Error al abrir sesión Mesa ${table}:`, err?.response?.data || err?.message);
+        if (retryCount < maxRetries && err?.response?.status !== 403) {
+          await new Promise(r => setTimeout(r, 1500));
+          if (!cancelled) return openTableSession(retryCount + 1);
         }
       }
     }
@@ -271,15 +280,15 @@ export default function RestaurantMenu() {
     };
   }, [slug, table, tableSessionId, navigate]);
 
-  // POLLING DE "KICK": Verificar si el cliente debe ser expulsado
-  // REGLA: Expulsar cuando:
-  // 1. La sesión está cerrada (status: 'closed' o 'paid') - verificación directa más confiable
-  // 2. O cuando la mesa está disponible Y NO hay pedidos activos
-  // Esto ocurre cuando se cierra/paga una sesión desde el mostrador
+  // POLLING DE "KICK": Expulsar solo si el staff cerró la sesión desde el mostrador.
+  // NO kickear en los primeros 6 segundos: da tiempo al claim y evita falsos positivos.
   useEffect(() => {
     if (!slug || !table || !tableSessionId) return;
 
+    const enteredAt = Date.now();
+
     const checkIfShouldEject = async () => {
+      if ((Date.now() - enteredAt) / 1000 < 6) return;
       try {
         // Método 1: Verificar directamente el estado de la sesión usando tableSessionId
         // Esto es más confiable porque verifica la sesión específica del cliente
@@ -296,14 +305,12 @@ export default function RestaurantMenu() {
             
             // Si la sesión está cerrada o pagada, expulsar inmediatamente
             if (sessionStatus === 'closed' || sessionStatus === 'paid') {
-              console.log(`[RestaurantMenu] 🛑 KICK: Sesión ${tableSessionId} está ${sessionStatus}. Redirigiendo al selector...`);
+              devLog(`[RestaurantMenu] KICK: Sesión ${tableSessionId} ${sessionStatus}`);
               navigate(`/${slug}/menu`);
               return;
             }
           } else {
-            // Si no se encuentra la sesión, puede que haya sido eliminada o cerrada
-            // Verificar con el método 2
-            console.log(`[RestaurantMenu] Sesión ${tableSessionId} no encontrada, verificando por mesa...`);
+            devLog(`[RestaurantMenu] Sesión ${tableSessionId} no encontrada`);
           }
         } catch (sesionErr) {
           // Si no se puede verificar la sesión (403, 404, etc.), continuar con el método 2
@@ -313,32 +320,15 @@ export default function RestaurantMenu() {
           }
         }
 
-        // Método 2: Verificar estado de la mesa y pedidos activos (método principal)
-        // Este método es más confiable porque usa endpoints públicos
-        const myMesa = await fetchTable(slug, table);
-        if (!myMesa) {
-          console.log(`[RestaurantMenu] No se pudo obtener estado de mesa ${table}`);
-          return; // conservador: si no se puede obtener, no expulsar
-        }
-        
-        console.log(`[RestaurantMenu] Polling: Mesa ${table} status=${myMesa.status}`);
-        
-        // Si la mesa está disponible, verificar si hay pedidos activos
-        if (myMesa.status === 'disponible') {
-          const { hasOpenAccount } = await import('../api/tenant');
-          const hasActiveOrders = await hasOpenAccount(slug, { table, tableSessionId });
-          
-          console.log(`[RestaurantMenu] Polling: Mesa ${table} disponible, hasActiveOrders=${hasActiveOrders}`);
-          
-          // Si NO hay pedidos activos Y la mesa está disponible => la sesión fue cerrada desde el mostrador
-          if (!hasActiveOrders) {
-            console.log(`[RestaurantMenu] 🛑 KICK: Mesa ${table} disponible + sin pedidos activos (sesión cerrada desde mostrador). Redirigiendo al selector...`);
-            navigate(`/${slug}/menu`);
-            return;
-          }
-        } else {
-          // Mesa sigue ocupada, no expulsar
-          console.log(`[RestaurantMenu] Polling: Mesa ${table} sigue ${myMesa.status}, no expulsar`);
+        // Método 2 (deshabilitado): "mesa disponible + sin pedidos" causaba kicks falsos al entrar.
+        // Solo usamos Método 1 (sesión closed/paid). Si el staff cierra desde mostrador,
+        // la sesión pasa a closed y Método 1 la detecta.
+        // Dejamos el fetch solo para logs; no kickeamos por este camino.
+        try {
+          const myMesa = await fetchTable(slug, table);
+          if (myMesa) devLog(`[RestaurantMenu] Mesa ${table} status=${myMesa.status}`);
+        } catch (_e) {
+          // ignorar
         }
       } catch (err) {
         console.warn("[RestaurantMenu] Error polling table status:", err);
@@ -346,19 +336,19 @@ export default function RestaurantMenu() {
       }
     };
 
-    // Ejecutar inmediatamente y luego cada 2 segundos para detectar cambios más rápido
+    // Solo kickeamos si la sesión está closed/paid (Método 1). Safe ejecutar inmediatamente.
     checkIfShouldEject();
-    const interval = setInterval(checkIfShouldEject, 2000); // Check every 2s (más responsivo)
+    const interval = setInterval(checkIfShouldEject, 2000);
     return () => clearInterval(interval);
   }, [slug, table, tableSessionId, navigate]);
 
   useEffect(() => {
     async function loadMenu() {
       setLoading(true);
+      setMenuLoadError(null);
       try {
         // Obtener categorías con productos
         const categoriasData = await fetchCategorias(slug);
-        console.log('Categorías obtenidas:', categoriasData);
         setCategorias(categoriasData);
 
         // Obtener nombre del restaurante desde el endpoint de categorías primero
@@ -391,20 +381,12 @@ export default function RestaurantMenu() {
           const todosLosProductos = categoriasData.flatMap((cat) => cat.productos || []);
           setProductosTodos(todosLosProductos);
           setProductos(todosLosProductos);
-          setCategoriaSeleccionada(null); // Ninguna categoría seleccionada inicialmente
-          console.log('✅ Categorías cargadas:', categoriasData.length, 'Total productos:', todosLosProductos.length);
-          categoriasData.forEach((cat) => {
-            console.log(`  - ${cat.name}: ${cat.productos?.length || 0} productos`);
-          });
+          setCategoriaSeleccionada(null);
         } else {
-          // Fallback: usar el método anterior si no hay categorías
-          console.log('No hay categorías del endpoint namespaced, usando fallback de fetchMenus');
           const menus = await fetchMenus(slug);
 
           // NUEVO: Si fetchMenus nos devuelve categorías reconstruidas, las usamos
           if (menus?.categories && menus.categories.length > 0) {
-            console.log('✅ Usando categorías reconstruidas del fallback:', menus.categories.length);
-
             // Mapear propiedades de inglés (tenant.js) a español (RestaurantMenu.jsx)
             const categoriasMapeadas = menus.categories.map(cat => ({
               ...cat,
@@ -457,7 +439,7 @@ export default function RestaurantMenu() {
               };
             });
 
-            console.log('Productos del fallback (sin categorías):', productosProcesados.length);
+            devLog('Productos del fallback (sin categorías):', productosProcesados.length);
             setProductosTodos(productosProcesados);
             setProductos(productosProcesados);
           }
@@ -475,7 +457,7 @@ export default function RestaurantMenu() {
             const todosLosProductos = menus.categories.flatMap((cat) => cat.productos || []);
             setProductosTodos(todosLosProductos);
             setProductos(todosLosProductos);
-            console.log('✅ Categorías cargadas desde fallback:', menus.categories.length);
+            devLog('Categorías cargadas desde fallback:', menus.categories.length);
           } else {
             // Fallback antiguo: lista plana
             const baseApi = (import.meta.env?.VITE_API_URL || '').replace('/api', '');
@@ -508,6 +490,7 @@ export default function RestaurantMenu() {
           console.error('Error en fallback completo:', fallbackErr);
           setProductos([]);
           setProductosTodos([]);
+          setMenuLoadError(fallbackErr?.message || 'No se pudo cargar el menú. Revisá tu conexión.');
         }
       } finally {
         setLoading(false);
@@ -515,7 +498,12 @@ export default function RestaurantMenu() {
     }
 
     loadMenu();
-  }, [slug]);
+  }, [slug, menuRetryKey]);
+
+  const retryLoadMenu = () => {
+    setMenuLoadError(null);
+    setMenuRetryKey((k) => k + 1);
+  };
 
   // Manejar cambio de categoría
   const handleCategoriaClick = (categoriaId) => {
@@ -639,10 +627,24 @@ export default function RestaurantMenu() {
           mt: 8,
         }}
       >
-        <Typography variant="h6" color="text.secondary">
-          No se encontró el restaurante o no tiene productos disponibles.
-        </Typography>
-        <StickyFooter table={table} tableSessionId={tableSessionId} />
+        {menuLoadError ? (
+          <>
+            <Typography variant="h6" color="error" sx={{ mb: 2 }}>
+              Error al cargar el menú
+            </Typography>
+            <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
+              {menuLoadError}
+            </Typography>
+            <Button variant="contained" onClick={retryLoadMenu} sx={{ textTransform: 'none' }}>
+              Reintentar
+            </Button>
+          </>
+        ) : (
+          <Typography variant="h6" color="text.secondary">
+            No se encontró el restaurante o no tiene productos disponibles.
+          </Typography>
+        )}
+        <StickyFooter table={table} tableSessionId={tableSessionId} restaurantName={nombreRestaurante} />
       </Container>
     );
   }
@@ -719,6 +721,24 @@ export default function RestaurantMenu() {
           >
             Elegí tus platos favoritos
           </Typography>
+          {table && (
+            <Button
+              size="small"
+              onClick={() => (items.length > 0 ? setChangeTableDialog(true) : navigate(`/${slug}/menu`))}
+              startIcon={<SwapHorizIcon sx={{ fontSize: 16 }} />}
+              sx={{
+                mt: 1,
+                textTransform: 'none',
+                color: 'text.secondary',
+                fontSize: '0.75rem',
+                minWidth: 0,
+                px: 0.5,
+                '&:hover': { color: 'primary.main', bgcolor: 'transparent' },
+              }}
+            >
+              Mesa {table} · Cambiar
+            </Button>
+          )}
         </Box>
 
         {/* Barra de búsqueda */}
@@ -726,6 +746,7 @@ export default function RestaurantMenu() {
           <TextField
             fullWidth
             placeholder="Buscar productos..."
+            aria-label="Buscar productos en el menú"
             value={searchQuery}
             onChange={(e) => {
               setSearchQuery(e.target.value);
@@ -1193,8 +1214,41 @@ export default function RestaurantMenu() {
         <Box sx={{ height: { xs: 120, sm: 140 } }} />
 
         {/* Footer con resumen y confirmación */}
-        <StickyFooter table={table} tableSessionId={tableSessionId} />
+        <StickyFooter table={table} tableSessionId={tableSessionId} restaurantName={nombreRestaurante} />
+
+        {/* Diálogo confirmar cambiar mesa */}
+        <Dialog open={changeTableDialog} onClose={() => setChangeTableDialog(false)} maxWidth="xs" fullWidth>
+          <DialogTitle>Cambiar de mesa</DialogTitle>
+          <DialogContent>
+            <Typography variant="body2" color="text.secondary">
+              Tenés {items.length} {items.length === 1 ? 'ítem' : 'ítems'} en el carrito. Al cambiar de mesa se pierde el carrito actual. ¿Continuar?
+            </Typography>
+          </DialogContent>
+          <DialogActions>
+            <Button onClick={() => setChangeTableDialog(false)}>Cancelar</Button>
+            <Button variant="contained" color="primary" onClick={() => { setChangeTableDialog(false); navigate(`/${slug}/menu`); }}>
+              Cambiar mesa
+            </Button>
+          </DialogActions>
+        </Dialog>
       </Container>
+
+      {showScrollTop && (
+        <Fab
+          size="small"
+          color="primary"
+          onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}
+          sx={{
+            position: 'fixed',
+            bottom: 100,
+            right: 16,
+            zIndex: 1200,
+          }}
+          aria-label="Volver arriba"
+        >
+          <KeyboardArrowUpIcon />
+        </Fab>
+      )}
     </Box>
   );
 }

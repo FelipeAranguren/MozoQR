@@ -2,7 +2,7 @@ import React from "react";
 import { Button } from "@mui/material";
 import { FcGoogle } from "react-icons/fc"; // icono de Google
 
-const STRAPI_URL = import.meta.env.VITE_STRAPI_URL || "http://localhost:1337/api";
+const STRAPI_URL = import.meta.env?.VITE_STRAPI_URL || "http://localhost:1337/api";
 
 // Claves consistentes
 const LS_JWT_KEY = "strapi_jwt";

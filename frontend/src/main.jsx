@@ -4,6 +4,7 @@ import { createRoot } from 'react-dom/client';
 import './index.css';
 
 import App from './App';
+import ErrorBoundary from './components/ErrorBoundary';
 
 // MUI Theme
 import { ThemeProvider } from '@mui/material/styles';
@@ -19,11 +20,13 @@ const root = createRoot(container);
 
 root.render(
   <React.StrictMode>
-    <ThemeProvider theme={theme}>
-      <CssBaseline />
-      <CartProvider>
-        <App />
-      </CartProvider>
-    </ThemeProvider>
+    <ErrorBoundary>
+      <ThemeProvider theme={theme}>
+        <CssBaseline />
+        <CartProvider>
+          <App />
+        </CartProvider>
+      </ThemeProvider>
+    </ErrorBoundary>
   </React.StrictMode>
 );

@@ -2,7 +2,7 @@ import React, { createContext, useContext, useEffect, useState } from "react";
 
 const AuthContext = createContext(null);
 // Los endpoints de auth están bajo /api
-const API_URL = import.meta.env.VITE_API_URL || import.meta.env.VITE_STRAPI_URL || "http://localhost:1337/api";
+const API_URL = import.meta.env?.VITE_API_URL || import.meta.env?.VITE_STRAPI_URL || "http://localhost:1337/api";
 
 export function AuthProvider({ children }) {
   const [jwt, setJwt] = useState(null);

@@ -59,6 +59,12 @@ export default {
     },
     {
       method: 'POST',
+      path: '/restaurants/:slug/tables/force-release-all',
+      handler: 'tenant.forceReleaseAllTables',
+      config: { auth: {}, policies: ['global::by-restaurant-owner'], middlewares: [] },
+    },
+    {
+      method: 'POST',
       path: '/restaurants/:slug/reset-tables',
       handler: 'tenant.resetTables',
       config: { policies: [], middlewares: [], auth: false },

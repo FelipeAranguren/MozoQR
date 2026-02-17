@@ -59,19 +59,11 @@ export default function OwnerRouteGuard({ children }) {
     (async () => {
       try {
         const url = `${BASE_URL}/api/owner/${slug}/authz-check`;
-        console.log('[OwnerRouteGuard] Checking access:', { slug, url });
-        
         const res = await fetch(url, {
           headers: { Authorization: `Bearer ${token}` },
         });
         
         const data = await res.json().catch(() => ({}));
-        
-        console.log('[OwnerRouteGuard] Response:', { 
-          status: res.status, 
-          ok: res.ok, 
-          data 
-        });
         
         if (!cancelled) {
           if (res.ok) {

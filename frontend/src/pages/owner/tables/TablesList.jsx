@@ -20,6 +20,7 @@ import {
 } from '@mui/material';
 import AddIcon from '@mui/icons-material/Add';
 import EditIcon from '@mui/icons-material/Edit';
+import OpenInNewIcon from '@mui/icons-material/OpenInNew';
 import DeleteIcon from '@mui/icons-material/Delete';
 import TableRestaurantIcon from '@mui/icons-material/TableRestaurant';
 import CheckCircleIcon from '@mui/icons-material/CheckCircle';
@@ -192,21 +193,32 @@ export default function TablesList() {
       )}
 
       {/* Lista de mesas con su estado en tiempo real */}
-      <Box sx={{ mb: 3, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+      <Box sx={{ mb: 3, display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 1 }}>
         <Typography variant="body2" color="text.secondary">
           {tables.length} mesa{tables.length !== 1 ? 's' : ''} configurada{tables.length !== 1 ? 's' : ''}
         </Typography>
-        <Button
-          variant="contained"
-          startIcon={<AddIcon />}
-          onClick={() => handleOpenDialog()}
-          sx={{
-            bgcolor: MARANA_COLORS.primary,
-            '&:hover': { bgcolor: MARANA_COLORS.primary }
-          }}
-        >
-          Nueva Mesa
-        </Button>
+        <Box sx={{ display: 'flex', gap: 1 }}>
+          <Button
+            variant="outlined"
+            size="small"
+            startIcon={<OpenInNewIcon />}
+            onClick={() => window.open(`/${slug}/menu`, '_blank', 'noopener,noreferrer')}
+            sx={{ textTransform: 'none' }}
+          >
+            Ver menú
+          </Button>
+          <Button
+            variant="contained"
+            startIcon={<AddIcon />}
+            onClick={() => handleOpenDialog()}
+            sx={{
+              bgcolor: MARANA_COLORS.primary,
+              '&:hover': { bgcolor: MARANA_COLORS.primary }
+            }}
+          >
+            Nueva Mesa
+          </Button>
+        </Box>
       </Box>
 
       {tables.length === 0 ? (

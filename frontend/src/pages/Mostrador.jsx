@@ -10,7 +10,7 @@ import {
   Divider, Grid, TextField, InputAdornment, Snackbar, Alert,
   Dialog, DialogTitle, DialogContent, DialogContentText, DialogActions,
   Chip, Drawer, IconButton, MenuItem, Select, FormControl,
-  InputLabel
+  InputLabel, Tooltip, CircularProgress
 } from '@mui/material';
 import AccessTimeIcon from '@mui/icons-material/AccessTime';
 import RestaurantIcon from '@mui/icons-material/Restaurant';
@@ -26,6 +26,10 @@ import FreeBreakfastIcon from '@mui/icons-material/FreeBreakfast';
 import TableRestaurantIcon from '@mui/icons-material/TableRestaurant';
 import CheckCircleIcon from '@mui/icons-material/CheckCircle';
 import CleaningServicesIcon from '@mui/icons-material/CleaningServices';
+import ReceiptIcon from '@mui/icons-material/Receipt';
+import RefreshIcon from '@mui/icons-material/Refresh';
+import ContentCopyIcon from '@mui/icons-material/ContentCopy';
+import ReceiptDialog from '../components/ReceiptDialog';
 
 const money = (n) =>
   new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS' })
@@ -52,10 +56,13 @@ export default function Mostrador() {
   const [snack, setSnack] = useState({ open: false, msg: '', severity: 'info' });
   const [payDialog, setPayDialog] = useState({ open: false, cuenta: null, loading: false, discount: 0, discountType: 'percent', closeWithoutPayment: false });
   const [orderDetailDialog, setOrderDetailDialog] = useState({ open: false, pedido: null });
-  const [completeOrderDialog, setCompleteOrderDialog] = useState({ open: false, pedido: null, staffNotes: '' });
+  const [completeOrderDialog, setCompleteOrderDialog] = useState({ open: false, pedido: null, staffNotes: '', loading: false });
   const [cancelOrderDialog, setCancelOrderDialog] = useState({ open: false, pedido: null, reason: '' });
   const [tableDetailDialog, setTableDetailDialog] = useState({ open: false, mesa: null });
   const [cleanupDialog, setCleanupDialog] = useState({ open: false, loading: false });
+  const [receiptDialog, setReceiptDialog] = useState({ open: false, data: null });
+  const [lastUpdateAt, setLastUpdateAt] = useState(null);
+  const [refreshing, setRefreshing] = useState(false);
 
   // ----- refs auxiliares (SOLO AQUÍ ARRIBA; no dentro de funciones) -----
   const pedidosRef = useRef([]);
@@ -662,8 +669,11 @@ export default function Mostrador() {
 
       const ordenados = ordenarActivos(conItems);
 
-      // visibles: solo activos
-      const visibles = ordenados.filter((p) => isActive(p.order_status) && !servingIdsRef.current.has(p.id));
+      // visibles: activos + served (para mostrar en columnas Pendientes, Cocina y Listos)
+      const visibles = ordenados.filter((p) =>
+        (isActive(p.order_status) || p.order_status === 'served') &&
+        !servingIdsRef.current.has(p.id)
+      );
 
       if (pendingBeforeHistoryRef.current.size > 0) {
         pendingBeforeHistoryRef.current.forEach((id) => seenIdsRef.current.add(id));
@@ -746,9 +756,17 @@ export default function Mostrador() {
 
       setCuentas(filtradas);
       setError(null);
+      setLastUpdateAt(new Date());
     } catch (err) {
       setError('No se pudieron cargar los pedidos.');
     }
+  };
+
+  const handleRefresh = async () => {
+    setRefreshing(true);
+    await Promise.all([fetchPedidos(), fetchMesas(), fetchOpenSessions(), fetchActiveOrdersForTables()]);
+    setRefreshing(false);
+    setSnack({ open: true, msg: 'Datos actualizados', severity: 'info' });
   };
 
   // ----- polling -----
@@ -986,10 +1004,37 @@ export default function Mostrador() {
       }
     } catch (err) {
       console.error(`[liberarMesa] Error:`, err);
-      setSnack({ open: true, msg: `No se pudo liberar la mesa ❌: ${err?.response?.data?.error || err?.message || 'Error desconocido'}`, severity: 'error' });
-      // Refrescar mesas por si acaso
+      const status = err?.response?.status;
+      const msg = status === 403
+        ? 'Sin permiso para liberar mesas. Verificá que tu usuario sea owner o staff del restaurante.'
+        : (err?.response?.data?.error?.message || err?.response?.data?.error || err?.message || 'Error desconocido');
+      setSnack({ open: true, msg: `No se pudo liberar la mesa ❌: ${msg}`, severity: 'error' });
       await fetchMesas();
     }
+  };
+
+  // Liberar todas las mesas (sin tocar pedidos) - usa close-session como el cleanup
+  const cuentaToReceiptData = (cuenta) => {
+    if (!cuenta) return null;
+    const items = [];
+    (cuenta.pedidos || []).forEach((p) => {
+      (p.items || []).forEach((it) => {
+        const qty = Number(it.quantity || it.qty || 1) || 1;
+        const total = Number(it.totalPrice ?? it.total ?? 0) || 0;
+        const name = it.product?.name || it.productName || 'Producto';
+        items.push({ name, quantity: qty, totalPrice: total, unitPrice: total / qty });
+      });
+    });
+    return {
+      restaurant: { name: slug || 'Restaurante' },
+      mesaNumber: cuenta.mesaNumber,
+      items: items.length > 0 ? items : [{ name: 'Cuenta', quantity: 1, totalPrice: cuenta.total, unitPrice: cuenta.total }],
+      subtotal: cuenta.total,
+      discount: 0,
+      total: cuenta.total,
+      paidAt: cuenta.lastUpdated || new Date(),
+      paymentMethod: '—',
+    };
   };
 
   // Limpiar sesiones antiguas
@@ -1531,6 +1576,7 @@ export default function Mostrador() {
         updateCachedView(next);
         return next;
       });
+      throw err;
     }
   };
 
@@ -1729,6 +1775,12 @@ export default function Mostrador() {
     () => pedidosFiltrados.filter((p) => isSystemOrder(p) && isActive(p.order_status)),
     [pedidosFiltrados]
   );
+  const pedidosListos = useMemo(
+    () => pedidosFiltrados
+      .filter((p) => p.order_status === 'served' && !isSystemOrder(p))
+      .sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt)), // Más antiguo primero (FIFO para servir)
+    [pedidosFiltrados]
+  );
   const cuentasFiltradas = useMemo(
     () => cuentas.filter(cuentaMatchesMesaPartial),
     [cuentas, mesaTokens]
@@ -1860,7 +1912,7 @@ export default function Mostrador() {
           },
         }}
       >
-        <CardContent sx={{ p: 1.25, '&:last-child': { pb: 1.25 } }}>
+        <CardContent sx={{ p: { xs: 1.25, sm: 1.5 }, '&:last-child': { pb: 1.5 } }}>
           <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 1 }}>
             <Chip
               label={`Mesa ${mesaNumero ?? 's/n'}`}
@@ -1869,8 +1921,8 @@ export default function Mostrador() {
                 fontWeight: 600,
                 bgcolor: getMesaColor(mesaNumero),
                 color: 'white',
-                fontSize: '0.75rem',
-                height: 22,
+                fontSize: { xs: '0.75rem', sm: '0.8125rem' },
+                height: 24,
               }}
             />
             <Typography variant="body2" sx={{ color: 'text.secondary', fontSize: '0.75rem' }}>
@@ -1952,12 +2004,14 @@ export default function Mostrador() {
             fullWidth
             size="small"
             sx={{
-              mt: 0.75,
-              borderRadius: 1,
+              mt: 1,
+              borderRadius: 1.5,
               textTransform: 'none',
               fontWeight: 600,
-              fontSize: '0.8125rem',
-              py: 0.5,
+              fontSize: { xs: '0.8125rem', sm: '0.875rem' },
+              py: 0.75,
+              px: 1.5,
+              minHeight: 36,
             }}
           >
             Atendido
@@ -2000,8 +2054,8 @@ export default function Mostrador() {
           },
         }}
       >
-        <CardContent sx={{ p: 1, '&:last-child': { pb: 1 }, flex: 1, display: 'flex', flexDirection: 'column' }}>
-          <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 0.75 }}>
+        <CardContent sx={{ p: { xs: 1.5, sm: 2 }, '&:last-child': { pb: 1.5 }, flex: 1, display: 'flex', flexDirection: 'column' }}>
+          <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 1 }}>
             <Chip
               label={`Mesa ${mesaNumero ?? 's/n'}`}
               size="small"
@@ -2009,8 +2063,8 @@ export default function Mostrador() {
                 fontWeight: 600,
                 bgcolor: getMesaColor(mesaNumero),
                 color: 'white',
-                fontSize: '0.7rem',
-                height: 20,
+                fontSize: { xs: '0.75rem', sm: '0.8125rem' },
+                height: 22,
                 '&:hover': {
                   bgcolor: getMesaColor(mesaNumero),
                   opacity: 0.9,
@@ -2057,7 +2111,7 @@ export default function Mostrador() {
               {items.map((item) => {
                 const prod = item?.product;
                 return (
-                  <Typography key={item.id} variant="body2" sx={{ mb: 0.2, fontSize: '0.75rem', lineHeight: 1.3 }}>
+                  <Typography key={item.id} variant="body2" sx={{ mb: 0.5, fontSize: { xs: '0.8125rem', sm: '0.875rem' }, lineHeight: 1.5 }}>
                     {item.quantity}x {prod?.name || 'Producto sin datos'}
                   </Typography>
                 );
@@ -2071,91 +2125,101 @@ export default function Mostrador() {
 
           <Typography
             variant="subtitle2"
-            sx={{ textAlign: 'right', mt: 0.75, mb: 0.5, fontWeight: 600, fontSize: '0.85rem' }}
+            sx={{ textAlign: 'right', mt: 1, mb: 0.5, fontWeight: 600, fontSize: '0.9rem' }}
           >
             {money(total)}
           </Typography>
 
           {isHistory ? (
-            // En historial: solo botón Ver
             <Button
               variant="outlined"
               size="small"
-              startIcon={<VisibilityIcon />}
+              startIcon={<VisibilityIcon sx={{ fontSize: 18 }} />}
               onClick={(e) => {
                 e.stopPropagation();
                 setOrderDetailDialog({ open: true, pedido });
               }}
               fullWidth
-              sx={{ mt: 0.75, textTransform: 'none', fontSize: '0.75rem' }}
+              sx={{ mt: 1.5, textTransform: 'none', fontSize: { xs: '0.8125rem', sm: '0.875rem' }, py: 0.75, px: 2 }}
             >
               Ver detalles
             </Button>
           ) : (
-            // En vista activa: botones de acción
             <>
-              <Box sx={{ display: 'flex', gap: 0.5, mt: 0.75 }}>
-                <Button
-                  variant="outlined"
-                  size="small"
-                  startIcon={<VisibilityIcon />}
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    setOrderDetailDialog({ open: true, pedido });
-                  }}
-                  sx={{ flex: 1, textTransform: 'none', fontSize: '0.75rem' }}
-                >
-                  Ver
-                </Button>
-                {(order_status === 'pending' || order_status === 'preparing') && (
-                  <Button
-                    variant="outlined"
+              <Box
+                sx={{
+                  display: 'flex',
+                  gap: 0.5,
+                  mt: 1.5,
+                  alignItems: 'center',
+                }}
+              >
+                <Tooltip title="Ver" placement="top">
+                  <IconButton
                     size="small"
-                    color="error"
-                    startIcon={<CancelIcon />}
                     onClick={(e) => {
                       e.stopPropagation();
-                      setCancelOrderDialog({ open: true, pedido, reason: '' });
+                      setOrderDetailDialog({ open: true, pedido });
                     }}
-                    sx={{ textTransform: 'none', fontSize: '0.75rem' }}
+                    sx={{
+                      color: 'text.secondary',
+                      minWidth: 36,
+                      minHeight: 36,
+                      '&:hover': {
+                        bgcolor: 'action.hover',
+                        color: 'primary.main',
+                      },
+                    }}
                   >
-                    Cancelar
-                  </Button>
+                    <VisibilityIcon sx={{ fontSize: 20 }} />
+                  </IconButton>
+                </Tooltip>
+                {(order_status === 'pending' || order_status === 'preparing') && (
+                  <Tooltip title="Cancelar" placement="top">
+                    <IconButton
+                      size="small"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setCancelOrderDialog({ open: true, pedido, reason: '' });
+                      }}
+                      sx={{
+                        color: 'text.secondary',
+                        minWidth: 36,
+                        minHeight: 36,
+                        '&:hover': {
+                          bgcolor: 'error.light',
+                          color: 'error.main',
+                        },
+                      }}
+                    >
+                      <CancelIcon sx={{ fontSize: 20 }} />
+                    </IconButton>
+                  </Tooltip>
                 )}
               </Box>
 
               <Button
-                variant={order_status === 'pending' ? 'contained' : 'outlined'}
-                color={order_status === 'pending' ? 'primary' : undefined}
+                variant="contained"
+                color={order_status === 'pending' ? 'primary' : 'success'}
                 onClick={(e) => {
                   e.stopPropagation();
                   if (order_status === 'pending') {
                     marcarComoRecibido(pedido);
                   } else if (order_status === 'preparing') {
-                    setCompleteOrderDialog({ open: true, pedido, staffNotes: '' });
+                    setCompleteOrderDialog({ open: true, pedido, staffNotes: '', loading: false });
                   }
                 }}
                 fullWidth
                 size="small"
                 sx={{
-                  mt: 0.5,
-                  borderRadius: 1,
+                  mt: 1,
+                  borderRadius: 1.5,
                   textTransform: 'none',
                   fontWeight: 600,
-                  fontSize: '0.75rem',
-                  py: 0.4,
-                  ...(order_status === 'preparing' && {
-                    bgcolor: 'white',
-                    color: '#f57c00',
-                    borderColor: '#f57c00',
-                    borderWidth: 1.5,
-                    borderStyle: 'solid',
-                    '&:hover': {
-                      bgcolor: 'rgba(245, 124, 0, 0.08)',
-                      borderColor: '#f57c00',
-                      borderWidth: 1.5,
-                    },
-                  }),
+                  fontSize: { xs: '0.8125rem', sm: '0.875rem' },
+                  py: 0.75,
+                  minHeight: 40,
+                  px: 2,
                 }}
               >
                 {order_status === 'pending' ? 'Cocinar' : 'Completado'}
@@ -2171,32 +2235,23 @@ export default function Mostrador() {
   return (
     <Box
       sx={{
-        zoom: 0.85,
-        p: { xs: 2, md: 3 },
-        // Prevenir scrollbars horizontales que causan desplazamiento
+        p: { xs: 1.5, sm: 2, md: 3 },
         overflowX: 'hidden',
         width: '100%',
-        // Asegurar que el contenido no se desplace
-        position: 'relative',
-        // Prevenir que aparezcan scrollbars verticales dinámicos
-        // Esto evita que el ancho del viewport cambie
-        '& *': {
-          // Asegurar que ningún elemento cause scrollbars
-          boxSizing: 'border-box',
-        }
+        minHeight: '100vh',
+        boxSizing: 'border-box',
+        '& *': { boxSizing: 'border-box' },
       }}
     >
-      {/* Encabezado minimal + barrita */}
-      <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, flexWrap: 'wrap', mb: 1 }}>
-        <Box sx={{ flexGrow: 1 }}>
+      {/* Encabezado */}
+      <Box sx={{ display: 'flex', flexDirection: { xs: 'column', sm: 'row' }, alignItems: { xs: 'stretch', sm: 'center' }, gap: 2, flexWrap: 'wrap', mb: 2 }}>
+        <Box sx={{ flexGrow: 1, minWidth: 0 }}>
           <Typography
             component="h1"
             sx={(theme) => ({
-              fontSize: { xs: 26, sm: 32 },
+              fontSize: { xs: 20, sm: 26, md: 28 },
               fontWeight: 600,
               lineHeight: 1.2,
-              letterSpacing: 0.5,
-              fontFamily: theme.typography.fontFamily,
               color: 'text.primary',
               mb: 0.5,
             })}
@@ -2217,14 +2272,37 @@ export default function Mostrador() {
               })}
             />
           </Box>
+          {lastUpdateAt && (
+            <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 0.5 }}>
+              Actualizado {lastUpdateAt.toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
+            </Typography>
+          )}
         </Box>
+
+        <Tooltip title="Refrescar ahora">
+          <span>
+            <IconButton
+              onClick={handleRefresh}
+              disabled={refreshing}
+              size="small"
+              sx={{ mr: 0.5 }}
+              aria-label="Refrescar datos"
+            >
+              {refreshing ? (
+                <CircularProgress size={20} />
+              ) : (
+                <RefreshIcon />
+              )}
+            </IconButton>
+          </span>
+        </Tooltip>
 
         <TextField
           size="small"
-          label="Buscar por Nº de mesa"
+          label="Buscar mesa"
           value={searchQuery}
           onChange={(e) => setSearchQuery(e.target.value)}
-          sx={{ minWidth: { xs: '100%', sm: 320 }, borderRadius: 2 }}
+          sx={{ minWidth: { xs: 120, sm: 200 }, maxWidth: { xs: 180, sm: 280 }, borderRadius: 2 }}
           InputProps={{
             startAdornment: <InputAdornment position="start">🔎</InputAdornment>,
             endAdornment: searchQuery ? (
@@ -2238,31 +2316,32 @@ export default function Mostrador() {
               </InputAdornment>
             ) : null,
           }}
-          placeholder="Ej: 3  |  12  |  12 33"
+          placeholder="Ej: 3  |  12"
         />
 
-        <Button
-          variant="outlined"
-          startIcon={<HistoryIcon />}
-          onClick={() => {
-            setShowHistoryDrawer(true);
-            fetchFullHistory();
-          }}
-          sx={{ borderRadius: 2, px: 2.5 }}
-        >
-          Historial completo
-        </Button>
-
-        <Button
-          variant="outlined"
-          color="secondary"
-          startIcon={<CleaningServicesIcon />}
-          onClick={handleCleanupOldSessions}
-          sx={{ borderRadius: 2, px: 2.5 }}
-          title="Limpiar mostrador completamente: marcar todos los pedidos como pagados y liberar todas las mesas"
-        >
-          Limpiar mostrador
-        </Button>
+        <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
+          <Button
+            variant="outlined"
+            startIcon={<HistoryIcon />}
+            onClick={() => {
+              setShowHistoryDrawer(true);
+              fetchFullHistory();
+            }}
+            sx={{ borderRadius: 2, px: 2, py: 1, textTransform: 'none', fontWeight: 600, whiteSpace: 'nowrap' }}
+          >
+            Historial
+          </Button>
+          <Button
+            variant="outlined"
+            color="secondary"
+            startIcon={<CleaningServicesIcon />}
+            onClick={handleCleanupOldSessions}
+            sx={{ borderRadius: 2, px: 2, py: 1, textTransform: 'none', fontWeight: 600, whiteSpace: 'nowrap' }}
+            title="Marcar todos los pedidos como pagados y liberar todas las mesas"
+          >
+            Limpiar
+          </Button>
+        </Box>
       </Box>
 
       {error && <Typography color="error">{error}</Typography>}
@@ -2270,9 +2349,9 @@ export default function Mostrador() {
       {/* Vista activa - siempre visible */}
       <>
         {/* Sección superior: Pedidos activos */}
-        <Grid container spacing={1} sx={{ mb: 3 }}>
-          {/* Columna 1: Pedidos Pendientes (50% del ancho, 3 por fila) */}
-          <Grid item xs={12} md={6}>
+        <Grid container spacing={2} sx={{ mb: 3 }}>
+          {/* Columna 1: Pedidos Pendientes */}
+          <Grid item xs={12} md={4}>
             <Box sx={{ mb: 1.5, display: 'flex', alignItems: 'center', gap: 1 }}>
               <AccessTimeIcon sx={{ fontSize: 20, color: 'text.secondary' }} />
               <Typography variant="h6" sx={{ fontWeight: 600 }}>
@@ -2292,7 +2371,7 @@ export default function Mostrador() {
             <Box
               sx={(theme) => ({
                 columnCount: 1,
-                columnGap: theme.spacing(1),
+                columnGap: theme.spacing(2),
                 [theme.breakpoints.up('sm')]: {
                   columnCount: 2,
                 },
@@ -2301,17 +2380,14 @@ export default function Mostrador() {
                 },
                 '& > *': {
                   breakInside: 'avoid',
-                  marginBottom: theme.spacing(1),
+                  marginBottom: theme.spacing(1.5),
                   display: 'inline-block',
                   width: '100%',
                 },
               })}
             >
               {(() => {
-                // Reorganizar para que CSS columns los muestre como filas horizontales
-                // Si tengo [1,2,3,4,5,6] y quiero filas [1,2,3] [4,5,6]
-                // Necesito reorganizar a [1,4,2,5,3,6] para CSS columns (3 cols)
-                const cols = 3; // desktop
+                const cols = 3;
                 const reordered = [];
                 const rows = Math.ceil(pedidosPendientes.length / cols);
                 for (let col = 0; col < cols; col++) {
@@ -2332,8 +2408,8 @@ export default function Mostrador() {
           </Grid>
 
 
-          {/* Columna 2: Pedidos en Cocina (50% del ancho, 3 por fila) */}
-          <Grid item xs={12} md={6}>
+          {/* Columna 2: Pedidos en Cocina */}
+          <Grid item xs={12} md={4}>
             <Box sx={{ mb: 1.5, display: 'flex', alignItems: 'center', gap: 1 }}>
               <RestaurantIcon sx={{ fontSize: 20, color: 'text.secondary' }} />
               <Typography variant="h6" sx={{ fontWeight: 600 }}>
@@ -2353,7 +2429,7 @@ export default function Mostrador() {
             <Box
               sx={(theme) => ({
                 columnCount: 1,
-                columnGap: theme.spacing(1),
+                columnGap: theme.spacing(2),
                 [theme.breakpoints.up('sm')]: {
                   columnCount: 2,
                 },
@@ -2362,15 +2438,14 @@ export default function Mostrador() {
                 },
                 '& > *': {
                   breakInside: 'avoid',
-                  marginBottom: theme.spacing(1),
+                  marginBottom: theme.spacing(1.5),
                   display: 'inline-block',
                   width: '100%',
                 },
               })}
             >
               {(() => {
-                // Reorganizar para que CSS columns los muestre como filas horizontales
-                const cols = 3; // desktop
+                const cols = 3;
                 const reordered = [];
                 const rows = Math.ceil(pedidosEnCocina.length / cols);
                 for (let col = 0; col < cols; col++) {
@@ -2387,6 +2462,58 @@ export default function Mostrador() {
                   </Box>
                 ));
               })()}
+            </Box>
+          </Grid>
+
+          {/* Columna 3: Listos para servir */}
+          <Grid item xs={12} md={4}>
+            <Box sx={{ mb: 1.5, display: 'flex', alignItems: 'center', gap: 1 }}>
+              <CheckCircleIcon sx={{ fontSize: 20, color: 'success.main' }} />
+              <Typography variant="h6" sx={{ fontWeight: 600 }}>
+                Listos ({pedidosListos.length})
+              </Typography>
+              {pedidosListos.length > 0 && (
+                <Chip
+                  label={pedidosListos.length}
+                  size="small"
+                  color="success"
+                  sx={{ fontWeight: 700 }}
+                />
+              )}
+            </Box>
+            {pedidosListos.length === 0 && !noResultsPedidos && (
+              <Typography variant="body2" color="text.secondary">
+                No hay pedidos listos
+              </Typography>
+            )}
+            {noResultsPedidos && pedidosListos.length === 0 && (
+              <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
+                No hay pedidos listos para las mesas buscadas.
+              </Typography>
+            )}
+            <Box
+              sx={(theme) => ({
+                columnCount: 1,
+                columnGap: theme.spacing(2),
+                [theme.breakpoints.up('sm')]: {
+                  columnCount: 2,
+                },
+                [theme.breakpoints.up('md')]: {
+                  columnCount: 2,
+                },
+                '& > *': {
+                  breakInside: 'avoid',
+                  marginBottom: theme.spacing(1.5),
+                  display: 'inline-block',
+                  width: '100%',
+                },
+              })}
+            >
+              {pedidosListos.map((pedido) => (
+                <Box key={pedido.documentId || pedido.id}>
+                  {renderPedidoCard(pedido)}
+                </Box>
+              ))}
             </Box>
           </Grid>
 
@@ -2561,9 +2688,35 @@ export default function Mostrador() {
         </DialogTitle>
         <DialogContent>
           <Box sx={{ mb: 2 }}>
-            <Typography variant="h6" sx={{ mb: 1 }}>
-              Total: {money(payDialog.cuenta?.total || 0)}
-            </Typography>
+            <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 1 }}>
+              <Typography variant="h6">
+                Total: {money(
+                  payDialog.discount > 0 && !payDialog.closeWithoutPayment
+                    ? (payDialog.discountType === 'percent'
+                      ? payDialog.cuenta?.total * (1 - payDialog.discount / 100)
+                      : Math.max(0, (payDialog.cuenta?.total || 0) - payDialog.discount))
+                    : payDialog.cuenta?.total || 0
+                )}
+              </Typography>
+              <Tooltip title="Copiar total">
+                <IconButton
+                  size="small"
+                  onClick={() => {
+                    const total = payDialog.discount > 0 && !payDialog.closeWithoutPayment
+                      ? (payDialog.discountType === 'percent'
+                        ? payDialog.cuenta?.total * (1 - payDialog.discount / 100)
+                        : Math.max(0, (payDialog.cuenta?.total || 0) - payDialog.discount))
+                      : payDialog.cuenta?.total || 0;
+                    navigator.clipboard?.writeText(money(total)).then(() => {
+                      setSnack({ open: true, msg: 'Total copiado', severity: 'info' });
+                    });
+                  }}
+                  aria-label="Copiar total"
+                >
+                  <ContentCopyIcon fontSize="small" />
+                </IconButton>
+              </Tooltip>
+            </Box>
             {payDialog.cuenta?.pedidos && (
               <List dense>
                 {payDialog.cuenta.pedidos.map((p) => (
@@ -2727,7 +2880,7 @@ export default function Mostrador() {
       {/* Dialog para completar pedido con notas */}
       <Dialog
         open={completeOrderDialog.open}
-        onClose={() => setCompleteOrderDialog({ open: false, pedido: null, staffNotes: '' })}
+        onClose={() => !completeOrderDialog.loading && setCompleteOrderDialog({ open: false, pedido: null, staffNotes: '', loading: false })}
         maxWidth="sm"
         fullWidth
       >
@@ -2744,20 +2897,29 @@ export default function Mostrador() {
             placeholder="Ej: Sin lechuga, sin cebolla, etc."
             value={completeOrderDialog.staffNotes}
             onChange={(e) => setCompleteOrderDialog(prev => ({ ...prev, staffNotes: e.target.value }))}
+            disabled={completeOrderDialog.loading}
           />
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setCompleteOrderDialog({ open: false, pedido: null, staffNotes: '' })}>
+          <Button onClick={() => setCompleteOrderDialog({ open: false, pedido: null, staffNotes: '', loading: false })} disabled={completeOrderDialog.loading}>
             Cancelar
           </Button>
           <Button
             variant="contained"
-            onClick={() => {
-              marcarComoServido(completeOrderDialog.pedido, completeOrderDialog.staffNotes);
-              setCompleteOrderDialog({ open: false, pedido: null, staffNotes: '' });
+            disabled={completeOrderDialog.loading || !completeOrderDialog.pedido}
+            onClick={async () => {
+              const { pedido, staffNotes } = completeOrderDialog;
+              if (!pedido || completeOrderDialog.loading) return;
+              setCompleteOrderDialog(prev => ({ ...prev, loading: true }));
+              try {
+                await marcarComoServido(pedido, staffNotes);
+                setCompleteOrderDialog({ open: false, pedido: null, staffNotes: '', loading: false });
+              } catch {
+                setCompleteOrderDialog(prev => ({ ...prev, loading: false }));
+              }
             }}
           >
-            Completar
+            {completeOrderDialog.loading ? 'Completando...' : 'Completar'}
           </Button>
         </DialogActions>
       </Dialog>
@@ -2936,6 +3098,15 @@ export default function Mostrador() {
                           {money(tableDetailDialog.mesa.cuenta.total)}
                         </Typography>
                       </Box>
+                      <Button
+                        variant="outlined"
+                        size="small"
+                        startIcon={<ReceiptIcon />}
+                        onClick={() => setReceiptDialog({ open: true, data: cuentaToReceiptData(tableDetailDialog.mesa.cuenta) })}
+                        sx={{ mt: 2, borderColor: 'rgba(255,255,255,0.8)', color: 'inherit' }}
+                      >
+                        Ver recibo
+                      </Button>
                       {tableDetailDialog.mesa.cuenta.hasUnpaid && (
                         <Button
                           variant="contained"
@@ -3159,8 +3330,25 @@ export default function Mostrador() {
           <Button onClick={() => setAccountDetailDialog({ open: false, cuenta: null })}>
             Cerrar
           </Button>
+          {accountDetailDialog.cuenta && (
+            <Button
+              variant="contained"
+              startIcon={<ReceiptIcon />}
+              onClick={() => {
+                setReceiptDialog({ open: true, data: cuentaToReceiptData(accountDetailDialog.cuenta) });
+              }}
+            >
+              Ver recibo
+            </Button>
+          )}
         </DialogActions>
       </Dialog>
+
+      <ReceiptDialog
+        open={receiptDialog.open}
+        onClose={() => setReceiptDialog({ open: false, data: null })}
+        receiptData={receiptDialog.data}
+      />
 
       {/* Dialog de limpieza de sesiones antiguas */}
       <Dialog

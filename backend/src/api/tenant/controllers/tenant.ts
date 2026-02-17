@@ -860,10 +860,12 @@ async function releaseTableInternal(opts: { restauranteId: ID; tableNumber: numb
     }
   }
 
-  // Close open session(s) for this mesa & active code (best-effort).
+  // Close open session(s) for this mesa.
+  // When force=true (staff/owner), close ALL open sessions regardless of code.
+  // When force=false, only close sessions matching activeCode for safety.
   try {
     const where: any = { mesa: mesa.id, session_status: 'open' };
-    if (activeCode) where.code = activeCode;
+    if (!force && activeCode) where.code = activeCode;
     await strapi.db.query('api::mesa-sesion.mesa-sesion').updateMany({
       where,
       data: { session_status: 'closed', closedAt: new Date(), publishedAt: new Date() },
@@ -1644,6 +1646,45 @@ export default {
       ctx.body = { mesa, results };
     } catch (err: any) {
       ctx.body = { error: err.message };
+    }
+  },
+
+  /**
+   * POST /restaurants/:slug/tables/force-release-all
+   * Libera TODAS las mesas del restaurante (cierra sesiones, marca como disponible).
+   * Requiere auth (owner/staff). No modifica pedidos.
+   */
+  async forceReleaseAllTables(ctx: Ctx) {
+    const { slug } = ctx.params || {};
+    const restaurante = await getRestaurantBySlug(String(slug));
+    const restauranteId = Number(restaurante.id);
+
+    try {
+      const mesas = await strapi.db.query('api::mesa.mesa').findMany({
+        where: { restaurante: restauranteId },
+        select: ['id', 'number'],
+      });
+
+      let released = 0;
+      for (const mesa of mesas || []) {
+        try {
+          await releaseTableInternal({
+            restauranteId,
+            tableNumber: mesa.number,
+            tableSessionId: null,
+            force: true,
+          });
+          released++;
+        } catch (e) {
+          // Continuar con las demás
+        }
+      }
+
+      ctx.body = { data: { released, total: mesas?.length || 0 }, message: `${released} mesa(s) liberada(s)` };
+    } catch (err: any) {
+      console.error('[forceReleaseAllTables] Error:', err?.message);
+      ctx.status = 500;
+      ctx.body = { error: { message: err?.message || 'Error liberando mesas' } };
     }
   },
 

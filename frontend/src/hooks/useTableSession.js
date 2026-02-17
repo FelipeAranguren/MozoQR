@@ -36,9 +36,11 @@ export default function useTableSession() {
 
   // Publicamos la "sesión actual" para que otros (CartContext) sepan el scope
   useEffect(() => {
-    if (!tableSessionId) return;
-    localStorage.setItem(TS_CURRENT_KEY, tableSessionId);
-    // Avisamos al resto de la app (mismo tab)
+    if (tableSessionId) {
+      localStorage.setItem(TS_CURRENT_KEY, tableSessionId);
+    } else {
+      localStorage.removeItem(TS_CURRENT_KEY);
+    }
     window.dispatchEvent(new Event('ts-changed'));
   }, [tableSessionId]);
 

@@ -58,14 +58,19 @@ async function resolveOrderPk(strapi: any, ref: string | number | null) {
 }
 
 // Construye back_urls que pasan por el backend y le envían también orderRef
-function buildBackendBackUrls(orderId?: string | number | null, strapiConfig?: any) {
+function buildBackendBackUrls(
+  orderId?: string | number | null,
+  strapiConfig?: any,
+  slug?: string | null
+) {
   const baseFront = getFrontendUrl().replace(/\/*$/, '');
   const baseBack = getBackendUrl(strapiConfig).replace(/\/*$/, '');
   const encOrder = encodeURIComponent(orderId ?? '');
+  const slugParam = slug ? `&slug=${encodeURIComponent(slug)}` : '';
 
-  const successFront = `${baseFront}/pago/success?orderId=${encOrder}`;
-  const failureFront = `${baseFront}/pago/failure?orderId=${encOrder}`;
-  const pendingFront = `${baseFront}/pago/pending?orderId=${encOrder}`;
+  const successFront = `${baseFront}/pago/success?orderId=${encOrder}${slugParam}`;
+  const failureFront = `${baseFront}/pago/failure?orderId=${encOrder}${slugParam}`;
+  const pendingFront = `${baseFront}/pago/pending?orderId=${encOrder}${slugParam}`;
 
   const wrap = (destFront: string) =>
     // Agrego orderRef para fallback si MP no me da external_reference
@@ -85,7 +90,7 @@ export default {
 
   async createPreference(ctx: any) {
     try {
-      const { items, orderId, amount } = ctx.request.body || {};
+      const { items, orderId, amount, slug } = ctx.request.body || {};
 
       const accessToken = process.env.MP_ACCESS_TOKEN;
       if (!accessToken) {
@@ -128,8 +133,7 @@ export default {
       );
 
       const strapi = ctx.strapi;
-      // ---- back_urls: forzamos a pasar por el backend (confirm) y le mandamos orderRef
-      const backUrls = buildBackendBackUrls(orderId, strapi.config);
+      const backUrls = buildBackendBackUrls(orderId, strapi.config, slug);
 
       // ---- Crear preferencia
       const client = new MercadoPagoConfig({ accessToken });

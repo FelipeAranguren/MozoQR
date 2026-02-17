@@ -24,10 +24,10 @@ export default async (policyContext, _config, { strapi }) => {
 
   console.log(`[by-restaurant-owner] ✅ Restaurant found: id=${restaurant.id}, slug=${restaurant.slug}`);
 
-  // validar membership (por slug + user)
+  // validar membership (por restaurante id + user)
   const [membership] = await strapi.db.query('api::restaurant-member.restaurant-member').findMany({
     where: {
-      restaurante: { slug },
+      restaurante: { id: restaurant.id },
       users_permissions_user: { id: user.id },
       role: { $in: ['owner', 'staff'] },
       active: true,
@@ -43,7 +43,7 @@ export default async (policyContext, _config, { strapi }) => {
     // Debug: verificar si hay memberships inactivos o con otro rol
     const allMemberships = await strapi.db.query('api::restaurant-member.restaurant-member').findMany({
       where: {
-        restaurante: { slug },
+        restaurante: { id: restaurant.id },
         users_permissions_user: { id: user.id },
       },
       select: ['id', 'role', 'active'],

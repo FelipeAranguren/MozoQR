@@ -1,8 +1,8 @@
 import { client, unwrap } from './client';
 
-export async function createMpPreference({ orderId, amount, items, payer_email, back_urls }) {
+export async function createMpPreference({ orderId, amount, items, payer_email, back_urls, slug }) {
   const res = await client.post('/payments/create-preference', {
-    orderId, amount, items, payer_email, back_urls
+    orderId, amount, items, payer_email, back_urls, slug,
   });
 
   const data = res.data;

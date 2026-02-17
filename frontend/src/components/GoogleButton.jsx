@@ -7,7 +7,7 @@ const LS_JWT_KEY = "strapi_jwt";
 const LS_USER_KEY = "strapi_user";
 
 // Mantener el mismo patrón que LoginWithGoogleButton original
-const STRAPI_URL = import.meta.env.VITE_STRAPI_URL || import.meta.env.VITE_API_URL || "http://localhost:1337/api";
+const STRAPI_URL = import.meta.env?.VITE_STRAPI_URL || import.meta.env?.VITE_API_URL || "http://localhost:1337/api";
 
 export default function GoogleButton({ onSuccess, mode = "login" }) {
   // Forzamos selector de cuenta para evitar "reusar" sesión previa

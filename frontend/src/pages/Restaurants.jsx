@@ -22,7 +22,7 @@ export default function Restaurants() {
     async function fetchRests() {
       try {
         const res = await api.get('/restaurantes?populate=logo');
-        const base = import.meta.env.VITE_API_URL.replace('/api', '');
+        const base = (import.meta.env?.VITE_API_URL || '').replace('/api', '');
 
         const list = res.data.data.map((r) => {
           const attr = r.attributes || {};

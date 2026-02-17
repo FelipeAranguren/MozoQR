@@ -1,16 +1,6 @@
 export default {
     routes: [
-        // Public create (customer)
-        // Public create (customer)
-        // DESHABILITADO: Usamos tenant.createOrder por compatibilidad de permisos
-        // {
-        //     method: 'POST',
-        //     path: '/restaurants/:slug/orders',
-        //     handler: 'scoped-orders.create',
-        //     config: {
-        //         policies: ['global::by-restaurant'],
-        //     },
-        // },
+        // POST crea órdenes vía tenant.createOrder (evita conflicto de rutas)
         // Staff/Owner list (polling)
         {
             method: 'GET',

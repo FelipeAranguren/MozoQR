@@ -2,7 +2,7 @@ import React, { useEffect } from "react";
 import { useAuth } from "../context/AuthContext";
 
 // El callback de Google está en la base URL bajo /api
-const API_URL = import.meta.env.VITE_API_URL || import.meta.env.VITE_STRAPI_URL || "http://localhost:1337/api";
+const API_URL = import.meta.env?.VITE_API_URL || import.meta.env?.VITE_STRAPI_URL || "http://localhost:1337/api";
 
 export default function GoogleRedirect() {
   const { login } = useAuth();

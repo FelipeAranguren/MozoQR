@@ -11,6 +11,19 @@ function getAuthHeaders() {
 }
 
 /**
+ * Obtiene el nombre del restaurante por slug (público, ligero)
+ */
+export async function fetchRestaurantName(slug) {
+  if (!slug) return null;
+  try {
+    const res = await publicHttp.get(`/restaurants/${slug}/menus`);
+    return res?.data?.data?.restaurant?.name || null;
+  } catch {
+    return null;
+  }
+}
+
+/**
  * Obtiene todas las mesas de un restaurante
  */
 export async function fetchTables(slug) {
@@ -334,6 +347,25 @@ export async function deleteTable(tableId) {
     }
     throw err;
   }
+}
+
+/**
+ * Libera todas las mesas (cierra sesiones vía close-session).
+ * Usa close-session en loop en lugar de force-release-all (evita 403).
+ */
+export async function forceReleaseAllTables(slug) {
+  if (!slug) throw new Error('slug requerido');
+  const mesas = await fetchTables(slug);
+  let liberadas = 0;
+  for (const m of mesas) {
+    try {
+      await api.put(`/restaurants/${slug}/close-session`, { data: { table: m.number } });
+      liberadas++;
+    } catch (_e) {
+      // continuar con las demás
+    }
+  }
+  return { released: liberadas, total: mesas.length };
 }
 
 /**

@@ -65,13 +65,14 @@ async function resolveOrderPk(strapi, ref) {
     return null;
 }
 // Construye back_urls que pasan por el backend y le envían también orderRef
-function buildBackendBackUrls(orderId, strapiConfig) {
+function buildBackendBackUrls(orderId, strapiConfig, slug) {
     const baseFront = (0, urls_1.getFrontendUrl)().replace(/\/*$/, '');
     const baseBack = (0, urls_1.getBackendUrl)(strapiConfig).replace(/\/*$/, '');
     const encOrder = encodeURIComponent(orderId !== null && orderId !== void 0 ? orderId : '');
-    const successFront = `${baseFront}/pago/success?orderId=${encOrder}`;
-    const failureFront = `${baseFront}/pago/failure?orderId=${encOrder}`;
-    const pendingFront = `${baseFront}/pago/pending?orderId=${encOrder}`;
+    const slugParam = slug ? `&slug=${encodeURIComponent(slug)}` : '';
+    const successFront = `${baseFront}/pago/success?orderId=${encOrder}${slugParam}`;
+    const failureFront = `${baseFront}/pago/failure?orderId=${encOrder}${slugParam}`;
+    const pendingFront = `${baseFront}/pago/pending?orderId=${encOrder}${slugParam}`;
     const wrap = (destFront) => 
     // Agrego orderRef para fallback si MP no me da external_reference
     `${baseBack}/api/payments/confirm?redirect=${encodeURIComponent(destFront)}&orderRef=${encOrder}`;
@@ -88,7 +89,7 @@ exports.default = {
     async createPreference(ctx) {
         var _a, _b, _c, _d, _e, _f, _g, _h, _j, _k, _l, _m;
         try {
-            const { items, orderId, amount } = ctx.request.body || {};
+            const { items, orderId, amount, slug } = ctx.request.body || {};
             const accessToken = process.env.MP_ACCESS_TOKEN;
             if (!accessToken) {
                 ctx.status = 500;
@@ -124,8 +125,7 @@ exports.default = {
                 ];
             const totalAmount = saneItems.reduce((acc, it) => acc + Number(it.unit_price) * Number(it.quantity || 1), 0);
             const strapi = ctx.strapi;
-            // ---- back_urls: forzamos a pasar por el backend (confirm) y le mandamos orderRef
-            const backUrls = buildBackendBackUrls(orderId, strapi.config);
+            const backUrls = buildBackendBackUrls(orderId, strapi.config, slug);
             // ---- Crear preferencia
             const client = new mercadopago_1.MercadoPagoConfig({ accessToken });
             const preference = new mercadopago_1.Preference(client);

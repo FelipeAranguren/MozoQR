@@ -10,7 +10,9 @@ function esc(s) {
 }
 
 function money(n) {
-  return new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS' }).format(Number(n) || 0);
+  const num = Number(n);
+  if (!Number.isFinite(num)) return '$ 0,00';
+  return new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS' }).format(num);
 }
 
 function fmtDateTime(d) {
@@ -51,12 +53,17 @@ export function openReceiptWindow({
   const email = restaurant.billing_email || '';
   const footer = restaurant.receipt_footer || '';
 
-  const lines = (items || []).map((it) => ({
-    name: it?.name || it?.productName || it?.product?.name || 'Producto',
-    qty: Number(it?.quantity || it?.qty || 1) || 1,
-    price: Number(it?.unitPrice ?? it?.UnitPrice ?? it?.price ?? 0) || 0,
-    total: Number(it?.totalPrice ?? it?.total ?? (Number(it?.unitPrice ?? it?.UnitPrice ?? it?.price ?? 0) * (Number(it?.quantity || it?.qty || 1) || 1))) || 0,
-  }));
+  const lines = (items || []).map((it) => {
+    const qty = Math.max(1, Number(it?.quantity || it?.qty || 1) || 1);
+    const price = Number(it?.unitPrice ?? it?.UnitPrice ?? it?.price ?? 0) || 0;
+    const total = Number(it?.totalPrice ?? it?.total ?? (price * qty)) || 0;
+    return {
+      name: String(it?.name || it?.productName || it?.product?.name || 'Producto').slice(0, 100),
+      qty,
+      price,
+      total: total > 0 ? total : price * qty,
+    };
+  });
 
   const computedSubtotal = subtotal != null ? Number(subtotal) : lines.reduce((s, l) => s + (Number(l.total) || 0), 0);
   const computedTotal = total != null ? Number(total) : computedSubtotal - (Number(discount) || 0);
@@ -156,14 +163,21 @@ export function openReceiptWindow({
 </body>
 </html>`;
 
-  const w = window.open('', '_blank', 'noopener,noreferrer');
-  if (!w) {
-    alert('Tu navegador bloqueó la ventana emergente. Habilitá popups para imprimir/guardar el ticket.');
-    return;
+  // NOTA: Ya no se usa. El recibo se muestra en ReceiptDialog (modal).
+  // Mantenido por compatibilidad; si se llama, descarga HTML sin abrir ventana.
+  try {
+    const blob = new Blob([html], { type: 'text/html;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `recibo-${mesaNumber || 'cuenta'}-${Date.now()}.html`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  } catch (e) {
+    console.error('Error con recibo:', e);
   }
-  w.document.open();
-  w.document.write(html);
-  w.document.close();
 }
 
 export const LAST_RECEIPT_KEY = 'MOZOQR_LAST_RECEIPT_V1';

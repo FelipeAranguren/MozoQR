@@ -6,13 +6,16 @@ import { createMpPreference } from "../api/payments";
 /**
  * Props:
  * - orderId: string | number (recomendado para reconciliar pagos)
- * - amount?: number (opcional si no mandás items)
+ * - amount?: number (opcional si no mandás items; si falta orderId se usa amount)
  * - items?: [{ title: string, unit_price: number, quantity: number, currency_id?: 'ARS' }]
  * - payerEmail?: string
  * - backUrls?: { success, pending, failure }
+ * - slug?: string (incluido en URLs de retorno de MP para "Volver al menú")
+ * - onBeforePay?: () => void | Promise<void> - llamado antes de redirigir a MP (ej: guardar recibo)
  * - label?: string
  * - variant?: MUI Button variant
  * - fullWidth?: boolean
+ * - disabled?: boolean
  */
 export default function PayWithMercadoPago({
   orderId,
@@ -20,28 +23,37 @@ export default function PayWithMercadoPago({
   items,
   payerEmail,
   backUrls,
+  slug,
+  onBeforePay,
   label = "Pagar con Mercado Pago",
   variant = "contained",
   fullWidth = true,
+  disabled = false,
 }) {
   const [loading, setLoading] = useState(false);
 
-
+  const hasOrderId = orderId != null && orderId !== '';
+  const hasAmount = amount != null && Number(amount) > 0;
+  const hasItems = Array.isArray(items) && items.length > 0;
+  const canPay = hasOrderId || hasAmount || hasItems;
+  const isDisabled = disabled || loading || !canPay;
 
   async function handlePay() {
     try {
-      if (!orderId) {
-        alert("Falta orderId para iniciar el pago.");
+      if (!canPay) {
+        alert("Falta orderId o monto para iniciar el pago.");
         return;
       }
 
       setLoading(true);
+      if (onBeforePay) await Promise.resolve(onBeforePay());
       const data = await createMpPreference({
         orderId,
         amount,
         items,
         payer_email: payerEmail,
         back_urls: backUrls,
+        slug,
       });
 
       
@@ -57,7 +69,14 @@ export default function PayWithMercadoPago({
   }
 
   return (
-    <Button onClick={handlePay} disabled={loading} fullWidth={fullWidth} variant={variant} sx={{ textTransform: "none" }}>
+    <Button
+      onClick={handlePay}
+      disabled={isDisabled}
+      fullWidth={fullWidth}
+      variant={variant}
+      sx={{ textTransform: "none" }}
+      aria-label={label}
+    >
       {loading ? <CircularProgress size={22} /> : label}
     </Button>
   );

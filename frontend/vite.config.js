@@ -13,7 +13,10 @@ export default defineConfig(async () => {
     host: '127.0.0.1',   // evita [::1]
     port: 5173,
     strictPort: true,
-    // sin HMR forzado: Vite decide lo mejor para tu entorno
+    headers: {
+      'Cache-Control': 'no-store, no-cache, must-revalidate',
+      'Pragma': 'no-cache',
+    },
     proxy: {
       '/api': {
         target: 'http://127.0.0.1:1337', // Strapi

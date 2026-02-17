@@ -2,7 +2,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import {
   Paper, Typography, Button, Dialog, DialogTitle, DialogContent,
   DialogActions, List, ListItem, ListItemText, Box, Snackbar, Alert,
-  TextField, Tabs, Tab, Divider, Chip, CircularProgress, IconButton
+  TextField, Tabs, Tab, Divider, Chip, CircularProgress, IconButton, Tooltip
 } from '@mui/material';
 import AttachMoneyIcon from '@mui/icons-material/AttachMoney';
 import CreditCardIcon from '@mui/icons-material/CreditCard';
@@ -10,6 +10,7 @@ import RoomServiceIcon from '@mui/icons-material/RoomService';
 import LocalOfferIcon from '@mui/icons-material/LocalOffer';
 import CheckCircleIcon from '@mui/icons-material/CheckCircle';
 import CancelIcon from '@mui/icons-material/Cancel';
+import ContentCopyIcon from '@mui/icons-material/ContentCopy';
 import { alpha } from '@mui/material/styles';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useParams, useNavigate } from 'react-router-dom';
@@ -17,6 +18,7 @@ import { useCart } from '../context/CartContext';
 import { createOrder, closeAccount, hasOpenAccount, fetchOrderDetails } from '../api/tenant';
 import QtyStepper from './QtyStepper';
 import PayWithMercadoPago from './PayWithMercadoPago';
+import { saveLastReceiptToStorage } from '../utils/receipt';
 
 const money = (n) =>
   new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS' }).format(Number(n) || 0);
@@ -68,7 +70,7 @@ const clearOpenOrders = (slug, table) => {
   localStorage.removeItem(openOrdersKey(slug, table));
 };
 
-export default function StickyFooter({ table, tableSessionId }) {
+export default function StickyFooter({ table, tableSessionId, restaurantName }) {
   const { items, subtotal, addItem, removeItem, clearCart } = useCart();
   const { slug } = useParams();
   const navigate = useNavigate();
@@ -76,6 +78,7 @@ export default function StickyFooter({ table, tableSessionId }) {
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [sending, setSending] = useState(false);
   const [orderNotes, setOrderNotes] = useState('');
+  const [customerName, setCustomerName] = useState('');
 
   const [callWaiterOpen, setCallWaiterOpen] = useState(false);
 
@@ -223,10 +226,8 @@ export default function StickyFooter({ table, tableSessionId }) {
       setLoadingOrders(true);
       fetchOrderDetails(slug, { table, tableSessionId })
         .then((orders) => {
-          console.log('✅ Order details loaded:', orders);
           // CRÍTICO: Filtrar pedidos cancelados - no deben aparecer en el menú del cliente
           const activeOrders = orders.filter(order => order.order_status !== 'cancelled');
-          console.log('✅ Order details after filtering cancelled:', activeOrders);
           setOrderDetails(activeOrders);
           // Calcular total desde los pedidos detallados (solo activos, sin cancelados)
           const calculatedTotal = activeOrders.reduce((sum, o) => sum + (Number(o.total) || 0), 0);
@@ -254,22 +255,67 @@ export default function StickyFooter({ table, tableSessionId }) {
     }
   }, [payOpen, slug, table, tableSessionId, tipPercentage]);
 
-  // Resetear propina cuando cambia el total (usar orderDetails si está disponible)
+  // Resetear propina cuando cambia el total (ej. al cargar orderDetails)
   useEffect(() => {
-    const currentTotal = orderDetails.length > 0
+    const baseTotal = orderDetails.length > 0
       ? orderDetails.reduce((sum, o) => sum + (Number(o.total) || 0), 0)
       : accountTotal;
-
-    if (tipPercentage > 0 && currentTotal > 0) {
-      setTipAmount((currentTotal * tipPercentage) / 100);
+    const totalAfterDiscount = Math.max(0, baseTotal - couponDiscountAmount);
+    if (tipPercentage > 0 && totalAfterDiscount > 0) {
+      setTipAmount(Math.round((totalAfterDiscount * tipPercentage) / 100));
     }
-  }, [accountTotal, tipPercentage, orderDetails]);
+  }, [accountTotal, tipPercentage, orderDetails, couponDiscountAmount]);
 
-  // Tomamos el ÚLTIMO pedido abierto como referencia (orderId) para la preferencia
-  const lastOrderId = useMemo(
-    () => (openOrders.length ? openOrders[openOrders.length - 1].id : null),
-    [openOrders]
-  );
+  // Guardar recibo para descarga después del pago (siempre guardar algo)
+  const saveReceiptForDownload = () => {
+    let items = (orderDetails || []).flatMap((o) =>
+      (o.items || []).map((it) => ({
+        name: it.name,
+        quantity: it.quantity,
+        unitPrice: it.unitPrice,
+        totalPrice: it.totalPrice ?? it.unitPrice * it.quantity,
+      }))
+    );
+    // Fallback: si no hay items, construir desde openOrders
+    if (items.length === 0 && openOrders?.length > 0) {
+      items = openOrders.map((o, i) => ({
+        name: `Pedido #${o.id || i + 1}`,
+        quantity: 1,
+        unitPrice: Number(o.total) || 0,
+        totalPrice: Number(o.total) || 0,
+      }));
+    }
+    const subtotalFromItems = items.reduce((s, it) => s + (Number(it.totalPrice) || 0), 0);
+    const subtotal = subtotalFromItems > 0 ? subtotalFromItems : accountTotal;
+    const discount = couponDiscount
+      ? couponDiscount.type === 'percent'
+        ? subtotal * (couponDiscount.value / 100)
+        : Math.min(couponDiscount.value, subtotal)
+      : 0;
+    const total = Math.max(0, subtotal - discount + tipAmount);
+    const restaurant = { name: restaurantName || slug || 'Restaurante' };
+    const receiptItems = items.length > 0 ? items : [{ name: 'Cuenta', quantity: 1, unitPrice: total, totalPrice: total }];
+    const payload = {
+      restaurant,
+      slug,
+      mesaNumber: table,
+      items: receiptItems,
+      subtotal,
+      discount,
+      tipAmount: tipAmount || 0,
+      total,
+      paidAt: new Date().toISOString(),
+      paymentMethod: payMethod === 'mp' ? 'Mercado Pago' : payMethod === 'card' ? 'Tarjeta' : 'Efectivo',
+    };
+    saveLastReceiptToStorage(payload);
+  };
+
+  // orderId para MP: último de openOrders, o último de orderDetails como fallback
+  const lastOrderId = useMemo(() => {
+    if (openOrders.length) return openOrders[openOrders.length - 1].id;
+    if (orderDetails?.length) return orderDetails[orderDetails.length - 1]?.id;
+    return null;
+  }, [openOrders, orderDetails]);
 
   const showOrderBtn = items.length > 0;
 
@@ -289,7 +335,8 @@ export default function StickyFooter({ table, tableSessionId }) {
         notes: i.notes || ''
       }));
 
-      const trimmedNotes = orderNotes.trim();
+      const namePart = customerName.trim() ? `Cliente: ${customerName.trim()}\n` : '';
+      const trimmedNotes = namePart + orderNotes.trim();
       const res = await createOrder(slug, {
         table,
         tableSessionId,
@@ -338,6 +385,7 @@ export default function StickyFooter({ table, tableSessionId }) {
   useEffect(() => {
     if (!confirmOpen) {
       setOrderNotes('');
+      setCustomerName('');
     }
   }, [confirmOpen]);
 
@@ -514,13 +562,15 @@ export default function StickyFooter({ table, tableSessionId }) {
           setTimeout(() => setPayRequestSent(false), 5000); // Permitir nueva solicitud después de 5 segundos
 
           // Redirigir a página de agradecimiento
-          navigate('/thank-you?type=presencial');
+          navigate(`/thank-you?type=presencial${slug ? `&slug=${slug}` : ''}`);
         } catch (err) {
           setPayRequestSent(false);
           throw err;
         }
       } else {
         // Pago Online (Tarjeta o Mercado Pago)
+        // Guardar recibo para que el cliente pueda descargarlo en ThankYou
+        saveReceiptForDownload();
         // Aquí sí cerramos la cuenta porque se asume "pagado"
         const closePayload = { table, tableSessionId };
         if (couponDiscount) {
@@ -528,9 +578,7 @@ export default function StickyFooter({ table, tableSessionId }) {
           closePayload.discount = couponDiscount.value;
           closePayload.discountType = couponDiscount.type;
         }
-        console.log(`[StickyFooter] Cerrando cuenta para mesa ${table}...`);
         const closeResult = await closeAccount(slug, closePayload);
-        console.log(`[StickyFooter] ✅ Cuenta cerrada. Resultado:`, closeResult);
 
         // Limpiamos la lista local (ya no hay pedidos abiertos)
         if (slug && table) {
@@ -552,7 +600,7 @@ export default function StickyFooter({ table, tableSessionId }) {
         setPayMethod('card');
 
         // Redirigir a página de agradecimiento
-        navigate('/thank-you?type=online');
+        navigate(`/thank-you?type=online${slug ? `&slug=${slug}` : ''}`);
       }
     } catch (err) {
       console.error(err);
@@ -590,6 +638,28 @@ export default function StickyFooter({ table, tableSessionId }) {
           justifyContent: showOrderBtn ? 'flex-start' : 'flex-end',
         }}
       >
+        {table && (
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, flexShrink: 0 }}>
+            <Chip label={`Mesa ${table}`} size="small" color="primary" variant="outlined" />
+            <Tooltip title="Copiar link de mesa">
+              <IconButton
+                size="small"
+                onClick={async () => {
+                  const url = `${window.location.origin}/${slug}/menu?t=${table}`;
+                  try {
+                    await navigator.clipboard.writeText(url);
+                    setSnack({ open: true, msg: 'Link copiado', severity: 'info' });
+                  } catch {
+                    setSnack({ open: true, msg: 'No se pudo copiar', severity: 'warning' });
+                  }
+                }}
+                aria-label="Copiar link de mesa"
+              >
+                <ContentCopyIcon sx={{ fontSize: 18 }} />
+              </IconButton>
+            </Tooltip>
+          </Box>
+        )}
         {showOrderBtn && (
           <>
             <Typography variant="h6" sx={{ flex: 1 }}>
@@ -826,6 +896,14 @@ export default function StickyFooter({ table, tableSessionId }) {
 
           <Box sx={{ p: 2, borderTop: 1, borderColor: 'divider' }}>
             <TextField
+              label="Nombre (opcional)"
+              placeholder="¿A nombre de quién es el pedido?"
+              value={customerName}
+              onChange={(e) => setCustomerName(e.target.value)}
+              fullWidth
+              sx={{ mb: 2, '& .MuiOutlinedInput-root': { borderRadius: 2 } }}
+            />
+            <TextField
               label="Comentario para el mostrador (opcional)"
               placeholder="¿Querés avisar algo sobre tu pedido?"
               fullWidth
@@ -862,6 +940,24 @@ export default function StickyFooter({ table, tableSessionId }) {
             }}
           >
             Cancelar
+          </Button>
+          <Box sx={{ flex: 1 }} />
+          <Button
+            onClick={() => {
+              if (window.confirm('¿Vaciar el carrito?')) {
+                clearCart();
+                setConfirmOpen(false);
+                setSnack({ open: true, msg: 'Carrito vaciado', severity: 'info' });
+              }
+            }}
+            disabled={sending}
+            sx={{
+              borderRadius: 2,
+              textTransform: 'none',
+              color: 'text.secondary',
+            }}
+          >
+            Vaciar carrito
           </Button>
           <Button
             variant="contained"
@@ -1190,11 +1286,12 @@ export default function StickyFooter({ table, tableSessionId }) {
                     variant={tipPercentage === percent ? 'contained' : 'outlined'}
                     size="small"
                     onClick={() => {
-                      const currentTotal = orderDetails.length > 0
+                      const baseTotal = orderDetails.length > 0
                         ? orderDetails.reduce((sum, o) => sum + (Number(o.total) || 0), 0)
                         : accountTotal;
+                      const totalAfterDiscount = Math.max(0, baseTotal - couponDiscountAmount);
                       setTipPercentage(percent);
-                      setTipAmount(percent > 0 ? (currentTotal * percent) / 100 : 0);
+                      setTipAmount(percent > 0 ? Math.round((totalAfterDiscount * percent) / 100) : 0);
                     }}
                     sx={{ flex: 1, textTransform: 'none' }}
                   >
@@ -1391,6 +1488,8 @@ export default function StickyFooter({ table, tableSessionId }) {
                 <PayWithMercadoPago
                   orderId={lastOrderId}
                   amount={totalWithTip}
+                  slug={slug}
+                  onBeforePay={saveReceiptForDownload}
                   label="Pagar con Mercado Pago"
                   fullWidth
                 />
