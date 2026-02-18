@@ -1,54 +1,46 @@
+// backend/config/middlewares.js
 'use strict';
 
 module.exports = [
-  // CORS restringido por env (incluye Idempotency-Key para habilitar la idempotencia desde el front)
-  {
-    name: 'strapi::cors',
-    config: {
-      origin: (process.env.CORS_ORIGINS || 'https://mozoqr.vercel.app/')
-        .split(',')
-        .map(s => s.trim()),
-      methods: ['GET','POST','PUT','PATCH','DELETE','HEAD','OPTIONS'],
-      headers: ['Content-Type','Authorization','Idempotency-Key'],
-      keepHeadersOnError: true,   // ✅ (con "s")
-      credentials: true,
-    },
-  },
-
-  // Headers de seguridad básicos (X-Content-Type-Options, Referrer-Policy, CSP frame-ancestors 'none', HSTS si PUBLIC_URL=https)
-  { name: 'global::secure-headers' },
-
-  // Rate limit en memoria por IP+ruta
-  { name: 'global::rate-limit' },
-
-  // Audit log sin PII (método, ruta, status, slug, tableSessionId)
-  { name: 'global::audit-log' },
-
-  // Idempotencia + sanitizado SOLO en POST /restaurants/:slug/orders
-  { name: 'global::idempotency-orders' },
-
-  // --- middlewares core de Strapi ---
-  'strapi::errors',
-
-  // Tu config de security con CSP para connect-src
-  {
-    name: 'strapi::security',
-    config: {
-      contentSecurityPolicy: {
-        useDefaults: true,
-        directives: {
-          // Habilita conexiones a API/dev websockets
-          'connect-src': ["'self'", 'http:', 'https:', 'ws:', 'wss:'],
-        },
-      },
-    },
-  },
-
-  'strapi::poweredBy',
-  'strapi::logger',
-  'strapi::query',
-  'strapi::body',
-  'strapi::session',
-  'strapi::favicon',
-  'strapi::public',
+'strapi::errors',
+{
+name: 'strapi::security',
+config: {
+contentSecurityPolicy: {
+useDefaults: true,
+directives: {
+'connect-src': ["'self'", 'http:', 'https:', 'ws:', 'wss:'],
+},
+},
+},
+},
+{
+name: 'strapi::cors',
+config: {
+origin: (process.env.CORS_ORIGINS || '')
+.split(',')
+.map(s => s.trim()),
+methods: ['GET','POST','PUT','PATCH','DELETE','HEAD','OPTIONS'],
+headers: ['Content-Type','Authorization','Idempotency-Key'],
+keepHeadersOnError: true,
+credentials: true,
+},
+},
+'strapi::poweredBy',
+'strapi::logger',
+'strapi::query',
+'strapi::body',
+{
+name: 'strapi::session',
+config: {
+secure: true,
+sameSite: 'none',
+},
+},
+{ name: 'global::secure-headers' },
+{ name: 'global::rate-limit' },
+{ name: 'global::audit-log' },
+{ name: 'global::idempotency-orders' },
+'strapi::favicon',
+'strapi::public',
 ];
