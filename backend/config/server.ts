@@ -4,7 +4,7 @@ export default ({ env }) => ({
   port: env.int('PORT', 1337),
 
   // URL pública para generar correctamente los redirects de /api/connect/*
-  url: env('PUBLIC_URL', 'https://mozoqr-production.up.railway.app'),
+  url: env('PUBLIC_URL', 'https://mozoqr-isjnzx9gc-felipearangurens-projects.vercel.app'),
 
   // Si más adelante usás Nginx/Heroku/Render, podés activar esto:
   proxy: true,

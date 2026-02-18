@@ -2,7 +2,7 @@ import React from "react";
 import { Button } from "@mui/material";
 import { FcGoogle } from "react-icons/fc"; // icono de Google
 
-const STRAPI_URL = import.meta.env?.VITE_STRAPI_URL || "http://localhost:1337/api";
+const STRAPI_URL = import.meta.env?.VITE_STRAPI_URL || "https://mozoqr-isjnzx9gc-felipearangurens-projects.vercel.app";
 
 // Claves consistentes
 const LS_JWT_KEY = "strapi_jwt";
@@ -10,7 +10,7 @@ const LS_USER_KEY = "strapi_user";
 
 export default function LoginWithGoogleButton() {
   // Forzamos selector de cuenta para evitar “reusar” sesión previa
-  const url = `${STRAPI_URL}/connect/google?prompt=select_account`;
+  const url = `${STRAPI_URL}/auth/google/callback`;
 
   const handleLogin = (e) => {
     e.preventDefault();
