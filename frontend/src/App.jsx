@@ -1,6 +1,6 @@
 // frontend/src/App.jsx
-import React from 'react';
-import { BrowserRouter, Routes, Route, Navigate, useParams, useLocation } from 'react-router-dom';
+import React, { useEffect } from 'react';
+import { BrowserRouter, Routes, Route, Navigate, useParams, useLocation, useNavigate } from 'react-router-dom';
 import { CssBaseline } from '@mui/material';
 import Header from './components/Header';
 import Home from './pages/Home';
@@ -32,6 +32,20 @@ import AdminDashboard from './pages/AdminDashboard';
 import ImpersonateCallback from './pages/ImpersonateCallback';
 import DemoLanding from './pages/DemoLanding';
 
+// Si Grant/Strapi redirige a "/" (o otra ruta) con access_token, llevamos al usuario a la página que lo procesa
+function GoogleTokenRedirect({ children }) {
+  const location = useLocation();
+  const navigate = useNavigate();
+  useEffect(() => {
+    const params = new URLSearchParams(location.search);
+    const accessToken = params.get('access_token');
+    if (!accessToken) return;
+    if (location.pathname === '/connect/google/redirect') return;
+    navigate('/connect/google/redirect?' + location.search, { replace: true });
+  }, [location.pathname, location.search, navigate]);
+  return children;
+}
+
 // Redirige rutas viejas /restaurantes/:slug -> /:slug/menu (usa selector de mesas)
 function LegacyRestaurantesRoute() {
   const { slug } = useParams();
@@ -50,9 +64,10 @@ export default function App() {
   return (
     <BrowserRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
       <AuthProvider>
-        <CssBaseline />
-        <ConditionalHeader />
-        <Routes>
+        <GoogleTokenRedirect>
+          <CssBaseline />
+          <ConditionalHeader />
+          <Routes>
           {/* Cliente público - rutas simplificadas */}
           <Route path="/" element={<Home />} />
           <Route path="/:slug" element={<RestaurantMenu />} />
@@ -100,7 +115,8 @@ export default function App() {
           <Route path="/thank-you" element={<ThankYou />} />
           <Route path="/no-access" element={<NoAccess />} />
           <Route path="*" element={<Navigate to="/" replace />} />
-        </Routes>
+          </Routes>
+        </GoogleTokenRedirect>
       </AuthProvider>
     </BrowserRouter>
   );

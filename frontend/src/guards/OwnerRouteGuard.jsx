@@ -2,9 +2,12 @@
 import { useEffect, useRef, useState } from "react";
 import { Navigate, useParams } from "react-router-dom";
 
-// Usar variable de entorno en lugar de URL hardcodeada
-const API_URL = import.meta.env?.VITE_API_URL || 'http://localhost:1337/api';
-const BASE_URL = API_URL.replace('/api', '');
+// Misma base que el resto de la app para que el JWT sea válido en el mismo backend
+function getBaseUrl() {
+  const u = import.meta.env?.VITE_API_URL || import.meta.env?.VITE_STRAPI_URL || 'http://localhost:1337/api';
+  const base = (u || '').replace(/\/api\/?$/, '') || 'http://localhost:1337';
+  return base;
+}
 
 function readToken() {
   return localStorage.getItem("strapi_jwt") || localStorage.getItem("jwt") || null;
@@ -58,9 +61,12 @@ export default function OwnerRouteGuard({ children }) {
     
     (async () => {
       try {
-        const url = `${BASE_URL}/api/owner/${slug}/authz-check`;
+        const baseUrl = getBaseUrl();
+        const url = `${baseUrl}/api/owner/${slug}/authz-check`;
         const res = await fetch(url, {
+          method: 'GET',
           headers: { Authorization: `Bearer ${token}` },
+          credentials: 'include',
         });
         
         const data = await res.json().catch(() => ({}));

@@ -3,8 +3,8 @@ export default ({ env }) => ({
   host: env('HOST', '0.0.0.0'),
   port: env.int('PORT', 1337),
 
-  // URL pública para generar correctamente los redirects de /api/connect/*
-  url: env('PUBLIC_URL', 'https://mozoqr-isjnzx9gc-felipearangurens-projects.vercel.app'),
+  // URL pública del BACKEND (donde Google redirige con el código). En local: localhost:1337
+  url: env('PUBLIC_URL', 'http://localhost:1337'),
 
   // Si más adelante usás Nginx/Heroku/Render, podés activar esto:
   proxy: true,
