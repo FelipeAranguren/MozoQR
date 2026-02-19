@@ -53,6 +53,11 @@ export default ({ env }: { env: (key: string, fallback?: string) => string }) =>
             if (u.pathname !== '/connect/google/redirect') {
               throw new Error('Forbidden callback provided');
             }
+            // 1) Aceptar cualquier *.vercel.app (cada deploy de Vercel cambia el subdominio)
+            if (u.protocol === 'https:' && u.hostname.toLowerCase().endsWith('.vercel.app')) {
+              return;
+            }
+            // 2) FRONTEND_URL (Strapi env o process.env en Railway)
             const allowedOrigins = getAllowedOrigins(env);
             if (allowedOrigins.length > 0 && allowedOrigins.includes(u.origin)) {
               return;
@@ -76,10 +81,6 @@ export default ({ env }: { env: (key: string, fallback?: string) => string }) =>
               } catch {
                 // ignore
               }
-            }
-            // Cualquier deployment de Vercel (*.vercel.app) con la ruta correcta
-            if (u.protocol === 'https:' && u.hostname.endsWith('.vercel.app')) {
-              return;
             }
             throw new Error('Forbidden callback provided');
           } catch (e: unknown) {
