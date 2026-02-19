@@ -30,6 +30,7 @@ credentials: true,
 'strapi::logger',
 'strapi::query',
 'strapi::body',
+{ name: 'global::session-behind-proxy' },
 {
 name: 'strapi::session',
 config: {
