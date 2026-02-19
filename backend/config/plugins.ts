@@ -9,29 +9,72 @@ function sameLocalOrigin(a: URL, b: URL): boolean {
 }
 
 /**
+ * Orígenes permitidos desde FRONTEND_URL (varios separados por coma).
+ * Lee desde env() de Strapi o, si falla, desde process.env (p. ej. Railway).
+ */
+function getAllowedOrigins(env: unknown): string[] {
+  let raw = '';
+  try {
+    if (typeof env === 'function') {
+      raw = (env as (k: string, f?: string) => string)('FRONTEND_URL', '') || '';
+    }
+  } catch {
+    // ignore
+  }
+  if (!raw && typeof process !== 'undefined' && process.env) {
+    raw = process.env.FRONTEND_URL || '';
+  }
+  if (!raw) raw = 'http://localhost:5173';
+  return String(raw)
+    .split(',')
+    .map((s) => s.trim().replace(/\/$/, ''))
+    .filter(Boolean)
+    .map((url) => {
+      try {
+        return new URL(url).origin;
+      } catch {
+        return '';
+      }
+    })
+    .filter(Boolean);
+}
+
+/**
  * Permite que el login con Google redirija al frontend (callback dinámico).
- * Acepta FRONTEND_URL y también 127.0.0.1 cuando FRONTEND_URL es localhost (y viceversa).
+ * Acepta FRONTEND_URL (puede ser varias URLs separadas por coma) y localhost/127.0.0.1.
  */
 export default ({ env }: { env: (key: string, fallback?: string) => string }) => ({
   'users-permissions': {
     config: {
       callback: {
         validate(callback: string, provider: Record<string, unknown> & { callback?: string }) {
-          const frontendUrl = env('FRONTEND_URL', 'http://localhost:5173') || 'http://localhost:5173';
           try {
             const u = new URL(callback);
-            const allowed = new URL(frontendUrl);
-            if (sameLocalOrigin(u, allowed) && u.pathname === '/connect/google/redirect') {
+            if (u.pathname !== '/connect/google/redirect') {
+              throw new Error('Forbidden callback provided');
+            }
+            const allowedOrigins = getAllowedOrigins(env);
+            if (allowedOrigins.length > 0 && allowedOrigins.includes(u.origin)) {
               return;
             }
-            if (u.origin === allowed.origin && u.pathname === '/connect/google/redirect') {
-              return;
+            const firstAllowed = allowedOrigins[0];
+            if (firstAllowed) {
+              try {
+                const allowed = new URL(firstAllowed);
+                if (sameLocalOrigin(u, allowed)) return;
+              } catch {
+                // ignore invalid URL
+              }
             }
             const providerCallback = provider?.callback;
-            if (providerCallback) {
-              const uProvider = new URL(providerCallback);
-              if (u.origin === uProvider.origin && u.pathname === uProvider.pathname) {
-                return;
+            if (typeof providerCallback === 'string') {
+              try {
+                const uProvider = new URL(providerCallback);
+                if (u.origin === uProvider.origin && u.pathname === uProvider.pathname) {
+                  return;
+                }
+              } catch {
+                // ignore
               }
             }
             throw new Error('Forbidden callback provided');
