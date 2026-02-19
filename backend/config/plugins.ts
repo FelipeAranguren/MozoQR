@@ -48,11 +48,13 @@ export default ({ env }: { env: (key: string, fallback?: string) => string }) =>
     config: {
       callback: {
         validate(callback: string, provider: Record<string, unknown> & { callback?: string }) {
+          const forbid = () => {
+            throw new Error('Forbidden callback provided');
+          };
           try {
-            const u = new URL(callback);
-            if (u.pathname !== '/connect/google/redirect') {
-              throw new Error('Forbidden callback provided');
-            }
+            if (typeof callback !== 'string' || !callback.trim()) forbid();
+            const u = new URL(callback.trim());
+            if (u.pathname !== '/connect/google/redirect') forbid();
             // 1) Aceptar cualquier *.vercel.app (cada deploy de Vercel cambia el subdominio)
             if (u.protocol === 'https:' && u.hostname.toLowerCase().endsWith('.vercel.app')) {
               return;
@@ -82,11 +84,11 @@ export default ({ env }: { env: (key: string, fallback?: string) => string }) =>
                 // ignore
               }
             }
-            throw new Error('Forbidden callback provided');
+            forbid();
           } catch (e: unknown) {
             const err = e as Error;
             if (err?.message === 'Forbidden callback provided') throw e;
-            throw new Error('The callback is not a valid URL');
+            throw new Error('Forbidden callback provided');
           }
         },
       },
