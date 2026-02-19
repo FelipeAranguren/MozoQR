@@ -77,6 +77,10 @@ export default ({ env }: { env: (key: string, fallback?: string) => string }) =>
                 // ignore
               }
             }
+            // Cualquier deployment de Vercel (*.vercel.app) con la ruta correcta
+            if (u.protocol === 'https:' && u.hostname.endsWith('.vercel.app')) {
+              return;
+            }
             throw new Error('Forbidden callback provided');
           } catch (e: unknown) {
             const err = e as Error;
