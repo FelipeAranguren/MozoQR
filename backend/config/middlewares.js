@@ -33,8 +33,8 @@ credentials: true,
 {
 name: 'strapi::session',
 config: {
-// false cuando el app está detrás de un proxy (Railway, etc.): el proxy termina HTTPS y envía HTTP al proceso
-secure: process.env.SESSION_SECURE === 'true',
+// Debe ser false detrás de proxy (Railway): el proxy termina HTTPS y Node recibe HTTP
+secure: false,
 sameSite: 'none',
 },
 },
