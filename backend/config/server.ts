@@ -6,7 +6,7 @@ export default ({ env }) => ({
   /** * IMPORTANTE: En Railway, PUBLIC_URL debe ser https://mozoqr-production.up.railway.app
    * Strapi usa esta URL para generar los enlaces de redirección interna.
    */
-  url: env('PUBLIC_URL', 'http://localhost:1337'),
+  url: env('PUBLIC_URL'),
 
   /**
    * Ya lo tenés en true, lo cual es correcto para Railway.
