@@ -2044,8 +2044,8 @@ export default function Mostrador() {
           borderColor: flashing ? 'warning.main' : 'divider',
           borderRadius: 2,
           cursor: 'pointer',
-          display: 'flex',
-          flexDirection: 'column',
+          display: 'block',
+          width: '100%',
           '&:hover': {
             boxShadow: 8,
             bgcolor: flashing ? 'warning.light' : 'rgba(25, 118, 210, 0.04)',
@@ -2054,8 +2054,8 @@ export default function Mostrador() {
           },
         }}
       >
-        <CardContent sx={{ p: { xs: 1.5, sm: 2 }, '&:last-child': { pb: 1.5 }, flex: 1, display: 'flex', flexDirection: 'column' }}>
-          <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 1 }}>
+        <CardContent sx={{ p: { xs: 1.25, sm: 1.5 }, '&:last-child': { pb: 1.25 }, display: 'block' }}>
+          <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 0.75 }}>
             <Chip
               label={`Mesa ${mesaNumero ?? 's/n'}`}
               size="small"
@@ -2064,7 +2064,7 @@ export default function Mostrador() {
                 bgcolor: getMesaColor(mesaNumero),
                 color: 'white',
                 fontSize: { xs: '0.75rem', sm: '0.8125rem' },
-                height: 22,
+                height: 20,
                 '&:hover': {
                   bgcolor: getMesaColor(mesaNumero),
                   opacity: 0.9,
@@ -2111,7 +2111,7 @@ export default function Mostrador() {
               {items.map((item) => {
                 const prod = item?.product;
                 return (
-                  <Typography key={item.id} variant="body2" sx={{ mb: 0.5, fontSize: { xs: '0.8125rem', sm: '0.875rem' }, lineHeight: 1.5 }}>
+                  <Typography key={item.id} variant="body2" sx={{ mb: 0.25, fontSize: { xs: '0.8125rem', sm: '0.875rem' }, lineHeight: 1.4 }}>
                     {item.quantity}x {prod?.name || 'Producto sin datos'}
                   </Typography>
                 );
@@ -2125,7 +2125,7 @@ export default function Mostrador() {
 
           <Typography
             variant="subtitle2"
-            sx={{ textAlign: 'right', mt: 1, mb: 0.5, fontWeight: 600, fontSize: '0.9rem' }}
+            sx={{ textAlign: 'right', mt: 0.75, mb: 0.25, fontWeight: 600, fontSize: '0.875rem' }}
           >
             {money(total)}
           </Typography>
@@ -2150,7 +2150,7 @@ export default function Mostrador() {
                 sx={{
                   display: 'flex',
                   gap: 0.5,
-                  mt: 1.5,
+                  mt: 1,
                   alignItems: 'center',
                 }}
               >
@@ -2212,13 +2212,13 @@ export default function Mostrador() {
                 fullWidth
                 size="small"
                 sx={{
-                  mt: 1,
+                  mt: 0.75,
                   borderRadius: 1.5,
                   textTransform: 'none',
                   fontWeight: 600,
                   fontSize: { xs: '0.8125rem', sm: '0.875rem' },
-                  py: 0.75,
-                  minHeight: 40,
+                  py: 0.5,
+                  minHeight: 36,
                   px: 2,
                 }}
               >
