@@ -31,14 +31,12 @@ module.exports = [
   'strapi::logger',
   'strapi::query',
   'strapi::body',
-  { name: 'global::session-behind-proxy' },
   {
     name: 'strapi::session',
     config: {
-      // CORRECCIÓN: Debe ser true porque ya activaste proxy: true en server.ts
-      // Esto permite que la cookie viaje segura desde Railway hacia Vercel
-      secure: true, 
+      secure: true,
       sameSite: 'none',
+      proxy: true, // confiar en X-Forwarded-Proto (Railway) para ctx.secure
     },
   },
   { name: 'global::secure-headers' },

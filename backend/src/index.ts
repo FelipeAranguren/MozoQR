@@ -1,4 +1,4 @@
-// import type { Core } from '@strapi/strapi';
+import type { Core } from '@strapi/strapi';
 
 export default {
   /**
@@ -7,7 +7,12 @@ export default {
    *
    * This gives you an opportunity to extend code.
    */
-  register(/* { strapi }: { strapi: Core.Strapi } */) {},
+  register({ strapi }: { strapi: Core.Strapi }) {
+    // Asegurar que Koa confíe en los headers del proxy (Railway) para cookies seguras
+    if (strapi?.server?.app) {
+      strapi.server.app.proxy = true;
+    }
+  },
 
   /**
    * An asynchronous bootstrap function that runs before
