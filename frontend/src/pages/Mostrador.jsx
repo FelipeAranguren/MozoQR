@@ -2047,6 +2047,8 @@ export default function Mostrador() {
           display: 'block',
           width: '100%',
           minHeight: 0,
+          minWidth: 0,
+          overflow: 'hidden',
           '&:hover': {
             boxShadow: 8,
             bgcolor: flashing ? 'warning.light' : 'rgba(25, 118, 210, 0.04)',
@@ -2055,9 +2057,9 @@ export default function Mostrador() {
           },
         }}
       >
-        <CardContent sx={{ p: 1, '&:last-child': { pb: 1 }, display: 'block' }}>
+        <CardContent sx={{ p: 1, '&:last-child': { pb: 1 }, display: 'block', minWidth: 0, overflow: 'hidden' }}>
           {/* Fila: Mesa + hora */}
-          <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 0.5 }}>
+          <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 0.5, minWidth: 0 }}>
             <Chip
               label={`Mesa ${mesaNumero ?? 's/n'}`}
               size="small"
@@ -2065,12 +2067,14 @@ export default function Mostrador() {
                 fontWeight: 700,
                 bgcolor: getMesaColor(mesaNumero),
                 color: 'white',
-                fontSize: '0.8125rem',
-                height: 22,
+                fontSize: '0.75rem',
+                height: 20,
+                maxWidth: '60%',
+                '& .MuiChip-label': { overflow: 'hidden', textOverflow: 'ellipsis' },
                 '&:hover': { bgcolor: getMesaColor(mesaNumero), opacity: 0.9 },
               }}
             />
-            <Typography variant="body2" sx={{ color: 'text.secondary', fontSize: '0.8125rem', fontWeight: 600 }}>
+            <Typography variant="body2" sx={{ color: 'text.secondary', fontSize: '0.75rem', fontWeight: 600, flexShrink: 0 }}>
               {formatTime(createdAt)}
             </Typography>
           </Box>
@@ -2095,14 +2099,15 @@ export default function Mostrador() {
             </Box>
           )}
 
-          {/* Ítems: lista compacta legible */}
+          {/* Ítems: lista compacta legible (truncar si es muy largo) */}
           {items.length > 0 ? (
-            <Box component="ul" sx={{ m: 0, pl: 1.5, py: 0, listStyle: 'none' }}>
+            <Box component="ul" sx={{ m: 0, pl: 1.25, py: 0, listStyle: 'none', minWidth: 0 }}>
               {items.map((item) => {
                 const prod = item?.product;
+                const name = prod?.name || 'Producto sin datos';
                 return (
-                  <Typography key={item.id} component="li" variant="body2" sx={{ mb: 0.15, fontSize: '0.9375rem', lineHeight: 1.35, fontWeight: 500 }}>
-                    {item.quantity}x {prod?.name || 'Producto sin datos'}
+                  <Typography key={item.id} component="li" variant="body2" sx={{ mb: 0.1, fontSize: '0.8125rem', lineHeight: 1.3, fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    {item.quantity}x {name}
                   </Typography>
                 );
               })}
@@ -2114,8 +2119,8 @@ export default function Mostrador() {
           )}
 
           {/* Total + acciones en una fila */}
-          <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75, mt: 0.75, flexWrap: 'wrap' }}>
-            <Typography variant="subtitle2" sx={{ fontWeight: 700, fontSize: '1rem', flex: '1 1 auto', minWidth: 0 }}>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, mt: 0.5, flexWrap: 'wrap', minWidth: 0 }}>
+            <Typography variant="subtitle2" sx={{ fontWeight: 700, fontSize: '0.875rem', flex: '1 1 auto', minWidth: 0 }}>
               {money(total)}
             </Typography>
             {isHistory ? (
@@ -2155,13 +2160,13 @@ export default function Mostrador() {
                     else if (order_status === 'preparing') setCompleteOrderDialog({ open: true, pedido, staffNotes: '', loading: false });
                   }}
                   sx={{
-                    borderRadius: 1.5,
+                    borderRadius: 1.25,
                     textTransform: 'none',
                     fontWeight: 700,
-                    fontSize: '0.8125rem',
-                    py: 0.5,
-                    px: 1.5,
-                    minHeight: 32,
+                    fontSize: '0.75rem',
+                    py: 0.4,
+                    px: 1.25,
+                    minHeight: 28,
                   }}
                 >
                   {order_status === 'pending' ? 'Cocinar' : 'Completado'}
@@ -2293,8 +2298,8 @@ export default function Mostrador() {
       <>
         {/* Sección superior: Pedidos activos */}
         <Grid container spacing={2} sx={{ mb: 3 }}>
-          {/* Columna 1: Pedidos Pendientes */}
-          <Grid item xs={12} md={4}>
+          {/* Sección 1: Pendientes — 3 columnas de pedidos */}
+          <Grid item xs={12} md={6}>
             <Box sx={{ mb: 1.5, display: 'flex', alignItems: 'center', gap: 1 }}>
               <AccessTimeIcon sx={{ fontSize: 20, color: 'text.secondary' }} />
               <Typography variant="h6" sx={{ fontWeight: 600 }}>
@@ -2314,96 +2319,52 @@ export default function Mostrador() {
             <Box
               sx={{
                 display: 'grid',
-                gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))',
-                gap: 1.5,
+                gridTemplateColumns: { xs: 'repeat(2, 1fr)', sm: 'repeat(3, 1fr)' },
+                gap: 1.25,
                 alignContent: 'start',
               }}
             >
               {pedidosPendientes.map((pedido) => (
-                <Box key={pedido.documentId || pedido.id} sx={{ minHeight: 0 }}>
+                <Box key={pedido.documentId || pedido.id} sx={{ minHeight: 0, minWidth: 0 }}>
                   {renderPedidoCard(pedido)}
                 </Box>
               ))}
             </Box>
           </Grid>
 
-
-          {/* Columna 2: Pedidos en Cocina */}
-          <Grid item xs={12} md={4}>
+          {/* Sección 2: Cocinando — 3 columnas de pedidos */}
+          <Grid item xs={12} md={6}>
             <Box sx={{ mb: 1.5, display: 'flex', alignItems: 'center', gap: 1 }}>
               <RestaurantIcon sx={{ fontSize: 20, color: 'text.secondary' }} />
               <Typography variant="h6" sx={{ fontWeight: 600 }}>
-                Cocina ({pedidosEnCocina.length})
+                Cocinando ({pedidosEnCocina.length})
               </Typography>
             </Box>
             {pedidosEnCocina.length === 0 && !noResultsPedidos && (
               <Typography variant="body2" color="text.secondary">
-                No hay pedidos en cocina
+                No hay pedidos cocinando
               </Typography>
             )}
             {noResultsPedidos && pedidosEnCocina.length === 0 && (
               <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
-                No hay pedidos en cocina para las mesas buscadas.
+                No hay pedidos cocinando para las mesas buscadas.
               </Typography>
             )}
             <Box
               sx={{
                 display: 'grid',
-                gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))',
-                gap: 1.5,
+                gridTemplateColumns: { xs: 'repeat(2, 1fr)', sm: 'repeat(3, 1fr)' },
+                gap: 1.25,
                 alignContent: 'start',
               }}
             >
               {pedidosEnCocina.map((pedido) => (
-                <Box key={pedido.documentId || pedido.id} sx={{ minHeight: 0 }}>
+                <Box key={pedido.documentId || pedido.id} sx={{ minHeight: 0, minWidth: 0 }}>
                   {renderPedidoCard(pedido)}
                 </Box>
               ))}
             </Box>
           </Grid>
-
-          {/* Columna 3: Listos para servir */}
-          <Grid item xs={12} md={4}>
-            <Box sx={{ mb: 1.5, display: 'flex', alignItems: 'center', gap: 1 }}>
-              <CheckCircleIcon sx={{ fontSize: 20, color: 'success.main' }} />
-              <Typography variant="h6" sx={{ fontWeight: 600 }}>
-                Listos ({pedidosListos.length})
-              </Typography>
-              {pedidosListos.length > 0 && (
-                <Chip
-                  label={pedidosListos.length}
-                  size="small"
-                  color="success"
-                  sx={{ fontWeight: 700 }}
-                />
-              )}
-            </Box>
-            {pedidosListos.length === 0 && !noResultsPedidos && (
-              <Typography variant="body2" color="text.secondary">
-                No hay pedidos listos
-              </Typography>
-            )}
-            {noResultsPedidos && pedidosListos.length === 0 && (
-              <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
-                No hay pedidos listos para las mesas buscadas.
-              </Typography>
-            )}
-            <Box
-              sx={{
-                display: 'grid',
-                gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))',
-                gap: 1.5,
-                alignContent: 'start',
-              }}
-            >
-              {pedidosListos.map((pedido) => (
-                <Box key={pedido.documentId || pedido.id} sx={{ minHeight: 0 }}>
-                  {renderPedidoCard(pedido)}
-                </Box>
-              ))}
-            </Box>
-          </Grid>
-
         </Grid>
 
         {/* División visual */}
