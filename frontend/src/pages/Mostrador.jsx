@@ -2046,6 +2046,7 @@ export default function Mostrador() {
           cursor: 'pointer',
           display: 'block',
           width: '100%',
+          minHeight: 0,
           '&:hover': {
             boxShadow: 8,
             bgcolor: flashing ? 'warning.light' : 'rgba(25, 118, 210, 0.04)',
@@ -2054,24 +2055,22 @@ export default function Mostrador() {
           },
         }}
       >
-        <CardContent sx={{ p: { xs: 1.25, sm: 1.5 }, '&:last-child': { pb: 1.25 }, display: 'block' }}>
-          <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 0.75 }}>
+        <CardContent sx={{ p: 1, '&:last-child': { pb: 1 }, display: 'block' }}>
+          {/* Fila: Mesa + hora */}
+          <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 0.5 }}>
             <Chip
               label={`Mesa ${mesaNumero ?? 's/n'}`}
               size="small"
               sx={{
-                fontWeight: 600,
+                fontWeight: 700,
                 bgcolor: getMesaColor(mesaNumero),
                 color: 'white',
-                fontSize: { xs: '0.75rem', sm: '0.8125rem' },
-                height: 20,
-                '&:hover': {
-                  bgcolor: getMesaColor(mesaNumero),
-                  opacity: 0.9,
-                },
+                fontSize: '0.8125rem',
+                height: 22,
+                '&:hover': { bgcolor: getMesaColor(mesaNumero), opacity: 0.9 },
               }}
             />
-            <Typography variant="body2" sx={{ color: 'text.secondary', fontSize: '0.7rem' }}>
+            <Typography variant="body2" sx={{ color: 'text.secondary', fontSize: '0.8125rem', fontWeight: 600 }}>
               {formatTime(createdAt)}
             </Typography>
           </Box>
@@ -2082,150 +2081,94 @@ export default function Mostrador() {
                 display: 'flex',
                 alignItems: 'center',
                 gap: 0.5,
-                mb: 0.75,
+                mb: 0.5,
                 p: 0.5,
                 bgcolor: '#fff3cd',
                 borderRadius: 1,
-                border: '1.5px solid',
-                borderColor: '#ff9800',
-                boxShadow: '0 1px 3px rgba(255, 152, 0, 0.2)',
+                border: '1px solid #ff9800',
               }}
             >
-              <WarningIcon sx={{ fontSize: '0.875rem', color: '#f57c00' }} />
-              <Typography
-                variant="body2"
-                sx={{
-                  fontSize: '0.75rem',
-                  color: '#e65100',
-                  fontWeight: 600,
-                  flex: 1,
-                }}
-              >
+              <WarningIcon sx={{ fontSize: 16, color: '#f57c00', flexShrink: 0 }} />
+              <Typography variant="body2" sx={{ fontSize: '0.75rem', color: '#e65100', fontWeight: 600, flex: 1 }}>
                 {customerNotes}
               </Typography>
             </Box>
           )}
 
+          {/* Ítems: lista compacta legible */}
           {items.length > 0 ? (
-            <>
+            <Box component="ul" sx={{ m: 0, pl: 1.5, py: 0, listStyle: 'none' }}>
               {items.map((item) => {
                 const prod = item?.product;
                 return (
-                  <Typography key={item.id} variant="body2" sx={{ mb: 0.25, fontSize: { xs: '0.8125rem', sm: '0.875rem' }, lineHeight: 1.4 }}>
+                  <Typography key={item.id} component="li" variant="body2" sx={{ mb: 0.15, fontSize: '0.9375rem', lineHeight: 1.35, fontWeight: 500 }}>
                     {item.quantity}x {prod?.name || 'Producto sin datos'}
                   </Typography>
                 );
               })}
-            </>
+            </Box>
           ) : (
             <Typography variant="caption" color="text.secondary" sx={{ fontSize: '0.75rem', fontStyle: 'italic' }}>
               Sin items detallados
             </Typography>
           )}
 
-          <Typography
-            variant="subtitle2"
-            sx={{ textAlign: 'right', mt: 0.75, mb: 0.25, fontWeight: 600, fontSize: '0.875rem' }}
-          >
-            {money(total)}
-          </Typography>
-
-          {isHistory ? (
-            <Button
-              variant="outlined"
-              size="small"
-              startIcon={<VisibilityIcon sx={{ fontSize: 18 }} />}
-              onClick={(e) => {
-                e.stopPropagation();
-                setOrderDetailDialog({ open: true, pedido });
-              }}
-              fullWidth
-              sx={{ mt: 1.5, textTransform: 'none', fontSize: { xs: '0.8125rem', sm: '0.875rem' }, py: 0.75, px: 2 }}
-            >
-              Ver detalles
-            </Button>
-          ) : (
-            <>
-              <Box
-                sx={{
-                  display: 'flex',
-                  gap: 0.5,
-                  mt: 1,
-                  alignItems: 'center',
+          {/* Total + acciones en una fila */}
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75, mt: 0.75, flexWrap: 'wrap' }}>
+            <Typography variant="subtitle2" sx={{ fontWeight: 700, fontSize: '1rem', flex: '1 1 auto', minWidth: 0 }}>
+              {money(total)}
+            </Typography>
+            {isHistory ? (
+              <Button
+                variant="outlined"
+                size="small"
+                startIcon={<VisibilityIcon sx={{ fontSize: 18 }} />}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setOrderDetailDialog({ open: true, pedido });
                 }}
+                sx={{ textTransform: 'none', fontSize: '0.8125rem', py: 0.5, px: 1.5 }}
               >
-                <Tooltip title="Ver" placement="top">
-                  <IconButton
-                    size="small"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      setOrderDetailDialog({ open: true, pedido });
-                    }}
-                    sx={{
-                      color: 'text.secondary',
-                      minWidth: 36,
-                      minHeight: 36,
-                      '&:hover': {
-                        bgcolor: 'action.hover',
-                        color: 'primary.main',
-                      },
-                    }}
-                  >
-                    <VisibilityIcon sx={{ fontSize: 20 }} />
+                Ver detalles
+              </Button>
+            ) : (
+              <>
+                <Tooltip title="Ver">
+                  <IconButton size="small" onClick={(e) => { e.stopPropagation(); setOrderDetailDialog({ open: true, pedido }); }} sx={{ p: 0.5, color: 'text.secondary' }}>
+                    <VisibilityIcon sx={{ fontSize: 18 }} />
                   </IconButton>
                 </Tooltip>
                 {(order_status === 'pending' || order_status === 'preparing') && (
-                  <Tooltip title="Cancelar" placement="top">
-                    <IconButton
-                      size="small"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        setCancelOrderDialog({ open: true, pedido, reason: '' });
-                      }}
-                      sx={{
-                        color: 'text.secondary',
-                        minWidth: 36,
-                        minHeight: 36,
-                        '&:hover': {
-                          bgcolor: 'error.light',
-                          color: 'error.main',
-                        },
-                      }}
-                    >
-                      <CancelIcon sx={{ fontSize: 20 }} />
+                  <Tooltip title="Cancelar">
+                    <IconButton size="small" onClick={(e) => { e.stopPropagation(); setCancelOrderDialog({ open: true, pedido, reason: '' }); }} sx={{ p: 0.5, color: 'text.secondary' }}>
+                      <CancelIcon sx={{ fontSize: 18 }} />
                     </IconButton>
                   </Tooltip>
                 )}
-              </Box>
-
-              <Button
-                variant="contained"
-                color={order_status === 'pending' ? 'primary' : 'success'}
-                onClick={(e) => {
-                  e.stopPropagation();
-                  if (order_status === 'pending') {
-                    marcarComoRecibido(pedido);
-                  } else if (order_status === 'preparing') {
-                    setCompleteOrderDialog({ open: true, pedido, staffNotes: '', loading: false });
-                  }
-                }}
-                fullWidth
-                size="small"
-                sx={{
-                  mt: 0.75,
-                  borderRadius: 1.5,
-                  textTransform: 'none',
-                  fontWeight: 600,
-                  fontSize: { xs: '0.8125rem', sm: '0.875rem' },
-                  py: 0.5,
-                  minHeight: 36,
-                  px: 2,
-                }}
-              >
-                {order_status === 'pending' ? 'Cocinar' : 'Completado'}
-              </Button>
-            </>
-          )}
+                <Button
+                  variant="contained"
+                  color={order_status === 'pending' ? 'primary' : 'success'}
+                  size="small"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    if (order_status === 'pending') marcarComoRecibido(pedido);
+                    else if (order_status === 'preparing') setCompleteOrderDialog({ open: true, pedido, staffNotes: '', loading: false });
+                  }}
+                  sx={{
+                    borderRadius: 1.5,
+                    textTransform: 'none',
+                    fontWeight: 700,
+                    fontSize: '0.8125rem',
+                    py: 0.5,
+                    px: 1.5,
+                    minHeight: 32,
+                  }}
+                >
+                  {order_status === 'pending' ? 'Cocinar' : 'Completado'}
+                </Button>
+              </>
+            )}
+          </Box>
         </CardContent>
       </Card>
     );
@@ -2369,41 +2312,18 @@ export default function Mostrador() {
               </Typography>
             )}
             <Box
-              sx={(theme) => ({
-                columnCount: 1,
-                columnGap: theme.spacing(2),
-                [theme.breakpoints.up('sm')]: {
-                  columnCount: 2,
-                },
-                [theme.breakpoints.up('md')]: {
-                  columnCount: 3,
-                },
-                '& > *': {
-                  breakInside: 'avoid',
-                  marginBottom: theme.spacing(1.5),
-                  display: 'inline-block',
-                  width: '100%',
-                },
-              })}
+              sx={{
+                display: 'grid',
+                gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))',
+                gap: 1.5,
+                alignContent: 'start',
+              }}
             >
-              {(() => {
-                const cols = 3;
-                const reordered = [];
-                const rows = Math.ceil(pedidosPendientes.length / cols);
-                for (let col = 0; col < cols; col++) {
-                  for (let row = 0; row < rows; row++) {
-                    const index = row * cols + col;
-                    if (index < pedidosPendientes.length) {
-                      reordered.push(pedidosPendientes[index]);
-                    }
-                  }
-                }
-                return reordered.map((pedido) => (
-                  <Box key={pedido.documentId || pedido.id}>
-                    {renderPedidoCard(pedido)}
-                  </Box>
-                ));
-              })()}
+              {pedidosPendientes.map((pedido) => (
+                <Box key={pedido.documentId || pedido.id} sx={{ minHeight: 0 }}>
+                  {renderPedidoCard(pedido)}
+                </Box>
+              ))}
             </Box>
           </Grid>
 
@@ -2427,41 +2347,18 @@ export default function Mostrador() {
               </Typography>
             )}
             <Box
-              sx={(theme) => ({
-                columnCount: 1,
-                columnGap: theme.spacing(2),
-                [theme.breakpoints.up('sm')]: {
-                  columnCount: 2,
-                },
-                [theme.breakpoints.up('md')]: {
-                  columnCount: 3,
-                },
-                '& > *': {
-                  breakInside: 'avoid',
-                  marginBottom: theme.spacing(1.5),
-                  display: 'inline-block',
-                  width: '100%',
-                },
-              })}
+              sx={{
+                display: 'grid',
+                gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))',
+                gap: 1.5,
+                alignContent: 'start',
+              }}
             >
-              {(() => {
-                const cols = 3;
-                const reordered = [];
-                const rows = Math.ceil(pedidosEnCocina.length / cols);
-                for (let col = 0; col < cols; col++) {
-                  for (let row = 0; row < rows; row++) {
-                    const index = row * cols + col;
-                    if (index < pedidosEnCocina.length) {
-                      reordered.push(pedidosEnCocina[index]);
-                    }
-                  }
-                }
-                return reordered.map((pedido) => (
-                  <Box key={pedido.documentId || pedido.id}>
-                    {renderPedidoCard(pedido)}
-                  </Box>
-                ));
-              })()}
+              {pedidosEnCocina.map((pedido) => (
+                <Box key={pedido.documentId || pedido.id} sx={{ minHeight: 0 }}>
+                  {renderPedidoCard(pedido)}
+                </Box>
+              ))}
             </Box>
           </Grid>
 
@@ -2492,25 +2389,15 @@ export default function Mostrador() {
               </Typography>
             )}
             <Box
-              sx={(theme) => ({
-                columnCount: 1,
-                columnGap: theme.spacing(2),
-                [theme.breakpoints.up('sm')]: {
-                  columnCount: 2,
-                },
-                [theme.breakpoints.up('md')]: {
-                  columnCount: 2,
-                },
-                '& > *': {
-                  breakInside: 'avoid',
-                  marginBottom: theme.spacing(1.5),
-                  display: 'inline-block',
-                  width: '100%',
-                },
-              })}
+              sx={{
+                display: 'grid',
+                gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))',
+                gap: 1.5,
+                alignContent: 'start',
+              }}
             >
               {pedidosListos.map((pedido) => (
-                <Box key={pedido.documentId || pedido.id}>
+                <Box key={pedido.documentId || pedido.id} sx={{ minHeight: 0 }}>
                   {renderPedidoCard(pedido)}
                 </Box>
               ))}
