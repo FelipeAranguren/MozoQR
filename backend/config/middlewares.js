@@ -1,8 +1,18 @@
 // backend/config/middlewares.js
+// Orden: debug + sesión lo antes posible, antes de security/cors (para no perder headers)
 'use strict';
 
 module.exports = [
   'strapi::errors',
+  { name: 'global::debug-proxy-headers' },
+  {
+    name: 'strapi::session',
+    config: {
+      secure: true,
+      sameSite: 'none',
+      proxy: true,
+    },
+  },
   {
     name: 'strapi::security',
     config: {
@@ -17,10 +27,10 @@ module.exports = [
   {
     name: 'strapi::cors',
     config: {
-      // Asegúrate de que FRONTEND_URL esté en tus variables de Railway
       origin: (process.env.CORS_ORIGINS || process.env.FRONTEND_URL || '')
         .split(',')
-        .map(s => s.trim()),
+        .map((s) => s.trim())
+        .filter(Boolean),
       methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'HEAD', 'OPTIONS'],
       headers: ['Content-Type', 'Authorization', 'Idempotency-Key'],
       keepHeadersOnError: true,
@@ -31,14 +41,6 @@ module.exports = [
   'strapi::logger',
   'strapi::query',
   'strapi::body',
-  {
-    name: 'strapi::session',
-    config: {
-      secure: true,
-      sameSite: 'none',
-      proxy: true, // confiar en X-Forwarded-Proto (Railway) para ctx.secure
-    },
-  },
   { name: 'global::secure-headers' },
   { name: 'global::rate-limit' },
   { name: 'global::audit-log' },

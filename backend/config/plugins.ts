@@ -41,16 +41,13 @@ function getAllowedOrigins(env: any): string[] {
 export default ({ env }: { env: (key: string, fallback?: string) => string }) => ({
   'users-permissions': {
     config: {
-      // Sesión coherente con producción detrás de proxy HTTPS (Railway).
-      // Requiere proxy: { koa: true } en server.ts y app.proxy = true en src/index.ts
-      // para que ctx.secure sea true y no falle "Cannot send secure cookie over unencrypted connection".
       session: {
         key: 'strapi.sid',
         rolling: true,
         renew: true,
         cookie: {
-          secure: true, // Indispensable para HTTPS en producción
-          sameSite: 'none', // Permite cookie entre dominios (Railway <-> Vercel) para Google OAuth
+          secure: process.env.NODE_ENV === 'production',
+          sameSite: 'none',
           httpOnly: true,
         },
       },
