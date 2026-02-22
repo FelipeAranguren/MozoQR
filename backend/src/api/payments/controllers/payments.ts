@@ -5,6 +5,47 @@ import { ensureHttpUrl, getFrontendUrl, getBackendUrl, isHttps } from '../../../
 
 const PRODUCTO_UID = 'api::producto.producto';
 
+/**
+ * Strapi carga .env automáticamente al arranque; no hace falta importar dotenv.
+ * En Railway, configurá MP_ACCESS_TOKEN en Variables del proyecto.
+ */
+function getMpAccessToken(): string | null {
+  const raw = process.env.MP_ACCESS_TOKEN;
+  if (raw == null) return null;
+  const trimmed = String(raw).trim();
+  return trimmed.length > 0 ? trimmed : null;
+}
+
+/** Log de diagnóstico para Railway/consola cuando falta MP_ACCESS_TOKEN */
+function logPaymentEnvDiagnostics(strapi: any): void {
+  const log = strapi?.log?.warn ?? strapi?.log?.error ?? console.warn;
+  const env = process.env;
+  const mpToken = env.MP_ACCESS_TOKEN;
+  const mpSet = mpToken != null && String(mpToken).trim().length > 0;
+  const sampleVars = [
+    'NODE_ENV',
+    'HOST',
+    'PORT',
+    'PUBLIC_URL',
+    'FRONTEND_URL',
+    'MP_ACCESS_TOKEN',
+    'MP_PUBLIC_KEY',
+    'DATABASE_CLIENT',
+  ] as const;
+  const lines = [
+    '[payments] MP_ACCESS_TOKEN está vacío o no definido.',
+    '[payments] Diagnóstico env (solo nombres; valores no se muestran por seguridad):',
+    ...sampleVars.map((key) => {
+      const val = env[key];
+      const set = val != null && String(val).trim().length > 0;
+      const hint = set ? `definida (length=${String(val).length})` : 'no definida o vacía';
+      return `  - ${key}: ${hint}`;
+    }),
+    '[payments] En Railway: Revisá Variables del servicio y asegurate de tener MP_ACCESS_TOKEN. Tras cambiar variables, redeploy o reinicio.',
+  ];
+  log(lines.join('\n'));
+}
+
 /** URL base para redirects de pago (Mercado Pago back_urls) */
 function getPaymentStatusBaseUrl(): string {
   const url = process.env.PAYMENT_STATUS_URL || process.env.FRONTEND_URL || '';
@@ -111,15 +152,22 @@ export default {
   async createPreference(ctx: any) {
     try {
       const { items, cartItems, orderId, amount, slug } = ctx.request.body || {};
+      const strapi = ctx.strapi;
 
-      const accessToken = process.env.MP_ACCESS_TOKEN;
+      const accessToken = getMpAccessToken();
       if (!accessToken) {
+        logPaymentEnvDiagnostics(strapi);
         ctx.status = 500;
-        ctx.body = { ok: false, error: 'Falta MP_ACCESS_TOKEN' };
+        ctx.body = {
+          ok: false,
+          error: 'Falta MP_ACCESS_TOKEN. Revisá las variables de entorno (Railway: Variables del servicio).',
+        };
         return;
       }
 
-      const strapi = ctx.strapi;
+      // Usar el mismo token ya validado para el cliente (evita race tras reinicio)
+      const client = new MercadoPagoConfig({ accessToken });
+      const preference = new Preference(client);
       let saneItems: Array<{ title: string; quantity: number; unit_price: number; currency_id: 'ARS' }>;
       let backUrls: { success: string; failure: string; pending: string };
 
@@ -207,10 +255,7 @@ export default {
         0,
       );
 
-      // ---- Crear preferencia
-      const client = new MercadoPagoConfig({ accessToken });
-      const preference = new Preference(client);
-
+      // ---- Crear preferencia (client/preference ya creados arriba con accessToken validado)
       const baseBack = getBackendUrl(strapi.config);
       const body: any = {
         items: saneItems.map((it: any, i: number) => ({ id: String(i + 1), ...it })),
@@ -273,8 +318,13 @@ export default {
       const { token, issuer_id, payment_method_id, transaction_amount, installments, payer, description, orderId } =
         ctx.request.body || {};
 
-      const accessToken = process.env.MP_ACCESS_TOKEN;
-      if (!accessToken) { ctx.status = 500; ctx.body = { error: 'Falta MP_ACCESS_TOKEN' }; return; }
+      const accessToken = getMpAccessToken();
+      if (!accessToken) {
+        logPaymentEnvDiagnostics(ctx.strapi);
+        ctx.status = 500;
+        ctx.body = { error: 'Falta MP_ACCESS_TOKEN. Revisá variables de entorno (Railway: Variables del servicio).' };
+        return;
+      }
 
       if (!token) { ctx.status = 400; ctx.body = { error: 'Falta token' }; return; }
       const amount = Number(transaction_amount);
@@ -318,10 +368,11 @@ export default {
       const statusQ = (q.status ?? q.collection_status ?? '').toString().toLowerCase() || null;
       const orderRefQ = (q.orderRef ?? '').toString() || null; // <- fallback extra que nosotros pasamos
 
-      const accessToken = process.env.MP_ACCESS_TOKEN;
+      const accessToken = getMpAccessToken();
       if (!accessToken) {
+        logPaymentEnvDiagnostics(strapi);
         ctx.status = 500;
-        ctx.body = { ok: false, error: 'Falta MP_ACCESS_TOKEN' };
+        ctx.body = { ok: false, error: 'Falta MP_ACCESS_TOKEN. Revisá variables de entorno (Railway: Variables del servicio).' };
         return;
       }
 
