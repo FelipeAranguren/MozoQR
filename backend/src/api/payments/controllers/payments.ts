@@ -156,6 +156,7 @@ export default {
 
       const accessToken = getMpAccessToken();
       if (!accessToken) {
+        strapi?.log?.error?.('[payments.createPreference] 500: MP_ACCESS_TOKEN faltante o vacío.');
         logPaymentEnvDiagnostics(strapi);
         ctx.status = 500;
         ctx.body = {
@@ -307,9 +308,14 @@ export default {
       };
     } catch (e: any) {
       const strapi = ctx.strapi;
-      strapi?.log?.error?.('createPreference ERROR ->', e?.response?.data || e?.message);
+      const msg = e?.message ?? 'Error desconocido';
+      const mpData = e?.response?.data;
+      const detail = mpData ? JSON.stringify(mpData) : msg;
+      strapi?.log?.error?.('[payments.createPreference] 500:', detail);
+      if (e?.stack) strapi?.log?.error?.('[payments.createPreference] stack:', e.stack);
       ctx.status = 500;
-      ctx.body = { ok: false, error: e?.response?.data ?? e?.message ?? 'Error creando preferencia' };
+      const clientError = mpData?.message ?? msg;
+      ctx.body = { ok: false, error: clientError };
     }
   },
 
