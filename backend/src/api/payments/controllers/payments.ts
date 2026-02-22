@@ -3,6 +3,26 @@
 import { MercadoPagoConfig, Preference, Payment } from 'mercadopago';
 import { ensureHttpUrl, getFrontendUrl, getBackendUrl, isHttps } from '../../../config/urls';
 
+const PRODUCTO_UID = 'api::producto.producto';
+
+/** URL base para redirects de pago (Mercado Pago back_urls) */
+function getPaymentStatusBaseUrl(): string {
+  const url = process.env.PAYMENT_STATUS_URL || process.env.FRONTEND_URL || '';
+  if (url) return ensureHttpUrl(url).replace(/\/*$/, '');
+  return 'https://mozoqr.vercel.app';
+}
+
+/** back_urls apuntando al frontend en Vercel (payment-status) */
+function buildPaymentStatusBackUrls(): { success: string; failure: string; pending: string } {
+  const base = getPaymentStatusBaseUrl();
+  const statusPath = '/payment-status';
+  return {
+    success: `${base}${statusPath}?status=success`,
+    failure: `${base}${statusPath}?status=failure`,
+    pending: `${base}${statusPath}?status=pending`,
+  };
+}
+
 function resolvePaymentUID(strapi: any): string | null {
   const uid1 = 'api::payment.payment';
   const uid2 = 'api::payments.payment';
@@ -90,7 +110,7 @@ export default {
 
   async createPreference(ctx: any) {
     try {
-      const { items, orderId, amount, slug } = ctx.request.body || {};
+      const { items, cartItems, orderId, amount, slug } = ctx.request.body || {};
 
       const accessToken = process.env.MP_ACCESS_TOKEN;
       if (!accessToken) {
@@ -99,41 +119,93 @@ export default {
         return;
       }
 
-      // ---- Normalización de monto/ítems
-      const hasItems = Array.isArray(items) && items.length > 0;
-      const numericAmount = typeof amount === 'number' ? Number(amount) : Number.NaN;
-      if (!hasItems && (!numericAmount || Number.isNaN(numericAmount))) {
-        ctx.status = 400;
-        ctx.body = { ok: false, error: 'Debés enviar items o amount (> 0).' };
-        return;
-      }
+      const strapi = ctx.strapi;
+      let saneItems: Array<{ title: string; quantity: number; unit_price: number; currency_id: 'ARS' }>;
+      let backUrls: { success: string; failure: string; pending: string };
 
-      const saneItems = hasItems
-        ? items.map((it: any) => {
-          const quantity = Number(it.quantity ?? it.qty ?? 1);
-          const unit_price = Number(it.unit_price ?? it.price ?? it.precio ?? 0);
-          const title = String(it.title ?? it.nombre ?? 'Pedido');
-          if (!quantity || !unit_price || Number.isNaN(quantity) || Number.isNaN(unit_price)) {
-            throw new Error('quantity/unit_price inválidos (>0)');
+      // ---- Flujo cartItems: precios REALES desde la base de datos (no confiar en el front)
+      const hasCartItems = Array.isArray(cartItems) && cartItems.length > 0;
+      if (hasCartItems) {
+        const resolved: Array<{ title: string; quantity: number; unit_price: number }> = [];
+        for (const row of cartItems) {
+          const productId = row.id ?? row.productId ?? row.product_id;
+          const quantity = Math.max(1, Math.floor(Number(row.quantity ?? row.qty ?? 1)));
+          if (productId == null || productId === '') {
+            ctx.status = 400;
+            ctx.body = { ok: false, error: 'Cada ítem del carrito debe tener id de producto (id/productId).' };
+            return;
           }
-          return { title, quantity, unit_price, currency_id: 'ARS' as const };
-        })
-        : [
-          {
-            title: orderId ? `Pedido #${orderId}` : 'Pago',
-            quantity: 1,
-            unit_price: Math.round(Number(numericAmount) * 100) / 100,
-            currency_id: 'ARS' as const,
-          },
-        ];
+          let product: { name?: string; price?: number } | null = null;
+          try {
+            const id = typeof productId === 'number' ? productId : Number(productId);
+            if (!Number.isNaN(id)) {
+              product = await strapi.entityService.findOne(PRODUCTO_UID, id, { fields: ['name', 'price'] });
+            }
+            if (!product && typeof productId === 'string') {
+              const byDoc = await strapi.db.query(PRODUCTO_UID).findOne({
+                where: { documentId: productId },
+                select: ['name', 'price'],
+              });
+              if (byDoc) product = byDoc;
+            }
+          } catch (_e) {
+            /* product not found */
+          }
+          if (!product) {
+            ctx.status = 404;
+            ctx.body = { ok: false, error: `Producto no encontrado: ${productId}` };
+            return;
+          }
+          const unitPrice = Number(product.price ?? 0);
+          if (!Number.isFinite(unitPrice) || unitPrice < 0) {
+            ctx.status = 400;
+            ctx.body = { ok: false, error: `Producto sin precio válido: ${productId}` };
+            return;
+          }
+          resolved.push({
+            title: String(product.name ?? 'Producto'),
+            quantity,
+            unit_price: Math.round(unitPrice * 100) / 100,
+          });
+        }
+        saneItems = resolved.map((r) => ({ ...r, currency_id: 'ARS' as const }));
+        backUrls = buildPaymentStatusBackUrls();
+      } else {
+        // ---- Flujo legacy: items con precios o amount
+        const hasItems = Array.isArray(items) && items.length > 0;
+        const numericAmount = typeof amount === 'number' ? Number(amount) : Number.NaN;
+        if (!hasItems && (!numericAmount || Number.isNaN(numericAmount))) {
+          ctx.status = 400;
+          ctx.body = { ok: false, error: 'Debés enviar cartItems, items o amount (> 0).' };
+          return;
+        }
+
+        saneItems = hasItems
+          ? items.map((it: any) => {
+            const quantity = Number(it.quantity ?? it.qty ?? 1);
+            const unit_price = Number(it.unit_price ?? it.price ?? it.precio ?? 0);
+            const title = String(it.title ?? it.nombre ?? 'Pedido');
+            if (!quantity || !unit_price || Number.isNaN(quantity) || Number.isNaN(unit_price)) {
+              throw new Error('quantity/unit_price inválidos (>0)');
+            }
+            return { title, quantity, unit_price, currency_id: 'ARS' as const };
+          })
+          : [
+            {
+              title: orderId ? `Pedido #${orderId}` : 'Pago',
+              quantity: 1,
+              unit_price: Math.round(Number(numericAmount) * 100) / 100,
+              currency_id: 'ARS' as const,
+            },
+          ];
+
+        backUrls = buildBackendBackUrls(orderId, strapi.config, slug);
+      }
 
       const totalAmount = saneItems.reduce(
         (acc: number, it: { unit_price: number; quantity: number }) => acc + Number(it.unit_price) * Number(it.quantity || 1),
         0,
       );
-
-      const strapi = ctx.strapi;
-      const backUrls = buildBackendBackUrls(orderId, strapi.config, slug);
 
       // ---- Crear preferencia
       const client = new MercadoPagoConfig({ accessToken });
