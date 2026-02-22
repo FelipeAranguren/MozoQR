@@ -38,5 +38,9 @@
   "strapi": {
     "uuid": "851d80d9-d3aa-4165-baf8-6c10cb4c1dd0",
     "installId": "dc47d7936b94d14da9495c36b08c362d263c7221ce1ac50d4aab92689f0c496e"
-  }
+  },
+  "scripts": {
+  "start": "node diagnostico-env.js && strapi start",
+  "develop": "strapi develop"
+}
 }

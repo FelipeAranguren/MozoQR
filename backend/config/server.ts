@@ -12,7 +12,5 @@ export default ({ env }: { env: any }) => ({
   webhooks: {
     populateRelations: env.bool('WEBHOOKS_POPULATE_RELATIONS', false),
   },
-  mercadopago: {
-    accessToken: env('MP_ACCESS_TOKEN'),
-  },
+  mercadopagoToken: env('MP_ACCESS_TOKEN'),
 });

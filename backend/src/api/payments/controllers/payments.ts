@@ -13,11 +13,11 @@ const PRODUCTO_UID = 'api::producto.producto';
 const EXPECTED_TOKEN_PREFIX = 'APP_USR';
 
 /**
- * Obtiene MP_ACCESS_TOKEN desde la config global (config/server.ts).
- * La config se carga al arranque con env() en server.ts; método estable en Railway.
+ * Obtiene MP_ACCESS_TOKEN desde la config global (config/server.ts → mercadopagoToken).
+ * Strapi carga env() al arranque; método estable en Railway.
  */
 function getMpAccessToken(strapi?: any): string | null {
-  const raw = strapi?.config?.get?.('server.mercadopago.accessToken');
+  const raw = strapi?.config?.get?.('server.mercadopagoToken');
   if (raw == null || typeof raw !== 'string') return null;
   const trimmed = raw.trim();
   return trimmed.length > 0 ? trimmed : null;
@@ -167,13 +167,13 @@ export default {
     try {
       const { items, cartItems, orderId, amount, slug } = ctx.request.body || {};
 
-      const accessToken = strapi.config.get('server.mercadopago.accessToken');
+      const accessToken = strapi.config.get('server.mercadopagoToken');
       const tokenStr =
         typeof accessToken === 'string' && accessToken.trim() ? accessToken.trim() : null;
 
       strapi?.log?.info?.('¿Token cargado en config?: ' + !!tokenStr);
       if (!tokenStr) {
-        strapi?.log?.warn?.('[payments] server.mercadopago.accessToken vacío o no definido.');
+        strapi?.log?.warn?.('[payments] server.mercadopagoToken vacío o no definido.');
       }
 
       if (!tokenStr) {
