@@ -1,11 +1,15 @@
 // backend/config/server.ts
-export default ({ env }) => ({
+export default ({ env }: { env: any }) => ({
   host: env('HOST', '0.0.0.0'),
-  port: env.int('PORT', 1337),
+  port: parseInt(env('PORT', '1337'), 10),
   url: env('PUBLIC_URL'),
-  // Confiar en X-Forwarded-Proto del proxy (Railway). En v5.24+ puede usarse proxy: { koa: true }
   proxy: true,
   app: {
-    keys: env.array('APP_KEYS'),
+    keys: env('APP_KEYS') 
+      ? (typeof env('APP_KEYS') === 'string' ? env('APP_KEYS').split(',') : env('APP_KEYS'))
+      : ['defaultKey1', 'defaultKey2'],
+  },
+  webhooks: {
+    populateRelations: env.bool('WEBHOOKS_POPULATE_RELATIONS', false),
   },
 });

@@ -1,5 +1,7 @@
 // backend/config/middlewares.js
 // Orden: debug + sesión lo antes posible, antes de security/cors (para no perder headers)
+// CORS: aplica a peticiones del navegador hacia este backend. Incluir https://mozoqr.vercel.app en CORS_ORIGINS.
+// Las llamadas del backend a https://api.mercadopago.com son server-to-server (sin CORS); no hace falta permitirlas aquí.
 'use strict';
 
 module.exports = [
@@ -27,7 +29,7 @@ module.exports = [
   {
     name: 'strapi::cors',
     config: {
-      origin: (process.env.CORS_ORIGINS || process.env.FRONTEND_URL || '')
+      origin: (process.env.CORS_ORIGINS || process.env.FRONTEND_URL || 'https://mozoqr.vercel.app')
         .split(',')
         .map((s) => s.trim())
         .filter(Boolean),

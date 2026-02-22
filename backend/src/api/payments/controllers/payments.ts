@@ -4,13 +4,20 @@ import { MercadoPagoConfig, Preference, Payment } from 'mercadopago';
 import { ensureHttpUrl, getFrontendUrl, getBackendUrl, isHttps } from '../../../config/urls';
 
 const PRODUCTO_UID = 'api::producto.producto';
+const EXPECTED_TOKEN_PREFIX = 'APP_USR';
 
 /**
- * Strapi carga .env automáticamente al arranque; no hace falta importar dotenv.
- * En Railway, configurá MP_ACCESS_TOKEN en Variables del proyecto.
+ * Obtiene MP_ACCESS_TOKEN desde process.env o desde Strapi config (config/payments.ts).
+ * Strapi carga env() al arranque; en Railway las Variables se inyectan en process.env.
+ * Usamos ambas fuentes para máxima compatibilidad.
  */
-function getMpAccessToken(): string | null {
-  const raw = process.env.MP_ACCESS_TOKEN;
+function getMpAccessToken(strapi?: any): string | null {
+  let raw: string | undefined =
+    typeof process.env.MP_ACCESS_TOKEN === 'string' ? process.env.MP_ACCESS_TOKEN : undefined;
+  if (!raw && strapi?.config?.get) {
+    const fromConfig = strapi.config.get('payments.mpAccessToken');
+    if (typeof fromConfig === 'string') raw = fromConfig;
+  }
   if (raw == null) return null;
   const trimmed = String(raw).trim();
   return trimmed.length > 0 ? trimmed : null;
@@ -150,11 +157,24 @@ export default {
   },
 
   async createPreference(ctx: any) {
+    const strapi = ctx.strapi;
+
     try {
       const { items, cartItems, orderId, amount, slug } = ctx.request.body || {};
-      const strapi = ctx.strapi;
 
-      const accessToken = getMpAccessToken();
+      // ---- Debug de variables para Railway: qué lee Strapi
+      const rawEnv = process.env.MP_ACCESS_TOKEN;
+      const fromConfig = strapi?.config?.get?.('payments.mpAccessToken');
+      const tokenExists = rawEnv != null && String(rawEnv).trim().length > 0;
+      const configExists = fromConfig != null && String(fromConfig).trim().length > 0;
+      strapi?.log?.info?.('[payments.createPreference] Debug env:', {
+        'process.env.MP_ACCESS_TOKEN': tokenExists ? `definido (${String(rawEnv).length} chars)` : 'vacío o no definido',
+        'config.payments.mpAccessToken': configExists ? `definido (${String(fromConfig).length} chars)` : 'vacío o no definido',
+        primeros4: tokenExists ? String(rawEnv).trim().slice(0, 4) : (configExists ? String(fromConfig).trim().slice(0, 4) : 'N/A'),
+        esperado: EXPECTED_TOKEN_PREFIX,
+      });
+
+      const accessToken = getMpAccessToken(strapi);
       if (!accessToken) {
         strapi?.log?.error?.('[payments.createPreference] 500: MP_ACCESS_TOKEN faltante o vacío.');
         logPaymentEnvDiagnostics(strapi);
@@ -166,8 +186,9 @@ export default {
         return;
       }
 
-      // Usar el mismo token ya validado para el cliente (evita race tras reinicio)
-      const client = new MercadoPagoConfig({ accessToken });
+      // Token como string para el SDK (consistencia de tipos)
+      const tokenStr: string = accessToken;
+      const client = new MercadoPagoConfig({ accessToken: tokenStr });
       const preference = new Preference(client);
       let saneItems: Array<{ title: string; quantity: number; unit_price: number; currency_id: 'ARS' }>;
       let backUrls: { success: string; failure: string; pending: string };
@@ -265,7 +286,23 @@ export default {
       };
       if (isHttps(baseBack)) body.auto_return = 'approved';
 
-      const mpPref: any = await preference.create({ body });
+      let mpPref: any;
+      try {
+        mpPref = await preference.create({ body });
+      } catch (mpErr: any) {
+        const mpResponse = mpErr?.response;
+        const mpData = mpResponse?.data;
+        strapi?.log?.error?.('[payments.createPreference] Mercado Pago API error:', {
+          status: mpResponse?.status,
+          statusText: mpResponse?.statusText,
+          data: mpData,
+          message: mpErr?.message,
+        });
+        if (mpData && typeof mpData === 'object') {
+          strapi?.log?.error?.('[payments.createPreference] MP response.data (raw):', JSON.stringify(mpData));
+        }
+        throw mpErr;
+      }
 
       // ---- Persistencia best-effort
       let paymentId: number | null = null;
@@ -308,13 +345,19 @@ export default {
       };
     } catch (e: any) {
       const strapi = ctx.strapi;
-      const msg = e?.message ?? 'Error desconocido';
       const mpData = e?.response?.data;
+      const msg = e?.message ?? 'Error desconocido';
       const detail = mpData ? JSON.stringify(mpData) : msg;
-      strapi?.log?.error?.('[payments.createPreference] 500:', detail);
+      strapi?.log?.error?.('[payments.createPreference] 500 - detalle:', detail);
+      if (e?.response) {
+        strapi?.log?.error?.('[payments.createPreference] response.status:', e.response.status, 'response.data:', e.response.data);
+      }
       if (e?.stack) strapi?.log?.error?.('[payments.createPreference] stack:', e.stack);
       ctx.status = 500;
-      const clientError = mpData?.message ?? msg;
+      const clientError =
+        (typeof mpData?.message === 'string' && mpData.message) ||
+        (typeof mpData?.cause === 'string' && mpData.cause) ||
+        msg;
       ctx.body = { ok: false, error: clientError };
     }
   },
@@ -324,7 +367,7 @@ export default {
       const { token, issuer_id, payment_method_id, transaction_amount, installments, payer, description, orderId } =
         ctx.request.body || {};
 
-      const accessToken = getMpAccessToken();
+      const accessToken = getMpAccessToken(ctx.strapi);
       if (!accessToken) {
         logPaymentEnvDiagnostics(ctx.strapi);
         ctx.status = 500;
@@ -374,7 +417,7 @@ export default {
       const statusQ = (q.status ?? q.collection_status ?? '').toString().toLowerCase() || null;
       const orderRefQ = (q.orderRef ?? '').toString() || null; // <- fallback extra que nosotros pasamos
 
-      const accessToken = getMpAccessToken();
+      const accessToken = getMpAccessToken(strapi);
       if (!accessToken) {
         logPaymentEnvDiagnostics(strapi);
         ctx.status = 500;
