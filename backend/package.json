@@ -9,7 +9,9 @@
     "deploy": "strapi deploy",
     "dev": "strapi develop",
     "develop": "strapi develop",
-    "start": "strapi start",
+    "start": "node test-env.js && strapi start",
+    "start:only": "strapi start",
+    "test:env": "node test-env.js",
     "strapi": "strapi",
     "upgrade": "npx @strapi/upgrade latest",
     "upgrade:dry": "npx @strapi/upgrade latest --dry"

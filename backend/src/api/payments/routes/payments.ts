@@ -1,29 +1,33 @@
+/**
+ * Rutas de pagos. auth: false evita que users-permissions exija JWT.
+ * En Admin: Settings > Users & Permissions > Permissions > Payment,
+ * marcar createPreference (y ping, card-pay, confirm) como Public si hace falta.
+ */
 export default {
   routes: [
     {
       method: 'GET',
       path: '/payments/ping',
       handler: 'payments.ping',
-      config: { policies: [], middlewares: [] },
+      config: { auth: false, policies: [], middlewares: [] },
     },
     {
       method: 'POST',
       path: '/payments/create-preference',
       handler: 'payments.createPreference',
-      config: { policies: [], middlewares: [] },
+      config: { auth: false, policies: [], middlewares: [] },
     },
     {
       method: 'POST',
       path: '/payments/card-pay',
       handler: 'payments.cardPay',
-      config: { policies: [], middlewares: [] },
+      config: { auth: false, policies: [], middlewares: [] },
     },
-
     {
       method: 'GET',
       path: '/payments/confirm',
       handler: 'payments.confirm',
-      config: { policies: [], middlewares: [] },
+      config: { auth: false, policies: [], middlewares: [] },
     },
     {
       method: 'POST',

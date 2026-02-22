@@ -1,5 +1,7 @@
 // backend/src/api/payments/controllers/payments.ts
 /* eslint-disable @typescript-eslint/no-explicit-any */
+console.log('==> Payments Controller Loaded');
+
 import dotenv from 'dotenv';
 
 dotenv.config();
@@ -163,6 +165,7 @@ export default {
   },
 
   async createPreference(ctx: any) {
+    console.log('==> ENTRÓ A CREATE PREFERENCE');
     const strapi = ctx.strapi;
 
     strapi?.log?.info?.(
