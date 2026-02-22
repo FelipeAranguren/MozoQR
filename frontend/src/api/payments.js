@@ -31,11 +31,11 @@ export async function createMpPreference({ orderId, amount, items, cartItems, pa
     throw new Error('El servidor no devolvió una respuesta válida. Intentá de nuevo.');
   }
   if (!data.ok) {
-    throw new Error(
-      (data && typeof data.error === 'string' && data.error) || 'Error creando preferencia.',
-    );
+    const msg =
+      (data && typeof data.error === 'string' && data.error) || 'Error al generar la preferencia.';
+    throw new Error(msg);
   }
-  return data; // { ok, preference_id, init_point, sandbox_init_point, payment_id }
+  return data; // { ok, preference_id, init_point, sandbox_init_point, payment_id } — no usar data.config
 }
 
 /**

@@ -1,6 +1,6 @@
 //frontend/src/components/PayWithMercadoPago.jsx
 import React, { useState } from "react";
-import { Button, CircularProgress } from "@mui/material";
+import { Box, Button, CircularProgress } from "@mui/material";
 import { createMpPreference } from "../api/payments";
 
 /**
@@ -31,6 +31,7 @@ export default function PayWithMercadoPago({
   disabled = false,
 }) {
   const [loading, setLoading] = useState(false);
+  const [errorMsg, setErrorMsg] = useState(null);
 
   const hasOrderId = orderId != null && orderId !== '';
   const hasAmount = amount != null && Number(amount) > 0;
@@ -44,6 +45,7 @@ export default function PayWithMercadoPago({
       return;
     }
 
+    setErrorMsg(null);
     setLoading(true);
     try {
       if (onBeforePay) await Promise.resolve(onBeforePay());
@@ -56,12 +58,18 @@ export default function PayWithMercadoPago({
         slug,
       });
 
-      if (!data || data.ok !== true) {
-        alert(data?.error || "No se pudo preparar el pago. Intentá de nuevo.");
+      if (!data || data.ok === false) {
+        console.error("Error en pago:", data?.error);
+        const msg =
+          (data && typeof data.error === "string" && data.error) ||
+          "Hubo un problema técnico. No se pudo preparar el pago.";
+        setErrorMsg(msg);
+        alert(msg);
         return;
       }
       const url = data.sandbox_init_point || data.init_point;
       if (!url || typeof url !== "string") {
+        setErrorMsg("No se recibió el enlace de pago.");
         alert("No se recibió el enlace de pago. Intentá de nuevo.");
         return;
       }
@@ -71,6 +79,7 @@ export default function PayWithMercadoPago({
       const msg =
         (err && typeof err.message === "string" && err.message) ||
         "No pudimos iniciar el pago. Revisá tu conexión e intentá de nuevo.";
+      setErrorMsg(msg);
       alert(msg);
     } finally {
       setLoading(false);
@@ -78,15 +87,31 @@ export default function PayWithMercadoPago({
   }
 
   return (
-    <Button
-      onClick={handlePay}
-      disabled={isDisabled}
-      fullWidth={fullWidth}
-      variant={variant}
-      sx={{ textTransform: "none" }}
-      aria-label={label}
-    >
-      {loading ? <CircularProgress size={22} /> : label}
-    </Button>
+    <>
+      {errorMsg && (
+        <Box
+          sx={{
+            p: 1.5,
+            mb: 1,
+            borderRadius: 1,
+            bgcolor: "error.light",
+            color: "error.contrastText",
+            fontSize: "0.875rem",
+          }}
+        >
+          {errorMsg}
+        </Box>
+      )}
+      <Button
+        onClick={handlePay}
+        disabled={isDisabled}
+        fullWidth={fullWidth}
+        variant={variant}
+        sx={{ textTransform: "none" }}
+        aria-label={label}
+      >
+        {loading ? <CircularProgress size={22} /> : label}
+      </Button>
+    </>
   );
 }
