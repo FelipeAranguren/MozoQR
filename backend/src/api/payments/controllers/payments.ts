@@ -6,8 +6,6 @@ import dotenv from 'dotenv';
 
 dotenv.config();
 
-const { env } = require('@strapi/utils') as { env: (key: string, defaultValue?: string) => string | undefined };
-
 import { MercadoPagoConfig, Preference, Payment } from 'mercadopago';
 import { ensureHttpUrl, getFrontendUrl, getBackendUrl, isHttps } from '../../../config/urls';
 
@@ -15,17 +13,15 @@ const PRODUCTO_UID = 'api::producto.producto';
 const EXPECTED_TOKEN_PREFIX = 'APP_USR';
 
 /**
- * Obtiene MP_ACCESS_TOKEN: env() de Strapi, process.env o config server.mercadopago.accessToken.
- * env() es el helper de Strapi y suele ser más fiable en producción (Railway).
+ * Obtiene MP_ACCESS_TOKEN desde la config global (config/server.ts) o process.env.
+ * La config se carga al arranque con env() y es el método más robusto en Railway.
  */
 function getMpAccessToken(strapi?: any): string | null {
-  const fromEnv = env('MP_ACCESS_TOKEN');
-  const fromProcess = process.env.MP_ACCESS_TOKEN;
   const fromConfig = strapi?.config?.get?.('server.mercadopago.accessToken');
+  const fromProcess = process.env.MP_ACCESS_TOKEN;
   const raw =
-    (typeof fromEnv === 'string' && fromEnv.trim() ? fromEnv : undefined) ||
-    (typeof fromProcess === 'string' && fromProcess.trim() ? fromProcess : undefined) ||
-    (typeof fromConfig === 'string' && fromConfig.trim() ? fromConfig : undefined);
+    (typeof fromConfig === 'string' && fromConfig.trim() ? fromConfig : null) ||
+    (typeof fromProcess === 'string' && fromProcess.trim() ? fromProcess : null);
   if (raw == null) return null;
   const trimmed = String(raw).trim();
   return trimmed.length > 0 ? trimmed : null;
@@ -175,35 +171,21 @@ export default {
     try {
       const { items, cartItems, orderId, amount, slug } = ctx.request.body || {};
 
-      // ---- Debug de variables para Railway: qué lee Strapi
-      const rawEnv = process.env.MP_ACCESS_TOKEN;
-      const fromConfig = strapi?.config?.get?.('payments.mpAccessToken');
-      const tokenExists = rawEnv != null && String(rawEnv).trim().length > 0;
-      const configExists = fromConfig != null && String(fromConfig).trim().length > 0;
-      strapi?.log?.info?.('[payments.createPreference] Debug env:', {
-        'process.env.MP_ACCESS_TOKEN': tokenExists ? `definido (${String(rawEnv).length} chars)` : 'vacío o no definido',
-        'config.payments.mpAccessToken': configExists ? `definido (${String(fromConfig).length} chars)` : 'vacío o no definido',
-        primeros4: tokenExists ? String(rawEnv).trim().slice(0, 4) : (configExists ? String(fromConfig).trim().slice(0, 4) : 'N/A'),
-        esperado: EXPECTED_TOKEN_PREFIX,
-      });
-
-      // Lectura tripartita (prioridad): env() Strapi → process.env → strapi.config
-      const fromStrapiEnv = env('MP_ACCESS_TOKEN');
-      const fromProcessEnv = process.env.MP_ACCESS_TOKEN;
-      const fromServerConfig = strapi?.config?.get?.('server.mercadopago.accessToken');
+      // Token: config global (server.mercadopago.accessToken) tiene prioridad; fallback process.env
       const accessToken =
-        (typeof fromStrapiEnv === 'string' && fromStrapiEnv.trim() ? fromStrapiEnv.trim() : null) ||
-        (typeof fromProcessEnv === 'string' && fromProcessEnv.trim() ? fromProcessEnv.trim() : null) ||
-        (typeof fromServerConfig === 'string' && fromServerConfig.trim()
-          ? fromServerConfig.trim()
+        (typeof strapi?.config?.get?.('server.mercadopago.accessToken') === 'string' &&
+        strapi.config.get('server.mercadopago.accessToken').trim()
+          ? strapi.config.get('server.mercadopago.accessToken').trim()
+          : null) ||
+        (typeof process.env.MP_ACCESS_TOKEN === 'string' && process.env.MP_ACCESS_TOKEN.trim()
+          ? process.env.MP_ACCESS_TOKEN.trim()
           : null) ||
         null;
 
+      strapi?.log?.info?.('DEBUG MP: ¿Token en config?: ' + !!strapi?.config?.get?.('server.mercadopago.accessToken'));
       strapi?.log?.info?.('--- DEBUG MP ---');
       strapi?.log?.info?.('Token longitud: ' + (accessToken?.length ?? 0));
-      strapi?.log?.info?.(
-        '¿Está definido process.env.MP_ACCESS_TOKEN?: ' + !!process.env.MP_ACCESS_TOKEN,
-      );
+      strapi?.log?.info?.('¿Está definido process.env.MP_ACCESS_TOKEN?: ' + !!process.env.MP_ACCESS_TOKEN);
 
       if (!accessToken) {
         strapi?.log?.error?.('[payments.createPreference] 500: MP_ACCESS_TOKEN faltante o vacío.');

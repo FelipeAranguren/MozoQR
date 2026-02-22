@@ -12,8 +12,8 @@ export default ({ env }: { env: any }) => ({
   webhooks: {
     populateRelations: env.bool('WEBHOOKS_POPULATE_RELATIONS', false),
   },
-  // Fallback para payments: leer MP_ACCESS_TOKEN también desde server (Railway inyecta env al arranque)
+  // Credencial Mercado Pago: cargada aquí para todo el ciclo de vida (Railway inyecta env al arranque).
   mercadopago: {
-    accessToken: String(env('MP_ACCESS_TOKEN', '') || '').trim(),
+    accessToken: env('MP_ACCESS_TOKEN', ''),
   },
 });

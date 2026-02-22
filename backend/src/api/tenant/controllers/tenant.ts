@@ -88,24 +88,19 @@ async function getMesaColumnSupport(): Promise<MesaColumnSupport> {
  * ----------------------------------------------------- */
 
 async function getRestaurantBySlug(slug: string) {
-  // Buscar todos los restaurantes con el mismo slug y usar el de ID más bajo (principal)
+  // findMany + orderBy + limit 1 equivale a findOne por slug (el de ID más bajo). Evitar duplicados en DB.
   const allRows = await strapi.db.query('api::restaurante.restaurante').findMany({
     where: { slug },
     select: ['id', 'documentId', 'name', 'slug'],
     orderBy: { id: 'asc' },
-    limit: 10,
+    limit: 1,
   });
-  
+
   if (!allRows || allRows.length === 0) {
     throw new NotFoundError('Restaurante no encontrado');
   }
-  
-  // Usar el restaurante con ID más bajo (principal)
+
   const r = allRows[0];
-  if (allRows.length > 1) {
-    console.warn(`⚠️ [getRestaurantBySlug] Se encontraron ${allRows.length} restaurantes con slug "${slug}". Usando el principal (ID: ${r.id})`);
-  }
-  
   if (!r?.id) throw new NotFoundError('Restaurante no encontrado');
   return { id: r.id as ID, documentId: r.documentId as string, name: r.name as string };
 }
