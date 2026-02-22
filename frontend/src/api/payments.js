@@ -3,7 +3,7 @@ import { client, unwrap } from './client';
 /**
  * Crea una preferencia de pago en el backend.
  * Respuesta exitosa: { ok: true, preference_id, init_point, sandbox_init_point, payment_id }.
- * Nunca accede a .config u otras propiedades sin comprobar antes; evita crashes si el servidor falla.
+ * Si la petición falla (response.ok falso o error de red), no se accede a data.config ni a otras propiedades.
  */
 export async function createMpPreference({ orderId, amount, items, cartItems, payer_email, back_urls, slug }) {
   let res;
@@ -26,16 +26,18 @@ export async function createMpPreference({ orderId, amount, items, cartItems, pa
     throw new Error(message);
   }
 
-  const data = res && res.data;
+  if (!res || res.status !== 200) {
+    throw new Error(res?.data?.error || 'Error al generar la preferencia.');
+  }
+  const data = res.data;
   if (!data || typeof data !== 'object') {
     throw new Error('El servidor no devolvió una respuesta válida. Intentá de nuevo.');
   }
-  if (!data.ok) {
-    const msg =
-      (data && typeof data.error === 'string' && data.error) || 'Error al generar la preferencia.';
+  if (data.ok === false || !data.ok) {
+    const msg = (typeof data.error === 'string' && data.error) || 'Error al generar la preferencia.';
     throw new Error(msg);
   }
-  return data; // { ok, preference_id, init_point, sandbox_init_point, payment_id } — no usar data.config
+  return data;
 }
 
 /**

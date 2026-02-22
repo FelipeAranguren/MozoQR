@@ -13,17 +13,13 @@ const PRODUCTO_UID = 'api::producto.producto';
 const EXPECTED_TOKEN_PREFIX = 'APP_USR';
 
 /**
- * Obtiene MP_ACCESS_TOKEN desde la config global (config/server.ts) o process.env.
- * La config se carga al arranque con env() y es el método más robusto en Railway.
+ * Obtiene MP_ACCESS_TOKEN desde la config global (config/server.ts).
+ * La config se carga al arranque con env() en server.ts; método estable en Railway.
  */
 function getMpAccessToken(strapi?: any): string | null {
-  const fromConfig = strapi?.config?.get?.('server.mercadopago.accessToken');
-  const fromProcess = process.env.MP_ACCESS_TOKEN;
-  const raw =
-    (typeof fromConfig === 'string' && fromConfig.trim() ? fromConfig : null) ||
-    (typeof fromProcess === 'string' && fromProcess.trim() ? fromProcess : null);
-  if (raw == null) return null;
-  const trimmed = String(raw).trim();
+  const raw = strapi?.config?.get?.('server.mercadopago.accessToken');
+  if (raw == null || typeof raw !== 'string') return null;
+  const trimmed = raw.trim();
   return trimmed.length > 0 ? trimmed : null;
 }
 
@@ -171,23 +167,16 @@ export default {
     try {
       const { items, cartItems, orderId, amount, slug } = ctx.request.body || {};
 
-      // Token: config global (server.mercadopago.accessToken) tiene prioridad; fallback process.env
-      const accessToken =
-        (typeof strapi?.config?.get?.('server.mercadopago.accessToken') === 'string' &&
-        strapi.config.get('server.mercadopago.accessToken').trim()
-          ? strapi.config.get('server.mercadopago.accessToken').trim()
-          : null) ||
-        (typeof process.env.MP_ACCESS_TOKEN === 'string' && process.env.MP_ACCESS_TOKEN.trim()
-          ? process.env.MP_ACCESS_TOKEN.trim()
-          : null) ||
-        null;
+      const accessToken = strapi.config.get('server.mercadopago.accessToken');
+      const tokenStr =
+        typeof accessToken === 'string' && accessToken.trim() ? accessToken.trim() : null;
 
-      strapi?.log?.info?.('DEBUG MP: ¿Token en config?: ' + !!strapi?.config?.get?.('server.mercadopago.accessToken'));
-      strapi?.log?.info?.('--- DEBUG MP ---');
-      strapi?.log?.info?.('Token longitud: ' + (accessToken?.length ?? 0));
-      strapi?.log?.info?.('¿Está definido process.env.MP_ACCESS_TOKEN?: ' + !!process.env.MP_ACCESS_TOKEN);
+      strapi?.log?.info?.('¿Token cargado en config?: ' + !!tokenStr);
+      if (!tokenStr) {
+        strapi?.log?.warn?.('[payments] server.mercadopago.accessToken vacío o no definido.');
+      }
 
-      if (!accessToken) {
+      if (!tokenStr) {
         strapi?.log?.error?.('[payments.createPreference] 500: MP_ACCESS_TOKEN faltante o vacío.');
         logPaymentEnvDiagnostics(strapi);
         ctx.status = 500;
@@ -198,9 +187,8 @@ export default {
         return;
       }
 
-      // Token como string para el SDK (consistencia de tipos)
-      const tokenStr: string = accessToken;
-      const client = new MercadoPagoConfig({ accessToken: tokenStr });
+      const accessTokenForSdk: string = tokenStr;
+      const client = new MercadoPagoConfig({ accessToken: accessTokenForSdk });
       const preference = new Preference(client);
       let saneItems: Array<{ title: string; quantity: number; unit_price: number; currency_id: 'ARS' }>;
       let backUrls: { success: string; failure: string; pending: string };

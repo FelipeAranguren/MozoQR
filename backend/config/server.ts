@@ -12,8 +12,7 @@ export default ({ env }: { env: any }) => ({
   webhooks: {
     populateRelations: env.bool('WEBHOOKS_POPULATE_RELATIONS', false),
   },
-  // Credencial Mercado Pago: cargada aquí para todo el ciclo de vida (Railway inyecta env al arranque).
   mercadopago: {
-    accessToken: env('MP_ACCESS_TOKEN', ''),
+    accessToken: env('MP_ACCESS_TOKEN'),
   },
 });

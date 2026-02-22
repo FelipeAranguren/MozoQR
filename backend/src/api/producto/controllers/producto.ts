@@ -65,32 +65,17 @@ export default factories.createCoreController('api::producto.producto', ({ strap
       return;
     }
 
-    // Verificar si hay múltiples restaurantes con el mismo slug
-    // Si es así, usar siempre el de ID más bajo (el principal)
-    const allWithSameSlug = await strapi.db.query('api::restaurante.restaurante').findMany({
+    // Usar siempre el restaurante con slug dado y ID más bajo (único/principal). Filtro estricto para evitar duplicados.
+    const principalRows = await strapi.db.query('api::restaurante.restaurante').findMany({
       where: { slug: restaurante.slug },
       select: ['id', 'slug', 'publishedAt'],
       orderBy: { id: 'asc' },
-      limit: 10
+      limit: 1,
     });
-
-    if (allWithSameSlug.length > 1) {
-      console.warn(`⚠️ [producto.create] Se encontraron ${allWithSameSlug.length} restaurantes con slug "${restaurante.slug}"`);
-      const principalId = allWithSameSlug[0].id; // El de ID más bajo
-      
-      if (restauranteId !== principalId) {
-        console.warn(`⚠️ [producto.create] El restaurante enviado (ID: ${restauranteId}) no es el principal (ID: ${principalId})`);
-        console.log(`🔧 [producto.create] Corrigiendo para usar el restaurante principal: ${principalId}`);
-        restauranteId = principalId;
-        
-        // Actualizar la referencia al restaurante principal
-        const principalRestaurante = allWithSameSlug[0];
-        if (!principalRestaurante.publishedAt) {
-          console.warn('⚠️ [producto.create] El restaurante principal no está publicado');
-        }
-        // Actualizar la referencia para usar el restaurante principal
-        Object.assign(restaurante, principalRestaurante);
-      }
+    const principalRestaurante = principalRows?.[0];
+    if (principalRestaurante && principalRestaurante.id !== restauranteId) {
+      restauranteId = principalRestaurante.id;
+      Object.assign(restaurante, principalRestaurante);
     }
 
     if (!restaurante.publishedAt) {
@@ -102,7 +87,6 @@ export default factories.createCoreController('api::producto.producto', ({ strap
       id: restauranteId,
       slug: restaurante.slug,
       publishedAt: restaurante.publishedAt,
-      totalWithSameSlug: allWithSameSlug.length
     });
 
     // Asegurar que el restaurante esté en el payload (usar el ID corregido si se cambió)
