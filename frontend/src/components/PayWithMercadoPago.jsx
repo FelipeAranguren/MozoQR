@@ -39,13 +39,13 @@ export default function PayWithMercadoPago({
   const isDisabled = disabled || loading || !canPay;
 
   async function handlePay() {
-    try {
-      if (!canPay) {
-        alert("Falta orderId o monto para iniciar el pago.");
-        return;
-      }
+    if (!canPay) {
+      alert("Falta orderId o monto para iniciar el pago.");
+      return;
+    }
 
-      setLoading(true);
+    setLoading(true);
+    try {
       if (onBeforePay) await Promise.resolve(onBeforePay());
       const data = await createMpPreference({
         orderId,
@@ -56,18 +56,23 @@ export default function PayWithMercadoPago({
         slug,
       });
 
-      
-      const url = data?.sandbox_init_point || data?.init_point;
-      if (!url) throw new Error("No se recibió init_point de Mercado Pago.");
-
+      if (!data || data.ok !== true) {
+        alert(data?.error || "No se pudo preparar el pago. Intentá de nuevo.");
+        return;
+      }
+      const url = data.sandbox_init_point || data.init_point;
+      if (!url || typeof url !== "string") {
+        alert("No se recibió el enlace de pago. Intentá de nuevo.");
+        return;
+      }
       window.location.href = url; // redirige a Checkout Pro
     } catch (err) {
       console.error("PayWithMercadoPago error:", err);
       const msg =
-        err.response?.data?.error ||
-        err.message ||
-        "No pudimos iniciar el pago.";
+        (err && typeof err.message === "string" && err.message) ||
+        "No pudimos iniciar el pago. Revisá tu conexión e intentá de nuevo.";
       alert(msg);
+    } finally {
       setLoading(false);
     }
   }

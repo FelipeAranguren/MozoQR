@@ -159,6 +159,10 @@ export default {
   async createPreference(ctx: any) {
     const strapi = ctx.strapi;
 
+    strapi?.log?.info?.(
+      'Iniciando createPreference. Token detectado: ' + (process.env.MP_ACCESS_TOKEN ? 'SÍ' : 'NO'),
+    );
+
     try {
       const { items, cartItems, orderId, amount, slug } = ctx.request.body || {};
 
