@@ -45,8 +45,8 @@ export default function TablesList() {
 
   useEffect(() => {
     loadData();
-    // Refrescar cada 30 segundos para ver estado en tiempo real
-    const interval = setInterval(loadData, 30000);
+    // Refrescar cada 10 segundos (consistente con el resto de la app)
+    const interval = setInterval(loadData, 10000);
     return () => clearInterval(interval);
   }, [slug]);
 

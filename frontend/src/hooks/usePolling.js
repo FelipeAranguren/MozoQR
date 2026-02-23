@@ -4,10 +4,10 @@ import { useEffect, useRef, useState } from 'react';
 /**
  * Generic polling hook
  * @param {Function} fetcher async () => any
- * @param {number} ms interval in ms (default 4500)
+ * @param {number} ms interval in ms (default 10000, 10s)
  * @returns [data, error, tick]
  */
-export default function usePolling(fetcher, ms = 4500) {
+export default function usePolling(fetcher, ms = 10000) {
   const [data, setData] = useState(null);
   const [error, setError] = useState(null);
   const timer = useRef(null);

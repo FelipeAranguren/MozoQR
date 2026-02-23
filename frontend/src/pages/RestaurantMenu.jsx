@@ -338,7 +338,7 @@ export default function RestaurantMenu() {
 
     // Solo kickeamos si la sesión está closed/paid (Método 1). Safe ejecutar inmediatamente.
     checkIfShouldEject();
-    const interval = setInterval(checkIfShouldEject, 2000);
+    const interval = setInterval(checkIfShouldEject, 10000);
     return () => clearInterval(interval);
   }, [slug, table, tableSessionId, navigate]);
 

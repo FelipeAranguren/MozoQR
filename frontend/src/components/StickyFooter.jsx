@@ -215,8 +215,8 @@ export default function StickyFooter({ table, tableSessionId, restaurantName }) 
     // Sincronizar inmediatamente
     syncOrders();
     
-    // Sincronizar cada 5 segundos
-    const interval = setInterval(syncOrders, 5000);
+    // Sincronizar cada 10 segundos (evitar saturar el servidor)
+    const interval = setInterval(syncOrders, 10000);
     return () => clearInterval(interval);
   }, [slug, table, tableSessionId, backendHasAccount]);
 
