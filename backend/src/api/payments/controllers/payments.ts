@@ -125,14 +125,35 @@ async function resolveOrderPk(strapi: any, ref: string | number | null) {
   return null;
 }
 
+function getRequestBaseBackUrl(ctx: any): string | null {
+  const headers = ctx?.request?.headers || {};
+  const rawProto =
+    headers['x-forwarded-proto'] ||
+    headers['x-forwarded-protocol'] ||
+    (ctx?.request?.secure ? 'https' : null);
+  const rawHost = headers['x-forwarded-host'] || headers['host'];
+  if (!rawHost) return null;
+
+  const proto = String(rawProto || 'http').split(',')[0].trim() || 'http';
+  const host = String(rawHost).split(',')[0].trim();
+  if (!host) return null;
+
+  try {
+    return ensureHttpUrl(`${proto}://${host}`).replace(/\/*$/, '');
+  } catch {
+    return null;
+  }
+}
+
 // Construye back_urls que pasan por el backend y le envían también orderRef
 function buildBackendBackUrls(
   orderId?: string | number | null,
   strapiConfig?: any,
-  slug?: string | null
+  slug?: string | null,
+  baseBackOverride?: string | null
 ) {
   const baseFront = getFrontendUrl().replace(/\/*$/, '');
-  const baseBack = getBackendUrl(strapiConfig).replace(/\/*$/, '');
+  const baseBack = ensureHttpUrl(baseBackOverride || getBackendUrl(strapiConfig)).replace(/\/*$/, '');
   const encOrder = encodeURIComponent(orderId ?? '');
   const slugParam = slug ? `&slug=${encodeURIComponent(slug)}` : '';
 
@@ -200,6 +221,17 @@ export default {
       const preference = new Preference(client);
       let saneItems: Array<{ title: string; quantity: number; unit_price: number; currency_id: 'ARS' }>;
       let backUrls: { success: string; failure: string; pending: string };
+      const requestBaseBack = getRequestBaseBackUrl(ctx);
+      const configuredBaseBack = getBackendUrl(strapi.config).replace(/\/*$/, '');
+      const effectiveBaseBack =
+        /localhost(?::\d+)?$/i.test(configuredBaseBack) || /\/\/localhost(?::\d+)?/i.test(configuredBaseBack)
+          ? (requestBaseBack || configuredBaseBack)
+          : configuredBaseBack;
+      if (effectiveBaseBack !== configuredBaseBack) {
+        strapi?.log?.warn?.(
+          `[payments] Backend URL no configurada (era "${configuredBaseBack}"). Usando base del request "${effectiveBaseBack}" para back_urls.`,
+        );
+      }
 
       // ---- Flujo cartItems: precios REALES desde la base de datos (no confiar en el front)
       const hasCartItems = Array.isArray(cartItems) && cartItems.length > 0;
@@ -277,7 +309,7 @@ export default {
             },
           ];
 
-        backUrls = buildBackendBackUrls(orderId, strapi.config, slug);
+        backUrls = buildBackendBackUrls(orderId, strapi.config, slug, effectiveBaseBack);
       }
 
       const totalAmount = saneItems.reduce(
@@ -286,7 +318,7 @@ export default {
       );
 
       // ---- Crear preferencia (client/preference ya creados arriba con accessToken validado)
-      const baseBack = getBackendUrl(strapi.config);
+      const baseBack = effectiveBaseBack;
       const body: any = {
         items: saneItems.map((it: any, i: number) => ({ id: String(i + 1), ...it })),
         external_reference: orderId ? String(orderId) : undefined,
