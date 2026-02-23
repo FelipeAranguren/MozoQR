@@ -6,7 +6,7 @@ export default ({ env }: { env: any }) => ({
   app: {
     keys: env.array('APP_KEYS'),
   },
-  mercadopagoToken: env('MP_ACCESS_TOKEN'),
+  mercadopagoToken: env('MP_ACCESS_TOKEN') || env('MERCADOPAGO_ACCESS_TOKEN') || env('MERCADO_PAGO_ACCESS_TOKEN'),
   // Obligatorio en producción detrás de proxy: confiar en X-Forwarded-Proto
   proxy: true,
 });

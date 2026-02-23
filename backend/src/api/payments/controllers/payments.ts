@@ -168,26 +168,29 @@ export default {
       const { items, cartItems, orderId, amount, slug } = ctx.request.body || {};
 
       const fromConfig = strapi.config.get('server.mercadopagoToken');
-      const fromEnv = process.env.MP_ACCESS_TOKEN;
+      const fromEnv =
+        process.env.MP_ACCESS_TOKEN ||
+        process.env.MERCADOPAGO_ACCESS_TOKEN ||
+        process.env.MERCADO_PAGO_ACCESS_TOKEN;
       const tokenStr =
         (typeof fromConfig === 'string' && fromConfig.trim() ? fromConfig.trim() : null) ||
         (typeof fromEnv === 'string' && fromEnv.trim() ? fromEnv.trim() : null) ||
         null;
 
+      console.log(
+        '[payments] DEBUG MP: config=' + (fromConfig ? 'ok' : 'vacío') + ', env=' + (fromEnv ? 'ok' : 'vacío') + ', final=' + (tokenStr ? 'ok' : 'FALTA TOKEN'),
+      );
       strapi?.log?.info?.(
         'DEBUG MP: token desde config=' + !!fromConfig + ', desde process.env=' + !!fromEnv + ', final=' + !!tokenStr,
       );
       if (!tokenStr) {
-        strapi?.log?.warn?.('[payments] server.mercadopagoToken y process.env.MP_ACCESS_TOKEN vacíos.');
-      }
-
-      if (!tokenStr) {
-        strapi?.log?.error?.('[payments.createPreference] 500: MP_ACCESS_TOKEN faltante o vacío.');
+        strapi?.log?.warn?.('[payments] Ninguna fuente tiene token (config, MP_ACCESS_TOKEN, MERCADOPAGO_ACCESS_TOKEN).');
         logPaymentEnvDiagnostics(strapi);
         ctx.status = 500;
         ctx.body = {
           ok: false,
-          error: 'Falta MP_ACCESS_TOKEN. Revisá las variables de entorno (Railway: Variables del servicio).',
+          error:
+            'Falta token de Mercado Pago. En Railway: Variables del servicio, agregá MP_ACCESS_TOKEN (o MERCADOPAGO_ACCESS_TOKEN). Redeploy después.',
         };
         return;
       }

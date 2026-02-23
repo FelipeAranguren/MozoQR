@@ -75,10 +75,10 @@ export default function PayWithMercadoPago({
       }
       window.location.href = url; // redirige a Checkout Pro
     } catch (err) {
-      console.error("PayWithMercadoPago error:", err);
       const msg =
         (err && typeof err.message === "string" && err.message) ||
         "No pudimos iniciar el pago. Revisá tu conexión e intentá de nuevo.";
+      console.error("PayWithMercadoPago error:", msg);
       setErrorMsg(msg);
       alert(msg);
     } finally {

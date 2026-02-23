@@ -17,12 +17,11 @@ export async function createMpPreference({ orderId, amount, items, cartItems, pa
       back_urls,
       slug,
     });
-  } catch (err) {
-    const data = err?.response?.data;
-    const message =
-      (data && typeof data.error === 'string' && data.error) ||
-      (err && typeof err.message === 'string' && err.message) ||
-      'No se pudo conectar con el servidor de pagos. Intentá de nuevo en unos segundos.';
+  } catch (e) {
+    const responseData = e?.response?.data;
+    const serverMsg = responseData && typeof responseData.error === 'string' ? responseData.error : null;
+    const fallbackMsg = e && typeof e.message === 'string' ? e.message : null;
+    const message = serverMsg || fallbackMsg || 'No se pudo conectar con el servidor de pagos. Intentá de nuevo en unos segundos.';
     throw new Error(message);
   }
 
