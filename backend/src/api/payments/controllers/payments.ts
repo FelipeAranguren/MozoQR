@@ -167,13 +167,18 @@ export default {
     try {
       const { items, cartItems, orderId, amount, slug } = ctx.request.body || {};
 
-      const accessToken = strapi.config.get('server.mercadopagoToken');
+      const fromConfig = strapi.config.get('server.mercadopagoToken');
+      const fromEnv = process.env.MP_ACCESS_TOKEN;
       const tokenStr =
-        typeof accessToken === 'string' && accessToken.trim() ? accessToken.trim() : null;
+        (typeof fromConfig === 'string' && fromConfig.trim() ? fromConfig.trim() : null) ||
+        (typeof fromEnv === 'string' && fromEnv.trim() ? fromEnv.trim() : null) ||
+        null;
 
-      strapi?.log?.info?.('¿Token cargado en config?: ' + !!tokenStr);
+      strapi?.log?.info?.(
+        'DEBUG MP: token desde config=' + !!fromConfig + ', desde process.env=' + !!fromEnv + ', final=' + !!tokenStr,
+      );
       if (!tokenStr) {
-        strapi?.log?.warn?.('[payments] server.mercadopagoToken vacío o no definido.');
+        strapi?.log?.warn?.('[payments] server.mercadopagoToken y process.env.MP_ACCESS_TOKEN vacíos.');
       }
 
       if (!tokenStr) {

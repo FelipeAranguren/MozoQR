@@ -83,7 +83,7 @@ export default function StickyFooter({ table, tableSessionId, restaurantName }) 
   const [callWaiterOpen, setCallWaiterOpen] = useState(false);
 
   const [payOpen, setPayOpen] = useState(false);
-  const [payMethod, setPayMethod] = useState('card'); // 'card' | 'mp' | 'cash'
+  const [payMethod, setPayMethod] = useState('mp'); // 'mp' | 'card' | 'cash' — Mercado Pago por defecto
   const [payLoading, setPayLoading] = useState(false);
   const [payRequestSent, setPayRequestSent] = useState(false); // Prevenir múltiples solicitudes
   const [card, setCard] = useState({ number: '', expiry: '', cvv: '', name: '' });
@@ -248,7 +248,7 @@ export default function StickyFooter({ table, tableSessionId, restaurantName }) 
       setOrderDetails([]);
       setTipAmount(0);
       setTipPercentage(0);
-      setPayMethod('card');
+      setPayMethod('mp');
       setCouponCode('');
       setCouponDiscount(null);
       setPayRequestSent(false);
@@ -557,7 +557,7 @@ export default function StickyFooter({ table, tableSessionId, restaurantName }) 
           // No cerramos la cuenta localmente ni en backend, esperamos al mozo.
           setPayOpen(false);
           // Resetear form
-          setPayMethod('card');
+          setPayMethod('mp');
           setPayRequestSent(false); // Resetear después de un delay
           setTimeout(() => setPayRequestSent(false), 5000); // Permitir nueva solicitud después de 5 segundos
 
@@ -597,7 +597,7 @@ export default function StickyFooter({ table, tableSessionId, restaurantName }) 
         });
         setPayOpen(false);
         setBackendHasAccount(false);
-        setPayMethod('card');
+        setPayMethod('mp');
 
         // Redirigir a página de agradecimiento
         navigate(`/thank-you?type=online${slug ? `&slug=${slug}` : ''}`);
@@ -1378,28 +1378,8 @@ export default function StickyFooter({ table, tableSessionId, restaurantName }) 
               Método de pago
             </Typography>
 
-            {/* Opciones de pago directas: Tarjeta, Mercado Pago, Efectivo */}
+            {/* Opciones de pago directas: Mercado Pago, Tarjeta, Efectivo */}
             <Box sx={{ display: 'flex', gap: 1, mb: 2, flexDirection: { xs: 'column', sm: 'row' } }}>
-              <Button
-                fullWidth
-                variant={payMethod === 'card' ? 'contained' : 'outlined'}
-                startIcon={<CreditCardIcon />}
-                onClick={() => setPayMethod('card')}
-                sx={{
-                  borderRadius: 2,
-                  textTransform: 'none',
-                  py: 1.5,
-                  bgcolor: payMethod === 'card' ? '#2196F3' : undefined,
-                  color: payMethod === 'card' ? 'white' : '#2196F3',
-                  borderColor: '#2196F3',
-                  '&:hover': {
-                    bgcolor: payMethod === 'card' ? '#0b7dda' : alpha('#2196F3', 0.1),
-                    borderColor: '#0b7dda',
-                  },
-                }}
-              >
-                Tarjeta
-              </Button>
               <Button
                 fullWidth
                 variant={payMethod === 'mp' ? 'contained' : 'outlined'}
@@ -1419,6 +1399,26 @@ export default function StickyFooter({ table, tableSessionId, restaurantName }) 
                 }}
               >
                 Mercado Pago
+              </Button>
+              <Button
+                fullWidth
+                variant={payMethod === 'card' ? 'contained' : 'outlined'}
+                startIcon={<CreditCardIcon />}
+                onClick={() => setPayMethod('card')}
+                sx={{
+                  borderRadius: 2,
+                  textTransform: 'none',
+                  py: 1.5,
+                  bgcolor: payMethod === 'card' ? '#2196F3' : undefined,
+                  color: payMethod === 'card' ? 'white' : '#2196F3',
+                  borderColor: '#2196F3',
+                  '&:hover': {
+                    bgcolor: payMethod === 'card' ? '#0b7dda' : alpha('#2196F3', 0.1),
+                    borderColor: '#0b7dda',
+                  },
+                }}
+              >
+                Tarjeta
               </Button>
               <Button
                 fullWidth
