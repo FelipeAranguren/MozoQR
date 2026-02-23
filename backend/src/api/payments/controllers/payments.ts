@@ -157,31 +157,31 @@ export default {
   },
 
   async createPreference(ctx: any) {
-    console.log('==> ENTRÓ A CREATE PREFERENCE');
     const strapi = ctx.strapi;
-
-    strapi?.log?.info?.(
-      'Iniciando createPreference. Token detectado: ' + (process.env.MP_ACCESS_TOKEN ? 'SÍ' : 'NO'),
-    );
 
     try {
       const { items, cartItems, orderId, amount, slug } = ctx.request.body || {};
 
-      const fromConfig = strapi.config.get('server.mercadopagoToken');
+      // Prioridad: process.env en cada request (Railway inyecta vars en runtime).
+      // Strapi config puede haberse cargado antes de que existan las variables.
       const fromEnv =
         process.env.MP_ACCESS_TOKEN ||
         process.env.MERCADOPAGO_ACCESS_TOKEN ||
         process.env.MERCADO_PAGO_ACCESS_TOKEN;
+      let fromConfig: string | undefined;
+      try {
+        const serverConfig = strapi?.config?.get?.('server');
+        fromConfig = (serverConfig && typeof serverConfig === 'object' && (serverConfig as any).mercadopagoToken) || strapi?.config?.get?.('server.mercadopagoToken');
+      } catch (_) {
+        fromConfig = undefined;
+      }
       const tokenStr =
-        (typeof fromConfig === 'string' && fromConfig.trim() ? fromConfig.trim() : null) ||
         (typeof fromEnv === 'string' && fromEnv.trim() ? fromEnv.trim() : null) ||
+        (typeof fromConfig === 'string' && fromConfig.trim() ? fromConfig.trim() : null) ||
         null;
 
-      console.log(
-        '[payments] DEBUG MP: config=' + (fromConfig ? 'ok' : 'vacío') + ', env=' + (fromEnv ? 'ok' : 'vacío') + ', final=' + (tokenStr ? 'ok' : 'FALTA TOKEN'),
-      );
       strapi?.log?.info?.(
-        'DEBUG MP: token desde config=' + !!fromConfig + ', desde process.env=' + !!fromEnv + ', final=' + !!tokenStr,
+        '[payments] createPreference token: env=' + (fromEnv ? 'ok' : 'no') + ', config=' + (fromConfig ? 'ok' : 'no') + ', final=' + (tokenStr ? 'ok' : 'FALTA'),
       );
       if (!tokenStr) {
         strapi?.log?.warn?.('[payments] Ninguna fuente tiene token (config, MP_ACCESS_TOKEN, MERCADOPAGO_ACCESS_TOKEN).');
