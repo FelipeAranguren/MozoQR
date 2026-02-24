@@ -332,6 +332,23 @@ export default {
       } catch (mpErr: any) {
         const mpResponse = mpErr?.response;
         const mpData = mpResponse?.data;
+        // Log completo del error para diagnóstico (token, precio, items, etc.)
+        console.error('[payments.createPreference] Mercado Pago API error (full object):', {
+          message: mpErr?.message,
+          name: mpErr?.name,
+          status: mpResponse?.status,
+          statusText: mpResponse?.statusText,
+          data: mpData,
+          config: mpErr?.config ? { url: mpErr.config?.url, method: mpErr.config?.method } : undefined,
+        });
+        if (mpData && typeof mpData === 'object') {
+          console.error('[payments.createPreference] MP response.data (raw):', JSON.stringify(mpData, null, 2));
+        }
+        try {
+          console.error('[payments.createPreference] Full error (serialized):', JSON.stringify(mpErr, Object.getOwnPropertyNames(mpErr), 2));
+        } catch (_) {
+          console.error('[payments.createPreference] Full error (toString):', String(mpErr));
+        }
         strapi?.log?.error?.('[payments.createPreference] Mercado Pago API error:', {
           status: mpResponse?.status,
           statusText: mpResponse?.statusText,
@@ -388,6 +405,19 @@ export default {
       const mpData = e?.response?.data;
       const msg = e?.message ?? 'Error desconocido';
       const detail = mpData ? JSON.stringify(mpData) : msg;
+      // Log completo del objeto de error para diagnóstico en Railway
+      console.error('[payments.createPreference] 500 - error completo:', {
+        message: e?.message,
+        name: e?.name,
+        status: e?.response?.status,
+        data: e?.response?.data,
+        stack: e?.stack,
+      });
+      try {
+        console.error('[payments.createPreference] 500 - error (serialized):', JSON.stringify(e, Object.getOwnPropertyNames(e), 2));
+      } catch (_) {
+        console.error('[payments.createPreference] 500 - error (toString):', String(e));
+      }
       strapi?.log?.error?.('[payments.createPreference] 500 - detalle:', detail);
       if (e?.response) {
         strapi?.log?.error?.('[payments.createPreference] response.status:', e.response.status, 'response.data:', e.response.data);

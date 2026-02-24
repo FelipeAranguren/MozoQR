@@ -314,13 +314,13 @@ async function getOrCreateOpenSessionByCode(opts: { restauranteId: ID; mesaId: I
           console.warn(`[getOrCreateOpenSessionByCode] ⚠️ Sesión ${sessionId} todavía no tiene mesa después de actualizar. Usando Knex para actualizar foreign key directamente...`);
           
           // Use Knex to update the foreign key directly on the existing session
-          const knex = strapi?.db?.connection;
-          if (knex) {
+          const knexConn = strapi?.db?.connection;
+          if (knexConn) {
             try {
               // First, try to get column info to find the correct column name
               let correctColumnName: string | null = null;
               try {
-                const columnInfo = await knex('mesa_sesions').columnInfo();
+                const columnInfo = await knexConn('mesa_sesions').columnInfo();
                 // Look for columns that might be the mesa foreign key
                 const possibleColumnNames = Object.keys(columnInfo).filter(col => 
                   col.toLowerCase().includes('mesa') && 
@@ -342,7 +342,7 @@ async function getOrCreateOpenSessionByCode(opts: { restauranteId: ID; mesaId: I
               
               for (const colName of possibleColumns) {
                 try {
-                  await knex('mesa_sesions')
+                  await knexConn('mesa_sesions')
                     .where({ id: sessionId })
                     .update({ [colName]: expectedMesaId });
                   console.log(`[getOrCreateOpenSessionByCode] ✅ Actualizado columna ${colName} para sesión ${sessionId} con mesa ${expectedMesaId}`);
@@ -379,7 +379,20 @@ async function getOrCreateOpenSessionByCode(opts: { restauranteId: ID; mesaId: I
           } else {
             console.error(`[getOrCreateOpenSessionByCode] ❌ Knex no disponible`);
           }
-          
+
+          // Si Knex actualizó mesa_id pero Strapi no popula la relación, verificar en DB y devolver sesión enriquecida
+          const dbConn = strapi?.db?.connection;
+          if (dbConn) {
+            try {
+              const row = await dbConn('mesa_sesions').where('id', sessionId).select('mesa_id').first();
+              if (row?.mesa_id != null && Number(row.mesa_id) === Number(expectedMesaId)) {
+                console.log(`[getOrCreateOpenSessionByCode] DB confirma mesa_id=${row.mesa_id} para sesión ${sessionId}. Retornando sesión enriquecida con mesa.`);
+                const base = rechecked || updated || fullSession || session;
+                return { ...(typeof base === 'object' && base !== null ? base : {}), id: sessionId, code: session.code, session_status: 'open', mesa: { id: expectedMesaId } };
+              }
+            } catch (_) { /* ignore */ }
+          }
+
           // Return whatever we have (even if it doesn't have mesa)
           console.warn(`[getOrCreateOpenSessionByCode] ⚠️ Retornando sesión ${sessionId} sin mesa como último recurso`);
           return rechecked || updated || fullSession;
@@ -1119,7 +1132,7 @@ export default {
       publicationState: 'preview',
     });
 
-    // If Strapi doesn't see mesa, check DB directly
+    // If Strapi doesn't see mesa, check DB directly and resolve mesa by mesaNumber + restauranteId
     if (!sesionWithMesa?.mesa?.id) {
       console.warn(`[createOrder] ⚠️ Strapi no ve mesa en sesión ${sesion.id}, verificando DB...`);
       const knex = strapi?.db?.connection;
@@ -1132,7 +1145,21 @@ export default {
           
           if (dbCheck?.mesa_id && Number(dbCheck.mesa_id) === Number(mesa.id)) {
             console.log(`[createOrder] ✅ DB confirma mesa_id=${dbCheck.mesa_id} para sesión ${sesion.id}. Continuando...`);
-            // DB has correct value, continue
+            // Asegurar mesa en sesión: buscar mesa por number + restaurante vía entityService para relación válida
+            let mesaEntity: { id: number; number?: number } | null = null;
+            try {
+              const mesas = await strapi.entityService.findMany('api::mesa.mesa', {
+                filters: { number: Number(table), restaurante: Number(restaurante.id) },
+                fields: ['id', 'number'],
+                limit: 1,
+              });
+              const first = Array.isArray(mesas) ? mesas[0] : mesas;
+              if (first && Number(first.id) === Number(mesa.id)) {
+                mesaEntity = { id: Number(first.id), number: first.number != null ? Number(first.number) : undefined };
+              }
+            } catch (_) { /* fallback to existing mesa */ }
+            if (!mesaEntity) mesaEntity = { id: Number(mesa.id), number: mesa.number != null ? Number(mesa.number) : undefined };
+            sesionWithMesa = { ...sesionWithMesa, id: sesion.id, mesa: mesaEntity } as typeof sesionWithMesa;
           } else {
             console.error(`[createOrder] ❌ CRÍTICO: Sesión ${sesion.id} no tiene mesa_id correcto en DB (esperado: ${mesa.id}, encontrado: ${dbCheck?.mesa_id}). Rechazando pedido.`);
             ctx.status = 500;

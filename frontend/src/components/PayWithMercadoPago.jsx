@@ -58,10 +58,17 @@ export default function PayWithMercadoPago({
         slug,
       });
 
-      if (!data || data.ok === false) {
+      // No usar nunca el resultado si es undefined/null (evita "reading config" / init_point de undefined)
+      if (data == null || typeof data !== "object") {
+        const msg = "El servidor de pagos no devolvió una respuesta válida. Intentá de nuevo.";
+        setErrorMsg(msg);
+        alert(msg);
+        return;
+      }
+      if (data.ok === false) {
         console.error("Error en pago:", data?.error);
         const msg =
-          (data && typeof data.error === "string" && data.error) ||
+          (typeof data.error === "string" && data.error) ||
           "Hubo un problema técnico. No se pudo preparar el pago.";
         setErrorMsg(msg);
         alert(msg);

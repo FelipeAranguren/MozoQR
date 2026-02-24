@@ -220,20 +220,34 @@ export async function createOrder(slug, payload) {
     : null;
 
   // ✅ namespaced endpoint: crea pedido + ítems y asocia a mesa_sesion
-  const res = await http.post(
-    `/restaurants/${slug}/orders`,
-    {
-      data: {
-        table: Number(table),
-        tableSessionId: String(tableSessionId),
-        customerNotes: safeNotes,
-        total: numericTotal, // Ensure it's always a number, not a formatted string
-        items: safeItems,
+  let res;
+  try {
+    res = await http.post(
+      `/restaurants/${slug}/orders`,
+      {
+        data: {
+          table: Number(table),
+          tableSessionId: String(tableSessionId),
+          customerNotes: safeNotes,
+          total: numericTotal, // Ensure it's always a number, not a formatted string
+          items: safeItems,
+        },
       },
-    },
-    IDEM_ON ? { headers: { 'Idempotency-Key': idemKey } } : undefined
-  );
+      IDEM_ON ? { headers: { 'Idempotency-Key': idemKey } } : undefined
+    );
+  } catch (err) {
+    const data = err?.response?.data;
+    const msg =
+      (data?.error && typeof data.error === 'object' && data.error?.message) ||
+      (typeof data?.error === 'string' && data.error) ||
+      err?.message ||
+      'Error al crear el pedido. Intentá de nuevo.';
+    throw new Error(msg);
+  }
 
+  if (!res?.data) {
+    throw new Error('El servidor no devolvió el pedido creado. Intentá de nuevo.');
+  }
   return res.data; // { data: { id, documentId, ... } }
 }
 
