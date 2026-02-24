@@ -222,7 +222,7 @@ export default {
       let saneItems: Array<{ title: string; quantity: number; unit_price: number; currency_id: 'ARS' }>;
       let backUrls: { success: string; failure: string; pending: string };
       const requestBaseBack = getRequestBaseBackUrl(ctx);
-      const configuredBaseBack = getBackendUrl(strapi.config).replace(/\/*$/, '');
+      const configuredBaseBack = getBackendUrl(strapi?.config).replace(/\/*$/, '');
       const effectiveBaseBack =
         /localhost(?::\d+)?$/i.test(configuredBaseBack) || /\/\/localhost(?::\d+)?/i.test(configuredBaseBack)
           ? (requestBaseBack || configuredBaseBack)
@@ -309,7 +309,7 @@ export default {
             },
           ];
 
-        backUrls = buildBackendBackUrls(orderId, strapi.config, slug, effectiveBaseBack);
+        backUrls = buildBackendBackUrls(orderId, strapi?.config, slug, effectiveBaseBack);
       }
 
       const totalAmount = saneItems.reduce(
