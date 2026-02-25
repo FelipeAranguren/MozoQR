@@ -5,6 +5,36 @@
 import { factories } from '@strapi/strapi'
 
 /**
+ * Resuelve restauranteId (numérico o documentId) al id numérico del restaurante.
+ * Necesario para que entityService.create persista correctamente la relación.
+ */
+async function resolveRestaurantId(strapi: any, restauranteId: number | string): Promise<number | null> {
+  if (restauranteId == null) return null;
+  if (typeof restauranteId === 'number' && Number.isFinite(restauranteId) && restauranteId > 0) {
+    const r = await strapi.db.query('api::restaurante.restaurante').findOne({
+      where: { id: restauranteId },
+      select: ['id'],
+    });
+    return r?.id ?? null;
+  }
+  const str = String(restauranteId).trim();
+  if (/^\d+$/.test(str)) {
+    const num = Number(str);
+    const r = await strapi.db.query('api::restaurante.restaurante').findOne({
+      where: { id: num },
+      select: ['id'],
+    });
+    return r?.id ?? null;
+  }
+  const [byDoc] = await strapi.db.query('api::restaurante.restaurante').findMany({
+    where: { documentId: str },
+    select: ['id'],
+    limit: 1,
+  });
+  return byDoc?.id ?? null;
+}
+
+/**
  * Helper para validar que el usuario tiene acceso al restaurante
  */
 async function validateRestaurantAccess(strapi: any, userId: number, restauranteId: number | string): Promise<boolean> {
@@ -313,14 +343,28 @@ export default factories.createCoreController('api::categoria.categoria', ({ str
       return;
     }
 
-    // Crear la categoría
+    // Resolver al id numérico del restaurante para que la relación se persista correctamente
+    const numericRestauranteId = await resolveRestaurantId(strapi, restauranteId);
+    if (numericRestauranteId == null) {
+      console.log('❌ [categoria.create] No se pudo resolver el id del restaurante:', restauranteId);
+      ctx.badRequest('Restaurante no encontrado');
+      return;
+    }
+
+    // Crear la categoría con restaurante asociado (id numérico) y publicar si usa draftAndPublish
     try {
-      console.log('✅ [categoria.create] Creando categoría con payload:', payload);
+      const data: Record<string, unknown> = {
+        name: payload.name,
+        slug: payload.slug ?? payload.name?.toLowerCase?.()?.replace?.(/\s+/g, '-') ?? 'categoria',
+        restaurante: numericRestauranteId,
+      };
+      console.log('✅ [categoria.create] Creando categoría con data:', data);
       const created = await strapi.entityService.create('api::categoria.categoria', {
-        data: payload,
+        data,
+        publicationState: 'live',
       });
 
-      console.log('✅ [categoria.create] Categoría creada exitosamente:', created?.id);
+      console.log('✅ [categoria.create] Categoría creada exitosamente:', created?.id, 'restaurante:', numericRestauranteId);
       ctx.body = { data: created };
     } catch (error: any) {
       console.error('❌ [categoria.create] Error al crear categoría:', error);
