@@ -1,4 +1,5 @@
-// Página de retorno de Mercado Pago cuando el pago falló o fue rechazado.
+// Página de retorno de Mercado Pago cuando el pago falló o fue rechazado (back_urls.failure).
+// auto_return: 'approved' redirige a /payment-success; si el usuario cancela o falla, MP redirige aquí.
 import React from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { Container, Typography, Button, Box } from "@mui/material";

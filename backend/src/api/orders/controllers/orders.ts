@@ -19,24 +19,33 @@ function getMpAccessToken(strapi: any): string | null {
 
 /**
  * Resuelve el PK numérico del pedido (api::pedido.pedido) a partir de external_reference.
- * Acepta: id numérico de Strapi o documentId (string UID del documento).
+ * Búsqueda dual infalible:
+ * - Si external_reference es un número (o string solo dígitos): busca por id.
+ * - Si es un string con letras (hash/documentId): busca por documentId.
+ * Así funciona con cualquier tipo de ID que use tu Strapi (id numérico o documentId).
  */
 async function resolveOrderPk(strapi: any, ref: string | number | null): Promise<number | null> {
   if (ref == null) return null;
   const refStr = String(ref).trim();
   if (refStr === '') return null;
 
-  // 1) Búsqueda por id numérico (lo que enviamos en external_reference al crear la preferencia)
-  if (/^\d+$/.test(refStr)) {
+  const isNumeric = typeof ref === 'number' && Number.isInteger(ref) && ref > 0
+    || /^\d+$/.test(refStr);
+
+  if (isNumeric) {
+    // 1) Búsqueda por id numérico (external_reference = id del pedido)
     try {
-      const existing = await strapi.entityService.findOne(ORDER_UID, Number(refStr), { fields: ['id'] });
-      if (existing?.id != null) return existing.id;
+      const id = typeof ref === 'number' ? ref : Number(refStr);
+      if (Number.isFinite(id) && id > 0) {
+        const existing = await strapi.entityService.findOne(ORDER_UID, id, { fields: ['id'] });
+        if (existing?.id != null) return existing.id;
+      }
     } catch {
       /* ignore */
     }
   }
 
-  // 2) Búsqueda por documentId (por si MP o algo envía el UID del documento)
+  // 2) Búsqueda por documentId (external_reference = hash/UID del documento)
   try {
     const byDocument = await strapi.db.query(ORDER_UID).findOne({
       where: { documentId: refStr },
@@ -142,6 +151,8 @@ export default factories.createCoreController(ORDER_UID, ({ strapi }) => ({
         return ctx.send({ ok: true, message: 'not marked paid' }, 200);
       }
 
+      // api::pedido.pedido usa el campo order_status (no status). Valores: pending | preparing | served | paid | cancelled
+      strapi.log.info(`✅ Actualizando pedido ${externalRef} a estado paid.`);
       await strapi.entityService.update(ORDER_UID, orderPk, {
         data: { order_status: 'paid' },
       });
