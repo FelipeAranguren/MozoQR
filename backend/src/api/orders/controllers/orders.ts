@@ -4,17 +4,12 @@ import { MercadoPagoConfig, Payment } from 'mercadopago';
 /** UID del Content Type pedido en Strapi (api::pedido.pedido) */
 const ORDER_UID = 'api::pedido.pedido';
 
-function getMpAccessToken(strapi: any): string | null {
-  const fromEnv =
-    process.env.MP_ACCESS_TOKEN ||
-    process.env.MERCADOPAGO_ACCESS_TOKEN ||
-    process.env.MERCADO_PAGO_ACCESS_TOKEN;
-  if (fromEnv != null && typeof fromEnv === 'string' && fromEnv.trim().length > 0) {
-    return fromEnv.trim();
-  }
-  const raw = strapi?.config?.get?.('server.mercadopagoToken');
+/** Token de MP: solo process.env.MP_ACCESS_TOKEN (Railway reconoce esta variable). */
+function getMpAccessToken(): string | null {
+  const raw = process.env.MP_ACCESS_TOKEN;
   if (raw == null || typeof raw !== 'string') return null;
-  return raw.trim().length > 0 ? raw.trim() : null;
+  const trimmed = raw.trim();
+  return trimmed.length > 0 ? trimmed : null;
 }
 
 /**
@@ -33,15 +28,24 @@ async function resolveOrderPk(strapi: any, ref: string | number | null): Promise
     || /^\d+$/.test(refStr);
 
   if (isNumeric) {
-    // 1) Búsqueda por id numérico (external_reference = id del pedido)
-    try {
-      const id = typeof ref === 'number' ? ref : Number(refStr);
-      if (Number.isFinite(id) && id > 0) {
-        const existing = await strapi.entityService.findOne(ORDER_UID, id, { fields: ['id'] });
-        if (existing?.id != null) return existing.id;
+    // 1) Búsqueda por id numérico de Strapi (external_reference que envía MP = id del pedido)
+    const numId = typeof ref === 'number' ? ref : Number(refStr);
+    if (Number.isFinite(numId) && numId > 0) {
+      try {
+        const byId = await strapi.db.query(ORDER_UID).findOne({
+          where: { id: numId },
+          select: ['id'],
+        });
+        if (byId?.id != null) return byId.id;
+      } catch {
+        /* ignore */
       }
-    } catch {
-      /* ignore */
+      try {
+        const existing = await strapi.entityService.findOne(ORDER_UID, numId, { fields: ['id'] });
+        if (existing?.id != null) return existing.id;
+      } catch {
+        /* ignore */
+      }
     }
   }
 
@@ -90,9 +94,9 @@ export default factories.createCoreController(ORDER_UID, ({ strapi }) => ({
         return ctx.send({ ok: true, message: 'ignored', reason: 'missing type or data.id' }, 200);
       }
 
-      const accessToken = getMpAccessToken(strapi);
+      const accessToken = getMpAccessToken();
       if (!accessToken) {
-        strapi.log.error('[orders.webhook] Falta mercadopagoToken en config o MP_ACCESS_TOKEN en env.');
+        strapi.log.error('[orders.webhook] Falta MP_ACCESS_TOKEN en variables de entorno (Railway).');
         return ctx.send({ ok: false, error: 'Token not configured' }, 500);
       }
 
