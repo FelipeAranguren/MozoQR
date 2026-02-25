@@ -1,6 +1,6 @@
 // frontend/src/components/HealthCheckPanel.jsx
-import React from 'react';
-import { Box, Typography, LinearProgress, Chip, Card, CardContent, Grid } from '@mui/material';
+import React, { useState } from 'react';
+import { Box, Typography, LinearProgress, Card, Grid, Button, Collapse } from '@mui/material';
 import CheckCircleIcon from '@mui/icons-material/CheckCircle';
 import WarningIcon from '@mui/icons-material/Warning';
 import ErrorIcon from '@mui/icons-material/Error';
@@ -9,12 +9,15 @@ import AttachMoneyIcon from '@mui/icons-material/AttachMoney';
 import TableRestaurantIcon from '@mui/icons-material/TableRestaurant';
 import CategoryIcon from '@mui/icons-material/Category';
 import ImageIcon from '@mui/icons-material/Image';
+import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
+import ExpandLessIcon from '@mui/icons-material/ExpandLess';
 import { MARANA_COLORS } from '../theme';
 
 /**
- * Panel de Health Check - Muestra el estado de salud del restaurante
+ * Panel de Health Check - Muestra el estado de salud del restaurante (panel desplegable)
  */
 export default function HealthCheckPanel({ metrics = {}, onActionClick }) {
+  const [expanded, setExpanded] = useState(false);
   const {
     productsWithoutImage = 0,
     totalProducts = 0,
@@ -92,6 +95,11 @@ export default function HealthCheckPanel({ metrics = {}, onActionClick }) {
     }
   ];
 
+  // Porcentaje global del Health Check (promedio de los 5 ítems)
+  const overallPercent = Math.round(
+    healthItems.reduce((sum, item) => sum + item.progress, 0) / healthItems.length
+  );
+
   const getStatusColor = (status) => {
     switch (status) {
       case 'good': return MARANA_COLORS.primary;
@@ -119,17 +127,33 @@ export default function HealthCheckPanel({ metrics = {}, onActionClick }) {
         p: 3
       }}
     >
-      <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 3 }}>
+      <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 1 }}>
         <Box>
           <Typography variant="h6" sx={{ fontWeight: 700, mb: 0.5 }}>
-            Health Check
+            Health Check {overallPercent}%
           </Typography>
-          <Typography variant="body2" color="text.secondary">
-            Estado de configuración de tu restaurante
-          </Typography>
+          <Collapse in={expanded}>
+            <Typography variant="body2" color="text.secondary">
+              Estado de configuración de tu restaurante
+            </Typography>
+          </Collapse>
         </Box>
+        <Button
+          size="small"
+          onClick={() => setExpanded((e) => !e)}
+          endIcon={expanded ? <ExpandLessIcon /> : <ExpandMoreIcon />}
+          sx={{
+            color: MARANA_COLORS.primary,
+            fontWeight: 600,
+            textTransform: 'none'
+          }}
+        >
+          {expanded ? 'mostrar menos' : 'mostrar más'}
+        </Button>
       </Box>
 
+      <Collapse in={expanded}>
+        <Box sx={{ mt: 3 }}>
       <Grid container spacing={2}>
         {healthItems.map((item) => (
           <Grid item xs={12} sm={6} md={4} key={item.id}>
@@ -226,6 +250,8 @@ export default function HealthCheckPanel({ metrics = {}, onActionClick }) {
           </Grid>
         ))}
       </Grid>
+        </Box>
+      </Collapse>
     </Card>
   );
 }
