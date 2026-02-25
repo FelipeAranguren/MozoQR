@@ -38,8 +38,40 @@ function getAllowedOrigins(env: any): string[] {
     .filter(Boolean);
 }
 
-export default ({ env }: { env: (key: string, fallback?: string) => string }) => ({
-  'users-permissions': {
+/**
+ * Upload: usa Cloudinary si están definidas las variables de entorno.
+ * Si no, Strapi usa el provider local (archivos en public/uploads/).
+ * En producción es recomendable usar Cloudinary para que las imágenes persistan entre despliegues.
+ */
+function getUploadConfig(env: (key: string, fallback?: string) => string) {
+  const cloudName = env('CLOUDINARY_NAME', '');
+  const apiKey = env('CLOUDINARY_KEY', '');
+  const apiSecret = env('CLOUDINARY_SECRET', '');
+  if (cloudName && apiKey && apiSecret) {
+    return {
+      config: {
+        provider: 'cloudinary',
+        providerOptions: {
+          cloud_name: cloudName,
+          api_key: apiKey,
+          api_secret: apiSecret,
+        },
+        actionOptions: {
+          upload: {},
+          uploadStream: {},
+          delete: {},
+        },
+      },
+    };
+  }
+  return undefined;
+}
+
+export default ({ env }: { env: (key: string, fallback?: string) => string }) => {
+  const uploadConfig = getUploadConfig(env);
+  return {
+    ...(uploadConfig && { upload: uploadConfig }),
+    'users-permissions': {
     config: {
       session: {
         key: 'strapi.sid',
@@ -104,4 +136,5 @@ export default ({ env }: { env: (key: string, fallback?: string) => string }) =>
       },
     },
   },
-});
+  };
+};

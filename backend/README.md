@@ -32,6 +32,20 @@ npm run build
 yarn build
 ```
 
+## 📤 Upload de imágenes (persistencia entre despliegues)
+
+Por defecto Strapi guarda archivos en `public/uploads/`. En entornos con filesystem efímero (Railway, Vercel, etc.) las imágenes se pierden en cada redeploy.
+
+**Solución:** usar Cloudinary. Si defines las variables de entorno siguientes, el backend usará Cloudinary para subir y servir imágenes (las URLs quedarán en `https://res.cloudinary.com/...` y serán persistentes).
+
+| Variable | Descripción |
+|----------|-------------|
+| `CLOUDINARY_NAME` | Cloud name de tu cuenta (Dashboard de [cloudinary.com](https://cloudinary.com)) |
+| `CLOUDINARY_KEY` | API Key |
+| `CLOUDINARY_SECRET` | API Secret |
+
+Sin estas variables, se sigue usando almacenamiento local. Ver también `backend/.env.example`.
+
 ## ⚙️ Deployment
 
 Strapi gives you many possible deployment options for your project including [Strapi Cloud](https://cloud.strapi.io). Browse the [deployment section of the documentation](https://docs.strapi.io/dev-docs/deployment) to find the best solution for your use case.

@@ -23,6 +23,9 @@ module.exports = [
         useDefaults: true,
         directives: {
           'connect-src': ["'self'", 'http:', 'https:', 'ws:', 'wss:'],
+          // Permitir imágenes y media desde Cloudinary (cuando se usa upload externo)
+          'img-src': ["'self'", 'data:', 'blob:', 'https://res.cloudinary.com'],
+          'media-src': ["'self'", 'data:', 'blob:', 'https://res.cloudinary.com'],
         },
       },
     },
