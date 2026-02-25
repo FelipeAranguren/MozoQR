@@ -6,7 +6,7 @@ export default {
     {
       method: 'POST',
       path: '/webhook',
-      handler: 'order.webhook',
+      handler: 'orders.webhook',
       config: {
         auth: false,
         policies: [],
