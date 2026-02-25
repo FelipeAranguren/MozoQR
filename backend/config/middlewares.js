@@ -6,6 +6,7 @@
 
 module.exports = [
   'strapi::errors',
+  'strapi::body',
   { name: 'global::debug-proxy-headers' },
   {
     name: 'strapi::session',
@@ -29,7 +30,7 @@ module.exports = [
   {
     name: 'strapi::cors',
     config: {
-      origin: (process.env.CORS_ORIGINS || process.env.FRONTEND_URL || 'https://mozoqr.vercel.app')
+      origin: ['https://mozoqr.vercel.app', 'https://www.mercadopago.com.ar', 'https://www.mercadopago.com']
         .split(',')
         .map((s) => s.trim())
         .filter(Boolean),
@@ -42,7 +43,6 @@ module.exports = [
   'strapi::poweredBy',
   'strapi::logger',
   'strapi::query',
-  'strapi::body',
   { name: 'global::secure-headers' },
   { name: 'global::rate-limit' },
   { name: 'global::audit-log' },
