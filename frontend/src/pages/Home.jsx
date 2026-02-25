@@ -2,15 +2,18 @@
 import React from 'react'
 import { useNavigate } from 'react-router-dom'
 import { motion } from 'framer-motion'
-import { Container, Typography, Button, Grid, Card, Box } from '@mui/material'
+import { Container, Typography, Button, Grid, Card, Box, List, ListItem, ListItemIcon, ListItemText } from '@mui/material'
 import QrCodeIcon from '@mui/icons-material/QrCode'
 import SmartphoneIcon from '@mui/icons-material/Smartphone'
 import CreditCardIcon from '@mui/icons-material/CreditCard'
 import BarChartIcon from '@mui/icons-material/BarChart'
 import CheckCircleIcon from '@mui/icons-material/CheckCircle'
+import CheckIcon from '@mui/icons-material/Check'
+import CloseIcon from '@mui/icons-material/Close'
 import ArrowForwardIcon from '@mui/icons-material/ArrowForward'
 import StarIcon from '@mui/icons-material/Star'
 import heroImage from '../assets/hero-image.jpg'
+import { MARANA_COLORS } from '../theme'
 
 export default function Home() {
   const navigate = useNavigate()
@@ -50,6 +53,95 @@ export default function Home() {
     { text: 'Configuración en menos de 24 horas', stat: '<24h' },
     { text: 'Obtén datos valiosos sobre preferencias', stat: '100%' }
   ]
+
+  // Planes (misma estructura y beneficios que OwnerDashboard PlanComparison)
+  const plans = {
+    BASIC: {
+      name: 'Básico',
+      price: 'Gratis',
+      description: 'Control operacional esencial',
+      color: MARANA_COLORS.textSecondary,
+      features: [
+        'KPIs básicos (ventas diarias, pedidos, ticket promedio)',
+        'Vista rápida de mesas (estado, pedidos activos)',
+        'Gestión básica (CRUD productos, categorías, mesas)',
+        'Disponibilidad de productos',
+        'Editar logo y colores',
+        'Actividad reciente (últimos pedidos, cuentas pagadas)',
+        'Insights simples (top productos, horas pico)'
+      ],
+      limitations: [
+        'Sin análisis avanzados',
+        'Sin predicciones',
+        'Sin comparativas semanales',
+        'Sin exportaciones',
+        'Sin múltiples sucursales'
+      ],
+      cta: 'Comenzar gratis',
+      ctaAction: () => navigate('/demo')
+    },
+    PRO: {
+      name: 'Pro',
+      price: 'Consultar',
+      description: 'Optimización con datos y análisis avanzados',
+      color: MARANA_COLORS.secondary,
+      features: [
+        'Todo lo de Básico',
+        'Analytics avanzados (ventas semanales, tendencias)',
+        'Top 5 productos del mes',
+        'Comparativa HOY vs AYER',
+        'Horas pico del negocio',
+        'Productos frecuentemente sin stock',
+        'Predicciones simples (ventas diarias, demanda)',
+        'Health Check completo',
+        'Roles de personal',
+        'Reporte diario de caja',
+        'Historial de transacciones',
+        'Notificaciones de stock bajo',
+        'Análisis de rentabilidad básico',
+        'Comparativas semanales/mensuales'
+      ],
+      limitations: [
+        'Sin IA integrada',
+        'Sin múltiples sucursales',
+        'Sin exportaciones avanzadas',
+        'Sin análisis de estacionalidad'
+      ],
+      cta: 'Contactar ventas',
+      ctaAction: () => window.location.href = 'mailto:ventas@mozoqr.com'
+    },
+    ULTRA: {
+      name: 'Ultra',
+      price: 'Consultar',
+      description: 'Inteligencia y automatización total',
+      color: MARANA_COLORS.primary,
+      features: [
+        'Todo lo de Pro',
+        'Análisis de rentabilidad completo (márgenes, productos más/menos rentables)',
+        'Ranking de mesas más rentables',
+        'Tiempos promedio de preparación',
+        'Tiempo promedio de ocupación de mesas',
+        'Heatmap de horas pico',
+        'Comparación entre sucursales',
+        'Funnel de clientes',
+        'Panel Profit Optimizer',
+        'IA integrada (sugerencias de menú, combos, detección de productos)',
+        'Análisis de estacionalidad',
+        'Múltiples sucursales',
+        'Panel consolidado',
+        'Exportaciones CSV/PDF',
+        'Auditorías completas',
+        'Logs de usuario',
+        'Sistema de tareas',
+        'Integración de pagos online',
+        'Suscripciones y facturación',
+        'Vista Operativa vs Ejecutiva'
+      ],
+      limitations: [],
+      cta: 'Contactar ventas',
+      ctaAction: () => window.location.href = 'mailto:ventas@mozoqr.com'
+    }
+  }
 
   const testimonials = [
     {
@@ -391,8 +483,141 @@ export default function Home() {
         </Container>
       </Box>
 
+      {/* Planes / Precios */}
+      <Box sx={{ py: { xs: 8, md: 12 }, backgroundColor: '#ffffff' }}>
+        <Container>
+          <motion.div
+            initial={{ opacity: 0, y: 30 }}
+            whileInView={{ opacity: 1, y: 0 }}
+            viewport={{ once: true }}
+            transition={{ duration: 0.6 }}
+          >
+            <Typography variant="h4" align="center" gutterBottom fontWeight="bold">
+              Planes que se adaptan a tu{' '}
+              <span style={{ color: '#00796B' }}>negocio</span>
+            </Typography>
+            <Typography variant="subtitle1" align="center" color="textSecondary" paragraph sx={{ mb: 4 }}>
+              Elige el nivel que mejor se ajuste a tu restaurante. Empieza gratis y escala cuando lo necesites.
+            </Typography>
+          </motion.div>
+
+          <motion.div
+            variants={containerVariants}
+            initial="hidden"
+            whileInView="visible"
+            viewport={{ once: true }}
+          >
+            <Grid container spacing={3}>
+              {Object.entries(plans).map(([planKey, planData]) => (
+                <Grid item xs={12} sm={6} md={4} key={planKey}>
+                  <motion.div
+                    variants={itemVariants}
+                    whileHover={{ y: -8 }}
+                  >
+                    <Card
+                      elevation={2}
+                      sx={{
+                        height: '100%',
+                        display: 'flex',
+                        flexDirection: 'column',
+                        borderRadius: 3,
+                        border: `2px solid ${planData.color}`,
+                        transition: 'all 0.3s ease',
+                        '&:hover': {
+                          boxShadow: `0 12px 40px ${planData.color}40`,
+                          transform: 'translateY(-8px)'
+                        }
+                      }}
+                    >
+                      <Box sx={{ p: 3, flexGrow: 1, display: 'flex', flexDirection: 'column' }}>
+                        <Typography variant="h5" fontWeight="bold" sx={{ color: planData.color, mb: 0.5 }}>
+                          {planData.name}
+                        </Typography>
+                        <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+                          {planData.description}
+                        </Typography>
+                        <Typography variant="h4" fontWeight="bold" sx={{ color: planData.color, mb: 2 }}>
+                          {planData.price}
+                        </Typography>
+
+                        <Typography variant="subtitle2" fontWeight="700" sx={{ mb: 1 }}>
+                          Incluye:
+                        </Typography>
+                        <List dense sx={{ mb: planData.limitations?.length ? 2 : 3, flex: 1 }}>
+                          {planData.features.map((feature, idx) => (
+                            <ListItem key={idx} sx={{ py: 0.25, px: 0 }}>
+                              <ListItemIcon sx={{ minWidth: 28 }}>
+                                <CheckIcon sx={{ color: '#00796B', fontSize: 18 }} />
+                              </ListItemIcon>
+                              <ListItemText
+                                primary={feature}
+                                primaryTypographyProps={{ variant: 'body2', sx: { fontSize: '0.8125rem' } }}
+                              />
+                            </ListItem>
+                          ))}
+                        </List>
+
+                        {planData.limitations?.length > 0 && (
+                          <>
+                            <Typography variant="subtitle2" fontWeight="700" sx={{ mb: 1, color: 'text.secondary' }}>
+                              No incluye:
+                            </Typography>
+                            <List dense sx={{ mb: 2 }}>
+                              {planData.limitations.map((limitation, idx) => (
+                                <ListItem key={idx} sx={{ py: 0.25, px: 0 }}>
+                                  <ListItemIcon sx={{ minWidth: 28 }}>
+                                    <CloseIcon sx={{ color: 'text.secondary', fontSize: 18, opacity: 0.6 }} />
+                                  </ListItemIcon>
+                                  <ListItemText
+                                    primary={limitation}
+                                    primaryTypographyProps={{ variant: 'body2', sx: { fontSize: '0.8125rem', color: 'text.secondary', opacity: 0.9 } }}
+                                  />
+                                </ListItem>
+                              ))}
+                            </List>
+                          </>
+                        )}
+
+                        <motion.div
+                          style={{ marginTop: 'auto' }}
+                          whileHover={{ scale: 1.02 }}
+                          whileTap={{ scale: 0.98 }}
+                        >
+                          <Button
+                            variant="contained"
+                            fullWidth
+                            size="large"
+                            onClick={planData.ctaAction}
+                            endIcon={<ArrowForwardIcon />}
+                            sx={{
+                              bgcolor: planData.color,
+                              py: 1.5,
+                              fontWeight: 600,
+                              borderRadius: 2,
+                              textTransform: 'none',
+                              boxShadow: 2,
+                              '&:hover': {
+                                bgcolor: planData.color,
+                                filter: 'brightness(0.92)',
+                                boxShadow: 4
+                              }
+                            }}
+                          >
+                            {planData.cta}
+                          </Button>
+                        </motion.div>
+                      </Box>
+                    </Card>
+                  </motion.div>
+                </Grid>
+              ))}
+            </Grid>
+          </motion.div>
+        </Container>
+      </Box>
+
       {/* Benefits Section */}
-      <Box sx={{ py: { xs: 8, md: 12 } }}>
+      <Box sx={{ py: { xs: 8, md: 12 }, backgroundColor: '#f9f9f9' }}>
         <Container>
           <Grid container spacing={6} alignItems="center">
             <Grid item xs={12} md={6}>
