@@ -15,6 +15,8 @@ import Register from './pages/Register';
 import PagoSuccess from './pages/PagoSuccess';
 import PagoFailure from './pages/PagoFailure';
 import PagoPending from './pages/PagoPending';
+import PaymentSuccess from './pages/PaymentSuccess';
+import PaymentFailure from './pages/PaymentFailure';
 import ThankYou from './pages/ThankYou';
 import OwnerDashboard from './pages/OwnerDashboard';
 import OwnerDashboardList from './pages/OwnerDashboardList';
@@ -112,6 +114,8 @@ export default function App() {
           <Route path="/pago/success" element={<PagoSuccess />} />
           <Route path="/pago/failure" element={<PagoFailure />} />
           <Route path="/pago/pending" element={<PagoPending />} />
+          <Route path="/payment-success" element={<PaymentSuccess />} />
+          <Route path="/payment-failure" element={<PaymentFailure />} />
           <Route path="/thank-you" element={<ThankYou />} />
           <Route path="/no-access" element={<NoAccess />} />
           <Route path="*" element={<Navigate to="/" replace />} />

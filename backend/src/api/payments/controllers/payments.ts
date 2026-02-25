@@ -60,14 +60,14 @@ function getPaymentStatusBaseUrl(): string {
   return 'https://mozoqr.vercel.app';
 }
 
-/** back_urls apuntando al frontend en Vercel (payment-status) */
+/** back_urls al frontend: /payment-success y /payment-failure (auto_return approved) */
 function buildPaymentStatusBackUrls(): { success: string; failure: string; pending: string } {
   const base = getPaymentStatusBaseUrl();
-  const statusPath = '/payment-status';
+  const frontBase = process.env.FRONTEND_URL ? ensureHttpUrl(process.env.FRONTEND_URL).replace(/\/*$/, '') : base;
   return {
-    success: `${base}${statusPath}?status=success`,
-    failure: `${base}${statusPath}?status=failure`,
-    pending: `${base}${statusPath}?status=pending`,
+    success: `${frontBase}/payment-success`,
+    failure: `${frontBase}/payment-failure`,
+    pending: `${frontBase}/payment-success?status=pending`,
   };
 }
 
@@ -330,8 +330,8 @@ export default {
         items: saneItems.map((it: any, i: number) => ({ id: String(i + 1), ...it })),
         external_reference: orderId != null && orderId !== '' ? String(orderId) : undefined,
         back_urls: backUrls,
+        auto_return: 'approved' as const,
       };
-      if (isHttps(baseBack)) body.auto_return = 'approved';
 
       let mpPref: any;
       try {
