@@ -74,7 +74,7 @@ export default function PayWithMercadoPago({
         alert(msg);
         return;
       }
-      const url = data.sandbox_init_point || data.init_point;
+      const url = data.init_point;
       if (!url || typeof url !== "string") {
         setErrorMsg("No se recibió el enlace de pago.");
         alert("No se recibió el enlace de pago. Intentá de nuevo.");
