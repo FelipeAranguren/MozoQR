@@ -318,10 +318,17 @@ export default {
       );
 
       // ---- Crear preferencia (client/preference ya creados arriba con accessToken validado)
+      // external_reference debe ser el ID de la orden de Strapi (api::pedido.pedido) para que el webhook
+      // de Mercado Pago pueda asociar el pago aprobado con la orden y marcarla como 'paid'.
+      if (hasCartItems && (orderId === undefined || orderId === null || orderId === '')) {
+        strapi?.log?.warn?.(
+          '[payments.createPreference] cartItems sin orderId: el webhook no podrá marcar la orden como paid. Enviá orderId (ID del pedido creado en Strapi).',
+        );
+      }
       const baseBack = effectiveBaseBack;
       const body: any = {
         items: saneItems.map((it: any, i: number) => ({ id: String(i + 1), ...it })),
-        external_reference: orderId ? String(orderId) : undefined,
+        external_reference: orderId != null && orderId !== '' ? String(orderId) : undefined,
         back_urls: backUrls,
       };
       if (isHttps(baseBack)) body.auto_return = 'approved';
