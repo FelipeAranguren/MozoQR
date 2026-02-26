@@ -5,33 +5,27 @@
 import { factories } from '@strapi/strapi'
 
 /**
- * Resuelve restauranteId (numérico o documentId) al id numérico del restaurante.
- * Necesario para que entityService.create persista correctamente la relación
+ * Resuelve restauranteId (numérico o documentId) al documentId del restaurante (string).
+ * Strapi 5 usa documentId para las relaciones en entityService (connect: [documentId]).
  */
-async function resolveRestaurantId(strapi: any, restauranteId: number | string): Promise<number | null> {
+async function resolveRestaurantDocumentId(strapi: any, restauranteId: number | string): Promise<string | null> {
   if (restauranteId == null) return null;
-  if (typeof restauranteId === 'number' && Number.isFinite(restauranteId) && restauranteId > 0) {
-    const r = await strapi.db.query('api::restaurante.restaurante').findOne({
-      where: { id: restauranteId },
-      select: ['id'],
-    });
-    return r?.id ?? null;
-  }
   const str = String(restauranteId).trim();
+  let row: { id?: number; documentId?: string } | null = null;
   if (/^\d+$/.test(str)) {
-    const num = Number(str);
-    const r = await strapi.db.query('api::restaurante.restaurante').findOne({
-      where: { id: num },
-      select: ['id'],
+    row = await strapi.db.query('api::restaurante.restaurante').findOne({
+      where: { id: Number(str) },
+      select: ['id', 'documentId'],
     });
-    return r?.id ?? null;
+  } else {
+    const [byDoc] = await strapi.db.query('api::restaurante.restaurante').findMany({
+      where: { documentId: str },
+      select: ['id', 'documentId'],
+      limit: 1,
+    });
+    row = byDoc ?? null;
   }
-  const [byDoc] = await strapi.db.query('api::restaurante.restaurante').findMany({
-    where: { documentId: str },
-    select: ['id'],
-    limit: 1,
-  });
-  return byDoc?.id ?? null;
+  return row?.documentId ?? null;
 }
 
 /**
@@ -343,44 +337,34 @@ export default factories.createCoreController('api::categoria.categoria', ({ str
       return;
     }
 
-    // Resolver al id numérico del restaurante para que la relación se persista correctamente
-    const numericRestauranteId = await resolveRestaurantId(strapi, restauranteId);
-    if (numericRestauranteId == null) {
-      console.log('❌ [categoria.create] No se pudo resolver el id del restaurante:', restauranteId);
+    // Strapi 5: la relación manyToOne se establece con connect: [documentId]
+    const restauranteDocumentId = await resolveRestaurantDocumentId(strapi, restauranteId);
+    if (!restauranteDocumentId) {
+      console.log('❌ [categoria.create] No se pudo resolver el documentId del restaurante:', restauranteId);
       ctx.badRequest('Restaurante no encontrado');
       return;
     }
 
-    // Crear la categoría con restaurante asociado (probar ambos formatos para compatibilidad Strapi 4/5)
     try {
+      const slugValue = payload.slug ?? (typeof payload.name === 'string' ? payload.name.toLowerCase().replace(/\s+/g, '-') : 'categoria');
       const data: Record<string, unknown> = {
         name: payload.name,
-        slug: payload.slug ?? (typeof payload.name === 'string' ? payload.name.toLowerCase().replace(/\s+/g, '-') : 'categoria'),
-        restaurante: numericRestauranteId,
+        slug: slugValue,
+        restaurante: { connect: [restauranteDocumentId] },
       };
-      console.log('✅ [categoria.create] Creando categoría con data:', data);
+      console.log('✅ [categoria.create] Creando categoría (Strapi 5 connect):', { name: data.name, slug: data.slug, restaurante: data.restaurante });
       const created = await strapi.entityService.create('api::categoria.categoria', {
         data,
         publicationState: 'live',
       });
 
-      // Forzar relación en BD (Strapi 5 a veces no persiste manyToOne con entityService.create)
-      const knex = strapi?.db?.connection;
-      if (knex && created?.id != null) {
-        try {
-          const tableName = 'categorias';
-          const hasRestauranteId = await knex.schema.hasColumn(tableName, 'restaurante_id');
-          if (hasRestauranteId) {
-            await knex(tableName).where({ id: created.id }).update({ restaurante_id: numericRestauranteId });
-            console.log('✅ [categoria.create] Relación restaurante forzada en BD:', created.id, '->', numericRestauranteId);
-          }
-        } catch (knexErr: any) {
-          console.warn('⚠️ [categoria.create] Knex update restaurante_id:', knexErr?.message);
-        }
-      }
-
-      console.log('✅ [categoria.create] Categoría creada exitosamente ✅:', created?.id, 'restaurante:', numericRestauranteId);
-      ctx.body = { data: created };
+      // Devolver la categoría con la relación poblada para confirmar el éxito (estándar Strapi 5)
+      const withRestaurante = await strapi.entityService.findOne('api::categoria.categoria', created.id, {
+        populate: { restaurante: true },
+        publicationState: 'live',
+      });
+      console.log('✅ [categoria.create] Categoría creada:', created?.id, 'restaurante poblado:', !!(withRestaurante as any)?.restaurante);
+      ctx.body = { data: withRestaurante ?? created };
     } catch (error: any) {
       console.error('❌ [categoria.create] Error al crear categoría:', error);
       console.error('❌ [categoria.create] Error details:', error?.message, error?.stack);

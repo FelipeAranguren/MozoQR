@@ -34,15 +34,14 @@ export async function fetchCategories(slug) {
 
     // Para owner, obtenemos categorías con TODOS los productos (incluidos no disponibles)
     // Primero obtener categorías
+    // Strapi 5: las relaciones NO se devuelven por defecto; hay que pedir populate explícito.
+    // No usar fields para no excluir las relaciones pobladas.
     const params = new URLSearchParams();
     params.append('filters[restaurante][id][$eq]', restauranteId);
-    params.append('populate[productos][populate]', 'image');
+    params.append('populate[productos]', 'true');
+    params.append('populate[productos][populate][0]', 'image');
+    params.append('populate[restaurante]', 'true');
     params.append('sort[0]', 'name:asc');
-    params.append('fields[0]', 'id');
-    params.append('fields[1]', 'documentId');
-    params.append('fields[2]', 'name');
-    params.append('fields[3]', 'slug');
-    // NO filtrar por available - el owner necesita ver todos los productos
 
     const url = `/categorias?${params.toString()}`;
     console.log('🔄 [fetchCategories] URL:', url);
