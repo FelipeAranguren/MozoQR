@@ -60,11 +60,13 @@ const ProductForm = forwardRef(function ProductForm({ product, categories, onSav
     if (product) {
       setName(product.name || '');
       setPrice(product.price?.toString() || '');
-      // Convertir descripción de blocks a texto plano si es necesario
       const desc = product.description || '';
       const descriptionText = Array.isArray(desc) ? blocksToText(desc) : (typeof desc === 'string' ? desc : '');
       setDescription(descriptionText);
-      setCategoriaId(product.categoriaId || '');
+      // Sincronizar categoría: guardar el identificador que coincida con el select (id o documentId)
+      const catId = product.categoriaId ?? product.categoria?.id ?? product.categoria?.documentId ?? '';
+      const resolved = catId ? (categories.find(c => c.id === catId || c.documentId === catId || String(c.id) === String(catId))) : null;
+      setCategoriaId(resolved ? (resolved.documentId ?? resolved.id) : (catId || ''));
       setAvailable(product.available !== false);
       const productImage = product.image || null;
       setImagePreview(productImage);
@@ -202,7 +204,7 @@ const ProductForm = forwardRef(function ProductForm({ product, categories, onSav
           >
             <MenuItem value="">Sin categoría</MenuItem>
             {categories.map(cat => (
-              <MenuItem key={cat.id} value={cat.id}>
+              <MenuItem key={cat.id ?? cat.documentId} value={cat.documentId ?? cat.id ?? ''}>
                 {cat.name}
               </MenuItem>
             ))}

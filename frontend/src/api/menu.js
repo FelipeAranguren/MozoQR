@@ -595,6 +595,9 @@ export async function createProduct(slug, productData) {
     const res = await api.post('/productos', payload, { headers: getAuthHeaders() });
     
     console.log('✅ [createProduct] Producto creado exitosamente:', res?.data?.data);
+    const createdData = res?.data?.data;
+    const catRel = createdData?.categoria ?? createdData?.attributes?.categoria;
+    console.log('✅ [createProduct] Campo categoria en respuesta:', catRel ? { id: catRel?.id ?? catRel?.documentId, name: catRel?.name ?? catRel?.attributes?.name } : '(vacío)');
     
     // Verificar que el producto tenga el restaurante asociado
     const createdProduct = res?.data?.data;
@@ -662,7 +665,10 @@ export async function updateProduct(productId, productData) {
 
     const res = await api.put(`/productos/${productId}`, payload, { headers: getAuthHeaders() });
     console.log('updateProduct: Respuesta exitosa:', res?.data);
-    return res?.data?.data || null;
+    const updatedData = res?.data?.data;
+    const catRel = updatedData?.categoria ?? updatedData?.attributes?.categoria;
+    console.log('updateProduct: Campo categoria en respuesta:', catRel ? { id: catRel?.id ?? catRel?.documentId, name: catRel?.name ?? catRel?.attributes?.name } : '(vacío)');
+    return updatedData || null;
   } catch (err) {
     console.error('Error updating product:', err);
     console.error('Error response:', err?.response?.data);

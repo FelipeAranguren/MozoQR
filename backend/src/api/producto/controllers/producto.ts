@@ -23,6 +23,27 @@ async function resolveProductId(strapi: any, param: string): Promise<number | nu
   return existing?.id || null;
 }
 
+/** Resuelve id numérico o documentId de categoría al documentId (para Strapi 5 connect) */
+async function resolveCategoriaDocumentId(strapi: any, value: number | string | null | undefined): Promise<string | null> {
+  if (value == null || value === '') return null;
+  const str = String(value).trim();
+  let row: { documentId?: string } | null = null;
+  if (/^\d+$/.test(str)) {
+    row = await strapi.db.query('api::categoria.categoria').findOne({
+      where: { id: Number(str) },
+      select: ['documentId'],
+    });
+  } else {
+    const [byDoc] = await strapi.db.query('api::categoria.categoria').findMany({
+      where: { documentId: str },
+      select: ['documentId'],
+      limit: 1,
+    });
+    row = byDoc ?? null;
+  }
+  return row?.documentId ?? null;
+}
+
 export default factories.createCoreController('api::producto.producto', ({ strapi }) => ({
   /**
    * POST /api/productos
@@ -89,25 +110,37 @@ export default factories.createCoreController('api::producto.producto', ({ strap
       publishedAt: restaurante.publishedAt,
     });
 
-    // Asegurar que el restaurante esté en el payload (usar el ID corregido si se cambió)
+    // Resolver categoría a documentId para Strapi 5 (relaciones con connect: [documentId])
+    const rawCategoria = payload.categoria;
+    const categoriaDocumentId = await resolveCategoriaDocumentId(strapi, rawCategoria);
+    if (rawCategoria != null && rawCategoria !== '' && !categoriaDocumentId) {
+      console.warn('⚠️ [producto.create] Categoría indicada pero no encontrada:', rawCategoria);
+    }
+
     const finalPayload = {
       ...payload,
-      restaurante: restauranteId // Usar el ID corregido (principal)
+      restaurante: restauranteId, // Usar el ID corregido (principal)
+      categoria: undefined, // No pasar crudo; usamos connect abajo
     };
+    delete (finalPayload as any).categoria;
+
+    const createData: Record<string, unknown> = {
+      ...finalPayload,
+      restaurante: restauranteId,
+    };
+    if (categoriaDocumentId) {
+      createData.categoria = { connect: [categoriaDocumentId] };
+    }
 
     console.log('🔍 [producto.create] Payload final con restaurante:', JSON.stringify(finalPayload, null, 2));
+    console.log('🔍 [producto.create] Categoría (documentId):', categoriaDocumentId || '(ninguna)');
 
     try {
-      // Crear el producto usando entityService para manejar correctamente las relaciones
-      console.log('🔍 [producto.create] Llamando a entityService.create con:', JSON.stringify(finalPayload, null, 2));
-      
-      // Usar entityService.create que maneja correctamente las relaciones
+      console.log('🔍 [producto.create] Llamando a entityService.create con data (categoria connect):', JSON.stringify(createData, null, 2));
+
       const created = await strapi.entityService.create('api::producto.producto', {
-        data: {
-          ...finalPayload,
-          restaurante: restauranteId, // Asegurar que use el ID corregido
-        },
-        publicationState: 'live', // Publicar automáticamente
+        data: createData,
+        publicationState: 'live',
       });
 
       console.log('✅ [producto.create] Producto creado exitosamente:', created?.id);
@@ -221,6 +254,7 @@ export default factories.createCoreController('api::producto.producto', ({ strap
   async update(ctx) {
     const param = ctx.params?.id;
     const payload = ctx.request?.body?.data || ctx.request?.body || {};
+    const payloadCopy = { ...payload };
 
     if (!param) {
       ctx.badRequest('Missing id param');
@@ -233,8 +267,20 @@ export default factories.createCoreController('api::producto.producto', ({ strap
       return;
     }
 
+    // Strapi 5: relación categoria con connect/disconnect por documentId
+    if ('categoria' in payloadCopy) {
+      const rawCategoria = payloadCopy.categoria;
+      const categoriaDocumentId = await resolveCategoriaDocumentId(strapi, rawCategoria);
+      if (rawCategoria != null && rawCategoria !== '' && !categoriaDocumentId) {
+        console.warn('⚠️ [producto.update] Categoría indicada pero no encontrada:', rawCategoria);
+      }
+      (payloadCopy as any).categoria = categoriaDocumentId
+        ? { connect: [categoriaDocumentId] }
+        : { disconnect: [true] };
+    }
+
     const updated = await strapi.entityService.update('api::producto.producto', realId, {
-      data: payload,
+      data: payloadCopy,
     });
 
     ctx.body = { data: updated };
