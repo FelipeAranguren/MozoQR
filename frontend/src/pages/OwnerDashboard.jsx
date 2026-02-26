@@ -496,7 +496,10 @@ export default function OwnerDashboard() {
           const attr = restaurant.attributes || restaurant;
           const mesas = attr.mesas?.data || attr.mesas || [];
           const categoriasFromPopulate = attr.categorias?.data || attr.categorias || [];
-          const categorias = categoriasFromPopulate.length > 0 ? categoriasFromPopulate : (Array.isArray(categoriesData) ? categoriesData : []);
+          const totalCategories =
+            (Array.isArray(categoriesData) && categoriesData.length >= 0)
+              ? categoriesData.length
+              : (categoriasFromPopulate?.length || 0);
 
           // Guardar información del restaurante para el formulario de comentarios
           const restaurantId = restaurant.id || restaurant.documentId;
@@ -514,7 +517,7 @@ export default function OwnerDashboard() {
             missingTables: 0,   // TODO: implementar lógica de mesas sin configurar
             totalTables: mesas.length,
             hasLogo: !!(attr.logo?.data || attr.logo),
-            totalCategories: categorias.length,
+            totalCategories,
             productsWithoutCategory
           });
         } else {

@@ -10,6 +10,13 @@ function getAuthHeaders() {
 const api = client;
 const http = client;
 
+/** Strapi v4: res.data.data = []; v5: res.data = [] (lista). Devuelve siempre array. */
+function unwrapCategoriasResponse(res) {
+  const raw = res?.data;
+  if (Array.isArray(raw)) return raw;
+  if (raw && Array.isArray(raw.data)) return raw.data;
+  return [];
+}
 
 /**
  * Obtiene id numérico y documentId del restaurante por slug (para filtros en API).
@@ -18,11 +25,13 @@ const http = client;
 export async function getRestaurantIdAndDocId(slug) {
   if (!slug) return { id: null, documentId: null };
   try {
+    const headers = { ...getAuthHeaders(), 'Strapi-Response-Format': 'v4' };
     const res = await api.get(
       `/restaurantes?filters[slug][$eq]=${encodeURIComponent(slug)}&publicationState=live`,
-      { headers: getAuthHeaders() }
+      { headers }
     );
-    const allResults = res?.data?.data || [];
+    const raw = res?.data;
+    const allResults = Array.isArray(raw) ? raw : (raw?.data || []);
     const match = allResults.find(r => (r?.attributes?.slug || r?.slug) === slug);
     if (!match) return { id: null, documentId: null };
     const id = (typeof match.id === 'number' && Number.isFinite(match.id)) ? match.id : null;
@@ -85,16 +94,18 @@ export async function fetchCategories(slug) {
     let url = `/categorias?${params.toString()}`;
     console.log('🔄 [fetchCategories] URL:', url);
 
-    let res = await api.get(url, { headers: getAuthHeaders() });
-    let data = res?.data?.data || [];
+    const authHeaders = getAuthHeaders();
+    const headers = { ...authHeaders, 'Strapi-Response-Format': 'v4' };
+    let res = await api.get(url, { headers });
+    let data = unwrapCategoriasResponse(res);
 
     // Si filtro por id devolvió 0 y tenemos documentId, intentar por documentId (Strapi 5 a veces usa documentId en relaciones)
     if (data.length === 0 && restauranteDocId && restauranteId != null) {
       params = buildParams(true);
       url = `/categorias?${params.toString()}`;
       console.log('🔄 [fetchCategories] Reintentando con documentId:', url);
-      res = await api.get(url, { headers: getAuthHeaders() });
-      data = res?.data?.data || [];
+      res = await api.get(url, { headers });
+      data = unwrapCategoriasResponse(res);
     }
 
     console.log('✅ [fetchCategories] Categorías obtenidas:', data.length);
@@ -106,7 +117,9 @@ export async function fetchCategories(slug) {
       const numericId = item.id ?? attr?.id;
       const documentId = item.documentId ?? attr?.documentId;
       const categoryId = numericId ?? documentId;
-      const productosRaw = attr.productos?.data || attr.productos || [];
+      const productosRaw = Array.isArray(attr.productos)
+        ? attr.productos
+        : (attr.productos?.data || attr.productos || []);
 
       // Mapear todos los productos (incluidos los no disponibles) y convertir descripciones
       const productos = productosRaw.map(p => {

@@ -282,6 +282,29 @@ export default function Home() {
                     <Button
                       variant="outlined"
                       size="large"
+                      onClick={() => document.getElementById('planes')?.scrollIntoView({ behavior: 'smooth' })}
+                      sx={{
+                        px: 4,
+                        py: 1.5,
+                        fontSize: '1rem',
+                        fontWeight: 600,
+                        borderWidth: 2,
+                        '&:hover': {
+                          borderWidth: 2
+                        }
+                      }}
+                    >
+                      Ver Planes
+                    </Button>
+                  </motion.div>
+
+                  <motion.div
+                    whileHover={{ scale: 1.05 }}
+                    whileTap={{ scale: 0.95 }}
+                  >
+                    <Button
+                      variant="outlined"
+                      size="large"
                       href="mailto:ventas@mozoqr.com"
                       sx={{
                         px: 4,
@@ -484,7 +507,7 @@ export default function Home() {
       </Box>
 
       {/* Planes / Precios */}
-      <Box sx={{ py: { xs: 8, md: 12 }, backgroundColor: '#ffffff' }}>
+      <Box id="planes" sx={{ py: { xs: 8, md: 12 }, backgroundColor: '#ffffff' }}>
         <Container>
           <motion.div
             initial={{ opacity: 0, y: 30 }}
