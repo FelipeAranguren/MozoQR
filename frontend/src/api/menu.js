@@ -25,23 +25,25 @@ function unwrapCategoriasResponse(res) {
 export async function getRestaurantIdAndDocId(slug) {
   if (!slug) return { id: null, documentId: null };
   try {
-    const headers = { ...getAuthHeaders(), 'Strapi-Response-Format': 'v4' };
     const res = await api.get(
       `/restaurantes?filters[slug][$eq]=${encodeURIComponent(slug)}&publicationState=live`,
-      { headers }
+      { headers: getAuthHeaders() }
     );
     const raw = res?.data;
     const allResults = Array.isArray(raw) ? raw : (raw?.data || []);
-    const match = allResults.find(r => (r?.attributes?.slug || r?.slug) === slug);
-    if (!match) return { id: null, documentId: null };
+    const match = allResults.find(r => (r?.attributes?.slug ?? r?.slug) === slug);
+    if (!match) {
+      console.warn('⚠️ [getRestaurantIdAndDocId] No match para slug:', slug, 'results:', allResults?.length);
+      return { id: null, documentId: null };
+    }
     const id = (typeof match.id === 'number' && Number.isFinite(match.id)) ? match.id : null;
     const documentId = match.documentId ?? match?.attributes?.documentId ?? null;
-    // Si no hay id numérico pero sí documentId, intentar obtener id con GET por documentId
     let numericId = id;
     if (numericId == null && documentId) {
       try {
-        const single = await api.get(`/restaurantes/${documentId}`, { headers: getAuthHeaders() });
-        const singleId = single?.data?.data?.id ?? single?.data?.data?.attributes?.id;
+        const singleRes = await api.get(`/restaurantes/${documentId}`, { headers: getAuthHeaders() });
+        const single = singleRes?.data?.data ?? singleRes?.data;
+        const singleId = single?.id ?? single?.attributes?.id;
         if (typeof singleId === 'number' && Number.isFinite(singleId)) numericId = singleId;
       } catch (_) { /* ignore */ }
     }
@@ -50,7 +52,7 @@ export async function getRestaurantIdAndDocId(slug) {
     }
     return { id: numericId, documentId: documentId || null };
   } catch (err) {
-    console.error('❌ [getRestaurantIdAndDocId] Error:', err?.response?.data || err?.message);
+    console.error('❌ [getRestaurantIdAndDocId] Error:', err?.response?.data ?? err?.message);
     return { id: null, documentId: null };
   }
 }
@@ -68,6 +70,7 @@ export async function fetchCategories(slug) {
   try {
     console.log('🔄 [fetchCategories] Obteniendo categorías para slug:', slug);
     const { id: restauranteId, documentId: restauranteDocId } = await getRestaurantIdAndDocId(slug);
+    console.log('ID Restaurante detectado:', { id: restauranteId, documentId: restauranteDocId });
     if (!restauranteId && !restauranteDocId) {
       console.warn('❌ [fetchCategories] No se encontró el restaurante con slug:', slug);
       return [];
@@ -89,8 +92,8 @@ export async function fetchCategories(slug) {
       return params;
     };
 
-    const authHeaders = getAuthHeaders();
-    const headers = { ...authHeaders, 'Strapi-Response-Format': 'v4' };
+    // Sin headers personalizados para evitar CORS (Strapi-Response-Format no está en Access-Control-Allow-Headers)
+    const headers = getAuthHeaders();
 
     // Strapi 5: intentar primero documentId (relaciones suelen usar documentId), luego id numérico
     let params = buildParams(!!restauranteDocId);
@@ -106,7 +109,7 @@ export async function fetchCategories(slug) {
       params = buildParams(false);
       url = `/categorias?${params.toString()}`;
       console.log('🔄 [fetchCategories] Reintentando con filters[restaurante][id]:', url);
-      res = await api.get(url, { headers });
+      res = await api.get(url, { headers: getAuthHeaders() });
       data = unwrapCategoriasResponse(res);
       console.log('Categorías recibidas (2ª petición):', data);
     }
