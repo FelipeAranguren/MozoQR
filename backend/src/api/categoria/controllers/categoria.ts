@@ -226,6 +226,28 @@ async function resolveCategoryId(strapi: any, categoryId: number | string): Prom
 }
 
 /**
+ * Dado un id numérico o documentId del restaurante, devuelve el id numérico.
+ * Necesario para normalizar el filtro en find() y evitar 500 cuando el cliente envía documentId.
+ */
+async function getRestaurantNumericId(strapi: any, restauranteId: number | string): Promise<number | null> {
+  if (restauranteId == null) return null;
+  const str = String(restauranteId).trim();
+  if (/^\d+$/.test(str)) {
+    const row = await strapi.db.query('api::restaurante.restaurante').findOne({
+      where: { id: Number(str) },
+      select: ['id'],
+    });
+    return row?.id ?? null;
+  }
+  const [row] = await strapi.db.query('api::restaurante.restaurante').findMany({
+    where: { documentId: str },
+    select: ['id'],
+    limit: 1,
+  });
+  return row?.id ?? null;
+}
+
+/**
  * Helper para obtener el restaurante de una categoría
  */
 async function getCategoryRestaurant(strapi: any, categoryId: number | string): Promise<number | null> {
@@ -298,7 +320,34 @@ async function getCategoryRestaurant(strapi: any, categoryId: number | string): 
   return restauranteId;
 }
 
-export default factories.createCoreController('api::categoria.categoria', ({ strapi }) => ({
+export default factories.createCoreController('api::categoria.categoria', ({ strapi }) => {
+  const defaultCtrl = (factories.createCoreController as (uid: string) => (deps: { strapi: any }) => { find: (ctx: any) => Promise<any> })('api::categoria.categoria')({ strapi });
+  return {
+    /**
+     * GET /api/categorias
+     * Normaliza el filtro por restaurante (id o documentId) para evitar 500 y luego delega en el find por defecto.
+     */
+    async find(ctx: any) {
+      const query = ctx.query || {};
+      const filters = query.filters as Record<string, unknown> | undefined;
+      if (filters?.restaurante && typeof filters.restaurante === 'object') {
+        const rest = filters.restaurante as Record<string, unknown>;
+        let numericId: number | null = null;
+        const byDocId = rest.documentId as Record<string, string> | undefined;
+        const byId = rest.id as Record<string, unknown> | undefined;
+        if (byDocId?.['$eq']) {
+          numericId = await getRestaurantNumericId(strapi, byDocId['$eq']);
+        } else if (byId?.['$eq'] != null) {
+          const val = byId['$eq'];
+          numericId = typeof val === 'number' && Number.isFinite(val) ? val : await getRestaurantNumericId(strapi, String(val));
+        }
+        if (numericId != null) {
+          (query.filters as Record<string, unknown>).restaurante = { id: { $eq: numericId } };
+        }
+      }
+      return defaultCtrl.find(ctx);
+    },
+
   /**
    * POST /api/categorias
    * Crea una categoría validando que el usuario tenga acceso al restaurante
@@ -531,4 +580,5 @@ export default factories.createCoreController('api::categoria.categoria', ({ str
       ctx.badRequest(error?.message || 'Error al eliminar la categoría');
     }
   },
-}));
+  };
+});
