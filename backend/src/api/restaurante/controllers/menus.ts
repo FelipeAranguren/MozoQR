@@ -208,16 +208,26 @@ export default {
             const productosTotales = Array.from(productosMap.values());
 
             // Reconstruir categorías desde todos los productos para asegurar que no se pierda ninguno
+            // Usar SIEMPRE id numérico como clave para que product.categoria.id (numérico) coincida
             const categoriasMap = new Map<number, Category>();
             const productosSinCategoria: any[] = [];
 
-            // Primero, agregar categorías existentes al mapa
+            const toNumId = (id: any): number | null => {
+                if (id == null) return null;
+                if (typeof id === 'number' && Number.isFinite(id)) return id;
+                if (typeof id === 'string' && /^\d+$/.test(id)) return parseInt(id, 10);
+                return null;
+            };
+
+            // Primero, agregar categorías existentes al mapa (clave = id numérico)
             (categorias || []).forEach((cat: any) => {
                 const c = cat.attributes || cat;
-                categoriasMap.set(cat.id || c.id, {
-                    id: cat.id || c.id,
-                    name: c.name,
-                    slug: c.slug || null,
+                const numId = toNumId(cat.id ?? c.id);
+                if (numId == null) return;
+                categoriasMap.set(numId, {
+                    id: numId,
+                    name: c.name ?? cat.name,
+                    slug: c.slug ?? cat.slug ?? null,
                     productos: [],
                 });
             });
@@ -225,29 +235,24 @@ export default {
             // Procesar todos los productos disponibles y asignarlos a sus categorías
             productosTotales.forEach((p: any) => {
                 const a = p.attributes || p;
-                // Filtrar solo productos disponibles (doble verificación por si acaso)
-                const isAvailable = a.available !== false; // true por defecto si no está definido
-                if (!isAvailable) {
-                    return; // Saltar productos no disponibles
-                }
-                
-                const categoriaId = a.categoria?.data?.id || a.categoria?.id || null;
-                const categoriaData = a.categoria?.data?.attributes || a.categoria?.attributes || a.categoria;
+                const isAvailable = a.available !== false;
+                if (!isAvailable) return;
 
-                if (categoriaId && categoriasMap.has(categoriaId)) {
-                    // Producto tiene categoría existente
+                const rawCategoriaId = a.categoria?.data?.id ?? a.categoria?.id ?? null;
+                const categoriaId = toNumId(rawCategoriaId);
+                const categoriaData = a.categoria?.data?.attributes ?? a.categoria?.attributes ?? a.categoria;
+
+                if (categoriaId != null && categoriasMap.has(categoriaId)) {
                     const categoria = categoriasMap.get(categoriaId)!;
                     categoria.productos.push(mapProduct(p, plan));
-                } else if (categoriaId && categoriaData) {
-                    // Producto tiene categoría que no estaba en la consulta inicial (puede ser borrador)
+                } else if (categoriaId != null && categoriaData) {
                     categoriasMap.set(categoriaId, {
                         id: categoriaId,
-                        name: categoriaData.name,
-                        slug: categoriaData.slug || null,
+                        name: categoriaData.name ?? null,
+                        slug: categoriaData.slug ?? null,
                         productos: [mapProduct(p, plan)],
                     });
                 } else {
-                    // Producto sin categoría
                     productosSinCategoria.push(p);
                 }
             });
