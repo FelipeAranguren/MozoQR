@@ -20,6 +20,7 @@ import EditIcon from '@mui/icons-material/Edit';
 import DeleteIcon from '@mui/icons-material/Delete';
 import FolderIcon from '@mui/icons-material/Folder';
 import { MARANA_COLORS } from '../../../theme';
+import ConfirmModal from '../../../components/ConfirmModal';
 import {
   fetchCategories,
   createCategory,
@@ -34,6 +35,8 @@ export default function CategoriesManagement({ slug }) {
   const [editingCategory, setEditingCategory] = useState(null);
   const [name, setName] = useState('');
   const [slugValue, setSlugValue] = useState('');
+  const [categoryToDelete, setCategoryToDelete] = useState(null);
+  const [deleting, setDeleting] = useState(false);
 
   useEffect(() => {
     if (!slug) {
@@ -117,52 +120,48 @@ export default function CategoriesManagement({ slug }) {
     }
   };
 
-  const handleDelete = async (category) => {
-    if (!window.confirm(`¿Estás seguro de eliminar "${category.name}"? Los productos de esta categoría quedarán sin categoría.`)) {
-      return;
-    }
+  const handleDeleteClick = (category) => {
+    setCategoryToDelete(category);
+  };
 
+  const handleConfirmDelete = async () => {
+    const category = categoryToDelete;
+    if (!category) return;
+
+    setDeleting(true);
     try {
-      // Intentar con el ID principal primero, si falla intentar con documentId o numericId
       let categoryId = category.id;
-      
       console.log('🔍 [CategoriesManagement] Eliminando categoría:', {
         id: category.id,
         documentId: category.documentId,
         numericId: category.numericId,
         name: category.name
       });
-      
-      // Si el id parece ser un UUID (documentId), usarlo directamente
-      // Si no, intentar con documentId primero si está disponible
       if (category.documentId && (!category.id || typeof category.id === 'string')) {
         categoryId = category.documentId;
       }
-      
       await deleteCategory(categoryId);
       await loadCategories();
+      setCategoryToDelete(null);
     } catch (error) {
       console.error('❌ [CategoriesManagement] Error deleting category:', error);
-      console.error('❌ [CategoriesManagement] Error response:', error?.response?.data);
-      console.error('❌ [CategoriesManagement] Error status:', error?.response?.status);
-      
-      // Si falla con el ID principal, intentar con el alternativo
       if (category.documentId && category.id !== category.documentId) {
-        console.log('🔄 [CategoriesManagement] Reintentando con documentId alternativo');
         try {
           await deleteCategory(category.documentId);
           await loadCategories();
-          return; // Éxito con el ID alternativo
+          setCategoryToDelete(null);
+          return;
         } catch (retryError) {
           console.error('❌ [CategoriesManagement] También falló con documentId:', retryError);
         }
       }
-      
-      const errorMessage = error?.response?.data?.error?.message 
+      const errorMessage = error?.response?.data?.error?.message
         || error?.response?.data?.message
-        || error?.message 
+        || error?.message
         || 'Error al eliminar la categoría';
       alert(`Error al eliminar la categoría: ${errorMessage}`);
+    } finally {
+      setDeleting(false);
     }
   };
 
@@ -257,8 +256,9 @@ export default function CategoriesManagement({ slug }) {
                       </IconButton>
                       <IconButton
                         size="small"
-                        onClick={() => handleDelete(category)}
+                        onClick={() => handleDeleteClick(category)}
                         sx={{ color: MARANA_COLORS.accent }}
+                        aria-label={`Eliminar categoría ${category.name}`}
                       >
                         <DeleteIcon />
                       </IconButton>
@@ -332,6 +332,17 @@ export default function CategoriesManagement({ slug }) {
           </Button>
         </DialogActions>
       </Dialog>
+
+      <ConfirmModal
+        open={!!categoryToDelete}
+        onClose={() => !deleting && setCategoryToDelete(null)}
+        onConfirm={handleConfirmDelete}
+        title="Eliminar categoría"
+        message="¿Estás seguro que deseas eliminar esta categoría?"
+        confirmLabel="Aceptar"
+        cancelLabel="Cancelar"
+        loading={deleting}
+      />
     </Box>
   );
 }
