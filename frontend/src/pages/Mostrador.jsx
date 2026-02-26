@@ -35,6 +35,22 @@ const money = (n) =>
   new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS' })
     .format(Number(n) || 0);
 
+/** Parsea customerNotes: si empieza con "Cliente:" la primera línea es nombre y el resto comentario. */
+const parseCustomerNotes = (customerNotes) => {
+  const rawNotes = (customerNotes || '').trim();
+  if (!rawNotes) return { clientLine: null, commentLine: null };
+  let clientLine = null;
+  let commentLine = null;
+  if (rawNotes.startsWith('Cliente:')) {
+    const idx = rawNotes.indexOf('\n');
+    clientLine = idx >= 0 ? rawNotes.slice(0, idx).trim() : rawNotes.trim();
+    commentLine = idx >= 0 ? rawNotes.slice(idx).trim() : '';
+  } else {
+    commentLine = rawNotes;
+  }
+  return { clientLine, commentLine };
+};
+
 export default function Mostrador() {
   const { slug } = useParams();
 
@@ -1968,34 +1984,42 @@ export default function Mostrador() {
             </Typography>
           )}
 
-          {customerNotes && !isPay && (
-            <Box
-              sx={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: 0.5,
-                mb: 0.75,
-                p: 0.5,
-                bgcolor: '#fff3cd',
-                borderRadius: 1,
-                border: '1.5px solid',
-                borderColor: '#ff9800',
-              }}
-            >
-              <WarningIcon sx={{ fontSize: '0.875rem', color: '#f57c00' }} />
-              <Typography
-                variant="body2"
+          {(() => {
+            const { clientLine, commentLine } = parseCustomerNotes(customerNotes);
+            if (isPay || (!clientLine && !commentLine)) return null;
+            return (
+              <Box
                 sx={{
-                  fontSize: '0.75rem',
-                  color: '#e65100',
-                  fontWeight: 600,
-                  flex: 1,
+                  display: 'flex',
+                  flexDirection: 'column',
+                  alignItems: 'flex-start',
+                  gap: 0.5,
+                  mb: 0.75,
+                  p: 0.5,
+                  bgcolor: '#fff3cd',
+                  borderRadius: 1,
+                  border: '1.5px solid',
+                  borderColor: '#ff9800',
+                  width: '100%',
+                  boxSizing: 'border-box',
                 }}
               >
-                {customerNotes}
-              </Typography>
-            </Box>
-          )}
+                {clientLine && (
+                  <Typography variant="body2" sx={{ fontSize: '0.75rem', color: '#e65100', fontWeight: 600 }}>
+                    {clientLine}
+                  </Typography>
+                )}
+                {commentLine && (
+                  <Box sx={{ display: 'flex', alignItems: 'flex-start', gap: 0.5, width: '100%' }}>
+                    <WarningIcon sx={{ fontSize: '0.875rem', color: '#f57c00', flexShrink: 0, mt: '2px' }} />
+                    <Typography variant="body2" sx={{ fontSize: '0.75rem', color: '#e65100', fontWeight: 600, flex: 1 }}>
+                      {commentLine}
+                    </Typography>
+                  </Box>
+                )}
+              </Box>
+            );
+          })()}
 
           <Button
             variant="contained"
@@ -2079,25 +2103,42 @@ export default function Mostrador() {
             </Typography>
           </Box>
 
-          {customerNotes && (
-            <Box
-              sx={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: 0.5,
-                mb: 0.5,
-                p: 0.5,
-                bgcolor: '#fff3cd',
-                borderRadius: 1,
-                border: '1px solid #ff9800',
-              }}
-            >
-              <WarningIcon sx={{ fontSize: 16, color: '#f57c00', flexShrink: 0 }} />
-              <Typography variant="body2" sx={{ fontSize: '0.75rem', color: '#e65100', fontWeight: 600, flex: 1 }}>
-                {customerNotes}
-              </Typography>
-            </Box>
-          )}
+          {(() => {
+            const { clientLine, commentLine } = parseCustomerNotes(customerNotes);
+            if (!clientLine && !commentLine) return null;
+            return (
+              <Box
+                sx={{
+                  display: 'flex',
+                  flexDirection: 'column',
+                  alignItems: 'flex-start',
+                  gap: 0.5,
+                  mb: 0.5,
+                  p: 0.5,
+                  bgcolor: '#fff3cd',
+                  borderRadius: 1,
+                  border: '1px solid #ff9800',
+                  minHeight: 0,
+                  width: '100%',
+                  boxSizing: 'border-box',
+                }}
+              >
+                {clientLine && (
+                  <Typography variant="body2" sx={{ fontSize: '0.75rem', color: '#e65100', fontWeight: 600, width: '100%' }}>
+                    {clientLine}
+                  </Typography>
+                )}
+                {commentLine && (
+                  <Box sx={{ display: 'flex', alignItems: 'flex-start', gap: 0.5, width: '100%', minWidth: 0 }}>
+                    <WarningIcon sx={{ fontSize: 16, color: '#f57c00', flexShrink: 0, mt: '2px' }} />
+                    <Typography variant="body2" sx={{ fontSize: '0.75rem', color: '#e65100', fontWeight: 600, flex: 1 }}>
+                      {commentLine}
+                    </Typography>
+                  </Box>
+                )}
+              </Box>
+            );
+          })()}
 
           {/* Ítems: lista compacta legible (truncar si es muy largo) */}
           {items.length > 0 ? (
@@ -2669,12 +2710,22 @@ export default function Mostrador() {
                 {new Date(orderDetailDialog.pedido.createdAt).toLocaleString('es-AR')}
               </Typography>
 
-              {orderDetailDialog.pedido.customerNotes && (
-                <Alert severity="warning" sx={{ mb: 2 }}>
-                  <Typography variant="subtitle2" sx={{ fontWeight: 600, mb: 0.5 }}>Notas del cliente:</Typography>
-                  {orderDetailDialog.pedido.customerNotes}
-                </Alert>
-              )}
+              {(() => {
+                const { clientLine, commentLine } = parseCustomerNotes(orderDetailDialog.pedido.customerNotes);
+                if (!clientLine && !commentLine) return null;
+                return (
+                  <Alert severity="warning" sx={{ mb: 2 }}>
+                    <Typography variant="subtitle2" sx={{ fontWeight: 600, mb: 0.5 }}>Notas del cliente:</Typography>
+                    {clientLine && <Typography variant="body2" sx={{ display: 'block', mb: commentLine ? 0.5 : 0 }}>{clientLine}</Typography>}
+                    {commentLine && (
+                      <Box sx={{ display: 'flex', alignItems: 'flex-start', gap: 0.5 }}>
+                        <WarningIcon sx={{ fontSize: 18, color: '#f57c00', flexShrink: 0, mt: '2px' }} />
+                        <Typography variant="body2">{commentLine}</Typography>
+                      </Box>
+                    )}
+                  </Alert>
+                );
+              })()}
 
               {orderDetailDialog.pedido.staffNotes && (
                 <Alert severity="info" sx={{ mb: 2 }}>
@@ -2858,11 +2909,21 @@ export default function Mostrador() {
                               color="error"
                             />
                           </Box>
-                          {pedido.customerNotes && (
-                            <Typography variant="body2" color="text.secondary">
-                              {pedido.customerNotes}
-                            </Typography>
-                          )}
+                          {(() => {
+                            const { clientLine, commentLine } = parseCustomerNotes(pedido.customerNotes);
+                            if (!clientLine && !commentLine) return null;
+                            return (
+                              <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.25 }}>
+                                {clientLine && <Typography variant="body2" color="text.secondary">{clientLine}</Typography>}
+                                {commentLine && (
+                                  <Box sx={{ display: 'flex', alignItems: 'flex-start', gap: 0.5 }}>
+                                    <WarningIcon sx={{ fontSize: 16, color: '#f57c00', flexShrink: 0, mt: '2px' }} />
+                                    <Typography variant="body2" color="text.secondary">{commentLine}</Typography>
+                                  </Box>
+                                )}
+                              </Box>
+                            );
+                          })()}
                         </CardContent>
                       </Card>
                     ))}
@@ -3126,16 +3187,25 @@ export default function Mostrador() {
                           Sin items detallados
                         </Typography>
                       )}
-                      {pedido.customerNotes && (
-                        <Box sx={{ mb: 1, p: 1, bgcolor: '#fff3cd', borderRadius: 1, width: '100%' }}>
-                          <Typography variant="caption" sx={{ fontWeight: 600, display: 'block', mb: 0.5 }}>
-                            Nota del cliente:
-                          </Typography>
-                          <Typography variant="caption">
-                            {pedido.customerNotes}
-                          </Typography>
-                        </Box>
-                      )}
+                      {(() => {
+                        const { clientLine, commentLine } = parseCustomerNotes(pedido.customerNotes);
+                        if (!clientLine && !commentLine) return null;
+                        return (
+                          <Box sx={{ mb: 1, p: 1, bgcolor: '#fff3cd', borderRadius: 1, width: '100%', boxSizing: 'border-box' }}>
+                            {clientLine && (
+                              <Typography variant="caption" sx={{ fontWeight: 600, display: 'block', mb: commentLine ? 0.5 : 0 }}>
+                                {clientLine}
+                              </Typography>
+                            )}
+                            {commentLine && (
+                              <Box sx={{ display: 'flex', alignItems: 'flex-start', gap: 0.5 }}>
+                                <WarningIcon sx={{ fontSize: 14, color: '#f57c00', flexShrink: 0, mt: '1px' }} />
+                                <Typography variant="caption">{commentLine}</Typography>
+                              </Box>
+                            )}
+                          </Box>
+                        );
+                      })()}
                       {pedido.staffNotes && (
                         <Box sx={{ mb: 1, p: 1, bgcolor: '#e3f2fd', borderRadius: 1, width: '100%' }}>
                           <Typography variant="caption" sx={{ fontWeight: 600, display: 'block', mb: 0.5 }}>
