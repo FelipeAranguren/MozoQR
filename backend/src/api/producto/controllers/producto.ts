@@ -139,7 +139,7 @@ export default factories.createCoreController('api::producto.producto', ({ strap
       console.log('🔍 [producto.create] Llamando a entityService.create con data (categoria connect):', JSON.stringify(createData, null, 2));
 
       const created = await strapi.entityService.create('api::producto.producto', {
-        data: createData,
+        data: createData as any,
         publicationState: 'live',
       });
 
