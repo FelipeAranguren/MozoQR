@@ -351,18 +351,31 @@ export default factories.createCoreController('api::categoria.categoria', ({ str
       return;
     }
 
-    // Crear la categoría con restaurante asociado (formato objeto para que Strapi persista la relación)
+    // Crear la categoría con restaurante asociado (probar ambos formatos para compatibilidad Strapi 4/5)
     try {
       const data: Record<string, unknown> = {
         name: payload.name,
         slug: payload.slug ?? (typeof payload.name === 'string' ? payload.name.toLowerCase().replace(/\s+/g, '-') : 'categoria'),
-        restaurante: { id: numericRestauranteId },
+        restaurante: numericRestauranteId,
       };
       console.log('✅ [categoria.create] Creando categoría con data:', data);
-      const created = await strapi.entityService.create('api::categoria.categoria', {
+      let created = await strapi.entityService.create('api::categoria.categoria', {
         data,
         publicationState: 'live',
       });
+      // Si la relación no se guardó (Strapi 5 a veces requiere connect), actualizar explícitamente
+      const withRestaurant = await strapi.entityService.findOne('api::categoria.categoria', created.id, {
+        fields: ['id', 'name', 'slug'],
+        populate: { restaurante: { fields: ['id'] } },
+      }) as { id: number; restaurante?: { id?: number } } | null;
+      if (withRestaurant && !withRestaurant.restaurante?.id) {
+        await strapi.entityService.update('api::categoria.categoria', created.id, {
+          data: { restaurante: { id: numericRestauranteId } },
+        });
+        created = await strapi.entityService.findOne('api::categoria.categoria', created.id, {
+          populate: { restaurante: { fields: ['id'] } },
+        });
+      }
 
       console.log('✅ [categoria.create] Categoría creada exitosamente ✅:', created?.id, 'restaurante:', numericRestauranteId);
       ctx.body = { data: created };

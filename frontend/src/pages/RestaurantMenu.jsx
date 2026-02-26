@@ -614,7 +614,10 @@ export default function RestaurantMenu() {
     );
   }
 
-  if (!loading && productos !== null && productos.length === 0) {
+  // Mostrar pantalla de "sin restaurante/productos" solo cuando realmente no hay datos (carga inicial).
+  // No mostrarla al seleccionar una categoría que tiene 0 productos (ahí se muestra el menú con lista vacía y chips).
+  const noDataAtAll = !loading && productos !== null && productos.length === 0 && productosTodos.length === 0;
+  if (noDataAtAll) {
     return (
       <Container
         component="main"
