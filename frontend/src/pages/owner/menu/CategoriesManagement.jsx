@@ -20,7 +20,7 @@ import EditIcon from '@mui/icons-material/Edit';
 import DeleteIcon from '@mui/icons-material/Delete';
 import FolderIcon from '@mui/icons-material/Folder';
 import { MARANA_COLORS } from '../../../theme';
-import ConfirmModal from '../../../components/ConfirmModal';
+import ConfirmActionModal from '../../../components/ui/ConfirmActionModal';
 import {
   fetchCategories,
   createCategory,
@@ -333,13 +333,17 @@ export default function CategoriesManagement({ slug }) {
         </DialogActions>
       </Dialog>
 
-      <ConfirmModal
-        open={!!categoryToDelete}
+      <ConfirmActionModal
+        isOpen={!!categoryToDelete}
         onClose={() => !deleting && setCategoryToDelete(null)}
         onConfirm={handleConfirmDelete}
         title="Eliminar categoría"
-        message="¿Estás seguro que deseas eliminar esta categoría?"
-        confirmLabel="Aceptar"
+        message={
+          categoryToDelete
+            ? `¿Estás seguro que deseas eliminar la categoría "${categoryToDelete.name}"? Los productos quedarán sin categoría.`
+            : ''
+        }
+        confirmLabel="Eliminar"
         cancelLabel="Cancelar"
         loading={deleting}
       />

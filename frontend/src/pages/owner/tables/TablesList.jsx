@@ -27,6 +27,7 @@ import CheckCircleIcon from '@mui/icons-material/CheckCircle';
 import AccessTimeIcon from '@mui/icons-material/AccessTime';
 import RestaurantIcon from '@mui/icons-material/Restaurant';
 import { MARANA_COLORS } from '../../../theme';
+import ConfirmActionModal from '../../../components/ui/ConfirmActionModal';
 import { fetchTables, fetchActiveOrders, createTable, updateTable, deleteTable } from '../../../api/tables';
 import TablesStatusGrid from '../../../components/TablesStatusGrid';
 
@@ -42,6 +43,8 @@ export default function TablesList() {
   const [editingTable, setEditingTable] = useState(null);
   const [tableNumber, setTableNumber] = useState('');
   const [tableName, setTableName] = useState('');
+  const [tableToDelete, setTableToDelete] = useState(null);
+  const [deleting, setDeleting] = useState(false);
 
   useEffect(() => {
     loadData();
@@ -119,17 +122,20 @@ export default function TablesList() {
     }
   };
 
-  const handleDelete = async (table) => {
-    if (!window.confirm(`¿Estás seguro de eliminar "${table.name || `Mesa ${table.number}`}"?`)) {
-      return;
-    }
+  const handleConfirmDeleteTable = async () => {
+    const table = tableToDelete;
+    if (!table) return;
 
+    setDeleting(true);
     try {
       await deleteTable(table.id);
       await loadData();
+      setTableToDelete(null);
     } catch (error) {
       console.error('Error deleting table:', error);
       alert('Error al eliminar la mesa');
+    } finally {
+      setDeleting(false);
     }
   };
 
@@ -295,7 +301,7 @@ export default function TablesList() {
                         </IconButton>
                         <IconButton
                           size="small"
-                          onClick={() => handleDelete(table)}
+                          onClick={() => setTableToDelete(table)}
                           sx={{ color: MARANA_COLORS.accent }}
                         >
                           <DeleteIcon />
@@ -397,6 +403,21 @@ export default function TablesList() {
           </Button>
         </DialogActions>
       </Dialog>
+
+      <ConfirmActionModal
+        isOpen={!!tableToDelete}
+        onClose={() => !deleting && setTableToDelete(null)}
+        onConfirm={handleConfirmDeleteTable}
+        title="Eliminar mesa"
+        message={
+          tableToDelete
+            ? `¿Estás seguro de eliminar "${tableToDelete.name || `Mesa ${tableToDelete.number}`}"? Esta acción no se puede deshacer.`
+            : ''
+        }
+        confirmLabel="Eliminar"
+        cancelLabel="Cancelar"
+        loading={deleting}
+      />
     </Container>
   );
 }

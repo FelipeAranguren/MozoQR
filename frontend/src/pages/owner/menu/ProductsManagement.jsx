@@ -28,6 +28,7 @@ import DeleteIcon from '@mui/icons-material/Delete';
 import MoreVertIcon from '@mui/icons-material/MoreVert';
 import ImageIcon from '@mui/icons-material/Image';
 import { MARANA_COLORS } from '../../../theme';
+import ConfirmActionModal from '../../../components/ui/ConfirmActionModal';
 import {
   fetchProducts,
   fetchCategories,
@@ -51,6 +52,8 @@ export default function ProductsManagement({ slug }) {
   const [editingProduct, setEditingProduct] = useState(null);
   const [anchorEl, setAnchorEl] = useState(null);
   const [selectedProduct, setSelectedProduct] = useState(null);
+  const [productToDelete, setProductToDelete] = useState(null);
+  const [deleting, setDeleting] = useState(false);
   const [uploading, setUploading] = useState(false);
   const formRef = useRef(null);
 
@@ -201,21 +204,22 @@ export default function ProductsManagement({ slug }) {
     }
   };
 
-  const handleDeleteProduct = async () => {
-    if (!selectedProduct) return;
-    
-    if (!window.confirm(`¿Estás seguro de eliminar "${selectedProduct.name}"?`)) {
-      return;
-    }
+  const handleConfirmDeleteProduct = async () => {
+    const product = productToDelete;
+    if (!product) return;
 
+    setDeleting(true);
     try {
-      await deleteProduct(selectedProduct.id);
+      await deleteProduct(product.id);
       await loadData();
       setAnchorEl(null);
       setSelectedProduct(null);
+      setProductToDelete(null);
     } catch (error) {
       console.error('Error deleting product:', error);
       alert('Error al eliminar el producto');
+    } finally {
+      setDeleting(false);
     }
   };
 
@@ -442,7 +446,13 @@ export default function ProductsManagement({ slug }) {
         <MenuItem onClick={() => { handleMenuClose(); handleOpenDialog(selectedProduct); }}>
           <EditIcon sx={{ mr: 1, fontSize: 20 }} /> Editar
         </MenuItem>
-        <MenuItem onClick={handleDeleteProduct} sx={{ color: MARANA_COLORS.accent }}>
+        <MenuItem
+          onClick={() => {
+            setProductToDelete(selectedProduct);
+            handleMenuClose();
+          }}
+          sx={{ color: MARANA_COLORS.accent }}
+        >
           <DeleteIcon sx={{ mr: 1, fontSize: 20 }} /> Eliminar
         </MenuItem>
       </Menu>
@@ -506,6 +516,21 @@ export default function ProductsManagement({ slug }) {
           </Button>
         </DialogActions>
       </Dialog>
+
+      <ConfirmActionModal
+        isOpen={!!productToDelete}
+        onClose={() => !deleting && setProductToDelete(null)}
+        onConfirm={handleConfirmDeleteProduct}
+        title="Eliminar producto"
+        message={
+          productToDelete
+            ? `¿Estás seguro de eliminar "${productToDelete.name}"? Esta acción no se puede deshacer.`
+            : ''
+        }
+        confirmLabel="Eliminar"
+        cancelLabel="Cancelar"
+        loading={deleting}
+      />
     </Box>
   );
 }
