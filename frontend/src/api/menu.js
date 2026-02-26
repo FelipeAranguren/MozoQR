@@ -12,6 +12,41 @@ const http = client;
 
 
 /**
+ * Obtiene id numérico y documentId del restaurante por slug (para filtros en API).
+ * Útil cuando Strapi 5 puede filtrar por id o por documentId.
+ */
+export async function getRestaurantIdAndDocId(slug) {
+  if (!slug) return { id: null, documentId: null };
+  try {
+    const res = await api.get(
+      `/restaurantes?filters[slug][$eq]=${encodeURIComponent(slug)}&publicationState=live`,
+      { headers: getAuthHeaders() }
+    );
+    const allResults = res?.data?.data || [];
+    const match = allResults.find(r => (r?.attributes?.slug || r?.slug) === slug);
+    if (!match) return { id: null, documentId: null };
+    const id = (typeof match.id === 'number' && Number.isFinite(match.id)) ? match.id : null;
+    const documentId = match.documentId ?? match?.attributes?.documentId ?? null;
+    // Si no hay id numérico pero sí documentId, intentar obtener id con GET por documentId
+    let numericId = id;
+    if (numericId == null && documentId) {
+      try {
+        const single = await api.get(`/restaurantes/${documentId}`, { headers: getAuthHeaders() });
+        const singleId = single?.data?.data?.id ?? single?.data?.data?.attributes?.id;
+        if (typeof singleId === 'number' && Number.isFinite(singleId)) numericId = singleId;
+      } catch (_) { /* ignore */ }
+    }
+    if (numericId == null && typeof match.id === 'string' && /^\d+$/.test(match.id)) {
+      numericId = parseInt(match.id, 10);
+    }
+    return { id: numericId, documentId: documentId || null };
+  } catch (err) {
+    console.error('❌ [getRestaurantIdAndDocId] Error:', err?.response?.data || err?.message);
+    return { id: null, documentId: null };
+  }
+}
+
+/**
  * Obtiene todas las categorías de un restaurante
  * Para el owner, siempre usa API directa para ver TODAS las categorías con TODOS los productos (incluidos no disponibles)
  * El endpoint público filtra por available=true, lo cual es correcto para clientes pero no para owners
@@ -21,35 +56,48 @@ export async function fetchCategories(slug) {
 
   // NOTA: NO usar el endpoint público /restaurants/menus porque filtra por available=true
   // El owner necesita ver TODOS los productos para poder gestionarlos (incluidos no disponibles)
-  // Siempre usar API directa para el owner
-
-  // Usar API directa directamente (sin intentar endpoint público)
   try {
-    console.log('🔄 [fetchCategories] Usando API directa para obtener todas las categorías y productos (incluidos no disponibles)...');
-    const restauranteId = await getRestaurantId(slug);
-    if (!restauranteId) {
+    console.log('🔄 [fetchCategories] Obteniendo categorías para slug:', slug);
+    const { id: restauranteId, documentId: restauranteDocId } = await getRestaurantIdAndDocId(slug);
+    if (!restauranteId && !restauranteDocId) {
       console.warn('❌ [fetchCategories] No se encontró el restaurante con slug:', slug);
       return [];
     }
 
-    // Para owner, obtenemos categorías con TODOS los productos (incluidos no disponibles)
-    // Primero obtener categorías
-    // Strapi 5: las relaciones NO se devuelven por defecto; hay que pedir populate explícito.
-    // No usar fields para no excluir las relaciones pobladas.
-    const params = new URLSearchParams();
-    params.append('filters[restaurante][id][$eq]', restauranteId);
-    params.append('populate[productos]', 'true');
-    params.append('populate[productos][populate][0]', 'image');
-    params.append('populate[restaurante]', 'true');
-    params.append('sort[0]', 'name:asc');
+    const buildParams = (useDocumentId) => {
+      const params = new URLSearchParams();
+      if (useDocumentId && restauranteDocId) {
+        params.append('filters[restaurante][documentId][$eq]', restauranteDocId);
+      } else if (restauranteId != null) {
+        params.append('filters[restaurante][id][$eq]', String(restauranteId));
+      } else {
+        params.append('filters[restaurante][documentId][$eq]', restauranteDocId);
+      }
+      params.append('populate[productos]', 'true');
+      params.append('populate[productos][populate][0]', 'image');
+      params.append('populate[restaurante]', 'true');
+      params.append('sort[0]', 'name:asc');
+      return params;
+    };
 
-    const url = `/categorias?${params.toString()}`;
+    // Strapi 5: relaciones no se devuelven por defecto; populate explícito
+    let params = buildParams(false);
+    let url = `/categorias?${params.toString()}`;
     console.log('🔄 [fetchCategories] URL:', url);
 
-    const res = await api.get(url, { headers: getAuthHeaders() });
+    let res = await api.get(url, { headers: getAuthHeaders() });
+    let data = res?.data?.data || [];
 
-    const data = res?.data?.data || [];
-    console.log('✅ [fetchCategories] Categorías obtenidas de API directa (con TODOS los productos):', data.length);
+    // Si filtro por id devolvió 0 y tenemos documentId, intentar por documentId (Strapi 5 a veces usa documentId en relaciones)
+    if (data.length === 0 && restauranteDocId && restauranteId != null) {
+      params = buildParams(true);
+      url = `/categorias?${params.toString()}`;
+      console.log('🔄 [fetchCategories] Reintentando con documentId:', url);
+      res = await api.get(url, { headers: getAuthHeaders() });
+      data = res?.data?.data || [];
+    }
+
+    console.log('✅ [fetchCategories] Categorías obtenidas:', data.length);
 
     // NO filtrar por available - el owner necesita ver todos los productos para poder editarlos
     // Usar id numérico (item.id) como id principal para que el filtro por categoría en productos coincida

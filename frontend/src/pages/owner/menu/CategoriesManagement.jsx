@@ -36,16 +36,23 @@ export default function CategoriesManagement({ slug }) {
   const [slugValue, setSlugValue] = useState('');
 
   useEffect(() => {
+    if (!slug) {
+      setLoading(false);
+      setCategories([]);
+      return;
+    }
     loadCategories();
   }, [slug]);
 
   const loadCategories = async () => {
+    if (!slug) return;
     setLoading(true);
     try {
       const data = await fetchCategories(slug);
-      setCategories(data);
+      setCategories(Array.isArray(data) ? data : []);
     } catch (error) {
       console.error('Error loading categories:', error);
+      setCategories([]);
     } finally {
       setLoading(false);
     }

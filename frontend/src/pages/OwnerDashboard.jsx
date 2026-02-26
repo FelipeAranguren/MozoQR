@@ -25,6 +25,7 @@ import {
   fetchTopProducts,
 } from '../api/analytics';
 import { fetchTables, fetchActiveOrders } from '../api/tables';
+import { fetchCategories } from '../api/menu';
 import { client } from '../api/client';
 import { createOwnerComment } from '../api/comments';
 // Aliases for compatibility with existing code
@@ -464,11 +465,13 @@ export default function OwnerDashboard() {
       })(),
       // Obtener información del restaurante (mesas, categorías, logo) para métricas
       api.get(`/restaurantes?filters[slug][$eq]=${slug}&populate[mesas]=true&populate[categorias]=true&populate[logo]=true`).catch(() => ({ data: { data: [] } })),
+      // Categorías vía API directa (populate[categorias] en restaurante a veces no devuelve datos en Strapi 5)
+      fetchCategories(slug).catch(() => []),
       // Obtener mesas y pedidos activos
       fetchTables(slug).catch((e) => { console.warn('Error fetching tables:', e); return []; }),
       fetchActiveOrders(slug).catch((e) => { console.warn('Error fetching active orders:', e); return []; }),
     ])
-      .then(([orders, todayOrders, yesterdayOrders, totalOrd, sessions, topProd, productosActivos, restaurantRes, tablesData, activeOrdersData]) => {
+      .then(([orders, todayOrders, yesterdayOrders, totalOrd, sessions, topProd, productosActivos, restaurantRes, categoriesData, tablesData, activeOrdersData]) => {
         const list = Array.isArray(orders) ? orders : [];
         const todayList = Array.isArray(todayOrders) ? todayOrders : [];
         const yesterdayList = Array.isArray(yesterdayOrders) ? yesterdayOrders : [];
@@ -492,7 +495,8 @@ export default function OwnerDashboard() {
         if (restaurant) {
           const attr = restaurant.attributes || restaurant;
           const mesas = attr.mesas?.data || attr.mesas || [];
-          const categorias = attr.categorias?.data || attr.categorias || [];
+          const categoriasFromPopulate = attr.categorias?.data || attr.categorias || [];
+          const categorias = categoriasFromPopulate.length > 0 ? categoriasFromPopulate : (Array.isArray(categoriesData) ? categoriesData : []);
 
           // Guardar información del restaurante para el formulario de comentarios
           const restaurantId = restaurant.id || restaurant.documentId;
