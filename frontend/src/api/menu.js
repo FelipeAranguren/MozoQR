@@ -38,6 +38,10 @@ export async function fetchCategories(slug) {
     params.append('filters[restaurante][id][$eq]', restauranteId);
     params.append('populate[productos][populate]', 'image');
     params.append('sort[0]', 'name:asc');
+    params.append('fields[0]', 'id');
+    params.append('fields[1]', 'documentId');
+    params.append('fields[2]', 'name');
+    params.append('fields[3]', 'slug');
     // NO filtrar por available - el owner necesita ver todos los productos
 
     const url = `/categorias?${params.toString()}`;

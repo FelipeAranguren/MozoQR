@@ -309,7 +309,7 @@ export default factories.createCoreController('api::categoria.categoria', ({ str
    * POST /api/categorias
    * Crea una categoría validando que el usuario tenga acceso al restaurante
    */
-  async create(ctx) {
+  async create(ctx: any) {
     const user = ctx.state?.user;
     if (!user) {
       console.log('❌ [categoria.create] Usuario no autenticado');
@@ -351,12 +351,12 @@ export default factories.createCoreController('api::categoria.categoria', ({ str
       return;
     }
 
-    // Crear la categoría con restaurante asociado (id numérico) y publicar si usa draftAndPublish
+    // Crear la categoría con restaurante asociado (formato objeto para que Strapi persista la relación)
     try {
       const data: Record<string, unknown> = {
         name: payload.name,
-        slug: payload.slug ?? payload.name?.toLowerCase?.()?.replace?.(/\s+/g, '-') ?? 'categoria',
-        restaurante: numericRestauranteId,
+        slug: payload.slug ?? (typeof payload.name === 'string' ? payload.name.toLowerCase().replace(/\s+/g, '-') : 'categoria'),
+        restaurante: { id: numericRestauranteId },
       };
       console.log('✅ [categoria.create] Creando categoría con data:', data);
       const created = await strapi.entityService.create('api::categoria.categoria', {
@@ -377,7 +377,7 @@ export default factories.createCoreController('api::categoria.categoria', ({ str
    * PUT /api/categorias/:id
    * Actualiza una categoría validando que el usuario tenga acceso al restaurante
    */
-  async update(ctx) {
+  async update(ctx: any) {
     const user = ctx.state?.user;
     if (!user) {
       ctx.unauthorized('Usuario no autenticado');
@@ -438,7 +438,7 @@ export default factories.createCoreController('api::categoria.categoria', ({ str
    * DELETE /api/categorias/:id
    * Elimina una categoría validando que el usuario tenga acceso al restaurante
    */
-  async delete(ctx) {
+  async delete(ctx: any) {
     console.log('🚀 [categoria.delete] Método delete llamado');
     console.log('🚀 [categoria.delete] ctx.params:', ctx.params);
     console.log('🚀 [categoria.delete] ctx.state:', { 

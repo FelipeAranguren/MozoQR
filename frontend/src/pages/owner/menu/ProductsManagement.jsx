@@ -99,13 +99,16 @@ export default function ProductsManagement({ slug }) {
     try {
       let filtered = [...products];
 
-      // Filtrar por categoría
+      // Filtrar por categoría (comparar por id numérico o documentId de forma consistente)
       if (selectedCategory !== 'all') {
+        const selNum = Number(selectedCategory);
+        const selIsNumeric = Number.isFinite(selNum) && String(selectedCategory).trim() !== '';
         filtered = filtered.filter(p => {
-          // Comparar tanto id como documentId, y convertir a string para comparación
-          const productCatId = String(p.categoriaId || '');
-          const selectedCatId = String(selectedCategory || '');
-          return productCatId === selectedCatId;
+          const catId = p.categoriaId;
+          if (selIsNumeric && (typeof catId === 'number' || (typeof catId === 'string' && /^\d+$/.test(catId)))) {
+            return Number(catId) === selNum;
+          }
+          return String(catId || '') === String(selectedCategory || '');
         });
       }
 
