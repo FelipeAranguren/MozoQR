@@ -49,9 +49,12 @@ export async function fetchCategories(slug) {
     console.log('✅ [fetchCategories] Categorías obtenidas de API directa (con TODOS los productos):', data.length);
 
     // NO filtrar por available - el owner necesita ver todos los productos para poder editarlos
+    // Usar id numérico (item.id) como id principal para que el filtro por categoría en productos coincida
     return data.map(item => {
       const attr = item.attributes || item;
-      const categoryId = item.documentId || item.id || attr?.id;
+      const numericId = item.id ?? attr?.id;
+      const documentId = item.documentId ?? attr?.documentId;
+      const categoryId = numericId ?? documentId;
       const productosRaw = attr.productos?.data || attr.productos || [];
 
       // Mapear todos los productos (incluidos los no disponibles) y convertir descripciones
@@ -76,8 +79,8 @@ export async function fetchCategories(slug) {
 
       return {
         id: categoryId,
-        documentId: item.documentId,
-        numericId: item.id,
+        documentId: documentId,
+        numericId: numericId,
         name: attr.name || '',
         slug: attr.slug || '',
         productos: productos
@@ -121,7 +124,11 @@ export async function fetchProducts(slug, categoryId = null) {
     params.append('sort[0]', 'name:asc');
 
     if (categoryId) {
-      params.append('filters[categoria][id][$eq]', categoryId);
+      // Asegurar id numérico para el filtro (Strapi filtra por id numérico en la relación)
+      const numericCatId = typeof categoryId === 'number' && Number.isFinite(categoryId)
+        ? categoryId
+        : (typeof categoryId === 'string' && /^\d+$/.test(categoryId) ? Number(categoryId) : categoryId);
+      params.append('filters[categoria][id][$eq]', numericCatId);
     }
 
     const url = `/productos?${params.toString()}`;
@@ -412,41 +419,41 @@ export async function getRestaurantId(slug) {
       totalMatches: matchingRestaurants.length
     });
 
-    // Intentar obtener el ID de múltiples formas (Strapi v4 y v5)
+    // Preferir id numérico (necesario para filtros API y relación categoría-restaurante)
     let restauranteId =
-      data?.id ||
-      data?.documentId ||
-      (data?.attributes && (data.attributes.id || data.attributes.documentId)) ||
+      (typeof data?.id === 'number' && Number.isFinite(data.id) ? data.id : null) ||
+      (data?.attributes && typeof data.attributes.id === 'number' ? data.attributes.id : null) ||
       null;
 
-    // Asegurarse de que el ID sea un número limpio
-    if (restauranteId) {
-      // Si es un string, intentar extraer solo el número
-      if (typeof restauranteId === 'string') {
-        // Extraer solo dígitos del string
-        const numMatch = restauranteId.match(/^\d+$/);
-        if (numMatch) {
-          restauranteId = parseInt(numMatch[0], 10);
-        } else {
-          console.warn('⚠️ [getRestaurantId] ID string con formato inesperado:', restauranteId);
-          // Intentar extraer cualquier número del string
-          const anyNum = restauranteId.match(/\d+/);
-          if (anyNum) {
-            restauranteId = parseInt(anyNum[0], 10);
-            console.warn('⚠️ [getRestaurantId] ID extraído parcialmente:', restauranteId, 'de:', data?.id);
-          }
-        }
-      }
-      
-      // Validar que sea un número válido
-      if (typeof restauranteId !== 'number' || isNaN(restauranteId) || restauranteId <= 0) {
-        console.error('❌ [getRestaurantId] ID inválido después de procesar:', {
-          original: data?.id,
-          processed: restauranteId,
-          type: typeof restauranteId
+    // Si la API solo devolvió documentId (Strapi v5), obtener el id numérico con una segunda petición
+    if (restauranteId == null && (data?.documentId || data?.attributes?.documentId)) {
+      const docId = data?.documentId || data?.attributes?.documentId;
+      try {
+        const singleRes = await api.get(`/restaurantes/${docId}`, {
+          headers: getAuthHeaders()
         });
-        restauranteId = null;
+        const single = singleRes?.data?.data;
+        const singleId = single?.id ?? single?.attributes?.id;
+        if (typeof singleId === 'number' && Number.isFinite(singleId)) {
+          restauranteId = singleId;
+          console.log('✅ [getRestaurantId] ID numérico obtenido por documentId:', docId, '->', restauranteId);
+        }
+      } catch (e) {
+        console.warn('⚠️ [getRestaurantId] No se pudo obtener id por documentId:', docId, e?.response?.status);
       }
+    }
+
+    // Fallback: string que sea solo dígitos (nunca extraer números de un UUID)
+    if (restauranteId == null) {
+      const raw = data?.id ?? data?.documentId ?? data?.attributes?.id ?? data?.attributes?.documentId;
+      if (typeof raw === 'string' && /^\d+$/.test(raw)) {
+        restauranteId = parseInt(raw, 10);
+      }
+    }
+
+    if (restauranteId != null && (typeof restauranteId !== 'number' || isNaN(restauranteId) || restauranteId <= 0)) {
+      console.error('❌ [getRestaurantId] ID inválido después de procesar:', { original: data?.id, processed: restauranteId });
+      restauranteId = null;
     }
 
     console.log('🔍 [getRestaurantId] Restaurante encontrado:', {
