@@ -79,75 +79,79 @@ export async function fetchCategories(slug) {
         params.append('filters[restaurante][documentId][$eq]', restauranteDocId);
       } else if (restauranteId != null) {
         params.append('filters[restaurante][id][$eq]', String(restauranteId));
-      } else {
+      } else if (restauranteDocId) {
         params.append('filters[restaurante][documentId][$eq]', restauranteDocId);
       }
-      params.append('populate[productos]', 'true');
+      params.append('populate[0]', 'restaurante');
+      params.append('populate[1]', 'productos');
       params.append('populate[productos][populate][0]', 'image');
-      params.append('populate[restaurante]', 'true');
       params.append('sort[0]', 'name:asc');
       return params;
     };
 
-    // Strapi 5: relaciones no se devuelven por defecto; populate explícito
-    let params = buildParams(false);
-    let url = `/categorias?${params.toString()}`;
-    console.log('🔄 [fetchCategories] URL:', url);
-
     const authHeaders = getAuthHeaders();
     const headers = { ...authHeaders, 'Strapi-Response-Format': 'v4' };
+
+    // Strapi 5: intentar primero documentId (relaciones suelen usar documentId), luego id numérico
+    let params = buildParams(!!restauranteDocId);
+    let url = `/categorias?${params.toString()}`;
+    console.log('🔄 [fetchCategories] URL (1ª petición):', url);
+
     let res = await api.get(url, { headers });
     let data = unwrapCategoriasResponse(res);
+    console.log('Categorías recibidas:', data);
+    console.log('Categorías recibidas (raw res.data):', res?.data);
 
-    // Si filtro por id devolvió 0 y tenemos documentId, intentar por documentId (Strapi 5 a veces usa documentId en relaciones)
     if (data.length === 0 && restauranteDocId && restauranteId != null) {
-      params = buildParams(true);
+      params = buildParams(false);
       url = `/categorias?${params.toString()}`;
-      console.log('🔄 [fetchCategories] Reintentando con documentId:', url);
+      console.log('🔄 [fetchCategories] Reintentando con filters[restaurante][id]:', url);
       res = await api.get(url, { headers });
       data = unwrapCategoriasResponse(res);
+      console.log('Categorías recibidas (2ª petición):', data);
     }
 
     console.log('✅ [fetchCategories] Categorías obtenidas:', data.length);
 
-    // NO filtrar por available - el owner necesita ver todos los productos para poder editarlos
-    // Usar id numérico (item.id) como id principal para que el filtro por categoría en productos coincida
+    // Strapi 5: respuesta puede ser plana (item.name) o v4 (item.attributes.name). Mapear ambos.
     return data.map(item => {
-      const attr = item.attributes || item;
+      const attr = item.attributes ?? item;
       const numericId = item.id ?? attr?.id;
       const documentId = item.documentId ?? attr?.documentId;
       const categoryId = numericId ?? documentId;
-      const productosRaw = Array.isArray(attr.productos)
-        ? attr.productos
-        : (attr.productos?.data || attr.productos || []);
+      const name = item.name ?? attr?.name ?? '';
+      const slug = attr?.slug ?? item.slug ?? '';
+      const productosRaw = Array.isArray(item.productos)
+        ? item.productos
+        : Array.isArray(attr?.productos)
+          ? attr.productos
+          : (attr?.productos?.data ?? attr?.productos ?? []);
 
-      // Mapear todos los productos (incluidos los no disponibles) y convertir descripciones
       const productos = productosRaw.map(p => {
-        const pAttr = p.attributes || p;
-        const description = Array.isArray(pAttr.description)
+        const pAttr = p.attributes ?? p;
+        const description = Array.isArray(pAttr?.description)
           ? blocksToText(pAttr.description)
-          : typeof pAttr.description === 'string'
+          : typeof pAttr?.description === 'string'
             ? pAttr.description
             : '';
-        
         return {
           ...p,
-          id: p.id || pAttr.id,
-          name: pAttr.name || '',
-          price: Number(pAttr.price || 0),
-          description: description,
-          available: pAttr.available !== false,
-          image: pAttr.image || null
+          id: p.id ?? pAttr?.id,
+          name: p.name ?? pAttr?.name ?? '',
+          price: Number(pAttr?.price ?? p.price ?? 0),
+          description,
+          available: (pAttr?.available ?? p.available) !== false,
+          image: pAttr?.image ?? p.image ?? null
         };
       });
 
       return {
         id: categoryId,
-        documentId: documentId,
-        numericId: numericId,
-        name: attr.name || '',
-        slug: attr.slug || '',
-        productos: productos
+        documentId,
+        numericId,
+        name,
+        slug,
+        productos
       };
     });
   } catch (err) {
