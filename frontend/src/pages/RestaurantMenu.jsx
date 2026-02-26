@@ -104,6 +104,17 @@ export default function RestaurantMenu() {
     return () => { document.title = 'MozoQR'; };
   }, [nombreRestaurante, slug, table]);
 
+  // Encontrar categoría por id numérico o documentId (Strapi 5 puede devolver uno u otro)
+  const findCategoria = (categoriaIdOrDocId) => {
+    if (categoriaIdOrDocId == null) return null;
+    return categorias.find(
+      (c) =>
+        c.id === categoriaIdOrDocId ||
+        c.documentId === categoriaIdOrDocId ||
+        String(c.id) === String(categoriaIdOrDocId)
+    ) ?? null;
+  };
+
   // Filtrar productos según búsqueda
   const productosFiltrados = useMemo(() => {
     if (!searchQuery.trim()) return productos || [];
@@ -120,7 +131,7 @@ export default function RestaurantMenu() {
   // Contar items en carrito por categoría
   const getCategoryItemCount = (categoriaId) => {
     if (!categoriaId) return 0;
-    const categoria = categorias.find((c) => c.id === categoriaId);
+    const categoria = findCategoria(categoriaId);
     if (!categoria) return 0;
     return categoria.productos.reduce((sum, prod) => {
       const item = items.find((i) => i.id === prod.id);
@@ -509,7 +520,7 @@ export default function RestaurantMenu() {
   const handleCategoriaClick = (categoriaId) => {
     setCategoriaSeleccionada(categoriaId);
     setSearchQuery(''); // Limpiar búsqueda al cambiar categoría
-    const categoria = categorias.find((c) => c.id === categoriaId);
+    const categoria = findCategoria(categoriaId);
     if (categoria) {
       setProductos(categoria.productos || []);
       // Scroll suave a la sección de productos
@@ -761,7 +772,7 @@ export default function RestaurantMenu() {
               } else {
                 // Si se limpia la búsqueda, volver a la categoría seleccionada
                 if (categoriaSeleccionada) {
-                  const categoria = categorias.find((c) => c.id === categoriaSeleccionada);
+                  const categoria = findCategoria(categoriaSeleccionada);
                   if (categoria) {
                     setProductos(categoria.productos || []);
                   }
@@ -837,10 +848,11 @@ export default function RestaurantMenu() {
             />
             {categorias.map((cat) => (
               <Chip
-                key={cat.id}
+                key={cat.id ?? cat.documentId ?? cat.name}
                 label={`${cat.name} ${cat.productos && cat.productos.length > 0 ? `(${cat.productos.length})` : ''}`}
                 onClick={() => {
-                  setCategoriaSeleccionada(cat.id);
+                  const id = cat.id ?? cat.documentId;
+                  setCategoriaSeleccionada(id);
                   setSearchQuery(''); // Limpiar búsqueda al cambiar categoría
                   setProductos(cat.productos || []);
                   setTimeout(() => {
@@ -850,14 +862,14 @@ export default function RestaurantMenu() {
                     }
                   }, 100);
                 }}
-                color={categoriaSeleccionada === cat.id ? 'primary' : 'default'}
+                color={categoriaSeleccionada === (cat.id ?? cat.documentId) ? 'primary' : 'default'}
                 sx={{
-                  bgcolor: categoriaSeleccionada === cat.id ? 'primary.main' : 'background.paper',
-                  color: categoriaSeleccionada === cat.id ? 'white' : 'text.primary',
-                  fontWeight: categoriaSeleccionada === cat.id ? 600 : 400,
+                  bgcolor: categoriaSeleccionada === (cat.id ?? cat.documentId) ? 'primary.main' : 'background.paper',
+                  color: categoriaSeleccionada === (cat.id ?? cat.documentId) ? 'white' : 'text.primary',
+                  fontWeight: categoriaSeleccionada === (cat.id ?? cat.documentId) ? 600 : 400,
                   cursor: 'pointer',
                   '&:hover': {
-                    bgcolor: categoriaSeleccionada === cat.id ? 'primary.dark' : 'action.hover',
+                    bgcolor: categoriaSeleccionada === (cat.id ?? cat.documentId) ? 'primary.dark' : 'action.hover',
                   },
                 }}
               />

@@ -19,6 +19,7 @@ interface Product {
 
 interface Category {
     id: number;
+    documentId?: string | null;
     name: string;
     slug: string | null;
     productos: Product[];
@@ -219,18 +220,35 @@ export default {
                 return null;
             };
 
+            // Strapi 5 puede devolver relación categoria por documentId (string UUID). Mapa documentId -> id numérico.
+            const documentIdToNumId = new Map<string, number>();
+
             // Primero, agregar categorías existentes al mapa (clave = id numérico)
             (categorias || []).forEach((cat: any) => {
                 const c = cat.attributes || cat;
                 const numId = toNumId(cat.id ?? c.id);
                 if (numId == null) return;
+                const docId = cat.documentId ?? c.documentId ?? null;
+                if (docId && typeof docId === 'string') {
+                    documentIdToNumId.set(docId, numId);
+                }
                 categoriasMap.set(numId, {
                     id: numId,
+                    documentId: docId && typeof docId === 'string' ? docId : null,
                     name: c.name ?? cat.name,
                     slug: c.slug ?? cat.slug ?? null,
                     productos: [],
                 });
             });
+
+            const resolveCategoriaId = (raw: any): number | null => {
+                const num = toNumId(raw);
+                if (num != null) return num;
+                if (raw != null && typeof raw === 'string' && documentIdToNumId.has(raw)) {
+                    return documentIdToNumId.get(raw)!;
+                }
+                return null;
+            };
 
             // Procesar todos los productos disponibles y asignarlos a sus categorías
             productosTotales.forEach((p: any) => {
@@ -238,16 +256,19 @@ export default {
                 const isAvailable = a.available !== false;
                 if (!isAvailable) return;
 
-                const rawCategoriaId = a.categoria?.data?.id ?? a.categoria?.id ?? null;
-                const categoriaId = toNumId(rawCategoriaId);
+                const catRel = a.categoria?.data ?? a.categoria;
+                const rawCategoriaId = catRel?.id ?? catRel?.documentId ?? null;
+                const categoriaId = resolveCategoriaId(rawCategoriaId);
                 const categoriaData = a.categoria?.data?.attributes ?? a.categoria?.attributes ?? a.categoria;
 
                 if (categoriaId != null && categoriasMap.has(categoriaId)) {
                     const categoria = categoriasMap.get(categoriaId)!;
                     categoria.productos.push(mapProduct(p, plan));
                 } else if (categoriaId != null && categoriaData) {
+                    const docIdCat = catRel?.documentId ?? categoriaData.documentId ?? null;
                     categoriasMap.set(categoriaId, {
                         id: categoriaId,
+                        documentId: typeof docIdCat === 'string' ? docIdCat : null,
                         name: categoriaData.name ?? null,
                         slug: categoriaData.slug ?? null,
                         productos: [mapProduct(p, plan)],
@@ -291,6 +312,7 @@ export default {
                     if (productosMapeados.length > 0) {
                         sanitized.push({
                             id: -1, // ID temporal para productos sin categoría
+                            documentId: null,
                             name: 'Otros',
                             slug: 'otros',
                             productos: productosMapeados,
