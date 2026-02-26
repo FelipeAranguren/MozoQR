@@ -6,7 +6,7 @@ import { factories } from '@strapi/strapi'
 
 /**
  * Resuelve restauranteId (numérico o documentId) al id numérico del restaurante.
- * Necesario para que entityService.create persista correctamente la relación.
+ * Necesario para que entityService.create persista correctamente la relación
  */
 async function resolveRestaurantId(strapi: any, restauranteId: number | string): Promise<number | null> {
   if (restauranteId == null) return null;
@@ -364,7 +364,7 @@ export default factories.createCoreController('api::categoria.categoria', ({ str
         publicationState: 'live',
       });
 
-      console.log('✅ [categoria.create] Categoría creada exitosamente:', created?.id, 'restaurante:', numericRestauranteId);
+      console.log('✅ [categoria.create] Categoría creada exitosamente ✅:', created?.id, 'restaurante:', numericRestauranteId);
       ctx.body = { data: created };
     } catch (error: any) {
       console.error('❌ [categoria.create] Error al crear categoría:', error);
