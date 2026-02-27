@@ -508,20 +508,19 @@ export default function Mostrador() {
   };
 
   const hydrateMesaSesionIfMissing = async (pedido) => {
-    const apiId = getPedidoApiId(pedido);
-    if (!apiId) return pedido;
+    // GET por id numérico: Strapi findOne por defecto usa id; documentId solo está soportado en nuestro PUT
+    const idForGet = pedido?.id ?? pedido?.documentId;
+    if (idForGet == null) return pedido;
 
-    // Preservar mesaNumber del pedido original (puede haberse extraído antes de que se cerrara la sesión)
     const mesaNumberPreservado = pedido.mesaNumber || pedido.mesa_sesion?.mesa?.number;
 
-    // Siempre intentar cargar la información completa del pedido para asegurar que tenga mesa e items
     try {
       const qs =
         `?publicationState=preview` +
         `&fields[0]=id&fields[1]=documentId&fields[2]=order_status&fields[3]=customerNotes&fields[4]=total&fields[5]=createdAt&fields[6]=updatedAt` +
         `&populate[mesa_sesion][populate][mesa]=true` +
         `&populate[items][populate][product]=true`;
-      const r = await api.get(`/pedidos/${apiId}${qs}`);
+      const r = await api.get(`/pedidos/${idForGet}${qs}`);
       const data = r?.data?.data;
       if (!data) {
         // Si falla, preservar mesaNumber si lo teníamos
@@ -643,9 +642,7 @@ export default function Mostrador() {
         `&sort[0]=${encodeURIComponent(sort)}` +
         `&pagination[pageSize]=100`;
 
-      const res = await api.get(`/pedidos${listQS}`, {
-        headers: { 'Cache-Control': 'no-cache, no-store, must-revalidate', Pragma: 'no-cache' },
-      });
+      const res = await api.get(`/pedidos${listQS}`);
       const base = res?.data?.data ?? [];
 
       const planos = base.map(mapPedidoRow);
@@ -682,7 +679,8 @@ export default function Mostrador() {
 
           if (shouldFetchItems) {
             try {
-              const fetched = await fetchItemsDePedido(getPedidoApiId(p) ?? p.id);
+              // Relación order en item-pedidos usa id numérico en el backend
+              const fetched = await fetchItemsDePedido(p.id ?? getPedidoApiId(p));
               // Si la carga es exitosa y hay items, usarlos
               if (fetched && Array.isArray(fetched) && fetched.length > 0) {
                 items = fetched;
@@ -1795,11 +1793,10 @@ export default function Mostrador() {
     return false;
   };
 
-  // Validación: no mostrar pedidos huérfanos (sin mesa o sin campos esenciales) para evitar cards rotas
+  // Validación: no mostrar pedidos sin campos esenciales (evitar cards rotas). Permitir sin mesa (ej. recién creados).
   const isValidPedidoForDisplay = (p) =>
     (p?.documentId || p?.id != null) &&
-    (p?.order_status != null && p?.order_status !== '') &&
-    (p?.mesaNumber != null || p?.mesa_sesion?.mesa?.number != null || isSystemOrder(p));
+    (p?.order_status != null && p?.order_status !== '');
 
   // ---- memos de filtro ----
   const pedidosFiltrados = useMemo(
