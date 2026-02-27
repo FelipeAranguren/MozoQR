@@ -16,6 +16,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useCart } from '../context/CartContext';
 import { createOrder, closeAccount, hasOpenAccount, fetchOrderDetails } from '../api/tenant';
+import { createMobbexCheckout } from '../api/payments';
 import QtyStepper from './QtyStepper';
 import PayWithMercadoPago from './PayWithMercadoPago';
 import { saveLastReceiptToStorage } from '../utils/receipt';
@@ -87,6 +88,8 @@ export default function StickyFooter({ table, tableSessionId, restaurantName }) 
   const [payLoading, setPayLoading] = useState(false);
   const [payRequestSent, setPayRequestSent] = useState(false); // Prevenir múltiples solicitudes
   const [card, setCard] = useState({ number: '', expiry: '', cvv: '', name: '' });
+  const [cardType, setCardType] = useState(null); // 'credit' | 'debit'
+  const [cardBrand, setCardBrand] = useState(null); // 'visa' | 'mastercard'
   const [orderDetails, setOrderDetails] = useState([]);
   const [loadingOrders, setLoadingOrders] = useState(false);
   const [tipAmount, setTipAmount] = useState(0);
@@ -492,21 +495,57 @@ export default function StickyFooter({ table, tableSessionId, restaurantName }) 
 
   // ---------- Pagar cuenta ----------
   const handlePay = async () => {
-    // Validar tarjeta si es necesario (SOLO si es tarjeta)
-    if (payMethod === 'card') {
-      const { number, expiry, cvv, name } = card;
-      const numOk = /^\d{4} \d{4} \d{4} \d{4}$/.test(number);
-      const expOk = /^(0[1-9]|1[0-2])\/\d{2}$/.test(expiry);
-      const cvvOk = /^\d{3}$/.test(cvv);
-      const nameOk = name.trim().length > 0;
-      if (!numOk || !expOk || !cvvOk || !nameOk) {
-        setSnack({ open: true, msg: 'Datos de tarjeta inválidos', severity: 'error' });
-        return;
-      }
+    // Si es Mercado Pago, ya maneja su propio flujo (Wallet / Brick)
+    if (payMethod === 'mp') {
+      return;
     }
 
-    // Si es Mercado Pago, ya maneja su propio flujo
-    if (payMethod === 'mp') {
+    // Flujo tarjeta: crear checkout de Mobbex y redirigir
+    if (payMethod === 'card') {
+      if (!cardType || !cardBrand) {
+        setSnack({
+          open: true,
+          msg: 'Seleccioná tipo de tarjeta (Crédito/Débito) y marca (Visa/Mastercard).',
+          severity: 'warning',
+        });
+        return;
+      }
+
+      try {
+        setPayLoading(true);
+
+        // Usar el último pedido como referencia si existe, sino slug+mesa+timestamp
+        const baseRef =
+          lastOrderId != null
+            ? String(lastOrderId)
+            : `${slug || 'resto'}-${table || 'mesa'}-${Date.now()}`;
+
+        const { checkoutUrl } = await createMobbexCheckout({
+          total: totalWithTip,
+          reference: baseRef,
+          cardType,
+          cardBrand,
+          slug,
+          table,
+          tableSessionId,
+        });
+
+        // Guardar recibo localmente antes de redirigir
+        saveReceiptForDownload();
+
+        // Redirigir al checkout hospedado de Mobbex
+        window.location.href = checkoutUrl;
+      } catch (err) {
+        console.error(err);
+        const msg =
+          err?.message ||
+          err?.toString?.() ||
+          'No se pudo iniciar el pago con tarjeta (Mobbex). Intentá de nuevo.';
+        setSnack({ open: true, msg, severity: 'error' });
+      } finally {
+        setPayLoading(false);
+      }
+
       return;
     }
 
@@ -567,40 +606,6 @@ export default function StickyFooter({ table, tableSessionId, restaurantName }) 
           setPayRequestSent(false);
           throw err;
         }
-      } else {
-        // Pago Online (Tarjeta o Mercado Pago)
-        // Guardar recibo para que el cliente pueda descargarlo en ThankYou
-        saveReceiptForDownload();
-        // Aquí sí cerramos la cuenta porque se asume "pagado"
-        const closePayload = { table, tableSessionId };
-        if (couponDiscount) {
-          closePayload.couponCode = couponDiscount.code;
-          closePayload.discount = couponDiscount.value;
-          closePayload.discountType = couponDiscount.type;
-        }
-        const closeResult = await closeAccount(slug, closePayload);
-
-        // Limpiamos la lista local (ya no hay pedidos abiertos)
-        if (slug && table) {
-          clearOpenOrders(slug, table);
-          setOpenOrders([]);
-        }
-
-        // Resetear propina
-        setTipAmount(0);
-        setTipPercentage(0);
-
-        setSnack({
-          open: true,
-          msg: `Cuenta pagada (${methodNames[payMethod] || 'tarjeta'}). Gracias por tu visita. ✅`,
-          severity: 'success',
-        });
-        setPayOpen(false);
-        setBackendHasAccount(false);
-        setPayMethod('mp');
-
-        // Redirigir a página de agradecimiento
-        navigate(`/thank-you?type=online${slug ? `&slug=${slug}` : ''}`);
       }
     } catch (err) {
       console.error(err);
@@ -1442,43 +1447,72 @@ export default function StickyFooter({ table, tableSessionId, restaurantName }) 
               </Button>
             </Box>
 
-            {/* Formulario de tarjeta SOLO cuando se selecciona tarjeta */}
+            {/* Selección de tarjeta cuando se elige "Tarjeta" */}
             {payMethod === 'card' && (
-              <Box sx={{ mt: 2 }}>
-                <TextField
-                  label="Número de tarjeta"
-                  fullWidth
-                  margin="dense"
-                  value={card.number}
-                  onChange={handleCardNumber}
-                  placeholder="1234 5678 9012 3456"
-                  sx={{ mb: 1 }}
-                />
-                <Box sx={{ display: 'flex', gap: 1, mb: 1 }}>
-                  <TextField
-                    label="CVV"
-                    margin="dense"
-                    value={card.cvv}
-                    onChange={handleCvv}
-                    placeholder="123"
-                    sx={{ flex: 1 }}
-                  />
-                  <TextField
-                    label="Vencimiento"
-                    margin="dense"
-                    value={card.expiry}
-                    onChange={handleExpiry}
-                    placeholder="MM/AA"
-                    sx={{ flex: 1 }}
-                  />
+              <Box sx={{ mt: 2, display: 'flex', flexDirection: 'column', gap: 2 }}>
+                <Box>
+                  <Typography variant="subtitle2" sx={{ mb: 1 }}>
+                    Tipo de tarjeta
+                  </Typography>
+                  <Box sx={{ display: 'flex', gap: 1, flexDirection: { xs: 'column', sm: 'row' } }}>
+                    <Button
+                      fullWidth
+                      variant={cardType === 'credit' ? 'contained' : 'outlined'}
+                      onClick={() => setCardType('credit')}
+                      sx={{
+                        borderRadius: 2,
+                        textTransform: 'none',
+                        py: 1,
+                      }}
+                    >
+                      Crédito
+                    </Button>
+                    <Button
+                      fullWidth
+                      variant={cardType === 'debit' ? 'contained' : 'outlined'}
+                      onClick={() => setCardType('debit')}
+                      sx={{
+                        borderRadius: 2,
+                        textTransform: 'none',
+                        py: 1,
+                      }}
+                    >
+                      Débito
+                    </Button>
+                  </Box>
                 </Box>
-                <TextField
-                  label="Nombre del titular"
-                  fullWidth
-                  margin="dense"
-                  value={card.name}
-                  onChange={handleName}
-                />
+
+                <Box>
+                  <Typography variant="subtitle2" sx={{ mb: 1 }}>
+                    Marca
+                  </Typography>
+                  <Box sx={{ display: 'flex', gap: 1, flexDirection: { xs: 'column', sm: 'row' } }}>
+                    <Button
+                      fullWidth
+                      variant={cardBrand === 'visa' ? 'contained' : 'outlined'}
+                      onClick={() => setCardBrand('visa')}
+                      sx={{
+                        borderRadius: 2,
+                        textTransform: 'none',
+                        py: 1,
+                      }}
+                    >
+                      Visa
+                    </Button>
+                    <Button
+                      fullWidth
+                      variant={cardBrand === 'mastercard' ? 'contained' : 'outlined'}
+                      onClick={() => setCardBrand('mastercard')}
+                      sx={{
+                        borderRadius: 2,
+                        textTransform: 'none',
+                        py: 1,
+                      }}
+                    >
+                      Mastercard
+                    </Button>
+                  </Box>
+                </Box>
               </Box>
             )}
 
@@ -1535,7 +1569,7 @@ export default function StickyFooter({ table, tableSessionId, restaurantName }) 
               payLoading ||
               payRequestSent ||
               (orderDetails.length === 0 && accountTotal === 0) ||
-              (payMethod === 'card' && (!card.number || !card.expiry || !card.cvv || !card.name))
+              (payMethod === 'card' && (!cardType || !cardBrand))
             }
             sx={{
               display: payMethod === 'mp' ? 'none' : 'inline-flex',
