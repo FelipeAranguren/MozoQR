@@ -375,7 +375,24 @@ export default function Mostrador() {
 
   // ---- helpers
   const keyOf = (p) => p?.documentId || String(p?.id);
+  /** Identificador estable para rutas API de pedidos (Strapi v5: documentId) */
+  const getPedidoApiId = (p) => (p && (p.documentId || p.id != null)) ? (p.documentId || String(p.id)) : null;
   const isActive = (st) => !['served', 'paid'].includes(st);
+
+  /** Elimina un pedido del estado local cuando la API devuelve 404 (recurso borrado) */
+  const removePedidoFromState = (pedido) => {
+    const key = keyOf(pedido);
+    if (!key) return;
+    setPedidos((prev) => {
+      const next = prev.filter((p) => keyOf(p) !== key);
+      pedidosRef.current = next;
+      updateCachedView(next);
+      return next;
+    });
+    setTodosPedidosSinPagar((prev) => prev.filter((p) => keyOf(p) !== key));
+    servingIdsRef.current.delete(pedido.id);
+    seenIdsRef.current.delete(pedido.id);
+  };
 
   const ordenar = (arr) => {
     const orden = { pending: 0, preparing: 1 };
@@ -491,21 +508,20 @@ export default function Mostrador() {
   };
 
   const hydrateMesaSesionIfMissing = async (pedido) => {
-    // Si no tiene ID válido, no intentar cargar
-    if (!pedido.id) return pedido;
-    
+    const apiId = getPedidoApiId(pedido);
+    if (!apiId) return pedido;
+
     // Preservar mesaNumber del pedido original (puede haberse extraído antes de que se cerrara la sesión)
     const mesaNumberPreservado = pedido.mesaNumber || pedido.mesa_sesion?.mesa?.number;
-    
+
     // Siempre intentar cargar la información completa del pedido para asegurar que tenga mesa e items
-    // Esto es crítico porque cuando se cierra una cuenta, los pedidos pueden perder la referencia a mesa_sesion
     try {
       const qs =
         `?publicationState=preview` +
         `&fields[0]=id&fields[1]=documentId&fields[2]=order_status&fields[3]=customerNotes&fields[4]=total&fields[5]=createdAt&fields[6]=updatedAt` +
         `&populate[mesa_sesion][populate][mesa]=true` +
         `&populate[items][populate][product]=true`;
-      const r = await api.get(`/pedidos/${pedido.id}${qs}`);
+      const r = await api.get(`/pedidos/${apiId}${qs}`);
       const data = r?.data?.data;
       if (!data) {
         // Si falla, preservar mesaNumber si lo teníamos
@@ -550,6 +566,7 @@ export default function Mostrador() {
         mesa_sesion: mesaSesionFinal || filled.mesa_sesion,
       };
     } catch (err) {
+      if (err?.response?.status === 404) return null;
       // Si falla la hidratación, preservar mesaNumber si lo teníamos
       if (mesaNumberPreservado && !pedido.mesa_sesion?.mesa?.number) {
         return {
@@ -564,10 +581,10 @@ export default function Mostrador() {
     }
   };
 
-  const fetchItemsDePedido = async (orderId) => {
+  const fetchItemsDePedido = async (orderIdOrDocId) => {
     const qs =
       `/item-pedidos?publicationState=preview` +
-      `&filters[order][id][$eq]=${orderId}` +
+      `&filters[order][id][$eq]=${orderIdOrDocId}` +
       `&populate[product]=true` +
       `&fields[0]=id&fields[1]=quantity&fields[2]=notes&fields[3]=UnitPrice&fields[4]=totalPrice` +
       `&pagination[pageSize]=100`;
@@ -626,25 +643,24 @@ export default function Mostrador() {
         `&sort[0]=${encodeURIComponent(sort)}` +
         `&pagination[pageSize]=100`;
 
-      const res = await api.get(`/pedidos${listQS}`);
+      const res = await api.get(`/pedidos${listQS}`, {
+        headers: { 'Cache-Control': 'no-cache, no-store, must-revalidate', Pragma: 'no-cache' },
+      });
       const base = res?.data?.data ?? [];
 
       const planos = base.map(mapPedidoRow);
 
       // Solo hidratar pedidos que realmente necesitan la información
-      // (que tienen mesa_sesion.id pero no tienen mesa.number)
-      const planosFilled = await Promise.all(
+      const planosFilled = (await Promise.all(
         planos.map(async (p) => {
-          // Si ya tiene número de mesa, no hidratar
           if (p.mesa_sesion?.mesa?.number != null) return p;
-          // Si tiene mesa_sesion.id pero no mesa.number, intentar hidratar
           if (p.mesa_sesion?.id) {
-            return await hydrateMesaSesionIfMissing(p);
+            const filled = await hydrateMesaSesionIfMissing(p);
+            return filled; // puede ser null si 404
           }
-          // Si no tiene mesa_sesion para nada, no intentar hidratar (evita 404)
           return p;
         })
-      );
+      )).filter(Boolean);
 
       // cargar items (priorizar items del backend, luego intentar cargar si faltan)
       const prevByKey = new Map(pedidosRef.current.map((p) => [keyOf(p), p]));
@@ -666,7 +682,7 @@ export default function Mostrador() {
 
           if (shouldFetchItems) {
             try {
-              const fetched = await fetchItemsDePedido(p.id);
+              const fetched = await fetchItemsDePedido(getPedidoApiId(p) ?? p.id);
               // Si la carga es exitosa y hay items, usarlos
               if (fetched && Array.isArray(fetched) && fetched.length > 0) {
                 items = fetched;
@@ -1099,15 +1115,14 @@ export default function Mostrador() {
           pedidosConId.map(async (pedido) => {
             try {
               const raw = pedido.attributes || pedido;
-              const pedidoId = pedido.id || raw.id || pedido.documentId || raw.documentId;
-              if (pedidoId) {
+              const apiId = pedido.documentId ?? raw.documentId ?? pedido.id ?? raw.id;
+              if (apiId) {
                 try {
-                  await api.patch(`/pedidos/${pedidoId}`, { data: { order_status: 'paid' } });
+                  await api.patch(`/pedidos/${apiId}`, { data: { order_status: 'paid' } });
                   pedidosMarcados++;
                 } catch (err) {
-                  // Si PATCH falla, intentar PUT
                   if (err?.response?.status === 405) {
-                    await api.put(`/pedidos/${pedidoId}`, { data: { order_status: 'paid' } });
+                    await api.put(`/pedidos/${apiId}`, { data: { order_status: 'paid' } });
                     pedidosMarcados++;
                   }
                 }
@@ -1189,19 +1204,15 @@ export default function Mostrador() {
 
       if (pedidosDeMesa.length > 0) {
         try {
-          // Guardar los IDs de los pedidos que vamos a marcar como 'paid' para filtrarlos después
-          const pedidosIds = pedidosDeMesa.map(p => p.id).filter(Boolean);
-          
+          const pedidosKeys = new Set(pedidosDeMesa.map((p) => keyOf(p)).filter(Boolean));
+
           await Promise.all(
-            pedidosDeMesa.map(pedido => putEstado(pedido, 'paid'))
+            pedidosDeMesa.map((pedido) => putEstado(pedido, 'paid'))
           );
-          
-          // Actualizar inmediatamente todosPedidosSinPagar para remover estos pedidos
-          // Esto evita que el frontend los vea antes de que fetchPedidos() se ejecute
-          setTodosPedidosSinPagar(prev => {
-            const filtrados = prev.filter(p => !pedidosIds.includes(p.id));
-            return filtrados;
-          });
+
+          setTodosPedidosSinPagar((prev) =>
+            prev.filter((p) => !pedidosKeys.has(keyOf(p)))
+          );
         } catch (err) {
           // Continuar aunque falle, el backend también puede hacerlo
         }
@@ -1430,33 +1441,40 @@ export default function Mostrador() {
 
   // ---- acciones ----
   const putEstado = async (pedido, estado) => {
-    const id = typeof pedido === 'object' ? pedido?.id : pedido;
+    const apiId = typeof pedido === 'object' ? getPedidoApiId(pedido) : (pedido != null ? String(pedido) : null);
     const itemIds =
       typeof pedido === 'object'
         ? (pedido?.items || []).map((it) => it?.id).filter(Boolean)
         : [];
 
-    if (id == null) throw new Error('Pedido sin id');
+    if (apiId == null) throw new Error('Pedido sin id');
 
     try {
-      await api.patch(`/pedidos/${id}`, { data: { order_status: estado } });
+      await api.patch(`/pedidos/${apiId}`, { data: { order_status: estado } });
     } catch (err) {
+      if (err?.response?.status === 404) {
+        if (typeof pedido === 'object') removePedidoFromState(pedido);
+        return;
+      }
       if (err?.response?.status === 405) {
         const data = { order_status: estado };
         if (itemIds.length > 0) data.items = itemIds;
-        await api.put(`/pedidos/${id}`, { data });
+        await api.put(`/pedidos/${apiId}`, { data });
         return;
       }
       throw err;
     }
   };
 
-  const refreshItemsDe = async (orderId) => {
+  const refreshItemsDe = async (pedido) => {
+    const apiId = getPedidoApiId(pedido);
+    if (!apiId) return;
     try {
-      const items = await fetchItemsDePedido(orderId);
+      const items = await fetchItemsDePedido(apiId);
       if (items?.length) {
+        const key = keyOf(pedido);
         setPedidos((prev) => {
-          const next = prev.map((p) => (p.id === orderId ? { ...p, items } : p));
+          const next = prev.map((p) => (keyOf(p) === key ? { ...p, items } : p));
           pedidosRef.current = next;
           updateCachedView(next);
           return next;
@@ -1464,10 +1482,9 @@ export default function Mostrador() {
       }
     } catch { }
   };
-  
-  // Versión no bloqueante de refreshItemsDe para no interferir con actualizaciones rápidas
-  const refreshItemsDeBackground = (orderId) => {
-    refreshItemsDe(orderId).catch(() => {}); // Ejecutar en background sin bloquear
+
+  const refreshItemsDeBackground = (pedido) => {
+    refreshItemsDe(pedido).catch(() => {});
   };
 
   // Marcar como atendidas todas las llamadas de mozo / solicitudes del sistema de una mesa
@@ -1538,7 +1555,7 @@ export default function Mostrador() {
     });
     
     // Refrescar items en background sin bloquear
-    refreshItemsDeBackground(pedido.id);
+    refreshItemsDeBackground(pedido);
   };
 
   const marcarComoServido = async (pedido, staffNotes = '') => {
@@ -1557,12 +1574,16 @@ export default function Mostrador() {
         updateData.staffNotes = staffNotes.trim();
       }
 
+      const apiId = getPedidoApiId(pedido);
       try {
-        await api.patch(`/pedidos/${pedido.id}`, { data: updateData });
+        await api.patch(`/pedidos/${apiId}`, { data: updateData });
       } catch (patchErr) {
-        // Si PATCH falla, intentar PUT
+        if (patchErr?.response?.status === 404) {
+          removePedidoFromState(pedido);
+          return;
+        }
         if (patchErr?.response?.status === 405) {
-          await api.put(`/pedidos/${pedido.id}`, { data: updateData });
+          await api.put(`/pedidos/${apiId}`, { data: updateData });
         } else {
           throw patchErr;
         }
@@ -1605,11 +1626,11 @@ export default function Mostrador() {
       const trimmed = (reason || '').trim();
       if (trimmed) {
         try {
-          await api.patch(`/pedidos/${pedido.id}`, {
+          await api.patch(`/pedidos/${getPedidoApiId(pedido)}`, {
             data: { cancellationReason: trimmed },
           });
         } catch (err) {
-          // Si falla solo la razón, lo registramos pero no rompemos la cancelación
+          if (err?.response?.status === 404) removePedidoFromState(pedido);
         }
       }
 
@@ -1651,12 +1672,14 @@ export default function Mostrador() {
         } else {
           const pendientes = (cuenta.pedidos || []).filter((p) => p.order_status !== 'paid');
           await Promise.all(pendientes.map((pedido) =>
-            api.patch(`/pedidos/${pedido.id}`, {
+            api.patch(`/pedidos/${getPedidoApiId(pedido)}`, {
               data: {
                 order_status: 'paid',
                 payment_status: 'paid',
                 closeWithoutPayment: true
               }
+            }).catch((err) => {
+              if (err?.response?.status === 404) removePedidoFromState(pedido);
             })
           ));
         }
@@ -1671,7 +1694,7 @@ export default function Mostrador() {
             : (discount * pedidoTotal / cuenta.total);
           const pedidoFinal = Math.max(0, pedidoTotal - pedidoDiscount);
 
-          return api.patch(`/pedidos/${pedido.id}`, {
+          return api.patch(`/pedidos/${getPedidoApiId(pedido)}`, {
             data: {
               order_status: 'paid',
               payment_status: 'paid',
@@ -1679,6 +1702,8 @@ export default function Mostrador() {
               discount: discount,
               discountType: discountType
             }
+          }).catch((err) => {
+            if (err?.response?.status === 404) removePedidoFromState(pedido);
           });
         }));
         setSnack({ open: true, msg: `Cuenta pagada con ${discount}${discountType === 'percent' ? '%' : '$'} de descuento ✅`, severity: 'success' });
@@ -1690,7 +1715,7 @@ export default function Mostrador() {
           await closeAccount(slug, payload);
         } else {
           const pendientes = (cuenta.pedidos || []).filter((p) => p.order_status !== 'paid');
-          await Promise.all(pendientes.map((pedido) => putEstado(pedido, 'paid')));
+          await Promise.all(pendientes.map((p) => putEstado(p, 'paid')));
         }
         setSnack({ open: true, msg: 'Cuenta marcada como pagada ✅', severity: 'success' });
       }
@@ -1770,9 +1795,17 @@ export default function Mostrador() {
     return false;
   };
 
+  // Validación: no mostrar pedidos huérfanos (sin mesa o sin campos esenciales) para evitar cards rotas
+  const isValidPedidoForDisplay = (p) =>
+    (p?.documentId || p?.id != null) &&
+    (p?.order_status != null && p?.order_status !== '') &&
+    (p?.mesaNumber != null || p?.mesa_sesion?.mesa?.number != null || isSystemOrder(p));
+
   // ---- memos de filtro ----
   const pedidosFiltrados = useMemo(
-    () => pedidos.filter(pedidoMatchesMesaPartial),
+    () => pedidos
+      .filter((p) => isValidPedidoForDisplay(p))
+      .filter(pedidoMatchesMesaPartial),
     [pedidos, mesaTokens]
   );
   const pedidosPendientes = useMemo(

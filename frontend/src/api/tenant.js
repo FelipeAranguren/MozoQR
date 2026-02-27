@@ -296,6 +296,7 @@ export async function closeAccount(slug, payload) {
     params.append('filters[restaurante][slug][$eq]', slug);
     params.append('filters[order_status][$ne]', 'paid');
     params.append('fields[0]', 'id');
+    params.append('fields[1]', 'documentId');
     params.append('populate[mesa_sesion][populate][mesa][fields][0]', 'number');
     params.append('pagination[pageSize]', '100');
 
@@ -311,9 +312,10 @@ export async function closeAccount(slug, payload) {
     });
 
     await Promise.all(
-      pendientes.map((row) =>
-        http.put(`/pedidos/${row.id}`, { data: { order_status: 'paid' } })
-      )
+      pendientes.map((row) => {
+        const apiId = row.documentId ?? row.attributes?.documentId ?? row.id;
+        return http.put(`/pedidos/${apiId}`, { data: { order_status: 'paid' } });
+      })
     );
   } catch (e) {
     console.warn('closeAccount sync paid error:', e?.response?.data || e);

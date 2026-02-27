@@ -207,15 +207,22 @@ export async function fetchTable(slug, table) {
 }
 
 /**
- * Obtiene pedidos activos (no pagados) de un restaurante
+ * Obtiene pedidos activos (no pagados) de un restaurante.
+ * Headers no-cache para evitar pedidos fantasma por caché.
  */
 export async function fetchActiveOrders(slug) {
   if (!slug) return [];
 
+  const noCacheHeaders = {
+    ...getAuthHeaders(),
+    'Cache-Control': 'no-cache, no-store, must-revalidate',
+    Pragma: 'no-cache',
+  };
+
   try {
     const res = await api.get(
       `/pedidos?filters[restaurante][slug][$eq]=${slug}&filters[order_status][$ne]=paid&populate[mesa_sesion][populate]=mesa&sort[0]=createdAt:desc&pagination[pageSize]=200`,
-      { headers: getAuthHeaders() }
+      { headers: noCacheHeaders }
     );
 
     const data = res?.data?.data || [];
@@ -236,6 +243,7 @@ export async function fetchActiveOrders(slug) {
 
       return {
         id: item.id,
+        documentId: attr.documentId ?? item.documentId,
         order_status: attr.order_status,
         total: Number(attr.total || 0),
         createdAt: attr.createdAt,
