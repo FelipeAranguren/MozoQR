@@ -21,17 +21,18 @@ export default function TablesStatusGridEnhanced({
   openSessions = [],
   onTableClick
 }) {
-  // Agrupar pedidos por mesa
+  // Agrupar pedidos por mesa (clave siempre numérica para que coincida con table.number)
   const ordersByTable = React.useMemo(() => {
     try {
       const map = new Map();
       if (Array.isArray(orders)) {
         orders.forEach(order => {
-          const tableNum = order?.mesa_sesion?.mesa?.number || order?.mesa || order?.tableNumber || null;
-          if (tableNum != null) {
-            if (!map.has(tableNum)) map.set(tableNum, []);
-            map.get(tableNum).push(order);
-          }
+          const raw = order?.mesa_sesion?.mesa?.number ?? order?.mesa ?? order?.tableNumber ?? null;
+          if (raw == null) return;
+          const tableNum = Number(raw);
+          if (Number.isNaN(tableNum)) return;
+          if (!map.has(tableNum)) map.set(tableNum, []);
+          map.get(tableNum).push(order);
         });
       }
       return map;
@@ -41,19 +42,18 @@ export default function TablesStatusGridEnhanced({
     }
   }, [orders]);
 
-  // Agrupar pedidos del sistema (llamadas de mozo) por mesa
+  // Agrupar pedidos del sistema por mesa (clave numérica)
   const systemOrdersByTable = React.useMemo(() => {
     try {
       const map = new Map();
       if (Array.isArray(systemOrders)) {
         systemOrders.forEach(order => {
-          const tableNum = order?.mesa_sesion?.mesa?.number || order?.mesa || order?.tableNumber || null;
-          if (tableNum != null) {
-            if (!map.has(tableNum)) {
-              map.set(tableNum, []);
-            }
-            map.get(tableNum).push(order);
-          }
+          const raw = order?.mesa_sesion?.mesa?.number ?? order?.mesa ?? order?.tableNumber ?? null;
+          if (raw == null) return;
+          const tableNum = Number(raw);
+          if (Number.isNaN(tableNum)) return;
+          if (!map.has(tableNum)) map.set(tableNum, []);
+          map.get(tableNum).push(order);
         });
       }
       return map;
@@ -86,8 +86,9 @@ export default function TablesStatusGridEnhanced({
    * 3. Solo si no hay sesión ni pedidos sin pagar → respetar estado del backend
    */
   const getTableStatus = (table) => {
-    const tableOrders = ordersByTable.get(table.number) || [];
-    const systemCalls = systemOrdersByTable.get(table.number) || [];
+    const tableKey = Number(table.number);
+    const tableOrders = ordersByTable.get(tableKey) || [];
+    const systemCalls = systemOrdersByTable.get(tableKey) || [];
     const hasOpenSession = openSessions.some((s) => {
       const matches = Number(s.mesaNumber) === Number(table.number);
       return matches;

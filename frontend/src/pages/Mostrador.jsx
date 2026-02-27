@@ -1831,6 +1831,30 @@ export default function Mostrador() {
     () => cuentas.filter(cuentaMatchesMesaPartial),
     [cuentas, mesaTokens]
   );
+
+  // Pedidos activos para el grid de mesas: misma fuente que Pendientes/Cocinando (evita que el círculo rojo no aparezca)
+  const ordersForGrid = useMemo(() => {
+    const unpaid = pedidos.filter(
+      (p) =>
+        !isSystemOrder(p) &&
+        p.order_status !== 'paid' &&
+        p.order_status !== 'cancelled'
+    );
+    const mesaNum = (p) => p.mesaNumber ?? p.mesa_sesion?.mesa?.number ?? null;
+    return unpaid
+      .filter((p) => mesaNum(p) != null)
+      .map((p) => ({
+        id: p.id,
+        documentId: p.documentId,
+        order_status: p.order_status,
+        total: p.total,
+        createdAt: p.createdAt,
+        mesa_sesion: { mesa: { number: mesaNum(p) } },
+        mesa: mesaNum(p),
+        tableNumber: mesaNum(p),
+      }));
+  }, [pedidos]);
+
   const noResultsPedidos =
     !error && pedidos.length > 0 && pedidosFiltrados.length === 0 && mesaTokens.length > 0;
   const noResultsCuentas =
@@ -2445,10 +2469,8 @@ export default function Mostrador() {
         <Box sx={{ mt: 3 }}>
           <TablesStatusGridEnhanced
             tables={mesas}
-            // CRÍTICO: Usar activeOrders (pedidos no pagados desde fetchActiveOrders) para determinar estado de mesas
-            // Esto asegura que una vez que un pedido se marca como "paid", ya no aparece en la lista
-            // y la mesa se muestra como libre, igual que en OwnerDashboard.jsx
-            orders={activeOrders}
+            // Pedidos activos para estado y badge: misma fuente que Pendientes (ordersForGrid desde pedidos)
+            orders={ordersForGrid}
             systemOrders={pedidosSistema}
             openSessions={openSessions}
             onTableClick={(table) => {
