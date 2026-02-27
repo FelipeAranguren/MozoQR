@@ -274,10 +274,11 @@ export async function openSession(slug, payload) {
 }
 
 export async function closeAccount(slug, payload) {
-  const { table, tableSessionId } = payload || {};
+  const { table, tableSessionId, isManualSettlement } = payload || {};
   if (!table) throw new Error('Falta número de mesa');
   const data = { table };
   if (tableSessionId) data.tableSessionId = tableSessionId;
+  if (isManualSettlement === true) data.isManualSettlement = true;
   let res;
   try {
     res = await http.post(`/restaurants/${slug}/close-account`, { data });

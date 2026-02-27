@@ -1496,14 +1496,21 @@ export default {
 
   /**
    * POST /restaurants/:slug/close-account
+   * Si isManualSettlement === true (cierre desde mostrador): no se valida pasarela de pago;
+   * se marcan pedidos y sesiones como pagados y la mesa se libera al instante.
    */
   async closeAccount(ctx: Ctx) {
     const { slug } = ctx.params || {};
     const data = getPayload(ctx.request.body);
     const table = data?.table;
     const tableSessionId = data?.tableSessionId;
+    const isManualSettlement = data?.isManualSettlement === true;
 
     if (!table) throw new ValidationError('Missing table');
+
+    if (isManualSettlement) {
+      console.log(`[closeAccount] Cierre manual desde mostrador para mesa ${table} - sin validación de pasarela`);
+    }
 
     const restaurante = await getRestaurantBySlug(String(slug));
     const mesa = await getMesaOrThrow(restaurante.id, Number(table));
@@ -1521,11 +1528,11 @@ export default {
       mesaActiveCode: (mesa as any).activeSessionCode,
     });
 
-    // Verificar si tableSessionId es numérico (ID) o UUID (código)
+    // Con cierre manual desde mostrador no validamos sesión contra pasarela; solo cerramos.
     const isNumericSessionId = tableSessionId && !isNaN(Number(tableSessionId));
     
-    // Si hay tableSessionId, intentar validarlo (pero ser permisivo desde el mostrador)
-    if (tableSessionId) {
+    // Si hay tableSessionId y NO es cierre manual, intentar validarlo (pero ser permisivo desde el mostrador)
+    if (tableSessionId && !isManualSettlement) {
       let sessionFound = false;
       
       if (isNumericSessionId) {
@@ -1625,11 +1632,12 @@ export default {
       }
     }
 
-    // Mark table as 'por_limpiar' and clear active session pointer (expulsa cliente)
+    // Cierre manual desde mostrador: mesa disponible al instante; si no, por_limpiar
+    const tableStatus = isManualSettlement ? 'disponible' : 'por_limpiar';
     await strapi.db.query('api::mesa.mesa').update({
       where: { id: mesa.id },
       data: {
-        status: 'por_limpiar',
+        status: tableStatus,
         activeSessionCode: null,
         occupiedAt: null,
         publishedAt: new Date(),

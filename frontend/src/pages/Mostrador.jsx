@@ -1643,9 +1643,9 @@ export default function Mostrador() {
       }
 
       if (closeWithoutPayment) {
-        // Cerrar sin cobrar (invitado)
+        // Cerrar sin cobrar (invitado) - cierre manual desde mostrador, sin validar pasarela
         if (cuenta.mesaNumber != null) {
-          const payload = { table: cuenta.mesaNumber, closeWithoutPayment: true };
+          const payload = { table: cuenta.mesaNumber, closeWithoutPayment: true, isManualSettlement: true };
           if (cuenta.mesaSesionId) payload.tableSessionId = cuenta.mesaSesionId;
           await closeAccount(slug, payload);
         } else {
@@ -1683,9 +1683,9 @@ export default function Mostrador() {
         }));
         setSnack({ open: true, msg: `Cuenta pagada con ${discount}${discountType === 'percent' ? '%' : '$'} de descuento ✅`, severity: 'success' });
       } else {
-        // Pago normal
+        // Pago normal - cierre manual desde mostrador, sin validar pasarela (Mobbex/MP)
         if (cuenta.mesaNumber != null) {
-          const payload = { table: cuenta.mesaNumber };
+          const payload = { table: cuenta.mesaNumber, isManualSettlement: true };
           if (cuenta.mesaSesionId) payload.tableSessionId = cuenta.mesaSesionId;
           await closeAccount(slug, payload);
         } else {
