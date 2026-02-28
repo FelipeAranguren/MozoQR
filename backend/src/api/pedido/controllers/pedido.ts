@@ -3,9 +3,34 @@ import { factories } from '@strapi/strapi';
 
 export default factories.createCoreController('api::pedido.pedido', ({ strapi: strapiInstance }) => ({
 
-  // find y findOne eliminados para permitir acceso público según permisos del panel
-  // Si se necesita lógica custom, asegurarse de no bloquear usuarios públicos si es necesario.
-
+  /**
+   * GET /api/pedidos/:id
+   * - Si :id es numérico -> busca por id
+   * - Si :id NO es numérico -> busca por documentId (Strapi v5)
+   */
+  async findOne(ctx) {
+    const param = ctx.params?.id;
+    if (!param) {
+      return ctx.badRequest('Missing id param');
+    }
+    const maybeNumber = Number(param);
+    let realId: number | null = Number.isFinite(maybeNumber) ? maybeNumber : null;
+    if (realId === null) {
+      const existing = await strapiInstance.db.query('api::pedido.pedido').findOne({
+        where: { documentId: param as string },
+        select: ['id'],
+      });
+      if (!existing?.id) {
+        return ctx.notFound('Pedido no encontrado');
+      }
+      realId = existing.id;
+    }
+    const entity = await strapiInstance.entityService.findOne('api::pedido.pedido', realId);
+    if (!entity) {
+      return ctx.notFound('Pedido no encontrado');
+    }
+    ctx.body = { data: entity };
+  },
 
   /**
    * PUT /api/pedidos/:id

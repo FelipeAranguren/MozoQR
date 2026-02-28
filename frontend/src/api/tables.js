@@ -221,11 +221,22 @@ export async function fetchActiveOrders(slug) {
 
   try {
     const res = await api.get(
-      `/pedidos?filters[restaurante][slug][$eq]=${slug}&filters[order_status][$ne]=paid&populate[mesa_sesion][populate]=mesa&sort[0]=createdAt:desc&pagination[pageSize]=200`,
+      `/pedidos?filters[restaurante][slug][$eq]=${slug}&filters[order_status][$ne]=paid&publicationState=live&populate[mesa_sesion][populate]=mesa&sort[0]=createdAt:desc&pagination[pageSize]=200`,
       { headers: noCacheHeaders }
     );
 
-    const data = res?.data?.data || [];
+    let data = res?.data?.data || [];
+    // Unicidad por documentId: evitar tarjetas duplicadas si el API devuelve duplicados
+    const seenDocIds = new Set();
+    data = data.filter((item) => {
+      const attr = item.attributes || item;
+      const docId = attr.documentId ?? item.documentId;
+      if (!docId) return true;
+      if (seenDocIds.has(docId)) return false;
+      seenDocIds.add(docId);
+      return true;
+    });
+
     return data.map(item => {
       const attr = item.attributes || item;
 
