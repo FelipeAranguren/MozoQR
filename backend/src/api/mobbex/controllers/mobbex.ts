@@ -1,3 +1,4 @@
+// backend/src/api/mobbex/controllers/mobbex.ts
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
 import { getBackendUrl, getFrontendUrl } from '../../../config/urls';
@@ -23,10 +24,8 @@ function getMobbexConfig() {
   const accessToken = process.env.MOBBEX_ACCESS_TOKEN;
 
   if (!apiKey || !accessToken) {
-    throw new Error(
-      '[mobbex] Faltan credenciales MOBBEX_API_KEY o MOBBEX_ACCESS_TOKEN en el entorno (.env backend).'
-    );
-  }
+    throw new Error(`[mobbex] API_KEY: ${apiKey ? 'SI' : 'NO'}, TOKEN: ${accessToken ? 'SI' : 'NO'}`);
+}
 
   const testFlag = String(process.env.MOBBEX_TEST_MODE ?? 'true').toLowerCase() === 'true';
 
