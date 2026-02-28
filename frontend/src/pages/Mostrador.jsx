@@ -90,6 +90,8 @@ export default function Mostrador() {
     active: { pedidos: [], cuentas: [] },
     history: { pedidos: [], cuentas: [] },
   });
+  /** documentIds confirmados como fantasma (404): no mostrarlos ni pitarlos nunca en esta sesión */
+  const phantomBlocklistRef = useRef(new Set());
   const audioCtxRef = useRef(null);            // beep
 
   const playBeep = () => {
@@ -379,10 +381,12 @@ export default function Mostrador() {
   const getPedidoApiId = (p) => (p && p.documentId) ? p.documentId : null;
   const isActive = (st) => !['served', 'paid'].includes(st);
 
-  /** Elimina un pedido del estado local cuando la API devuelve 404 (recurso borrado) */
+  /** Elimina un pedido del estado local cuando la API devuelve 404 (recurso borrado) y lo bloquea para siempre en esta sesión */
   const removePedidoFromState = (pedido) => {
     const key = keyOf(pedido);
+    const docId = pedido?.documentId ?? key;
     if (!key) return;
+    phantomBlocklistRef.current.add(String(docId));
     setPedidos((prev) => {
       const next = prev.filter((p) => keyOf(p) !== key);
       pedidosRef.current = next;
@@ -643,11 +647,13 @@ export default function Mostrador() {
 
       const res = await api.get(`/pedidos${listQS}`);
       let rawList = res?.data?.data ?? [];
-      // Solo ítems con documentId y sin duplicados (evitar pedidos fantasma no identificables)
+      const blocklist = phantomBlocklistRef.current;
+      // Excluir fantasmas bloqueados (404 previo) y duplicados; solo ítems con documentId
       const seenDocIds = new Set();
       rawList = rawList.filter((item) => {
         const docId = item?.documentId ?? item?.attributes?.documentId;
         if (!docId) return false;
+        if (blocklist.has(String(docId))) return false;
         if (seenDocIds.has(docId)) return false;
         seenDocIds.add(docId);
         return true;
@@ -721,9 +727,13 @@ export default function Mostrador() {
         pendingBeforeHistoryRef.current = new Set();
       }
 
-      // ---- avisos SOLO por pedidos nuevos (ID no visto) y que pasan el filtro de mesa
+      // ---- avisos SOLO por pedidos nuevos (no vistos, no fantasmas bloqueados) que pasan el filtro de mesa
       const nuevosVisibles = visibles.filter(
-        (p) => !seenIdsRef.current.has(p.id) && p.order_status === 'pending'
+        (p) =>
+          p?.documentId != null &&
+          !blocklist.has(String(p.documentId)) &&
+          !seenIdsRef.current.has(p.id) &&
+          p.order_status === 'pending'
       );
 
       const nuevosFiltrados = nuevosVisibles.filter(pedidoMatchesMesaPartial);
@@ -732,8 +742,8 @@ export default function Mostrador() {
         setSnack({ open: true, msg: `${nuevosFiltrados.length} pedido(s) nuevo(s)`, severity: 'info' });
         nuevosFiltrados.forEach((n) => triggerFlash(n.documentId));
       }
-      // sembrar vistos (en 1ª carga: todos, luego: sólo los nuevos)
-      const idsAAgregar = hasLoadedRef.current ? nuevosVisibles : visibles;
+      // sembrar vistos (en 1ª carga: todos, luego: sólo los nuevos); no sembrar fantasmas
+      const idsAAgregar = hasLoadedRef.current ? nuevosVisibles : visibles.filter((p) => !blocklist.has(String(p?.documentId ?? '')));
       idsAAgregar.forEach((p) => seenIdsRef.current.add(p.id));
 
       // guardar visibles (solo para mostrar en la lista de pedidos activos)
@@ -825,10 +835,9 @@ export default function Mostrador() {
 
   // ----- polling -----
   useEffect(() => {
-    seenIdsRef.current = new Set(); // reset de vistos al cambiar de restaurante
-    cachedViewsRef.current = {
-      active: { pedidos: [], cuentas: [] },
-    };
+    seenIdsRef.current = new Set();
+    cachedViewsRef.current = { active: { pedidos: [], cuentas: [] } };
+    phantomBlocklistRef.current = new Set(); // nueva sesión de restaurante = lista de bloqueo limpia
   }, [slug]);
 
   // Cargar mesas
