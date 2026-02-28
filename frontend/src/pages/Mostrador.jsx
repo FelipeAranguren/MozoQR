@@ -515,7 +515,7 @@ export default function Mostrador() {
 
     try {
       const qs =
-        `?publicationState=live` +
+        `?publicationState=preview` +
         `&fields[0]=id&fields[1]=documentId&fields[2]=order_status&fields[3]=customerNotes&fields[4]=total&fields[5]=createdAt&fields[6]=updatedAt` +
         `&populate[mesa_sesion][populate][mesa]=true` +
         `&populate[items][populate][product]=true`;
@@ -634,16 +634,14 @@ export default function Mostrador() {
       const listQS =
         `?filters[restaurante][slug][$eq]=${encodeURIComponent(slug)}` +
         statusFilter +
-        `&publicationState=live` +
+        `&publicationState=preview` +
         `&fields[0]=id&fields[1]=documentId&fields[2]=order_status&fields[3]=customerNotes&fields[4]=staffNotes&fields[5]=total&fields[6]=createdAt&fields[7]=updatedAt` +
         `&populate[mesa_sesion][populate][mesa]=true` +
         `&populate[items][populate][product]=true` +
         `&sort[0]=${encodeURIComponent(sort)}` +
         `&pagination[pageSize]=100`;
 
-      const res = await api.get(`/pedidos${listQS}`, {
-        headers: { 'Cache-Control': 'no-cache', Pragma: 'no-cache' },
-      });
+      const res = await api.get(`/pedidos${listQS}`);
       let rawList = res?.data?.data ?? [];
       // Unicidad por documentId: si el API devuelve duplicados, quedarse con uno
       const seenDocIds = new Set();

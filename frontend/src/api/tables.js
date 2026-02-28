@@ -221,7 +221,7 @@ export async function fetchActiveOrders(slug) {
 
   try {
     const res = await api.get(
-      `/pedidos?filters[restaurante][slug][$eq]=${slug}&filters[order_status][$ne]=paid&publicationState=live&populate[mesa_sesion][populate]=mesa&sort[0]=createdAt:desc&pagination[pageSize]=200`,
+      `/pedidos?filters[restaurante][slug][$eq]=${slug}&filters[order_status][$ne]=paid&publicationState=preview&populate[mesa_sesion][populate]=mesa&sort[0]=createdAt:desc&pagination[pageSize]=200`,
       { headers: noCacheHeaders }
     );
 
