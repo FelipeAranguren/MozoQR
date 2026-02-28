@@ -35,22 +35,33 @@ function getMobbexConfig() {
 async function callMobbexCheckout(body: MobbexCheckoutBody) {
   const { apiKey, accessToken } = getMobbexConfig();
 
-  console.log("Debug Mobbex - Key:", apiKey ? "Cargada" : "VACÍA");
-  console.log("Debug Mobbex - Token:", accessToken ? "Cargado" : "VACÍO");
+  // 1. Log de control de credenciales (Ya sabemos que están cargadas, pero sirve para re-confirmar)
+  console.log("--- INICIANDO CHECKOUT MOBBEX ---");
+  console.log("Debug Mobbex - Key:", apiKey ? "Cargada (OK)" : "VACÍA");
+  console.log("Debug Mobbex - Token:", accessToken ? "Cargado (OK)" : "VACÍO");
+
+  // 2. Log del Body que estás enviando (¡Muy importante para ver si hay algo mal formado!)
+  console.log("Debug Mobbex - Body enviado:", JSON.stringify(body, null, 2));
 
   const res = await fetch('https://api.mobbex.com/p/checkout', {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
-      'x-api-key': apiKey,
-      'x-access-token': accessToken,
+      'x-api-key': apiKey!,
+      'x-access-token': accessToken!,
     },
     body: JSON.stringify(body),
   });
 
   const data = (await res.json()) as any;
 
+  // 3. Log en caso de error de la API
   if (!res.ok) {
+    console.error("❌ ERROR EN LA RESPUESTA DE MOBBEX:");
+    console.error("Status Code:", res.status);
+    console.error("Detalle del Error:", JSON.stringify(data, null, 2)); 
+    console.log("---------------------------------");
+
     const msg =
       (data && (data.error || data.message || data.detail)) ||
       `Mobbex error HTTP ${res.status}`;
@@ -58,6 +69,11 @@ async function callMobbexCheckout(body: MobbexCheckoutBody) {
     (error as any).response = data;
     throw error;
   }
+
+  // 4. Log en caso de éxito
+  console.log("✅ CHECKOUT CREADO EXITOSAMENTE");
+  console.log("URL de Pago:", data?.data?.url || data?.url);
+  console.log("---------------------------------");
 
   return data;
 }
