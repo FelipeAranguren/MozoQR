@@ -48,8 +48,8 @@ async function callMobbexCheckout(body: MobbexCheckoutBody) {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'x-api-key': apiKey!,
-        'x-access-token': accessToken!,
+        'x-api-key': apiKey.trim(),
+        'x-access-token': accessToken.trim(),
       },
       body: JSON.stringify(body),
     });
