@@ -36,6 +36,9 @@ function getMobbexConfig() {
 async function callMobbexCheckout(body: MobbexCheckoutBody) {
   const { apiKey, accessToken } = getMobbexConfig();
 
+  console.log("Debug Mobbex - Key:", apiKey ? "Cargada" : "VACÍA");
+  console.log("Debug Mobbex - Token:", accessToken ? "Cargado" : "VACÍO");
+
   const res = await fetch('https://api.mobbex.com/p/checkout', {
     method: 'POST',
     headers: {
