@@ -643,11 +643,11 @@ export default function Mostrador() {
 
       const res = await api.get(`/pedidos${listQS}`);
       let rawList = res?.data?.data ?? [];
-      // Unicidad por documentId: si el API devuelve duplicados, quedarse con uno
+      // Solo ítems con documentId y sin duplicados (evitar pedidos fantasma no identificables)
       const seenDocIds = new Set();
       rawList = rawList.filter((item) => {
         const docId = item?.documentId ?? item?.attributes?.documentId;
-        if (!docId) return true;
+        if (!docId) return false;
         if (seenDocIds.has(docId)) return false;
         seenDocIds.add(docId);
         return true;
@@ -707,8 +707,11 @@ export default function Mostrador() {
 
       const ordenados = ordenarActivos(conItems);
 
+      // Solo pedidos con documentId (evitar fantasma que no se puede identificar en el API)
+      const conDocId = ordenados.filter((p) => p?.documentId != null);
+
       // visibles: activos + served (para mostrar en columnas Pendientes, Cocina y Listos)
-      const visibles = ordenados.filter((p) =>
+      const visibles = conDocId.filter((p) =>
         (isActive(p.order_status) || p.order_status === 'served') &&
         !servingIdsRef.current.has(p.id)
       );
@@ -737,14 +740,13 @@ export default function Mostrador() {
       pedidosRef.current = visibles;
       setPedidos(visibles);
 
-      // CRÍTICO: Guardar TODOS los pedidos sin pagar (incluyendo "served") para el estado de mesas
-      // Los pedidos "served" también deben considerarse para determinar si una mesa está ocupada
-      const todosLosPedidosSinPagar = conItems.filter((p) => p.order_status !== 'paid' && !isSystemOrder(p));
+      // CRÍTICO: Guardar TODOS los pedidos sin pagar (solo con documentId)
+      const todosLosPedidosSinPagar = conDocId.filter((p) => p.order_status !== 'paid' && !isSystemOrder(p));
       setTodosPedidosSinPagar(todosLosPedidosSinPagar);
 
-      // ---- agrupar cuentas (solo activas, excluyendo pedidos del sistema)
+      // ---- agrupar cuentas (solo pedidos con documentId, excluyendo sistema)
       const grupos = new Map();
-      ordenados.forEach((p) => {
+      conDocId.forEach((p) => {
         // Ignorar pedidos del sistema (llamar mozo / solicitud de cobro / asistencia)
         if (isSystemOrder(p)) return;
 
@@ -795,8 +797,22 @@ export default function Mostrador() {
       setCuentas(filtradas);
       setError(null);
       setLastUpdateAt(new Date());
+
+      // Revalidar en segundo plano: si algún pedido ya no existe en el API (404), quitarlo del estado
+      visibles.forEach((p) => {
+        const docId = p?.documentId;
+        if (!docId) return;
+        api.get(`/pedidos/${docId}?fields[0]=documentId`).catch((err) => {
+          if (err?.response?.status === 404) removePedidoFromState(p);
+        });
+      });
     } catch (err) {
       setError('No se pudieron cargar los pedidos.');
+      // Limpiar estado para no mostrar datos obsoletos o pedidos fantasma
+      pedidosRef.current = [];
+      setPedidos([]);
+      setTodosPedidosSinPagar([]);
+      updateCachedView([], []);
     }
   };
 
@@ -1425,12 +1441,12 @@ export default function Mostrador() {
   };
 
   useEffect(() => {
-    const cached = cachedViewsRef.current.active ?? { pedidos: [], cuentas: [] };
-    const nextPedidos = Array.isArray(cached.pedidos) ? [...cached.pedidos] : [];
-    const nextCuentas = Array.isArray(cached.cuentas) ? [...cached.cuentas] : [];
-    pedidosRef.current = nextPedidos;
-    setPedidos(nextPedidos);
-    setCuentas(nextCuentas);
+    // No restaurar desde caché: la única fuente de verdad es el API (evita pedidos fantasma)
+    pedidosRef.current = [];
+    setPedidos([]);
+    setCuentas([]);
+    setTodosPedidosSinPagar([]);
+    setActiveOrders([]);
     fetchPedidos();
     fetchMesas();
     fetchOpenSessions();
@@ -1442,6 +1458,19 @@ export default function Mostrador() {
       fetchActiveOrdersForTables();
     }, 10000);
     return () => clearInterval(interval);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [slug]);
+
+  // Revalidar al volver a la pestaña para evitar mostrar datos obsoletos o fantasma
+  useEffect(() => {
+    const handleVisibility = () => {
+      if (document.visibilityState === 'visible' && slug) {
+        fetchPedidos();
+        fetchActiveOrdersForTables();
+      }
+    };
+    document.addEventListener('visibilitychange', handleVisibility);
+    return () => document.removeEventListener('visibilitychange', handleVisibility);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [slug]);
 
