@@ -17,7 +17,6 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { useCart } from '../context/CartContext';
 import { createOrder, closeAccount, hasOpenAccount, fetchOrderDetails } from '../api/tenant';
 import { createMobbexCheckout } from '../api/payments';
-import QtyStepper from './QtyStepper';
 import PayWithMercadoPago from './PayWithMercadoPago';
 import { saveLastReceiptToStorage } from '../utils/receipt';
 
@@ -790,7 +789,9 @@ export default function StickyFooter({ table, tableSessionId, restaurantName }) 
                       display: 'flex',
                       alignItems: 'center',
                       justifyContent: 'space-between',
-                      p: 2,
+                      gap: 1.5,
+                      py: 1.5,
+                      px: 1.5,
                       mb: 1,
                       borderRadius: 2,
                       backgroundColor: (theme) =>
@@ -799,13 +800,6 @@ export default function StickyFooter({ table, tableSessionId, restaurantName }) 
                           : alpha(theme.palette.primary.main, 0.08),
                       border: '1px solid',
                       borderColor: 'divider',
-                      '&:hover': {
-                        backgroundColor: (theme) =>
-                          theme.palette.mode === 'light'
-                            ? alpha(theme.palette.primary.main, 0.05)
-                            : alpha(theme.palette.primary.main, 0.12),
-                      },
-                      transition: 'all 0.2s ease',
                     }}
                   >
                     <Box sx={{ flex: 1, minWidth: 0 }}>
@@ -813,54 +807,34 @@ export default function StickyFooter({ table, tableSessionId, restaurantName }) 
                         variant="subtitle1"
                         sx={{
                           fontWeight: 600,
-                          mb: 0.5,
                           fontSize: '1rem',
+                          lineHeight: 1.35,
                         }}
                       >
-                        {item.nombre}
+                        {item.qty}x {item.nombre}
                       </Typography>
-                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                        <Typography
-                          variant="body2"
-                          sx={{
-                            color: 'text.secondary',
-                            fontSize: '0.875rem',
-                          }}
-                        >
-                          {money(item.precio)} c/u
-                        </Typography>
-                        <Typography variant="body2" sx={{ color: 'text.secondary' }}>
-                          ×
-                        </Typography>
-                        <Typography
-                          variant="body2"
-                          sx={{
-                            fontWeight: 600,
-                            color: 'primary.main',
-                          }}
-                        >
-                          {item.qty}
-                        </Typography>
-                        <Typography
-                          variant="body2"
-                          sx={{
-                            fontWeight: 700,
-                            color: 'text.primary',
-                            ml: 'auto',
-                            fontSize: '1rem',
-                          }}
-                        >
-                          {money(item.precio * item.qty)}
-                        </Typography>
-                      </Box>
+                      <Typography
+                        variant="body2"
+                        sx={{
+                          color: 'text.secondary',
+                          fontSize: '0.8125rem',
+                          mt: 0.25,
+                        }}
+                      >
+                        {money(item.precio)} c/u
+                      </Typography>
                     </Box>
-                    <Box sx={{ ml: 2 }}>
-                      <QtyStepper
-                        value={item.qty}
-                        onAdd={() => addItem(item)}
-                        onSub={() => removeItem(item.id)}
-                      />
-                    </Box>
+                    <Typography
+                      variant="subtitle1"
+                      sx={{
+                        fontWeight: 700,
+                        color: 'text.primary',
+                        fontSize: '1rem',
+                        flexShrink: 0,
+                      }}
+                    >
+                      {money(item.precio * item.qty)}
+                    </Typography>
                   </Box>
                 </motion.div>
               ))}

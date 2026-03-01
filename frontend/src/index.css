@@ -8,6 +8,11 @@ html, body, #root {
   padding: 0;
 }
 
+/* Reservar espacio de la scrollbar para evitar salto al hacer hover en el menú de productos */
+html {
+  scrollbar-gutter: stable;
+}
+
 *,
 *::before,
 *::after {

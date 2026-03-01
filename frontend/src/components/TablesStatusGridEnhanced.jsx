@@ -277,7 +277,7 @@ export default function TablesStatusGridEnhanced({
             icon={<CleaningServicesIcon sx={{ fontSize: 18 }} />}
             label="Por limpiar"
             size="small"
-            sx={{ bgcolor: '#9c27b0', color: 'white', fontWeight: 600, fontSize: { xs: '0.75rem', sm: '0.8125rem' }, '& .MuiChip-label': { px: 0.75 } }}
+            sx={{ bgcolor: '#ff9800', color: 'white', fontWeight: 600, fontSize: { xs: '0.75rem', sm: '0.8125rem' }, '& .MuiChip-label': { px: 0.75 } }}
           />
           <Chip
             icon={<NotificationsActiveIcon sx={{ fontSize: 18 }} />}

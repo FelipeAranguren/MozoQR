@@ -986,7 +986,10 @@ export default function RestaurantMenu() {
             width: '100%',
             mt: searchQuery ? 2 : 0,
             overflowX: 'hidden',
-            px: { xs: 0, sm: 0.5 }, // Padding lateral para evitar que el sombreado se corte
+            overflowY: 'visible',
+            py: 0.5,
+            pb: 2,
+            px: { xs: 0, sm: 0.5 },
           }}
         >
           <AnimatePresence mode="wait">
@@ -1041,7 +1044,8 @@ export default function RestaurantMenu() {
                           gap: { xs: 1, sm: 1.25 },
                           p: { xs: 1.25, sm: 1.5 },
                           borderRadius: 4,
-                          mx: { xs: 0, sm: 0 }, // Margen horizontal para que el sombreado no se corte
+                          mx: { xs: 0, sm: 0 },
+                          boxSizing: 'border-box',
                           background:
                             theme.palette.mode === 'light'
                               ? `linear-gradient(180deg, ${theme.palette.common.white} 0%, ${alpha(
