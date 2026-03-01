@@ -79,6 +79,7 @@ export default function Mostrador() {
   const [receiptDialog, setReceiptDialog] = useState({ open: false, data: null });
   const [lastUpdateAt, setLastUpdateAt] = useState(null);
   const [refreshing, setRefreshing] = useState(false);
+  const [cocinandoInFlight, setCocinandoInFlight] = useState(() => new Set());
 
   // ----- refs auxiliares (SOLO AQUÍ ARRIBA; no dentro de funciones) -----
   const pedidosRef = useRef([]);
@@ -746,9 +747,21 @@ export default function Mostrador() {
       const idsAAgregar = hasLoadedRef.current ? nuevosVisibles : visibles.filter((p) => !blocklist.has(String(p?.documentId ?? '')));
       idsAAgregar.forEach((p) => seenIdsRef.current.add(p.id));
 
-      // guardar visibles (solo para mostrar en la lista de pedidos activos)
-      pedidosRef.current = visibles;
-      setPedidos(visibles);
+      // Guardar visibles sin sobrescribir actualizaciones optimistas (evita race con "Cocinar")
+      setPedidos((prev) => {
+        const prevByKey = new Map(prev.map((p) => [keyOf(p), p]));
+        const merged = visibles.map((v) => {
+          const key = keyOf(v);
+          const p = prevByKey.get(key);
+          if (p?.order_status === 'preparing' && v.order_status === 'pending') {
+            return { ...v, order_status: 'preparing' };
+          }
+          return v;
+        });
+        pedidosRef.current = merged;
+        updateCachedView(merged);
+        return merged;
+      });
 
       // CRÍTICO: Guardar TODOS los pedidos sin pagar (solo con documentId)
       const todosLosPedidosSinPagar = conDocId.filter((p) => p.order_status !== 'paid' && !isSystemOrder(p));
@@ -1565,15 +1578,13 @@ export default function Mostrador() {
   };
 
   const marcarComoRecibido = async (pedido) => {
-    // Evitar procesar el mismo pedido múltiples veces simultáneamente
     const pedidoKey = keyOf(pedido);
     const currentPedidos = pedidosRef.current;
     const currentPedido = currentPedidos.find(p => keyOf(p) === pedidoKey);
-    
-    // Si ya está en 'preparing', no hacer nada (evita duplicados)
-    if (currentPedido?.order_status === 'preparing') {
-      return;
-    }
+
+    if (currentPedido?.order_status === 'preparing') return;
+
+    setCocinandoInFlight((prev) => new Set(prev).add(pedidoKey));
 
     // Actualización optimista inmediata
     setPedidos((prev) => {
@@ -1584,24 +1595,34 @@ export default function Mostrador() {
       updateCachedView(next);
       return next;
     });
-    
+
     triggerFlash(pedido.documentId);
-    
-    // Actualizar en backend sin bloquear (ejecutar en background)
-    putEstado(pedido, 'preparing').catch((err) => {
-      // Si falla, revertir el estado
-      setError('No se pudo actualizar el pedido.');
-      setPedidos((prev) => {
-        const next = prev.map((p) =>
-          keyOf(p) === pedidoKey ? { ...p, order_status: 'pending' } : p
-        );
-        pedidosRef.current = next;
-        updateCachedView(next);
-        return next;
+
+    putEstado(pedido, 'preparing')
+      .then(() => {
+        setCocinandoInFlight((prev) => {
+          const next = new Set(prev);
+          next.delete(pedidoKey);
+          return next;
+        });
+      })
+      .catch((err) => {
+        setCocinandoInFlight((prev) => {
+          const next = new Set(prev);
+          next.delete(pedidoKey);
+          return next;
+        });
+        setError('No se pudo actualizar el pedido.');
+        setPedidos((prev) => {
+          const next = prev.map((p) =>
+            keyOf(p) === pedidoKey ? { ...p, order_status: 'pending' } : p
+          );
+          pedidosRef.current = next;
+          updateCachedView(next);
+          return next;
+        });
       });
-    });
-    
-    // Refrescar items en background sin bloquear
+
     refreshItemsDeBackground(pedido);
   };
 
@@ -2300,6 +2321,7 @@ export default function Mostrador() {
                   variant="contained"
                   color={order_status === 'pending' ? 'primary' : 'success'}
                   size="small"
+                  disabled={order_status === 'pending' && cocinandoInFlight.has(keyOf(pedido))}
                   onClick={(e) => {
                     e.stopPropagation();
                     if (order_status === 'pending') marcarComoRecibido(pedido);
@@ -2315,7 +2337,9 @@ export default function Mostrador() {
                     minHeight: 28,
                   }}
                 >
-                  {order_status === 'pending' ? 'Cocinar' : 'Completado'}
+                  {order_status === 'pending'
+                    ? (cocinandoInFlight.has(keyOf(pedido)) ? 'Enviando…' : 'Cocinar')
+                    : 'Completado'}
                 </Button>
               </>
             )}
