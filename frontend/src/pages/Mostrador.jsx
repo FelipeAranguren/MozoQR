@@ -2464,14 +2464,16 @@ export default function Mostrador() {
             )}
             <Box
               sx={{
-                display: 'grid',
-                gridTemplateColumns: { xs: 'repeat(2, 1fr)', sm: 'repeat(3, 1fr)' },
-                gap: 1.25,
-                alignContent: 'start',
+                columnCount: { xs: 1, sm: 2, lg: 3 },
+                columnGap: (theme) => theme.spacing(1.25),
+                '& > *': {
+                  breakInside: 'avoid',
+                  marginBottom: (theme) => theme.spacing(1.25),
+                },
               }}
             >
               {pedidosPendientes.map((pedido) => (
-                <Box key={pedido.documentId || pedido.id} sx={{ minHeight: 0, minWidth: 0 }}>
+                <Box key={pedido.documentId || pedido.id}>
                   {renderPedidoCard(pedido)}
                 </Box>
               ))}
@@ -2498,14 +2500,16 @@ export default function Mostrador() {
             )}
             <Box
               sx={{
-                display: 'grid',
-                gridTemplateColumns: { xs: 'repeat(2, 1fr)', sm: 'repeat(3, 1fr)' },
-                gap: 1.25,
-                alignContent: 'start',
+                columnCount: { xs: 1, sm: 2, lg: 3 },
+                columnGap: (theme) => theme.spacing(1.25),
+                '& > *': {
+                  breakInside: 'avoid',
+                  marginBottom: (theme) => theme.spacing(1.25),
+                },
               }}
             >
               {pedidosEnCocina.map((pedido) => (
-                <Box key={pedido.documentId || pedido.id} sx={{ minHeight: 0, minWidth: 0 }}>
+                <Box key={pedido.documentId || pedido.id}>
                   {renderPedidoCard(pedido)}
                 </Box>
               ))}
