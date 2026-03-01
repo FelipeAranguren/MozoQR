@@ -70,7 +70,7 @@ const clearOpenOrders = (slug, table) => {
   localStorage.removeItem(openOrdersKey(slug, table));
 };
 
-export default function StickyFooter({ table, tableSessionId, restaurantName }) {
+export default function StickyFooter({ table, tableSessionId, restaurantName, sessionReady = true }) {
   const { items, subtotal, addItem, removeItem, clearCart } = useCart();
   const { slug } = useParams();
   const navigate = useNavigate();
@@ -703,10 +703,12 @@ export default function StickyFooter({ table, tableSessionId, restaurantName }) 
             <Button
               variant="contained"
               size="large"
+              disabled={!sessionReady || !table || !tableSessionId}
               onClick={() => setConfirmOpen(true)}
+              title={!sessionReady ? 'Preparando mesa…' : undefined}
               sx={{ width: { xs: '100%', sm: 'auto' } }}
             >
-              Enviar pedido
+              {!sessionReady ? 'Preparando mesa…' : 'Enviar pedido'}
             </Button>
           </>
         )}
@@ -972,8 +974,8 @@ export default function StickyFooter({ table, tableSessionId, restaurantName }) 
           <Button
             variant="contained"
             onClick={handleSendOrder}
-            disabled={sending || items.length === 0 || !table || !tableSessionId}
-            title={!tableSessionId ? 'Esperando sesión de mesa…' : undefined}
+            disabled={sending || items.length === 0 || !table || !tableSessionId || !sessionReady}
+            title={!sessionReady ? 'Preparando mesa…' : !tableSessionId ? 'Esperando sesión de mesa…' : undefined}
             sx={{
               borderRadius: 2,
               textTransform: 'none',
@@ -985,7 +987,7 @@ export default function StickyFooter({ table, tableSessionId, restaurantName }) 
               },
             }}
           >
-            {sending ? 'Enviando…' : !tableSessionId ? 'Esperando sesión…' : 'Confirmar pedido'}
+            {sending ? 'Enviando…' : !sessionReady ? 'Preparando mesa…' : !tableSessionId ? 'Esperando sesión…' : 'Confirmar pedido'}
           </Button>
         </DialogActions>
       </Dialog>

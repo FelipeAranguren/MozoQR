@@ -87,6 +87,7 @@ export default function RestaurantMenu() {
   const [menuLoadError, setMenuLoadError] = useState(null);
   const [menuRetryKey, setMenuRetryKey] = useState(0);
   const [isTableValid, setIsTableValid] = useState(undefined); // undefined = chequeando, true = ok, false = no existe
+  const [sessionReady, setSessionReady] = useState(false); // true cuando openSession completó o no hay mesa
 
   const { items, addItem, removeItem } = useCart();
   const [changeTableDialog, setChangeTableDialog] = useState(false);
@@ -237,13 +238,19 @@ export default function RestaurantMenu() {
     };
   }, [slug, table]);
 
+  // Sin mesa no hay sesión que esperar
+  useEffect(() => {
+    if (!table || !slug) setSessionReady(true);
+    else setSessionReady(false);
+  }, [table, slug]);
+
   // Abrir sesión de mesa cuando el cliente entra (marca la mesa como ocupada)
-  // IMPORTANTE: Esto debe ejecutarse inmediatamente cuando se selecciona una mesa
+  // Solo habilitamos "Confirmar pedido" cuando openSession termina para evitar error "mesa no asociada"
   useEffect(() => {
     let cancelled = false;
 
     async function openTableSession(retryCount = 0) {
-      if (!table || !slug) return;
+      if (!table || !slug) return false;
       const maxRetries = 2;
 
       try {
@@ -253,9 +260,9 @@ export default function RestaurantMenu() {
         if (result?.status === 'ignored' || result?.status === 'partial') {
           console.warn(`[RestaurantMenu] ⚠️ Sesión para Mesa ${table} tuvo estado: ${result.status}`);
         }
+        return true;
       } catch (err) {
         if (err?.response?.status === 409) {
-          // Mesa ocupada: reintentar hasta maxRetries (puede ser race condition)
           if (retryCount < maxRetries) {
             console.warn(`[RestaurantMenu] Mesa ${table} ocupada (409), reintentando en 1.5s...`);
             await new Promise(r => setTimeout(r, 1500));
@@ -264,26 +271,26 @@ export default function RestaurantMenu() {
             console.warn(`[RestaurantMenu] No se pudo ocupar Mesa ${table} después de ${maxRetries + 1} intentos.`);
             navigate(`/${slug}/menu`);
           }
-          return;
+          return false;
         }
         if (err?.response?.status === 404) {
           console.warn(`[RestaurantMenu] Mesa ${table} no existe (404).`);
           navigate(`/${slug}/menu`);
-          return;
+          return false;
         }
-        // Otros errores: reintentar una vez
         console.error(`[RestaurantMenu] Error al abrir sesión Mesa ${table}:`, err?.response?.data || err?.message);
         if (retryCount < maxRetries && err?.response?.status !== 403) {
           await new Promise(r => setTimeout(r, 1500));
           if (!cancelled) return openTableSession(retryCount + 1);
         }
+        return false;
       }
     }
 
-    // Ejecutar inmediatamente cuando se selecciona una mesa (sin delay)
-    // Esto asegura que la mesa se marque como ocupada tan pronto como el cliente la selecciona
     if (table && slug) {
-      openTableSession();
+      openTableSession().then((ok) => {
+        if (!cancelled && ok) setSessionReady(true);
+      });
     }
 
     return () => {
@@ -658,7 +665,7 @@ export default function RestaurantMenu() {
             No se encontró el restaurante o no tiene productos disponibles.
           </Typography>
         )}
-        <StickyFooter table={table} tableSessionId={tableSessionId} restaurantName={nombreRestaurante} />
+        <StickyFooter table={table} tableSessionId={tableSessionId} restaurantName={nombreRestaurante} sessionReady={sessionReady} />
       </Container>
     );
   }
@@ -1233,7 +1240,7 @@ export default function RestaurantMenu() {
         <Box sx={{ height: { xs: 150, sm: 160 } }} />
 
         {/* Footer con resumen y confirmación */}
-        <StickyFooter table={table} tableSessionId={tableSessionId} restaurantName={nombreRestaurante} />
+        <StickyFooter table={table} tableSessionId={tableSessionId} restaurantName={nombreRestaurante} sessionReady={sessionReady} />
 
         {/* Diálogo confirmar cambiar mesa */}
         <Dialog open={changeTableDialog} onClose={() => setChangeTableDialog(false)} maxWidth="xs" fullWidth>
