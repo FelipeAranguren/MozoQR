@@ -1229,8 +1229,8 @@ export default function RestaurantMenu() {
           </AnimatePresence>
         </Box>
 
-        {/* Espacio en blanco para que el StickyFooter no tape productos */}
-        <Box sx={{ height: { xs: 120, sm: 140 } }} />
+        {/* Espacio en blanco para que el StickyFooter no tape productos al scrollear */}
+        <Box sx={{ height: { xs: 150, sm: 160 } }} />
 
         {/* Footer con resumen y confirmación */}
         <StickyFooter table={table} tableSessionId={tableSessionId} restaurantName={nombreRestaurante} />

@@ -322,9 +322,20 @@ export default function StickyFooter({ table, tableSessionId, restaurantName }) 
   const showOrderBtn = items.length > 0;
 
   // ---------- Enviar pedido ----------
+  const isSessionMesaError = (msg) =>
+    typeof msg === 'string' && (msg.includes('mesa asociada') || msg.includes('sesión no tiene mesa'));
+
   const handleSendOrder = async () => {
     if (!table) {
       setSnack({ open: true, msg: 'Falta el número de mesa (parámetro t).', severity: 'error' });
+      return;
+    }
+    if (!tableSessionId) {
+      setSnack({
+        open: true,
+        msg: 'Sincronizando con la mesa… Esperá un segundo y volvé a intentar.',
+        severity: 'warning',
+      });
       return;
     }
     try {
@@ -339,36 +350,53 @@ export default function StickyFooter({ table, tableSessionId, restaurantName }) 
 
       const namePart = customerName.trim() ? `Cliente: ${customerName.trim()}\n` : '';
       const trimmedNotes = namePart + orderNotes.trim();
-      const res = await createOrder(slug, {
-        table,
-        tableSessionId,
-        items: payloadItems,
-        notes: trimmedNotes,
-      });
+      const payload = { table, tableSessionId, items: payloadItems, notes: trimmedNotes };
 
-      const createdId =
-        res?.id ?? res?.data?.id ?? res?.data?.data?.id ?? res?.orderId ?? null;
-      const totalFromRes =
-        res?.total ??
-        res?.data?.total ??
-        res?.attributes?.total ??
-        res?.data?.attributes?.total ??
-        null;
+      const maxAttempts = 3;
+      const retryDelayMs = 500;
+      let lastErr = null;
 
-      // Si no viene total del backend, usamos el subtotal local del carrito
-      const recordedTotal = Number(totalFromRes ?? subtotal) || 0;
+      for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+        try {
+          const res = await createOrder(slug, payload);
 
-      // Guardamos en el storage local para poder mostrar el total acumulado al pagar
-      if (slug && table) {
-        const next = [...readOpenOrders(slug, table), { id: createdId, total: recordedTotal }];
-        setOpenOrders(next);
-        writeOpenOrders(slug, table, next);
+          const createdId =
+            res?.id ?? res?.data?.id ?? res?.data?.data?.id ?? res?.orderId ?? null;
+          const totalFromRes =
+            res?.total ??
+            res?.data?.total ??
+            res?.attributes?.total ??
+            res?.data?.attributes?.total ??
+            null;
+
+          const recordedTotal = Number(totalFromRes ?? subtotal) || 0;
+
+          if (slug && table) {
+            const next = [...readOpenOrders(slug, table), { id: createdId, total: recordedTotal }];
+            setOpenOrders(next);
+            writeOpenOrders(slug, table, next);
+          }
+
+          clearCart();
+          setSnack({ open: true, msg: 'Pedido enviado con éxito ✅', severity: 'success' });
+          setConfirmOpen(false);
+          setBackendHasAccount(true);
+          return;
+        } catch (err) {
+          lastErr = err;
+          const msg =
+            err?.response?.data?.error?.message ??
+            err?.message ??
+            '';
+          if (attempt < maxAttempts && isSessionMesaError(msg)) {
+            await new Promise((r) => setTimeout(r, retryDelayMs));
+            continue;
+          }
+          throw err;
+        }
       }
 
-      clearCart();
-      setSnack({ open: true, msg: 'Pedido enviado con éxito ✅', severity: 'success' });
-      setConfirmOpen(false);
-      setBackendHasAccount(true); // probablemente ahora haya cuenta abierta
+      throw lastErr;
     } catch (err) {
       console.error(err);
       const apiMsg =
@@ -378,7 +406,10 @@ export default function StickyFooter({ table, tableSessionId, restaurantName }) 
           : err?.response?.data?.message) ||
         err?.message ||
         'Error al enviar el pedido ❌';
-      setSnack({ open: true, msg: apiMsg, severity: 'error' });
+      const friendlyMsg = isSessionMesaError(apiMsg)
+        ? 'Sincronizando con la mesa… Por favor, esperá un segundo y volvé a intentar.'
+        : apiMsg;
+      setSnack({ open: true, msg: friendlyMsg, severity: 'error' });
     } finally {
       setSending(false);
     }
@@ -941,7 +972,8 @@ export default function StickyFooter({ table, tableSessionId, restaurantName }) 
           <Button
             variant="contained"
             onClick={handleSendOrder}
-            disabled={sending || items.length === 0}
+            disabled={sending || items.length === 0 || !table || !tableSessionId}
+            title={!tableSessionId ? 'Esperando sesión de mesa…' : undefined}
             sx={{
               borderRadius: 2,
               textTransform: 'none',
@@ -953,7 +985,7 @@ export default function StickyFooter({ table, tableSessionId, restaurantName }) 
               },
             }}
           >
-            {sending ? 'Enviando…' : 'Confirmar pedido'}
+            {sending ? 'Enviando…' : !tableSessionId ? 'Esperando sesión…' : 'Confirmar pedido'}
           </Button>
         </DialogActions>
       </Dialog>
