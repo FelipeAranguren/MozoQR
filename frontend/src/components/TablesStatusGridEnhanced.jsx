@@ -290,20 +290,17 @@ export default function TablesStatusGridEnhanced({
 
       <Box
         sx={{
-          // Contenedor para evitar scrollbars horizontales
-          overflowX: 'hidden',
           width: '100%',
-          // Prevenir que aparezcan scrollbars verticales que causen desplazamiento
-          overflowY: 'visible',
-          // Asegurar que el contenido no cause scrollbars
           maxWidth: '100%',
+          overflow: 'hidden',
+          py: 0.25,
+          px: 0.25,
         }}
       >
-        <Grid 
-          container 
+        <Grid
+          container
           spacing={2}
           sx={{
-            // Asegurar que el grid no cause scrollbars
             width: '100%',
             margin: 0,
           }}

@@ -1552,28 +1552,50 @@ export default function Mostrador() {
     const systemPedidos = mesa?.systemPedidos || [];
     if (!systemPedidos.length) return;
 
+    const systemKeys = new Set(systemPedidos.map((p) => keyOf(p)));
+
+    // Actualización optimista: la mesa deja de mostrar "Llamando" al instante
+    setPedidos((prev) => {
+      const next = prev.map((p) =>
+        systemKeys.has(keyOf(p)) ? { ...p, order_status: 'paid' } : p
+      );
+      pedidosRef.current = next;
+      updateCachedView(next);
+      return next;
+    });
+    setTableDetailDialog((prev) => ({
+      ...prev,
+      mesa: prev.mesa ? { ...prev.mesa, systemPedidos: [] } : prev.mesa,
+    }));
+    setSnack({
+      open: true,
+      msg: 'Llamada atendida.',
+      severity: 'success',
+    });
+
     try {
       await Promise.all(systemPedidos.map((p) => putEstado(p, 'paid')));
-      setSnack({
-        open: true,
-        msg: 'Llamada atendida. La mesa volverá a su estado normal en unos instantes.',
-        severity: 'success',
-      });
-      // Refrescar pedidos para que desaparezca el estado de llamada
-      fetchPedidos();
-      // Limpiar las llamadas del estado local del diálogo
-      setTableDetailDialog((prev) => ({
-        ...prev,
-        mesa: prev.mesa
-          ? { ...prev.mesa, systemPedidos: [] }
-          : prev.mesa,
-      }));
+      fetchPedidos(); // Sincronizar en background sin bloquear
     } catch (err) {
       setSnack({
         open: true,
         msg: 'No se pudo marcar la llamada como atendida. Intentá de nuevo.',
         severity: 'error',
       });
+      setPedidos((prev) => {
+        const next = prev.map((p) => {
+          if (!systemKeys.has(keyOf(p))) return p;
+          const orig = systemPedidos.find((sp) => keyOf(sp) === keyOf(p));
+          return orig ? { ...p, order_status: orig.order_status } : p;
+        });
+        pedidosRef.current = next;
+        updateCachedView(next);
+        return next;
+      });
+      setTableDetailDialog((prev) => ({
+        ...prev,
+        mesa: prev.mesa ? { ...prev.mesa, systemPedidos } : prev.mesa,
+      }));
     }
   };
 
