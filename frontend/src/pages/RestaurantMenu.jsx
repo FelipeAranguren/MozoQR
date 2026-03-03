@@ -245,18 +245,42 @@ export default function RestaurantMenu() {
     else setSessionReady(false);
   }, [table, slug]);
 
-  // Cuando el cliente abandona el menú (unmount de este componente),
-  // intentamos liberar la mesa si no tiene pedidos activos.
-  // El backend valida que no existan pedidos pendientes antes de liberar.
+  // Cuando el cliente abandona el menú, intentamos liberar la mesa si no tiene pedidos activos.
+  // Lo hacemos en 3 situaciones:
+  // - Unmount del componente (cambio de ruta interno)
+  // - beforeunload (cierre de pestaña/ventana o recarga)
+  // - visibilitychange → hidden (algunos navegadores matan la pestaña poco después)
   useEffect(() => {
     if (!slug || !table || !tableSessionId) return;
 
-    return () => {
+    const payload = { table, tableSessionId };
+
+    const tryRelease = () => {
       try {
-        releaseTableIfNoOrders(slug, { table, tableSessionId });
+        releaseTableIfNoOrders(slug, payload);
       } catch {
-        // best-effort: si falla, no rompemos la navegación del cliente
+        // best-effort: ignorar errores
       }
+    };
+
+    const handleBeforeUnload = () => {
+      tryRelease();
+    };
+
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'hidden') {
+        tryRelease();
+      }
+    };
+
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+
+    // También al hacer unmount normal del componente
+    return () => {
+      window.removeEventListener('beforeunload', handleBeforeUnload);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+      tryRelease();
     };
   }, [slug, table, tableSessionId]);
 

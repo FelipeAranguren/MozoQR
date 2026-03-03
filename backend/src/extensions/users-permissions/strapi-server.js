@@ -1,63 +1,71 @@
 'use strict';
 
 module.exports = (plugin) => {
-  const originalCallback = plugin.controllers?.auth?.callback;
+  const getAuthController = plugin.controllers.auth;
 
-  if (originalCallback) {
-    plugin.controllers.auth.callback = async (ctx, next) => {
-      strapi.log.info('[users-permissions] Callback extendido de Google ejecutándose...');
+  plugin.controllers.auth = ({ strapi }) => {
+    const auth = getAuthController({ strapi });
 
-      await originalCallback(ctx, next);
+    return {
+      ...auth,
 
-      try {
-        const user = ctx?.state?.user;
-        if (!user || user.provider !== 'google') return;
+      // Sobrescribimos solo el callback de proveedores (Google, etc.)
+      async callback(ctx, next) {
+        strapi.log.info('[users-permissions] Callback extendido de Google ejecutándose...');
 
-        const profile = ctx?.state?.oauth?.profile || ctx?.state?.profile || {};
+        // Ejecutar la lógica original de Strapi primero
+        await auth.callback(ctx, next);
 
-        strapi.log.info('[users-permissions] Estado después de callback Google', {
-          userId: user?.id,
-          username: user?.username,
-          email: user?.email,
-          profileKeys: profile ? Object.keys(profile) : [],
-        });
+        try {
+          const user = ctx?.state?.user;
+          if (!user || user.provider !== 'google') return;
 
-        const givenName =
-          profile.given_name || profile.givenName || profile.first_name || profile.firstName;
-        const familyName =
-          profile.family_name || profile.familyName || profile.last_name || profile.lastName;
-        const fullNameFromProfile =
-          profile.name || [givenName, familyName].filter(Boolean).join(' ').trim();
+          const profile = ctx?.state?.oauth?.profile || ctx?.state?.profile || {};
 
-        const fullname = fullNameFromProfile || user.username || user.email;
-        if (!fullname) return;
+          strapi.log.info('[users-permissions] Estado después de callback Google', {
+            userId: user?.id,
+            username: user?.username,
+            email: user?.email,
+            profileKeys: profile ? Object.keys(profile) : [],
+          });
 
-        const hasFullname =
-          typeof user.fullname === 'string' && user.fullname.trim().length > 0;
-        if (hasFullname) {
-          strapi.log.info(
-            `[users-permissions] fullname ya estaba definido para el usuario ${user.id}`,
+          const givenName =
+            profile.given_name || profile.givenName || profile.first_name || profile.firstName;
+          const familyName =
+            profile.family_name || profile.familyName || profile.last_name || profile.lastName;
+          const fullNameFromProfile =
+            profile.name || [givenName, familyName].filter(Boolean).join(' ').trim();
+
+          const fullname = fullNameFromProfile || user.username || user.email;
+          if (!fullname) return;
+
+          const hasFullname =
+            typeof user.fullname === 'string' && user.fullname.trim().length > 0;
+          if (hasFullname) {
+            strapi.log.info(
+              `[users-permissions] fullname ya estaba definido para el usuario ${user.id}`,
+            );
+            return;
+          }
+
+          const updated = await strapi
+            .query('plugin::users-permissions.user')
+            .update({ where: { id: user.id }, data: { fullname } });
+
+          if (updated) {
+            strapi.log.info(
+              `[users-permissions] fullname actualizado para el usuario ${user.id}: "${fullname}"`,
+            );
+            ctx.state.user = { ...user, fullname };
+          }
+        } catch (e) {
+          strapi.log.warn(
+            `[users-permissions] No se pudo actualizar fullname desde Google: ${e?.message}`,
           );
-          return;
         }
-
-        const updated = await strapi
-          .query('plugin::users-permissions.user')
-          .update({ where: { id: user.id }, data: { fullname } });
-
-        if (updated) {
-          strapi.log.info(
-            `[users-permissions] fullname actualizado para el usuario ${user.id}: "${fullname}"`,
-          );
-          ctx.state.user = { ...user, fullname };
-        }
-      } catch (e) {
-        strapi.log.warn(
-          `[users-permissions] No se pudo actualizar fullname desde Google: ${e?.message}`,
-        );
-      }
+      },
     };
-  }
+  };
 
   return plugin;
 };
