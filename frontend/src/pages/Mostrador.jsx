@@ -743,6 +743,26 @@ export default function Mostrador() {
         (isActive(p.order_status) || p.order_status === 'served') &&
         !servingIdsRef.current.has(p.id)
       );
+      // Revalidar ANTES de setPedidos: evitar que pedidos fantasma (404) se rendericen ni un frame
+      const revalidationResults = await Promise.all(
+        visibles.map(async (p) => {
+          const docId = p?.documentId;
+          if (!docId) return { docId: null, valid: true };
+          try {
+            await api.get(`/pedidos/${docId}?fields[0]=documentId`);
+            return { docId: String(docId), valid: true };
+          } catch (err) {
+            if (err?.response?.status === 404) {
+              blocklist.add(String(docId));
+              return { docId: String(docId), valid: false };
+            }
+            return { docId: String(docId), valid: true };
+          }
+        })
+      );
+      const docIds404 = new Set(revalidationResults.filter((r) => !r.valid && r.docId).map((r) => r.docId));
+      const visiblesValidados = visibles.filter((p) => !docIds404.has(String(p?.documentId ?? '')));
+      const conDocIdValidados = conDocId.filter((p) => !docIds404.has(String(p?.documentId ?? '')));
 
       if (pendingBeforeHistoryRef.current.size > 0) {
         pendingBeforeHistoryRef.current.forEach((id) => seenIdsRef.current.add(id));
@@ -750,7 +770,7 @@ export default function Mostrador() {
       }
 
       // ---- avisos SOLO por pedidos nuevos (no vistos, no fantasmas bloqueados) que pasan el filtro de mesa
-      const nuevosVisibles = visibles.filter(
+      const nuevosVisibles = visiblesValidados.filter(
         (p) =>
           p?.documentId != null &&
           !blocklist.has(String(p.documentId)) &&
@@ -765,13 +785,13 @@ export default function Mostrador() {
         nuevosFiltrados.forEach((n) => triggerFlash(n.documentId));
       }
       // sembrar vistos (en 1ª carga: todos, luego: sólo los nuevos); no sembrar fantasmas
-      const idsAAgregar = hasLoadedRef.current ? nuevosVisibles : visibles.filter((p) => !blocklist.has(String(p?.documentId ?? '')));
+      const idsAAgregar = hasLoadedRef.current ? nuevosVisibles : visiblesValidados.filter((p) => !blocklist.has(String(p?.documentId ?? '')));
       idsAAgregar.forEach((p) => seenIdsRef.current.add(p.id));
 
       // Guardar visibles sin sobrescribir actualizaciones optimistas (evita race con "Cocinar")
       setPedidos((prev) => {
         const prevByKey = new Map(prev.map((p) => [keyOf(p), p]));
-        const merged = visibles.map((v) => {
+        const merged = visiblesValidados.map((v) => {
           const key = keyOf(v);
           const p = prevByKey.get(key);
           if (p?.order_status === 'preparing' && v.order_status === 'pending') {
@@ -785,12 +805,12 @@ export default function Mostrador() {
       });
 
       // CRÍTICO: Guardar TODOS los pedidos sin pagar (solo con documentId)
-      const todosLosPedidosSinPagar = conDocId.filter((p) => p.order_status !== 'paid' && !isSystemOrder(p));
+      const todosLosPedidosSinPagar = conDocIdValidados.filter((p) => p.order_status !== 'paid' && !isSystemOrder(p));
       setTodosPedidosSinPagar(todosLosPedidosSinPagar);
 
       // ---- agrupar cuentas (solo pedidos con documentId, excluyendo sistema)
       const grupos = new Map();
-      conDocId.forEach((p) => {
+      conDocIdValidados.forEach((p) => {
         // Ignorar pedidos del sistema (llamar mozo / solicitud de cobro / asistencia)
         if (isSystemOrder(p)) return;
 
@@ -836,14 +856,14 @@ export default function Mostrador() {
         return am - bm;
       });
 
-      updateCachedView(visibles, filtradas);
+      updateCachedView(visiblesValidados, filtradas);
 
       setCuentas(filtradas);
       setError(null);
       setLastUpdateAt(new Date());
 
       // Revalidar en segundo plano: si algún pedido ya no existe en el API (404), quitarlo del estado
-      visibles.forEach((p) => {
+      visiblesValidados.forEach((p) => {
         const docId = p?.documentId;
         if (!docId) return;
         api.get(`/pedidos/${docId}?fields[0]=documentId`).catch((err) => {
@@ -2008,9 +2028,10 @@ export default function Mostrador() {
     (p?.documentId || p?.id != null) &&
     (p?.order_status != null && p?.order_status !== '');
 
-  // ---- memos de filtro ----
+  // ---- memos de filtro (fantasmas filtrados antes del DOM: blocklist + válidos + mesa) ----
   const pedidosFiltrados = useMemo(
     () => pedidos
+     .filter((p) => !phantomBlocklistRef.current.has(String(p?.documentId ?? '')))
       .filter((p) => isValidPedidoForDisplay(p)),
     [pedidos]
   );
@@ -2130,10 +2151,11 @@ export default function Mostrador() {
     [historyCuentasFiltradas]
   );
 
-  // Pedidos activos para el grid de mesas: misma fuente que Pendientes/Cocinando (evita que el círculo rojo no aparezca)
+  // Pedidos activos para el grid de mesas: misma fuente que Pendientes/Cocinando (excluir fantasmas)
   const ordersForGrid = useMemo(() => {
     const unpaid = pedidos.filter(
       (p) =>
+        !phantomBlocklistRef.current.has(String(p?.documentId ?? '')) &&
         !isSystemOrder(p) &&
         p.order_status !== 'paid' &&
         p.order_status !== 'cancelled'
@@ -2684,18 +2706,25 @@ export default function Mostrador() {
               sx={{
                 columnCount: { xs: 1, sm: 2, lg: 3 },
                 columnGap: (theme) => theme.spacing(1.25),
+                opacity: 1,
+                transition: 'opacity 0.15s ease-out',
                 '& > *': {
                   breakInside: 'avoid',
                   marginBottom: (theme) => theme.spacing(1.25),
                 },
               }}
             >
-              {pedidosPendientes.map((pedido) => (
-                <Box key={pedido.documentId || pedido.id}>
-                  {renderPedidoCard(pedido)}
-                </Box>
-              ))}
+              {pedidosPendientes.map((pedido) => {
+                if (!pedido?.documentId && pedido?.id == null) return null;
+                if (phantomBlocklistRef.current.has(String(pedido?.documentId ?? ''))) return null;
+                return (
+                  <Box key={pedido.documentId || pedido.id}>
+                    {renderPedidoCard(pedido)}
+                  </Box>
+                );
+              })}
             </Box>
+            
           </Grid>
 
           {/* Sección 2: Cocinando — 3 columnas de pedidos */}
@@ -2715,17 +2744,23 @@ export default function Mostrador() {
               sx={{
                 columnCount: { xs: 1, sm: 2, lg: 3 },
                 columnGap: (theme) => theme.spacing(1.25),
+                opacity: 1,
+                transition: 'opacity 0.15s ease-out',
                 '& > *': {
                   breakInside: 'avoid',
                   marginBottom: (theme) => theme.spacing(1.25),
                 },
               }}
             >
-              {pedidosEnCocina.map((pedido) => (
-                <Box key={pedido.documentId || pedido.id}>
-                  {renderPedidoCard(pedido)}
-                </Box>
-              ))}
+              {pedidosEnCocina.map((pedido) => {
+                if (!pedido?.documentId && pedido?.id == null) return null;
+                if (phantomBlocklistRef.current.has(String(pedido?.documentId ?? ''))) return null;
+                return (
+                  <Box key={pedido.documentId || pedido.id}>
+                    {renderPedidoCard(pedido)}
+                  </Box>
+                );
+              })}
             </Box>
           </Grid>
         </Grid>
