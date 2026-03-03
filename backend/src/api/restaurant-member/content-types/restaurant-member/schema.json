@@ -1,0 +1,39 @@
+{
+  "kind": "collectionType",
+  "collectionName": "restaurant_members",
+  "info": {
+    "singularName": "restaurant-member",
+    "pluralName": "restaurant-members",
+    "displayName": "restaurant_member"
+  },
+  "options": {
+    "draftAndPublish": true
+  },
+  "pluginOptions": {},
+  "attributes": {
+    "users_permissions_user": {
+      "type": "relation",
+      "relation": "manyToOne",
+      "target": "plugin::users-permissions.user",
+      "inversedBy": "restaurant_members"
+    },
+    "restaurante": {
+      "type": "relation",
+      "relation": "manyToOne",
+      "target": "api::restaurante.restaurante",
+      "inversedBy": "restaurant_members"
+    },
+    "role": {
+      "type": "enumeration",
+      "required": true,
+      "enum": [
+        "owner",
+        "staff"
+      ]
+    },
+    "active": {
+      "type": "boolean",
+      "default": true
+    }
+  }
+}

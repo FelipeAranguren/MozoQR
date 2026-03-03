@@ -1,0 +1,34 @@
+*** Begin Patch
+*** Update File: backend/src/api/pedido/controllers/scoped-orders.js
+@@
+ 'use strict';
+
++// Sanitizador mínimo anti-XSS para notas/comentarios (no toca lógica ni nombres)
++function sanitizeText(s) {
++  if (s == null) return s;
++  return String(s)
++    .replace(/&/g, '&amp;')
++    .replace(/</g, '&lt;')
++    .replace(/>/g, '&gt;')
++    .replace(/"/g, '&quot;');
++}
++
+@@
+-    const { table, tableSessionId, items, notes, clientRequestId } = payload;
++    const { table, tableSessionId, items, notes, clientRequestId } = payload;
+@@
+-      const note = it.notes || null;
++      const note = sanitizeText(it.notes || null);
+@@
+-    const created = await strapi.entityService.create('api::pedido.pedido', {
++    const created = await strapi.entityService.create('api::pedido.pedido', {
+       data: {
+         order_status: 'pending',
+         total: subtotal,
+-        customerNotes: notes || null,
++        customerNotes: sanitizeText(notes || null),
+         mesa_sesion: sesion.id,
+         restaurante: restauranteId,
+       },
+     });
+*** End Patch

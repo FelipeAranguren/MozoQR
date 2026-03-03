@@ -1,0 +1,69 @@
+{
+    "kind": "collectionType",
+    "collectionName": "subscriptions",
+    "info": {
+        "singularName": "subscription",
+        "pluralName": "subscriptions",
+        "displayName": "Subscription",
+        "description": "Modelo de suscripción avanzada para gestión SAAS"
+    },
+    "options": {
+        "draftAndPublish": false
+    },
+    "pluginOptions": {},
+    "attributes": {
+        "plan": {
+            "type": "enumeration",
+            "enum": [
+                "basic",
+                "pro",
+                "ultra",
+                "custom"
+            ],
+            "required": true
+        },
+        "status": {
+            "type": "enumeration",
+            "enum": [
+                "active",
+                "past_due",
+                "canceled",
+                "trial",
+                "expired"
+            ],
+            "default": "active",
+            "required": true
+        },
+        "startDate": {
+            "type": "datetime",
+            "required": true
+        },
+        "endDate": {
+            "type": "datetime"
+        },
+        "nextBillingDate": {
+            "type": "datetime"
+        },
+        "amount": {
+            "type": "decimal",
+            "scale": 2
+        },
+        "currency": {
+            "type": "string",
+            "default": "ARS"
+        },
+        "paymentMethod": {
+            "type": "string",
+            "default": "manual"
+        },
+        "metadata": {
+            "type": "json"
+        },
+        "restaurante": {
+            "type": "relation",
+            "relation": "manyToOne",
+            "target": "api::restaurante.restaurante",
+            "inversedBy": "subscriptions"
+        }
+    }
+}
