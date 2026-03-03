@@ -191,8 +191,10 @@ export default function TablesList() {
         </Typography>
       </Box>
 
-      {/* Loading state */}
-      {loading && (
+      {/* Loading state: solo mostrar el spinner cuando todavía no hay mesas cargadas.
+          Así evitamos que, en cada refresco automático, el indicador de carga
+          empuje visualmente las tarjetas de mesas hacia abajo. */}
+      {loading && tables.length === 0 && (
         <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', py: 4 }}>
           <CircularProgress sx={{ color: MARANA_COLORS.primary }} />
         </Box>

@@ -25,13 +25,19 @@ export default function LoginWithGoogleButton() {
     ? `${apiBase}/api/connect/google?prompt=select_account&callback=${encodeURIComponent(redirectPath)}`
     : `${apiBase}/api/connect/google?prompt=select_account`;
 
+  const isMobile = typeof window !== "undefined" && (window.innerWidth < 768 || /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent));
+
   const handleLogin = (e) => {
     e.preventDefault();
     // 🧹 Limpia cualquier sesión previa (DEV o social)
     localStorage.removeItem(LS_JWT_KEY);
     localStorage.removeItem(LS_USER_KEY);
-    // Redirige al flujo de OAuth
-    window.location.href = url;
+    // En móvil: abrir en nueva pestaña para que Google se vea a pantalla completa
+    if (isMobile) {
+      window.open(url, "_blank");
+    } else {
+      window.location.href = url;
+    }
   };
 
   return (

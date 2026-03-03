@@ -21,7 +21,12 @@ export default function GoogleRedirect() {
         const params = new URLSearchParams(window.location.search);
         const access_token = params.get("access_token");
         if (!access_token) {
-          window.location.replace("/login?error=missing_token");
+          if (window.opener) {
+            window.opener.location.href = "/login?error=missing_token";
+            window.close();
+          } else {
+            window.location.replace("/login?error=missing_token");
+          }
           return;
         }
 
@@ -52,7 +57,12 @@ export default function GoogleRedirect() {
           }
           if (!res.ok || !data?.jwt || !data?.user) {
             console.error("Callback Google inválido:", raw);
-            window.location.replace("/login?error=social");
+            if (window.opener) {
+              window.opener.location.href = "/login?error=social";
+              window.close();
+            } else {
+              window.location.replace("/login?error=social");
+            }
             return;
           }
         }
@@ -76,10 +86,21 @@ export default function GoogleRedirect() {
           login?.({ jwt: data.jwt, user: userWithAlias });
         } catch {}
 
+        // Si se abrió desde móvil en otra pestaña, redirigir la pestaña original y cerrar esta
+        if (typeof window !== "undefined" && window.opener) {
+          window.opener.location.href = "/";
+          window.close();
+          return;
+        }
         window.location.replace("/");
       } catch (e) {
         console.error(e);
-        window.location.replace("/login?error=social");
+        if (window.opener) {
+          window.opener.location.href = "/login?error=social";
+          window.close();
+        } else {
+          window.location.replace("/login?error=social");
+        }
       }
     })();
   }, [login]);
