@@ -91,5 +91,28 @@ export default {
       // Do not crash boot; log and continue (app can still run with legacy behavior).
       strapi?.log?.warn?.('[bootstrap] ⚠️ Could not auto-migrate columns: ' + (err?.message || err));
     }
+
+    // Cron: cerrar sesiones de mesa abiertas sin pedidos (mesa → disponible)
+    const CLEANUP_INTERVAL_MS = Math.max(60_000, Number(process.env.CLEANUP_EMPTY_SESSION_INTERVAL_MS) || 2 * 60 * 1000); // default 2 min
+    const { runCloseEmptyTableSessions } = await import('./cron/close-empty-table-sessions');
+    setTimeout(() => {
+      runCloseEmptyTableSessions(strapi)
+        .then(({ closed, errors }) => {
+          if (closed > 0 || errors > 0) {
+            strapi?.log?.info?.(`[bootstrap] Cron close-empty-sessions: closed=${closed}, errors=${errors}`);
+          }
+        })
+        .catch((e) => strapi?.log?.warn?.('[bootstrap] Cron close-empty-sessions error:', e?.message || e));
+    }, 15_000); // Primera ejecución a los 15 s
+    setInterval(() => {
+      runCloseEmptyTableSessions(strapi)
+        .then(({ closed, errors }) => {
+          if (closed > 0 || errors > 0) {
+            strapi?.log?.info?.(`[cron] close-empty-sessions: closed=${closed}, errors=${errors}`);
+          }
+        })
+        .catch((e) => strapi?.log?.warn?.('[cron] close-empty-sessions error:', e?.message || e));
+    }, CLEANUP_INTERVAL_MS);
+    strapi?.log?.info?.(`[bootstrap] ✅ Cron close-empty-sessions programado cada ${CLEANUP_INTERVAL_MS / 1000}s`);
   },
 };
