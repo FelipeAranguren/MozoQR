@@ -403,7 +403,18 @@ export default function Mostrador() {
   // ---- helpers
   const keyOf = (p) => p?.documentId || String(p?.id);
   /** Identificador exclusivo para rutas API de pedidos (Strapi v5: solo documentId) */
-  const getPedidoApiId = (p) => (p && p.documentId) ? p.documentId : null;
+  const getPedidoApiId = (p) => {
+    if (!p) return null;
+    if (p.documentId) return String(p.documentId);
+    if (p.id != null) return String(p.id);
+    return null;
+  };
+  const getPedidoApiCandidates = (p) => {
+    const out = [];
+    if (p?.documentId) out.push(String(p.documentId));
+    if (p?.id != null) out.push(String(p.id));
+    return Array.from(new Set(out.filter(Boolean)));
+  };
   const isActive = (st) => !['served', 'paid'].includes(st);
 
   /** Elimina un pedido del estado local cuando la API devuelve 404 (recurso borrado) y lo bloquea para siempre en esta sesión */
@@ -1202,18 +1213,35 @@ export default function Mostrador() {
         const resultados = await Promise.allSettled(
           pedidosConDocId.map(async (pedido) => {
             const raw = pedido.attributes || pedido;
-            const apiId = pedido.documentId ?? raw.documentId;
-            if (!apiId) return false;
-            try {
-              // En este backend /api/pedidos/:id soporta PUT (PATCH devuelve 405).
-              await api.put(`/pedidos/${apiId}`, { data: { order_status: 'paid' } });
-              return true;
-            } catch (err) {
-              if (err?.response?.status === 404) {
-                removePedidoFromState({ documentId: apiId, id: pedido.id ?? raw.id });
+            const candidates = Array.from(new Set([
+              pedido.documentId,
+              raw.documentId,
+              pedido.id,
+              raw.id,
+            ].filter(Boolean).map(String)));
+            if (!candidates.length) return false;
+
+            let success = false;
+            for (const apiId of candidates) {
+              try {
+                // En este backend /api/pedidos/:id soporta PUT (PATCH devuelve 405).
+                await api.put(`/pedidos/${apiId}`, { data: { order_status: 'paid' } });
+                success = true;
+                break;
+              } catch (err) {
+                if (err?.response?.status === 404) {
+                  continue; // intentar siguiente candidato
+                }
               }
-              return false;
             }
+            if (!success) {
+              const fallbackDoc = String(pedido.documentId ?? raw.documentId ?? '');
+              const fallbackId = pedido.id ?? raw.id;
+              if (fallbackDoc || fallbackId != null) {
+                removePedidoFromState({ documentId: fallbackDoc || null, id: fallbackId ?? null });
+              }
+            }
+            return success;
           })
         );
         pedidosMarcados = resultados.filter((r) => r.status === 'fulfilled' && r.value === true).length;
@@ -1473,9 +1501,10 @@ export default function Mostrador() {
       const orders = await fetchActiveOrders(slug);
       console.log('[Mostrador] fetchActiveOrdersForTables - Pedidos activos recibidos:', orders.length, orders);
       
-      // CRÍTICO: Filtrar pedidos cancelados - no deben contarse como activos
-      // Los pedidos cancelados no deben aparecer en el contador de pedidos activos de las mesas
-      const activeOrdersFiltered = orders.filter(order => order.order_status !== 'cancelled');
+      // CRÍTICO: contar solo estados realmente activos para evitar "mesa que se reocupa" por pedidos cerrados.
+      const activeOrdersFiltered = orders.filter((order) =>
+        ['pending', 'preparing', 'served'].includes(String(order?.order_status || '').toLowerCase())
+      );
       console.log('[Mostrador] fetchActiveOrdersForTables - Pedidos después de filtrar cancelados:', activeOrdersFiltered.length, activeOrdersFiltered);
       
       // Convertir a formato compatible con TablesStatusGridEnhanced
@@ -1539,29 +1568,46 @@ export default function Mostrador() {
 
   // ---- acciones ----
   const putEstado = async (pedido, estado) => {
-    const apiId = typeof pedido === 'object' ? getPedidoApiId(pedido) : (pedido != null ? String(pedido) : null);
+    const apiCandidates = typeof pedido === 'object'
+      ? getPedidoApiCandidates(pedido)
+      : (pedido != null ? [String(pedido)] : []);
     const itemIds =
       typeof pedido === 'object'
         ? (pedido?.items || []).map((it) => it?.id).filter(Boolean)
         : [];
 
-    if (apiId == null) throw new Error('Pedido sin id');
+    if (!apiCandidates.length) throw new Error('Pedido sin id');
 
-    try {
-      await api.patch(`/pedidos/${apiId}`, { data: { order_status: estado } });
-    } catch (err) {
-      if (err?.response?.status === 404) {
-        if (typeof pedido === 'object') removePedidoFromState(pedido);
+    let lastErr = null;
+    for (const apiId of apiCandidates) {
+      try {
+        await api.patch(`/pedidos/${apiId}`, { data: { order_status: estado } });
         return;
+      } catch (err) {
+        lastErr = err;
+        if (err?.response?.status === 404) {
+          // intentar próximo candidato (documentId/id)
+          continue;
+        }
+        if (err?.response?.status === 405) {
+          const data = { order_status: estado };
+          if (itemIds.length > 0) data.items = itemIds;
+          try {
+            await api.put(`/pedidos/${apiId}`, { data });
+            return;
+          } catch (putErr) {
+            lastErr = putErr;
+            if (putErr?.response?.status === 404) continue;
+            // para 400/otros, intentar siguiente candidato si existe
+            continue;
+          }
+        }
+        // Para otros errores intentar siguiente candidato si existe
+        continue;
       }
-      if (err?.response?.status === 405) {
-        const data = { order_status: estado };
-        if (itemIds.length > 0) data.items = itemIds;
-        await api.put(`/pedidos/${apiId}`, { data });
-        return;
-      }
-      throw err;
     }
+    if (typeof pedido === 'object') removePedidoFromState(pedido);
+    if (lastErr) throw lastErr;
   };
 
   const refreshItemsDe = async (pedido) => {
