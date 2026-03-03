@@ -862,7 +862,14 @@ export default function OwnerDashboard() {
         <>
           {/* ========== VISTA OPERATIVA ========== */}
           {/* KPIs mejorados */}
-          <Grid container spacing={2} sx={{ mb: 3 }}>
+          <Grid
+            container
+            spacing={2}
+            sx={{
+              mt: 4,
+              mb: 3,
+            }}
+          >
             <Grid item xs={12} sm={6} md={3}>
               <KpiCardEnhanced
                 title="Ingresos del Día"

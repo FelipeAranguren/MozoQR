@@ -762,85 +762,126 @@ export default function StickyFooter({ table, tableSessionId, restaurantName, se
           right: 0,
           p: 2,
           display: 'flex',
-          flexWrap: 'wrap',
-          alignItems: 'center',
-          gap: 2,
+          flexDirection: 'column',
+          gap: 1.5,
           bgcolor: 'background.paper',
           borderTop: 1,
           borderColor: 'divider',
           zIndex: 1300,
-          justifyContent: showOrderBtn ? 'flex-start' : 'flex-end',
         }}
       >
-        {table && (
-          <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, flexShrink: 0 }}>
-            <Chip label={`Mesa ${table}`} size="small" color="primary" variant="outlined" />
-            <Tooltip title="Copiar link de mesa">
-              <IconButton
-                size="small"
-                onClick={async () => {
-                  const url = `${window.location.origin}/${slug}/menu?t=${table}`;
-                  try {
-                    await navigator.clipboard.writeText(url);
-                    setSnack({ open: true, msg: 'Link copiado', severity: 'info' });
-                  } catch {
-                    setSnack({ open: true, msg: 'No se pudo copiar', severity: 'warning' });
-                  }
-                }}
-                aria-label="Copiar link de mesa"
-              >
-                <ContentCopyIcon sx={{ fontSize: 18 }} />
-              </IconButton>
-            </Tooltip>
-          </Box>
-        )}
-        {showOrderBtn && (
-          <>
-            <Typography variant="h6" sx={{ flex: 1 }}>
+        {/* Mesa + subtotal */}
+        <Box
+          sx={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            gap: 1,
+            flexWrap: 'wrap',
+          }}
+        >
+          {table && (
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, flexShrink: 0 }}>
+              <Chip label={`Mesa ${table}`} size="small" color="primary" variant="outlined" />
+              <Tooltip title="Copiar link de mesa">
+                <IconButton
+                  size="small"
+                  onClick={async () => {
+                    const url = `${window.location.origin}/${slug}/menu?t=${table}`;
+                    try {
+                      await navigator.clipboard.writeText(url);
+                      setSnack({ open: true, msg: 'Link copiado', severity: 'info' });
+                    } catch {
+                      setSnack({ open: true, msg: 'No se pudo copiar', severity: 'warning' });
+                    }
+                  }}
+                  aria-label="Copiar link de mesa"
+                >
+                  <ContentCopyIcon sx={{ fontSize: 18 }} />
+                </IconButton>
+              </Tooltip>
+            </Box>
+          )}
+          {showOrderBtn && (
+            <Typography
+              variant="subtitle1"
+              sx={{
+                fontWeight: 600,
+                marginLeft: 'auto',
+              }}
+            >
               Subtotal: {money(subtotal)}
             </Typography>
+          )}
+        </Box>
+
+        {/* Botones de acción: Enviar pedido / Mozo / Ver cuenta */}
+        <Box
+          sx={{
+            display: 'flex',
+            width: '100%',
+            gap: 1,
+          }}
+        >
+          {showOrderBtn && (
             <Button
+              fullWidth
               variant="contained"
-              size="large"
               disabled={!sessionReady || !table || !tableSessionId}
               onClick={() => setConfirmOpen(true)}
               title={!sessionReady ? 'Preparando mesa…' : undefined}
-              sx={{ width: { xs: '100%', sm: 'auto' } }}
+              sx={{
+                borderRadius: 2,
+                textTransform: 'none',
+                minHeight: 44,
+                fontSize: { xs: '0.8rem', sm: '0.9rem' },
+                px: 1,
+              }}
             >
               {!sessionReady ? 'Preparando mesa…' : 'Enviar pedido'}
             </Button>
-          </>
-        )}
+          )}
 
-        {/* Botón Llamar Mozo */}
-        <Button
-          variant="outlined"
-          color="warning"
-          onClick={() => setCallWaiterOpen(true)}
-          startIcon={<RoomServiceIcon />}
-          sx={{
-            borderColor: 'warning.main',
-            color: 'warning.main',
-            '&:hover': {
-              borderColor: 'warning.dark',
-              bgcolor: (theme) => alpha(theme.palette.warning.main, 0.05),
-            },
-            width: { xs: '100%', sm: 'auto' }
-          }}
-        >
-          Mozo
-        </Button>
-
-        {backendHasAccount && (
           <Button
+            fullWidth
             variant="outlined"
-            size="large"
-            onClick={() => setPayOpen(true)}
-            sx={{ width: { xs: '100%', sm: 'auto' } }}
+            color="warning"
+            onClick={() => setCallWaiterOpen(true)}
+            startIcon={<RoomServiceIcon />}
+            sx={{
+              borderRadius: 2,
+              textTransform: 'none',
+              minHeight: 44,
+              fontSize: { xs: '0.8rem', sm: '0.9rem' },
+              px: 1,
+              borderColor: 'warning.main',
+              color: 'warning.main',
+              '&:hover': {
+                borderColor: 'warning.dark',
+                bgcolor: (theme) => alpha(theme.palette.warning.main, 0.05),
+              },
+            }}
           >
-            Ver Cuenta
+            Mozo
           </Button>
-        )}
+
+          {backendHasAccount && (
+            <Button
+              fullWidth
+              variant="outlined"
+              onClick={() => setPayOpen(true)}
+              sx={{
+                borderRadius: 2,
+                textTransform: 'none',
+                minHeight: 44,
+                fontSize: { xs: '0.8rem', sm: '0.9rem' },
+                px: 1,
+              }}
+            >
+              Ver Cuenta
+            </Button>
+          )}
+        </Box>
       </Paper>
 
       {/* Diálogo Confirmar Llamar Mozo */}
@@ -1243,7 +1284,7 @@ export default function StickyFooter({ table, tableSessionId, restaurantName, se
                       setTipAmount(0);
                       setTipPercentage(0);
                     }}
-                    sx={{ textTransform: 'none', mt: 1 }}
+                    sx={{ textTransform: 'none', mt: 0.5 }}
                   >
                     Cancelar
                   </Button>
