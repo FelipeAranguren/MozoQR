@@ -1074,7 +1074,8 @@ export default function StickyFooter({ table, tableSessionId, restaurantName, se
         </DialogContent>
         <DialogActions
           sx={{
-            display: { xs: 'none', sm: 'flex' },
+            display: 'flex',
+            flexWrap: { xs: 'wrap', sm: 'nowrap' },
             p: 2,
             gap: 1,
             borderTop: 1,
@@ -1090,11 +1091,12 @@ export default function StickyFooter({ table, tableSessionId, restaurantName, se
               borderRadius: 2,
               textTransform: 'none',
               px: 3,
+              flex: { xs: '1 1 100%', sm: '0 0 auto' },
             }}
           >
             Cancelar
           </Button>
-          <Box sx={{ flex: 1 }} />
+          <Box sx={{ flex: 1, display: { xs: 'none', sm: 'block' } }} />
           <Button
             onClick={() => {
               if (window.confirm('¿Vaciar el carrito?')) {
@@ -1108,6 +1110,10 @@ export default function StickyFooter({ table, tableSessionId, restaurantName, se
               borderRadius: 2,
               textTransform: 'none',
               color: 'text.secondary',
+              flex: {
+                xs: '1 1 calc(50% - 0.5rem)',
+                sm: '0 0 auto',
+              },
             }}
           >
             Vaciar carrito
@@ -1123,6 +1129,10 @@ export default function StickyFooter({ table, tableSessionId, restaurantName, se
               px: 4,
               fontWeight: 600,
               boxShadow: 3,
+              flex: {
+                xs: '1 1 calc(50% - 0.5rem)',
+                sm: '0 0 auto',
+              },
               '&:hover': {
                 boxShadow: 5,
               },
