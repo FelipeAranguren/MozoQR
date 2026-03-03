@@ -3,7 +3,6 @@ import React, { useEffect, useMemo, useState, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { Box, Grid, Typography, Button, ToggleButtonGroup, ToggleButton, Chip } from '@mui/material';
 import SalesByDayChart from '../components/SalesByDayChart';
-import OwnerSuccessScore from '../components/OwnerSuccessScore';
 import KpiCardEnhanced from '../components/KpiCardEnhanced';
 import PlanGate from '../components/PlanGate';
 import HealthCheckPanel from '../components/HealthCheckPanel';
@@ -17,7 +16,7 @@ import ExecutiveCharts from '../components/ExecutiveCharts';
 import ExecutiveSummary from '../components/ExecutiveSummary';
 import { useRestaurantPlan } from '../hooks/useRestaurantPlan';
 import { useViewMode } from '../hooks/useViewMode';
-import { calculateSuccessScore, calculateTodayVsYesterday, calculateSalesTrend } from '../utils/dashboardMetrics';
+import { calculateTodayVsYesterday, calculateSalesTrend } from '../utils/dashboardMetrics';
 import {
   getPaidOrders,
   getTotalOrdersCount,
@@ -341,7 +340,7 @@ export default function OwnerDashboard() {
   const [tables, setTables] = useState([]);
   const [activeOrders, setActiveOrders] = useState([]);
 
-  // Métricas para Success Score
+  // Métricas para Health Check
   const [restaurantMetrics, setRestaurantMetrics] = useState({
     productsWithoutImage: 0,
     totalProducts: 0,
@@ -625,22 +624,6 @@ export default function OwnerDashboard() {
     };
   }, [periodOrders, periodTotal, invoices, ordersToday, ordersYesterday]);
 
-  // Calcular Success Score
-  const successScoreData = useMemo(() => {
-    // Asegurar que siempre tengamos valores por defecto
-    const metrics = {
-      productsWithoutImage: restaurantMetrics.productsWithoutImage || 0,
-      totalProducts: restaurantMetrics.totalProducts || 0,
-      outdatedPrices: restaurantMetrics.outdatedPrices || 0,
-      missingTables: restaurantMetrics.missingTables || 0,
-      totalTables: restaurantMetrics.totalTables || 0,
-      hasLogo: restaurantMetrics.hasLogo || false,
-      totalCategories: restaurantMetrics.totalCategories || 0,
-      hasCategories: (restaurantMetrics.totalCategories || 0) > 0
-    };
-    return calculateSuccessScore(metrics);
-  }, [restaurantMetrics]);
-
   const filteredInvoices = useMemo(() => {
     return invoices.filter(inv => {
       const q = (filters.query || '').toLowerCase();
@@ -878,15 +861,6 @@ export default function OwnerDashboard() {
       {isOperativa ? (
         <>
           {/* ========== VISTA OPERATIVA ========== */}
-          {/* Owner Success Score */}
-          <Box sx={{ mb: 3 }}>
-            <OwnerSuccessScore
-              score={successScoreData?.score ?? 100}
-              alerts={successScoreData?.alerts ?? []}
-              metrics={successScoreData?.metrics ?? {}}
-            />
-          </Box>
-
           {/* KPIs mejorados */}
           <Grid container spacing={2} sx={{ mb: 3 }}>
             <Grid item xs={12} sm={6} md={3}>

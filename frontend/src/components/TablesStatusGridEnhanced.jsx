@@ -285,6 +285,12 @@ export default function TablesStatusGridEnhanced({
             size="small"
             sx={{ bgcolor: '#ff1744', color: 'white', fontWeight: 600, fontSize: { xs: '0.75rem', sm: '0.8125rem' }, '& .MuiChip-label': { px: 0.75 } }}
           />
+          <Chip
+            icon={<AccountBalanceWalletIcon sx={{ fontSize: 18 }} />}
+            label="Solicita pago"
+            size="small"
+            sx={{ bgcolor: '#9c27b0', color: 'white', fontWeight: 600, fontSize: { xs: '0.75rem', sm: '0.8125rem' }, '& .MuiChip-label': { px: 0.75 } }}
+          />
         </Box>
       </Box>
 

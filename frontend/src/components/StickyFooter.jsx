@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import {
   Paper, Typography, Button, Dialog, DialogTitle, DialogContent,
   DialogActions, List, ListItem, ListItemText, Box, Snackbar, Alert,
@@ -17,8 +17,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useCart } from '../context/CartContext';
 import { createOrder, closeAccount, hasOpenAccount, fetchOrderDetails } from '../api/tenant';
-import { createMobbexCheckout } from '../api/payments';
-import PayWithMercadoPago from './PayWithMercadoPago';
+import { createMobbexCheckout, createMpPreference } from '../api/payments';
 import { saveLastReceiptToStorage } from '../utils/receipt';
 
 const money = (n) =>
@@ -86,7 +85,7 @@ export default function StickyFooter({ table, tableSessionId, restaurantName, se
   const [callWaiterOpen, setCallWaiterOpen] = useState(false);
 
   const [payOpen, setPayOpen] = useState(false);
-  const [payMethod, setPayMethod] = useState('mp'); // 'mp' | 'card' | 'cash' — Mercado Pago por defecto
+  const [payMethod, setPayMethod] = useState(null); // 'card' | 'cash' — ningún método seleccionado por defecto
   const [payLoading, setPayLoading] = useState(false);
   const [payRequestSent, setPayRequestSent] = useState(false); // Prevenir múltiples solicitudes
   const [card, setCard] = useState({ number: '', expiry: '', cvv: '', name: '' });
@@ -101,6 +100,8 @@ export default function StickyFooter({ table, tableSessionId, restaurantName, se
   const [validatingCoupon, setValidatingCoupon] = useState(false);
   const [showMobileCoupon, setShowMobileCoupon] = useState(false);
   const [mobilePayStep, setMobilePayStep] = useState(1);
+
+  const cardOptionsRef = useRef(null);
 
   const [snack, setSnack] = useState({ open: false, msg: '', severity: 'success' });
 
@@ -255,7 +256,7 @@ export default function StickyFooter({ table, tableSessionId, restaurantName, se
       setOrderDetails([]);
       setTipAmount(0);
       setTipPercentage(0);
-      setPayMethod('mp');
+      setPayMethod(null);
       setCouponCode('');
       setCouponDiscount(null);
       setPayRequestSent(false);
@@ -304,6 +305,12 @@ export default function StickyFooter({ table, tableSessionId, restaurantName, se
     const total = Math.max(0, subtotal - discount + tipAmount);
     const restaurant = { name: restaurantName || slug || 'Restaurante' };
     const receiptItems = items.length > 0 ? items : [{ name: 'Cuenta', quantity: 1, unitPrice: total, totalPrice: total }];
+    const effectiveMethod =
+      payMethod === 'card'
+        ? 'Tarjeta'
+        : payMethod === 'cash'
+          ? 'Efectivo'
+          : 'Sin método seleccionado';
     const payload = {
       restaurant,
       slug,
@@ -314,7 +321,7 @@ export default function StickyFooter({ table, tableSessionId, restaurantName, se
       tipAmount: tipAmount || 0,
       total,
       paidAt: new Date().toISOString(),
-      paymentMethod: payMethod === 'mp' ? 'Mercado Pago' : payMethod === 'card' ? 'Tarjeta' : 'Efectivo',
+      paymentMethod: effectiveMethod,
     };
     saveLastReceiptToStorage(payload);
   };
@@ -462,6 +469,83 @@ export default function StickyFooter({ table, tableSessionId, restaurantName, se
     }
   };
 
+  const handlePayWithMercadoPago = async () => {
+    try {
+      setPayLoading(true);
+
+      // Guardar recibo localmente antes de redirigir
+      let itemsForReceipt = (orderDetails || []).flatMap((o) =>
+        (o.items || []).map((it) => ({
+          name: it.name,
+          quantity: it.quantity,
+          unitPrice: it.unitPrice,
+          totalPrice: it.totalPrice ?? it.unitPrice * it.quantity,
+        }))
+      );
+      if (itemsForReceipt.length === 0 && openOrders?.length > 0) {
+        itemsForReceipt = openOrders.map((o, i) => ({
+          name: `Pedido #${o.id || i + 1}`,
+          quantity: 1,
+          unitPrice: Number(o.total) || 0,
+          totalPrice: Number(o.total) || 0,
+        }));
+      }
+      const subtotalFromItems = itemsForReceipt.reduce((s, it) => s + (Number(it.totalPrice) || 0), 0);
+      const subtotalBase = subtotalFromItems > 0 ? subtotalFromItems : accountTotal;
+      const discountBase = couponDiscount
+        ? couponDiscount.type === 'percent'
+          ? subtotalBase * (couponDiscount.value / 100)
+          : Math.min(couponDiscount.value, subtotalBase)
+        : 0;
+      const totalBase = Math.max(0, subtotalBase - discountBase + tipAmount);
+      const restaurantBase = { name: restaurantName || slug || 'Restaurante' };
+      const receiptItemsBase =
+        itemsForReceipt.length > 0
+          ? itemsForReceipt
+          : [{ name: 'Cuenta', quantity: 1, unitPrice: totalBase, totalPrice: totalBase }];
+
+      saveLastReceiptToStorage({
+        restaurant: restaurantBase,
+        slug,
+        mesaNumber: table,
+        items: receiptItemsBase,
+        subtotal: subtotalBase,
+        discount: discountBase,
+        tipAmount: tipAmount || 0,
+        total: totalBase,
+        paidAt: new Date().toISOString(),
+        paymentMethod: 'Mercado Pago',
+      });
+
+      const data = await createMpPreference({
+        orderId: lastOrderId,
+        amount: totalBase,
+        slug,
+      });
+
+      const url = data?.init_point;
+      if (!url || typeof url !== 'string') {
+        throw new Error('No se recibió el enlace de pago de Mercado Pago.');
+      }
+
+      window.location.href = url;
+    } catch (err) {
+      console.error(err);
+      const msg =
+        err?.message ||
+        'No se pudo iniciar el pago con Mercado Pago. Intentá de nuevo.';
+      setSnack({ open: true, msg, severity: 'error' });
+    } finally {
+      setPayLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    if (payMethod === 'card' && cardOptionsRef.current && isMobile) {
+      cardOptionsRef.current.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+  }, [payMethod, isMobile]);
+
   // ---------- Inputs de tarjeta ----------
   const handleCardNumber = (e) => {
     const v = e.target.value.replace(/\D/g, '').slice(0, 16);
@@ -532,6 +616,14 @@ export default function StickyFooter({ table, tableSessionId, restaurantName, se
 
   // ---------- Pagar cuenta ----------
   const handlePay = async () => {
+    if (!payMethod) {
+      setSnack({
+        open: true,
+        msg: 'Seleccioná un método de pago.',
+        severity: 'warning',
+      });
+      return;
+    }
     // Si es Mercado Pago, ya maneja su propio flujo (Wallet / Brick)
     if (payMethod === 'mp') {
       return;
@@ -633,7 +725,7 @@ export default function StickyFooter({ table, tableSessionId, restaurantName, se
           // No cerramos la cuenta localmente ni en backend, esperamos al mozo.
           setPayOpen(false);
           // Resetear form
-          setPayMethod('mp');
+          setPayMethod(null);
           setPayRequestSent(false); // Resetear después de un delay
           setTimeout(() => setPayRequestSent(false), 5000); // Permitir nueva solicitud después de 5 segundos
 
@@ -1145,13 +1237,38 @@ export default function StickyFooter({ table, tableSessionId, restaurantName, se
                     Método de pago
                   </Typography>
                   <Box sx={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 1 }}>
-                    <Button size="small" variant={payMethod === 'mp' ? 'contained' : 'outlined'} onClick={() => setPayMethod('mp')} sx={{ textTransform: 'none' }}>MP</Button>
-                    <Button size="small" variant={payMethod === 'card' ? 'contained' : 'outlined'} onClick={() => setPayMethod('card')} sx={{ textTransform: 'none' }}>Tarjeta</Button>
-                    <Button size="small" variant={payMethod === 'cash' ? 'contained' : 'outlined'} onClick={() => setPayMethod('cash')} sx={{ textTransform: 'none' }}>Efectivo</Button>
+                    <Button
+                      size="small"
+                      variant="outlined"
+                      onClick={handlePayWithMercadoPago}
+                      disabled={payLoading}
+                      sx={{ textTransform: 'none' }}
+                    >
+                      MP
+                    </Button>
+                    <Button
+                      size="small"
+                      variant={payMethod === 'card' ? 'contained' : 'outlined'}
+                      onClick={() => setPayMethod('card')}
+                      sx={{ textTransform: 'none' }}
+                    >
+                      Tarjeta
+                    </Button>
+                    <Button
+                      size="small"
+                      variant={payMethod === 'cash' ? 'contained' : 'outlined'}
+                      onClick={() => setPayMethod('cash')}
+                      sx={{ textTransform: 'none' }}
+                    >
+                      Efectivo
+                    </Button>
                   </Box>
 
                   {payMethod === 'card' && (
-                    <Box sx={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 1 }}>
+                    <Box
+                      sx={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 1 }}
+                      ref={cardOptionsRef}
+                    >
                       <Button variant={cardType === 'credit' ? 'contained' : 'outlined'} onClick={() => setCardType('credit')} sx={{ textTransform: 'none' }}>
                         Crédito
                       </Button>
@@ -1159,17 +1276,6 @@ export default function StickyFooter({ table, tableSessionId, restaurantName, se
                         Débito
                       </Button>
                     </Box>
-                  )}
-
-                  {payMethod === 'mp' && (
-                    <PayWithMercadoPago
-                      orderId={lastOrderId}
-                      amount={totalWithTip}
-                      slug={slug}
-                      onBeforePay={saveReceiptForDownload}
-                      label={`Pagar ${money(totalWithTip)}`}
-                      fullWidth
-                    />
                   )}
 
                   {payMethod === 'cash' && (
@@ -1190,8 +1296,8 @@ export default function StickyFooter({ table, tableSessionId, restaurantName, se
                         payLoading ||
                         payRequestSent ||
                         (orderDetails.length === 0 && accountTotal === 0) ||
-                        (payMethod === 'card' && !cardType) ||
-                        payMethod === 'mp'
+                        !payMethod ||
+                        (payMethod === 'card' && !cardType)
                       }
                       sx={{ textTransform: 'none' }}
                     >
@@ -1557,18 +1663,18 @@ export default function StickyFooter({ table, tableSessionId, restaurantName, se
             <Box sx={{ display: 'flex', gap: 1, mb: 2, flexDirection: { xs: 'column', sm: 'row' } }}>
               <Button
                 fullWidth
-                variant={payMethod === 'mp' ? 'contained' : 'outlined'}
+                variant="outlined"
                 startIcon={<AttachMoneyIcon />}
-                onClick={() => setPayMethod('mp')}
+                onClick={handlePayWithMercadoPago}
+                disabled={payLoading}
                 sx={{
                   borderRadius: 2,
                   textTransform: 'none',
                   py: 1.5,
-                  bgcolor: payMethod === 'mp' ? '#2196F3' : undefined,
-                  color: payMethod === 'mp' ? 'white' : '#2196F3',
+                  color: '#2196F3',
                   borderColor: '#2196F3',
                   '&:hover': {
-                    bgcolor: payMethod === 'mp' ? '#0b7dda' : alpha('#2196F3', 0.1),
+                    bgcolor: alpha('#2196F3', 0.1),
                     borderColor: '#0b7dda',
                   },
                 }}
@@ -1619,7 +1725,7 @@ export default function StickyFooter({ table, tableSessionId, restaurantName, se
 
             {/* Selección de tarjeta cuando se elige "Tarjeta" */}
             {payMethod === 'card' && (
-              <Box sx={{ mt: 2, display: 'flex', flexDirection: 'column', gap: 2 }}>
+              <Box sx={{ mt: 2, display: 'flex', flexDirection: 'column', gap: 2 }} ref={cardOptionsRef}>
                 <Box>
                   <Typography variant="subtitle2" sx={{ mb: 1 }}>
                     Tipo de tarjeta
@@ -1651,20 +1757,6 @@ export default function StickyFooter({ table, tableSessionId, restaurantName, se
                     </Button>
                   </Box>
                 </Box>
-              </Box>
-            )}
-
-            {/* Mercado Pago cuando se selecciona MP */}
-            {payMethod === 'mp' && (
-              <Box sx={{ mt: 2 }}>
-                <PayWithMercadoPago
-                  orderId={lastOrderId}
-                  amount={totalWithTip}
-                  slug={slug}
-                  onBeforePay={saveReceiptForDownload}
-                  label="Pagar con Mercado Pago"
-                  fullWidth
-                />
               </Box>
             )}
 
@@ -1708,10 +1800,10 @@ export default function StickyFooter({ table, tableSessionId, restaurantName, se
               payLoading ||
               payRequestSent ||
               (orderDetails.length === 0 && accountTotal === 0) ||
+              !payMethod ||
               (payMethod === 'card' && !cardType)
             }
             sx={{
-              display: payMethod === 'mp' ? 'none' : 'inline-flex',
               borderRadius: 2,
               textTransform: 'none',
               px: 4,
