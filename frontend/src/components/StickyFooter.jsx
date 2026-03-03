@@ -758,7 +758,7 @@ export default function StickyFooter({ table, tableSessionId, restaurantName, se
         elevation={6}
         sx={{
           position: 'fixed',
-          bottom: 0,
+          bottom: { xs: 16, sm: 0 },
           left: 0,
           right: 0,
           p: 2,
@@ -1228,8 +1228,16 @@ export default function StickyFooter({ table, tableSessionId, restaurantName, se
         </DialogTitle>
 
         <DialogContent dividers sx={{ p: 0 }}>
-          {isMobile && (
-            <Box sx={{ p: 2, display: 'flex', flexDirection: 'column', gap: 2 }}>
+          <Box
+            sx={{
+              p: 2,
+              display: 'flex',
+              flexDirection: 'column',
+              gap: 2,
+              maxWidth: 480,
+              mx: 'auto',
+            }}
+          >
               {mobilePayStep === 1 ? (
                 <>
                   <Box sx={{ p: 1.5, borderRadius: 2, border: '1px solid', borderColor: 'divider' }}>
@@ -1347,7 +1355,7 @@ export default function StickyFooter({ table, tableSessionId, restaurantName, se
                       disabled={payLoading}
                       sx={{ textTransform: 'none' }}
                     >
-                      MP
+                      Mercado Pago
                     </Button>
                     <Button
                       size="small"
@@ -1415,8 +1423,8 @@ export default function StickyFooter({ table, tableSessionId, restaurantName, se
                 </>
               )}
             </Box>
-          )}
-
+          {/* Layout de escritorio anterior (detallado) oculto para unificar la vista entre móvil y PC */}
+          {false && (
           <Box sx={{ display: { xs: 'none', sm: 'block' } }}>
           {/* Resumen detallado de pedidos */}
           <Box sx={{ maxHeight: '50vh', overflowY: 'auto', p: 2 }}>
@@ -1909,9 +1917,10 @@ export default function StickyFooter({ table, tableSessionId, restaurantName, se
             )}
           </Box>
           </Box>
+          )}
         </DialogContent>
 
-        {!(isMobile && mobilePayStep === 1) && (
+        {mobilePayStep === 2 && (
           <DialogActions
             sx={{
               p: 2,
@@ -1922,7 +1931,7 @@ export default function StickyFooter({ table, tableSessionId, restaurantName, se
                 theme.palette.mode === 'light' ? 'rgba(0,0,0,0.01)' : 'rgba(255,255,255,0.02)',
             }}
           >
-            {isMobile && mobilePayStep === 2 && (
+            {mobilePayStep === 2 && (
               <Button
                 onClick={() => setMobilePayStep(1)}
                 disabled={payLoading}
