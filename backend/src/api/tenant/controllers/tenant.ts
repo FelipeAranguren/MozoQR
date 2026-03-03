@@ -1475,11 +1475,51 @@ export default {
       console.log(`[closeSession] Iniciando cierre de sesión para mesa ${table} en restaurante ${slug}`);
 
       const restaurante = await getRestaurantBySlug(String(slug));
+      const mesa = await getMesaOrThrow(restaurante.id, Number(table));
       await releaseTableInternal({
         restauranteId: restaurante.id,
         tableNumber: Number(table),
         tableSessionId: tableSessionId ? String(tableSessionId) : null,
         force,
+      });
+
+      // RESET CONTABLE: al cerrar sesión desde staff/owner, dejar la mesa sin cuenta abierta.
+      // 1) Cerrar sesiones abiertas/paid para que clientes con sessionId viejo sean expulsados.
+      const sessions = await strapi.db.query('api::mesa-sesion.mesa-sesion').findMany({
+        where: {
+          mesa: mesa.id,
+          session_status: { $in: ['open', 'paid'] },
+        },
+        select: ['id'],
+      });
+      const sessionIds = sessions.map((s: any) => s.id).filter(Boolean);
+      if (sessionIds.length > 0) {
+        await strapi.db.query('api::mesa-sesion.mesa-sesion').updateMany({
+          where: { id: { $in: sessionIds } },
+          data: { session_status: 'closed', closedAt: new Date(), publishedAt: new Date() },
+        });
+      }
+
+      // 2) Marcar pedidos pendientes de la mesa como paid para que no reaparezca "Ver cuenta".
+      // Primero por sesiones relacionadas.
+      if (sessionIds.length > 0) {
+        await strapi.db.query('api::pedido.pedido').updateMany({
+          where: {
+            mesa_sesion: { id: { $in: sessionIds } },
+            order_status: { $in: ['pending', 'preparing', 'served'] },
+          },
+          data: { order_status: 'paid', publishedAt: new Date() },
+        });
+      }
+
+      // Fallback por mesaNumber (pedidos viejos o huérfanos de sesión).
+      await strapi.db.query('api::pedido.pedido').updateMany({
+        where: {
+          restaurante: restaurante.id,
+          mesaNumber: Number(table),
+          order_status: { $in: ['pending', 'preparing', 'served'] },
+        },
+        data: { order_status: 'paid', publishedAt: new Date() },
       });
 
       ctx.body = { data: { success: true } };
