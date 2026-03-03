@@ -1,5 +1,5 @@
 // src/pages/RestaurantMenu.jsx
-import React, { useEffect, useState, useMemo } from 'react';
+import React, { useEffect, useState, useMemo, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import {
   Box,
@@ -92,6 +92,7 @@ export default function RestaurantMenu() {
   const { items, addItem, removeItem } = useCart();
   const [changeTableDialog, setChangeTableDialog] = useState(false);
   const [showScrollTop, setShowScrollTop] = useState(false);
+  const availablePollHitsRef = useRef(0);
 
   useEffect(() => {
     const onScroll = () => setShowScrollTop(window.scrollY > 300);
@@ -338,13 +339,25 @@ export default function RestaurantMenu() {
           }
         }
 
-        // Método 2 (deshabilitado): "mesa disponible + sin pedidos" causaba kicks falsos al entrar.
-        // Solo usamos Método 1 (sesión closed/paid). Si el staff cierra desde mostrador,
-        // la sesión pasa a closed y Método 1 la detecta.
-        // Dejamos el fetch solo para logs; no kickeamos por este camino.
+        // Método 2: fallback por estado de mesa.
+        // Si por permisos no podemos leer mesa-sesions, igual expulsamos cuando staff libera la mesa.
+        // Requerimos 2 lecturas consecutivas en "disponible" para evitar falsos positivos transitorios.
         try {
           const myMesa = await fetchTable(slug, table);
-          if (myMesa) devLog(`[RestaurantMenu] Mesa ${table} status=${myMesa.status}`);
+          if (myMesa) {
+            const status = String(myMesa.status || '').toLowerCase();
+            devLog(`[RestaurantMenu] Mesa ${table} status=${status}`);
+            if (status === 'disponible') {
+              availablePollHitsRef.current += 1;
+              if (availablePollHitsRef.current >= 2) {
+                devLog(`[RestaurantMenu] KICK: Mesa ${table} liberada por staff`);
+                navigate(`/${slug}/menu`);
+                return;
+              }
+            } else {
+              availablePollHitsRef.current = 0;
+            }
+          }
         } catch (_e) {
           // ignorar
         }
@@ -354,7 +367,8 @@ export default function RestaurantMenu() {
       }
     };
 
-    // Solo kickeamos si la sesión está closed/paid (Método 1). Safe ejecutar inmediatamente.
+    availablePollHitsRef.current = 0;
+    // Ejecutar inmediatamente y luego cada 10s.
     checkIfShouldEject();
     const interval = setInterval(checkIfShouldEject, 10000);
     return () => clearInterval(interval);
