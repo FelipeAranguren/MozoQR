@@ -726,7 +726,7 @@ export default function OwnerDashboard() {
         display: 'flex', 
         alignItems: 'center', 
         justifyContent: 'space-between', 
-        mb: isEjecutiva ? 4 : 3, 
+        mb: isEjecutiva ? 4 : 4, 
         flexWrap: 'wrap', 
         gap: 2,
         pb: isEjecutiva ? 3 : 0,

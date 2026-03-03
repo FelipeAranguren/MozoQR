@@ -1284,26 +1284,31 @@ export default function StickyFooter({ table, tableSessionId, restaurantName, se
                     </Typography>
                   )}
 
-                  <Box sx={{ display: 'flex', gap: 1 }}>
-                    <Button fullWidth variant="outlined" onClick={() => setMobilePayStep(1)} sx={{ textTransform: 'none' }}>
-                      Volver
-                    </Button>
-                    <Button
-                      fullWidth
-                      variant="contained"
-                      onClick={handlePay}
-                      disabled={
-                        payLoading ||
-                        payRequestSent ||
-                        (orderDetails.length === 0 && accountTotal === 0) ||
-                        !payMethod ||
-                        (payMethod === 'card' && !cardType)
-                      }
-                      sx={{ textTransform: 'none' }}
+                  {payMethod === 'card' && (
+                    <Box
+                      sx={{
+                        mt: 1,
+                        display: 'grid',
+                        gridTemplateColumns: '1fr 1fr',
+                        gap: 1,
+                      }}
                     >
-                      {payLoading ? 'Procesando...' : payMethod === 'cash' ? 'Solicitar cobro' : `Pagar ${money(totalWithTip)}`}
-                    </Button>
-                  </Box>
+                      <Button
+                        variant={cardBrand === 'visa' ? 'contained' : 'outlined'}
+                        onClick={() => setCardBrand('visa')}
+                        sx={{ textTransform: 'none' }}
+                      >
+                        Visa
+                      </Button>
+                      <Button
+                        variant={cardBrand === 'mastercard' ? 'contained' : 'outlined'}
+                        onClick={() => setCardBrand('mastercard')}
+                        sx={{ textTransform: 'none' }}
+                      >
+                        Mastercard
+                      </Button>
+                    </Box>
+                  )}
                 </>
               )}
             </Box>
@@ -1757,6 +1762,37 @@ export default function StickyFooter({ table, tableSessionId, restaurantName, se
                     </Button>
                   </Box>
                 </Box>
+                <Box>
+                  <Typography variant="subtitle2" sx={{ mb: 1 }}>
+                    Marca de tarjeta
+                  </Typography>
+                  <Box sx={{ display: 'flex', gap: 1, flexDirection: { xs: 'column', sm: 'row' } }}>
+                    <Button
+                      fullWidth
+                      variant={cardBrand === 'visa' ? 'contained' : 'outlined'}
+                      onClick={() => setCardBrand('visa')}
+                      sx={{
+                        borderRadius: 2,
+                        textTransform: 'none',
+                        py: 1,
+                      }}
+                    >
+                      Visa
+                    </Button>
+                    <Button
+                      fullWidth
+                      variant={cardBrand === 'mastercard' ? 'contained' : 'outlined'}
+                      onClick={() => setCardBrand('mastercard')}
+                      sx={{
+                        borderRadius: 2,
+                        textTransform: 'none',
+                        py: 1,
+                      }}
+                    >
+                      Mastercard
+                    </Button>
+                  </Box>
+                </Box>
               </Box>
             )}
 
@@ -1782,6 +1818,15 @@ export default function StickyFooter({ table, tableSessionId, restaurantName, se
               theme.palette.mode === 'light' ? 'rgba(0,0,0,0.01)' : 'rgba(255,255,255,0.02)',
           }}
         >
+          {isMobile && mobilePayStep === 2 && (
+            <Button
+              onClick={() => setMobilePayStep(1)}
+              disabled={payLoading}
+              sx={{ borderRadius: 2, textTransform: 'none', px: 3 }}
+            >
+              Volver
+            </Button>
+          )}
           <Button
             onClick={() => {
               setPayOpen(false);
