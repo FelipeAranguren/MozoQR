@@ -1,4 +1,6 @@
-export default (plugin) => {
+'use strict';
+
+module.exports = (plugin) => {
   const originalCallback = plugin.controllers?.auth?.callback;
 
   if (originalCallback) {
