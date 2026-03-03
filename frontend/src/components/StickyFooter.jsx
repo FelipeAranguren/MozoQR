@@ -78,6 +78,7 @@ export default function StickyFooter({ table, tableSessionId, restaurantName, se
   const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
 
   const [confirmOpen, setConfirmOpen] = useState(false);
+  const [clearCartConfirmOpen, setClearCartConfirmOpen] = useState(false);
   const [sending, setSending] = useState(false);
   const [orderNotes, setOrderNotes] = useState('');
   const [customerName, setCustomerName] = useState('');
@@ -1099,11 +1100,7 @@ export default function StickyFooter({ table, tableSessionId, restaurantName, se
           <Box sx={{ flex: 1, display: { xs: 'none', sm: 'block' } }} />
           <Button
             onClick={() => {
-              if (window.confirm('¿Vaciar el carrito?')) {
-                clearCart();
-                setConfirmOpen(false);
-                setSnack({ open: true, msg: 'Carrito vaciado', severity: 'info' });
-              }
+              setClearCartConfirmOpen(true);
             }}
             disabled={sending}
             sx={{
@@ -1139,6 +1136,44 @@ export default function StickyFooter({ table, tableSessionId, restaurantName, se
             }}
           >
             {sending ? 'Enviando…' : !sessionReady ? 'Preparando mesa…' : !tableSessionId ? 'Esperando sesión…' : 'Confirmar pedido'}
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Confirmación para vaciar carrito */}
+      <Dialog
+        open={clearCartConfirmOpen}
+        onClose={() => !sending && setClearCartConfirmOpen(false)}
+        maxWidth="xs"
+        fullWidth
+      >
+        <DialogTitle>¿Vaciar el carrito?</DialogTitle>
+        <DialogContent>
+          <Typography variant="body2">
+            Se eliminarán todos los productos que agregaste a este pedido.
+          </Typography>
+        </DialogContent>
+        <DialogActions sx={{ p: 2, gap: 1 }}>
+          <Button
+            onClick={() => setClearCartConfirmOpen(false)}
+            disabled={sending}
+            sx={{ textTransform: 'none' }}
+          >
+            Cancelar
+          </Button>
+          <Button
+            variant="contained"
+            color="error"
+            disabled={sending}
+            onClick={() => {
+              clearCart();
+              setConfirmOpen(false);
+              setClearCartConfirmOpen(false);
+              setSnack({ open: true, msg: 'Carrito vaciado', severity: 'info' });
+            }}
+            sx={{ textTransform: 'none' }}
+          >
+            Vaciar carrito
           </Button>
         </DialogActions>
       </Dialog>
