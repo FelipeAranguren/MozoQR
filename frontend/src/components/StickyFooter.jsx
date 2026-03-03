@@ -631,10 +631,10 @@ export default function StickyFooter({ table, tableSessionId, restaurantName, se
 
     // Flujo tarjeta: crear checkout de Mobbex y redirigir
     if (payMethod === 'card') {
-      if (!cardType) {
+      if (!cardType || !cardBrand) {
         setSnack({
           open: true,
-          msg: 'Seleccioná tipo de tarjeta (Crédito o Débito).',
+          msg: 'Seleccioná tipo y marca de tarjeta (Crédito/Débito y Visa/Mastercard).',
           severity: 'warning',
         });
         return;
@@ -1227,8 +1227,25 @@ export default function StickyFooter({ table, tableSessionId, restaurantName, se
                     </Typography>
                   </Box>
 
-                  <Button variant="contained" fullWidth onClick={() => setMobilePayStep(2)} sx={{ textTransform: 'none' }}>
+                  <Button
+                    variant="contained"
+                    fullWidth
+                    onClick={() => setMobilePayStep(2)}
+                    sx={{ textTransform: 'none' }}
+                  >
                     Continuar al pago
+                  </Button>
+                  <Button
+                    variant="outlined"
+                    fullWidth
+                    onClick={() => {
+                      setPayOpen(false);
+                      setTipAmount(0);
+                      setTipPercentage(0);
+                    }}
+                    sx={{ textTransform: 'none', mt: 1 }}
+                  >
+                    Cancelar
                   </Button>
                 </>
               ) : (
@@ -1808,67 +1825,69 @@ export default function StickyFooter({ table, tableSessionId, restaurantName, se
           </Box>
         </DialogContent>
 
-        <DialogActions
-          sx={{
-            p: 2,
-            gap: 1,
-            borderTop: 1,
-            borderColor: 'divider',
-            backgroundColor: (theme) =>
-              theme.palette.mode === 'light' ? 'rgba(0,0,0,0.01)' : 'rgba(255,255,255,0.02)',
-          }}
-        >
-          {isMobile && mobilePayStep === 2 && (
+        {!(isMobile && mobilePayStep === 1) && (
+          <DialogActions
+            sx={{
+              p: 2,
+              gap: 1,
+              borderTop: 1,
+              borderColor: 'divider',
+              backgroundColor: (theme) =>
+                theme.palette.mode === 'light' ? 'rgba(0,0,0,0.01)' : 'rgba(255,255,255,0.02)',
+            }}
+          >
+            {isMobile && mobilePayStep === 2 && (
+              <Button
+                onClick={() => setMobilePayStep(1)}
+                disabled={payLoading}
+                sx={{ borderRadius: 2, textTransform: 'none', px: 3 }}
+              >
+                Volver
+              </Button>
+            )}
             <Button
-              onClick={() => setMobilePayStep(1)}
+              onClick={() => {
+                setPayOpen(false);
+                setTipAmount(0);
+                setTipPercentage(0);
+              }}
               disabled={payLoading}
               sx={{ borderRadius: 2, textTransform: 'none', px: 3 }}
             >
-              Volver
+              Cancelar
             </Button>
-          )}
-          <Button
-            onClick={() => {
-              setPayOpen(false);
-              setTipAmount(0);
-              setTipPercentage(0);
-            }}
-            disabled={payLoading}
-            sx={{ borderRadius: 2, textTransform: 'none', px: 3 }}
-          >
-            Cancelar
-          </Button>
-          <Button
-            variant="contained"
-            onClick={handlePay}
-            disabled={
-              payLoading ||
-              payRequestSent ||
-              (orderDetails.length === 0 && accountTotal === 0) ||
-              !payMethod ||
-              (payMethod === 'card' && !cardType)
-            }
-            sx={{
-              borderRadius: 2,
-              textTransform: 'none',
-              px: 4,
-              fontWeight: 600,
-              boxShadow: 3,
-              '&:hover': {
-                boxShadow: 5,
-              },
-            }}
-          >
-            {payLoading
-              ? 'Procesando…'
-              : payRequestSent
-                ? 'Solicitud enviada'
-                : payMethod === 'cash'
-                  ? 'Solicitar Cobro'
-                  : `Pagar ${money(totalWithTip)}`
-            }
-          </Button>
-        </DialogActions>
+            <Button
+              variant="contained"
+              onClick={handlePay}
+              disabled={
+                payLoading ||
+                payRequestSent ||
+                (orderDetails.length === 0 && accountTotal === 0) ||
+                !payMethod ||
+                (payMethod === 'card' && (!cardType || !cardBrand))
+              }
+              sx={{
+                borderRadius: 2,
+                textTransform: 'none',
+                px: 4,
+                fontWeight: 600,
+                boxShadow: 3,
+                '&:hover': {
+                  boxShadow: 5,
+                },
+              }}
+            >
+              {payLoading
+                ? 'Procesando…'
+                : payRequestSent
+                  ? 'Solicitud enviada'
+                  : payMethod === 'cash'
+                    ? 'Solicitar Cobro'
+                    : `Pagar ${money(totalWithTip)}`
+              }
+            </Button>
+          </DialogActions>
+        )}
       </Dialog>
     </>
   );
