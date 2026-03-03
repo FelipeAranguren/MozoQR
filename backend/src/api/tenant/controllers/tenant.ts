@@ -1797,6 +1797,104 @@ export default {
     }
   },
 
+  /**
+   * POST /restaurants/:slug/tables/release-if-empty
+   *
+   * Endpoint público pensado para el cliente (QR):
+   * - Libera la mesa SOLO si no tiene pedidos activos (pending/preparing/served).
+   * - Requiere tableSessionId que coincida con la sesión activa de la mesa.
+   * - Es best-effort: nunca lanza 500 al cliente, devuelve siempre 200 con resultado.
+   */
+  async releaseTableIfEmpty(ctx: Ctx) {
+    try {
+      const { slug } = ctx.params || {};
+      const data = getPayload(ctx.request.body);
+      const table = data?.table;
+      const tableSessionId = data?.tableSessionId;
+
+      if (!slug) {
+        ctx.body = { data: { released: false, reason: 'missing-slug' } };
+        return;
+      }
+
+      if (table === undefined || table === null || table === '') {
+        ctx.body = { data: { released: false, reason: 'missing-table' } };
+        return;
+      }
+
+      if (!tableSessionId) {
+        ctx.body = { data: { released: false, reason: 'missing-tableSessionId' } };
+        return;
+      }
+
+      const tableNumber = Number(table);
+      if (!Number.isFinite(tableNumber) || tableNumber <= 0) {
+        ctx.body = { data: { released: false, reason: 'invalid-table' } };
+        return;
+      }
+
+      const restaurante = await getRestaurantBySlug(String(slug));
+      const restauranteId = Number(restaurante.id);
+
+      // Verificar si existen pedidos activos para esta mesa (sin contar pagados/cancelados).
+      const pedidosActivos = await strapi.db.query('api::pedido.pedido').findMany({
+        where: {
+          restaurante: restauranteId,
+          mesaNumber: tableNumber,
+          order_status: { $in: ['pending', 'preparing', 'served'] },
+        },
+        select: ['id'],
+        limit: 1,
+      });
+
+      if (Array.isArray(pedidosActivos) && pedidosActivos.length > 0) {
+        ctx.body = {
+          data: {
+            released: false,
+            reason: 'has-active-orders',
+          },
+        };
+        return;
+      }
+
+      // Sin pedidos activos: intentamos liberar la mesa de forma segura usando tableSessionId.
+      try {
+        const result = await releaseTableInternal({
+          restauranteId,
+          tableNumber,
+          tableSessionId: String(tableSessionId),
+          force: false,
+        });
+
+        ctx.body = {
+          data: {
+            released: !!result?.released,
+            status: result?.status ?? 'ok',
+          },
+        };
+      } catch (err: any) {
+        // Errores de validación (por ejemplo, sessionId no coincide) no deben romper al cliente.
+        console.warn('[releaseTableIfEmpty] Error liberando mesa:', err?.message || err);
+        ctx.body = {
+          data: {
+            released: false,
+            reason: 'validation-error',
+            message: err?.message || 'No se pudo liberar la mesa',
+          },
+        };
+      }
+    } catch (err: any) {
+      console.error('[releaseTableIfEmpty] Error inesperado:', err?.message || err);
+      ctx.body = {
+        data: {
+          released: false,
+          reason: 'unexpected-error',
+          message: err?.message || 'Error inesperado al liberar la mesa',
+        },
+      };
+    }
+  },
+
   async resetTables(ctx: Ctx) {
     const { slug } = ctx.params || {};
     const restaurante = await getRestaurantBySlug(String(slug));

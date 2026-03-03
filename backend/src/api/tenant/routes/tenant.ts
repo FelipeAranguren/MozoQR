@@ -52,6 +52,12 @@ export default {
       config: { policies: [], middlewares: [], auth: false }, // Público - no requiere autenticación
     },
     {
+      method: 'POST',
+      path: '/restaurants/:slug/tables/release-if-empty',
+      handler: 'tenant.releaseTableIfEmpty',
+      config: { policies: [], middlewares: [], auth: false }, // Público - cliente libera mesa si no tiene pedidos
+    },
+    {
       method: 'PUT',
       path: '/restaurants/:slug/close-session',
       handler: 'tenant.closeSession',

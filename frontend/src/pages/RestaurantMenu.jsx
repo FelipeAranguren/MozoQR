@@ -30,7 +30,7 @@ import { alpha } from '@mui/material/styles';
 import { motion, AnimatePresence } from 'framer-motion';
 
 import { useCart } from '../context/CartContext';
-import { fetchMenus, openSession } from '../api/tenant';
+import { fetchMenus, openSession, releaseTableIfNoOrders } from '../api/tenant';
 import { fetchTables, fetchTable } from '../api/tables';
 import { http } from '../api/tenant';
 import useTableSession from '../hooks/useTableSession';
@@ -244,6 +244,21 @@ export default function RestaurantMenu() {
     if (!table || !slug) setSessionReady(true);
     else setSessionReady(false);
   }, [table, slug]);
+
+  // Cuando el cliente abandona el menú (unmount de este componente),
+  // intentamos liberar la mesa si no tiene pedidos activos.
+  // El backend valida que no existan pedidos pendientes antes de liberar.
+  useEffect(() => {
+    if (!slug || !table || !tableSessionId) return;
+
+    return () => {
+      try {
+        releaseTableIfNoOrders(slug, { table, tableSessionId });
+      } catch {
+        // best-effort: si falla, no rompemos la navegación del cliente
+      }
+    };
+  }, [slug, table, tableSessionId]);
 
   // Abrir sesión de mesa cuando el cliente entra (marca la mesa como ocupada)
   // Solo habilitamos "Confirmar pedido" cuando openSession termina para evitar error "mesa no asociada"

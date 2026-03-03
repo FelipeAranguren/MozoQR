@@ -273,6 +273,50 @@ export async function openSession(slug, payload) {
   }
 }
 
+/**
+ * Libera una mesa SOLO si no tiene pedidos activos.
+ * Pensado para llamarse cuando el cliente cierra o abandona el menú.
+ * Usa sendBeacon cuando está disponible para ser confiable en eventos de unload.
+ */
+export function releaseTableIfNoOrders(slug, payload) {
+  const { table, tableSessionId } = payload || {};
+  if (!slug || table === undefined || table === null || table === '' || !tableSessionId) {
+    return false;
+  }
+
+  const numericTable = Number(table);
+  if (!Number.isFinite(numericTable) || numericTable <= 0) {
+    return false;
+  }
+
+  const path = `/restaurants/${encodeURIComponent(slug)}/tables/release-if-empty`;
+  const url = `${baseURL.replace(/\/$/, '')}${path}`;
+  const body = JSON.stringify({
+    data: {
+      table: numericTable,
+      tableSessionId: String(tableSessionId),
+    },
+  });
+
+  // Preferir sendBeacon para que se envíe aun cuando la página se está cerrando.
+  if (typeof navigator !== 'undefined' && typeof navigator.sendBeacon === 'function') {
+    try {
+      const blob = new Blob([body], { type: 'application/json' });
+      return navigator.sendBeacon(url, blob);
+    } catch {
+      // fallback abajo
+    }
+  }
+
+  // Fallback best-effort (promesa; puede no completarse en unload pero sirve para otros usos).
+  return publicHttp
+    .post(path, {
+      data: { table: numericTable, tableSessionId: String(tableSessionId) },
+    })
+    .then(() => true)
+    .catch(() => false);
+}
+
 export async function closeAccount(slug, payload) {
   const { table, tableSessionId, isManualSettlement, staffNotes } = payload || {};
   if (!table) throw new Error('Falta número de mesa');
