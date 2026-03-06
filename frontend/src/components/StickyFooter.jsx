@@ -1837,8 +1837,8 @@ export default function StickyFooter({ table, tableSessionId, restaurantName, se
                 ? 'Procesando…'
                 : payRequestSent
                   ? 'Solicitud enviada'
-                  : payMethod === 'cash'
-                    ? 'Solicitar Cobro'
+                  : (payMethod === 'cash' || payMethod === 'card')
+                    ? 'Solicitar pago'
                     : `Pagar ${money(totalWithTip)}`
               }
             </Button>
