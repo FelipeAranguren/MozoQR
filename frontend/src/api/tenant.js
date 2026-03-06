@@ -178,7 +178,7 @@ export async function fetchMenus(slug) {
 
 /* ---------------- PEDIDOS ---------------- */
 export async function createOrder(slug, payload) {
-  const { table, tableSessionId, items = [], notes } = payload || {};
+  const { table, tableSessionId, items = [], notes, metodo_pago } = payload || {};
   if (!table) throw new Error('Falta número de mesa');
   if (!Array.isArray(items) || items.length === 0) throw new Error('El carrito está vacío');
   if (!tableSessionId) throw new Error('Falta tableSessionId');
@@ -231,6 +231,7 @@ export async function createOrder(slug, payload) {
           customerNotes: safeNotes,
           total: numericTotal, // Ensure it's always a number, not a formatted string
           items: safeItems,
+          ...(metodo_pago && { metodo_pago }), // 'efectivo' | 'tarjeta' para solicitud de cobro
         },
       },
       IDEM_ON ? { headers: { 'Idempotency-Key': idemKey } } : undefined

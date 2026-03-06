@@ -1095,6 +1095,7 @@ export default {
     const table = data?.table;
     const tableSessionId = data?.tableSessionId;
     const items: any[] = Array.isArray(data?.items) ? data.items : [];
+    const metodoPago = data?.metodo_pago; // 'efectivo' | 'tarjeta' para solicitud de cobro
 
     if (!table || items.length === 0) throw new ValidationError('Invalid data');
     if (!tableSessionId) throw new ValidationError('Missing tableSessionId');
@@ -1235,7 +1236,15 @@ export default {
     // Obtener el número de mesa (preferir sesionWithMesa.mesa.number si está disponible, sino mesa.number)
     const mesaNumber = sesionWithMesa?.mesa?.number || mesa?.number || null;
     
-    const pedidoData = {
+    const hasPayRequest = items.some((it: any) => String(it?.productId) === 'sys-pay-request');
+    const paymentMethodStrapi =
+      hasPayRequest && metodoPago === 'tarjeta'
+        ? 'card_present'
+        : hasPayRequest && (metodoPago === 'efectivo' || !metodoPago)
+          ? 'cash'
+          : undefined;
+
+    const pedidoData: Record<string, unknown> = {
       order_status: 'pending',
       customerNotes: data?.customerNotes || '',
       total: Number(total),
@@ -1244,6 +1253,9 @@ export default {
       mesaNumber: mesaNumber ? Number(mesaNumber) : null,
       publishedAt: new Date(),
     };
+    if (paymentMethodStrapi) {
+      (pedidoData as any).payment_method = paymentMethodStrapi;
+    }
     console.log(`[createOrder] Datos del pedido a crear:`, JSON.stringify(pedidoData, null, 2));
     
     const pedido = await strapi.entityService.create('api::pedido.pedido', {

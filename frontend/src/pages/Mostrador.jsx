@@ -538,6 +538,7 @@ export default function Mostrador() {
       order_status: a.order_status,
       customerNotes: a.customerNotes,
       staffNotes: a.staffNotes,
+      payment_method: a.payment_method, // 'cash' | 'card_present' para solicitud de cobro
       createdAt: a.createdAt,
       updatedAt: a.updatedAt,
       total: a.total,
@@ -2265,15 +2266,19 @@ export default function Mostrador() {
     const isWaiterCall = systemType === 'waiter-call';
     const isPay = systemType === 'pay-request';
 
-    // Extraer info del método de pago si es solicitud de cobro
-    let paymentMethod = '';
-    if (isPay) {
-      const payItem = items.find(item => {
-        const prodName = item?.product?.name || item?.name || '';
-        return prodName.includes('SOLICITUD DE COBRO');
-      });
-      paymentMethod = payItem?.notes || customerNotes || '';
-    }
+    // Método de pago para solicitud de cobro: pedido.payment_method (backend) o fallback desde notas del ítem
+    const isTarjeta = isPay && (pedido.payment_method === 'card_present' || /tarjeta/i.test(
+      (items.find(item => {
+        const n = item?.product?.name || item?.name || '';
+        return n.includes('SOLICITUD DE COBRO');
+      })?.notes || '') + (pedido.customerNotes || '')
+    ));
+    const cobroLabel = isPay
+      ? (isTarjeta ? '💳 SOLICITUD DE COBRO (Tarjeta)' : '💳 SOLICITUD DE COBRO (Efectivo)')
+      : '💳 SOLICITUD DE COBRO';
+    const payRequestColor = isTarjeta
+      ? { border: '#5e35b1', bg: '#ede7f6', borderFlash: '#7e57c2', bgFlash: '#d1c4e9' }
+      : { border: '#0288d1', bg: '#e3f2fd', borderFlash: '#17a2b8', bgFlash: '#d1ecf1' };
 
     return (
       <Card
@@ -2281,14 +2286,14 @@ export default function Mostrador() {
         sx={{
           mb: 1.25,
           bgcolor: flashing
-            ? (isWaiterCall ? '#fff3cd' : '#d1ecf1')
-            : (isWaiterCall ? '#fff8e1' : '#e3f2fd'),
+            ? (isWaiterCall ? '#fff3cd' : (isPay ? payRequestColor.bgFlash : '#d1ecf1'))
+            : (isWaiterCall ? '#fff8e1' : (isPay ? payRequestColor.bg : '#e3f2fd')),
           transition: 'all 0.2s ease-in-out',
           boxShadow: flashing ? 6 : 2,
           border: '2px solid',
           borderColor: flashing
-            ? (isWaiterCall ? '#ffc107' : '#17a2b8')
-            : (isWaiterCall ? '#ffa726' : '#29b6f6'),
+            ? (isWaiterCall ? '#ffc107' : (isPay ? payRequestColor.borderFlash : '#17a2b8'))
+            : (isWaiterCall ? '#ffa726' : (isPay ? payRequestColor.border : '#29b6f6')),
           borderRadius: 2,
           cursor: 'pointer',
           '&:hover': {
@@ -2324,22 +2329,22 @@ export default function Mostrador() {
             bgcolor: 'white',
             borderRadius: 1,
             border: '1.5px solid',
-            borderColor: isWaiterCall ? '#ff9800' : '#0288d1',
+            borderColor: isWaiterCall ? '#ff9800' : (isPay ? payRequestColor.border : '#0288d1'),
           }}>
             <Typography
               variant="h6"
               sx={{
                 fontSize: '1rem',
                 fontWeight: 700,
-                color: isWaiterCall ? '#f57c00' : '#0277bd',
+                color: isWaiterCall ? '#f57c00' : (isTarjeta ? '#5e35b1' : '#0277bd'),
                 flex: 1,
               }}
             >
-              {isWaiterCall ? '🔔 LLAMAR MOZO' : '💳 SOLICITUD DE COBRO'}
+              {isWaiterCall ? '🔔 LLAMAR MOZO' : cobroLabel}
             </Typography>
           </Box>
 
-          {isPay && paymentMethod && (
+          {isPay && isTarjeta && (
             <Typography
               variant="body2"
               sx={{
@@ -2349,7 +2354,7 @@ export default function Mostrador() {
                 fontStyle: 'italic',
               }}
             >
-              {paymentMethod}
+              Llevar Point para cobro con tarjeta en mesa.
             </Typography>
           )}
 

@@ -630,54 +630,8 @@ export default function StickyFooter({ table, tableSessionId, restaurantName, se
       return;
     }
 
-    // Flujo tarjeta: crear checkout de Mobbex y redirigir
-    if (payMethod === 'card') {
-      if (!cardType || !cardBrand) {
-        setSnack({
-          open: true,
-          msg: 'Seleccioná tipo y marca de tarjeta (Crédito/Débito y Visa/Mastercard).',
-          severity: 'warning',
-        });
-        return;
-      }
-
-      try {
-        setPayLoading(true);
-
-        // Usar el último pedido como referencia si existe, sino slug+mesa+timestamp
-        const baseRef =
-          lastOrderId != null
-            ? String(lastOrderId)
-            : `${slug || 'resto'}-${table || 'mesa'}-${Date.now()}`;
-
-        const { checkoutUrl } = await createMobbexCheckout({
-          total: totalWithTip,
-          reference: baseRef,
-          cardType,
-          cardBrand: cardBrand || 'visa',
-          slug,
-          table,
-          tableSessionId,
-        });
-
-        // Guardar recibo localmente antes de redirigir
-        saveReceiptForDownload();
-
-        // Redirigir al checkout hospedado de Mobbex
-        window.location.href = checkoutUrl;
-      } catch (err) {
-        console.error(err);
-        const msg =
-          err?.message ||
-          err?.toString?.() ||
-          'No se pudo iniciar el pago con tarjeta (Mobbex). Intentá de nuevo.';
-        setSnack({ open: true, msg, severity: 'error' });
-      } finally {
-        setPayLoading(false);
-      }
-
-      return;
-    }
+    // Flujo tarjeta: deshabilitado Mobbex — se trata como solicitud de cobro en mesa (igual que efectivo)
+    // Si en el futuro se reactiva Mobbex, descomentar el bloque anterior y quitar el flujo unificado para 'card' abajo.
 
     try {
       setPayLoading(true);
@@ -688,8 +642,8 @@ export default function StickyFooter({ table, tableSessionId, restaurantName, se
         mp: 'Mercado Pago',
       };
 
-      // Si es efectivo, es pago presencial (solicitud de cobro)
-      if (payMethod === 'cash') {
+      // Efectivo o tarjeta: pago presencial (solicitud de cobro al staff; tarjeta = cobro con Point en mesa)
+      if (payMethod === 'cash' || payMethod === 'card') {
         // Prevenir múltiples solicitudes
         if (payRequestSent) {
           setSnack({
@@ -700,13 +654,14 @@ export default function StickyFooter({ table, tableSessionId, restaurantName, se
           return;
         }
 
-        // Para pago presencial, NO cerramos la cuenta aún. 
-        // Enviamos una solicitud de cobro al mostrador.
+        const metodoPago = payMethod === 'cash' ? 'efectivo' : 'tarjeta';
+        // Para pago presencial, NO cerramos la cuenta aún. Enviamos una solicitud de cobro al mostrador.
         setPayRequestSent(true);
         try {
           await createOrder(slug, {
             table,
             tableSessionId,
+            metodo_pago: metodoPago,
             items: [{
               productId: 'sys-pay-request',
               name: '💳 SOLICITUD DE COBRO',
@@ -719,18 +674,18 @@ export default function StickyFooter({ table, tableSessionId, restaurantName, se
 
           setSnack({
             open: true,
-            msg: `Solicitud enviada. Un mozo se acercará a cobrarte en ${methodNames[payMethod]}. ✅`,
+            msg: payMethod === 'card'
+              ? 'Se envió la solicitud. Un mozo se acercará con el Point para cobrar con tarjeta en la mesa. ✅'
+              : `Solicitud enviada. Un mozo se acercará a cobrarte en ${methodNames[payMethod]}. ✅`,
             severity: 'success',
           });
 
           // No cerramos la cuenta localmente ni en backend, esperamos al mozo.
           setPayOpen(false);
-          // Resetear form
           setPayMethod(null);
-          setPayRequestSent(false); // Resetear después de un delay
-          setTimeout(() => setPayRequestSent(false), 5000); // Permitir nueva solicitud después de 5 segundos
+          setPayRequestSent(false);
+          setTimeout(() => setPayRequestSent(false), 5000);
 
-          // Redirigir a página de agradecimiento
           navigate(`/thank-you?type=presencial${slug ? `&slug=${slug}` : ''}`);
         } catch (err) {
           setPayRequestSent(false);
@@ -1375,20 +1330,6 @@ export default function StickyFooter({ table, tableSessionId, restaurantName, se
                     </Button>
                   </Box>
 
-                  {payMethod === 'card' && (
-                    <Box
-                      sx={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 1 }}
-                      ref={cardOptionsRef}
-                    >
-                      <Button variant={cardType === 'credit' ? 'contained' : 'outlined'} onClick={() => setCardType('credit')} sx={{ textTransform: 'none' }}>
-                        Crédito
-                      </Button>
-                      <Button variant={cardType === 'debit' ? 'contained' : 'outlined'} onClick={() => setCardType('debit')} sx={{ textTransform: 'none' }}>
-                        Débito
-                      </Button>
-                    </Box>
-                  )}
-
                   {payMethod === 'cash' && (
                     <Typography variant="body2" color="text.secondary">
                       Se enviará una solicitud al staff para cobrar en mesa.
@@ -1396,29 +1337,9 @@ export default function StickyFooter({ table, tableSessionId, restaurantName, se
                   )}
 
                   {payMethod === 'card' && (
-                    <Box
-                      sx={{
-                        mt: 1,
-                        display: 'grid',
-                        gridTemplateColumns: '1fr 1fr',
-                        gap: 1,
-                      }}
-                    >
-                      <Button
-                        variant={cardBrand === 'visa' ? 'contained' : 'outlined'}
-                        onClick={() => setCardBrand('visa')}
-                        sx={{ textTransform: 'none' }}
-                      >
-                        Visa
-                      </Button>
-                      <Button
-                        variant={cardBrand === 'mastercard' ? 'contained' : 'outlined'}
-                        onClick={() => setCardBrand('mastercard')}
-                        sx={{ textTransform: 'none' }}
-                      >
-                        Mastercard
-                      </Button>
-                    </Box>
+                    <Typography variant="body2" color="text.secondary">
+                      Se enviará una solicitud al staff para cobrar con tarjeta en la mesa.
+                    </Typography>
                   )}
                 </>
               )}
@@ -1839,79 +1760,20 @@ export default function StickyFooter({ table, tableSessionId, restaurantName, se
               </Button>
             </Box>
 
-            {/* Selección de tarjeta cuando se elige "Tarjeta" */}
-            {payMethod === 'card' && (
-              <Box sx={{ mt: 2, display: 'flex', flexDirection: 'column', gap: 2 }} ref={cardOptionsRef}>
-                <Box>
-                  <Typography variant="subtitle2" sx={{ mb: 1 }}>
-                    Tipo de tarjeta
-                  </Typography>
-                  <Box sx={{ display: 'flex', gap: 1, flexDirection: { xs: 'column', sm: 'row' } }}>
-                    <Button
-                      fullWidth
-                      variant={cardType === 'credit' ? 'contained' : 'outlined'}
-                      onClick={() => setCardType('credit')}
-                      sx={{
-                        borderRadius: 2,
-                        textTransform: 'none',
-                        py: 1,
-                      }}
-                    >
-                      Crédito
-                    </Button>
-                    <Button
-                      fullWidth
-                      variant={cardType === 'debit' ? 'contained' : 'outlined'}
-                      onClick={() => setCardType('debit')}
-                      sx={{
-                        borderRadius: 2,
-                        textTransform: 'none',
-                        py: 1,
-                      }}
-                    >
-                      Débito
-                    </Button>
-                  </Box>
-                </Box>
-                <Box>
-                  <Typography variant="subtitle2" sx={{ mb: 1 }}>
-                    Marca de tarjeta
-                  </Typography>
-                  <Box sx={{ display: 'flex', gap: 1, flexDirection: { xs: 'column', sm: 'row' } }}>
-                    <Button
-                      fullWidth
-                      variant={cardBrand === 'visa' ? 'contained' : 'outlined'}
-                      onClick={() => setCardBrand('visa')}
-                      sx={{
-                        borderRadius: 2,
-                        textTransform: 'none',
-                        py: 1,
-                      }}
-                    >
-                      Visa
-                    </Button>
-                    <Button
-                      fullWidth
-                      variant={cardBrand === 'mastercard' ? 'contained' : 'outlined'}
-                      onClick={() => setCardBrand('mastercard')}
-                      sx={{
-                        borderRadius: 2,
-                        textTransform: 'none',
-                        py: 1,
-                      }}
-                    >
-                      Mastercard
-                    </Button>
-                  </Box>
-                </Box>
-              </Box>
-            )}
-
             {/* Mensaje para pago con efectivo */}
             {payMethod === 'cash' && (
               <Box sx={{ mt: 2, p: 2, bgcolor: 'info.lighter', borderRadius: 1, border: '1px solid', borderColor: 'info.light' }}>
                 <Typography variant="body2" color="info.main" align="center">
                   Se enviará una solicitud de cobro. Un mozo se acercará a tu mesa para recibir el pago en efectivo.
+                </Typography>
+              </Box>
+            )}
+
+            {/* Mensaje para pago con tarjeta (solicitud al staff, sin Mobbex) */}
+            {payMethod === 'card' && (
+              <Box sx={{ mt: 2, p: 2, bgcolor: 'info.lighter', borderRadius: 1, border: '1px solid', borderColor: 'info.light' }}>
+                <Typography variant="body2" color="info.main" align="center">
+                  Se enviará una solicitud al staff para cobrar con tarjeta en la mesa.
                 </Typography>
               </Box>
             )}
@@ -1958,8 +1820,7 @@ export default function StickyFooter({ table, tableSessionId, restaurantName, se
                 payLoading ||
                 payRequestSent ||
                 (orderDetails.length === 0 && accountTotal === 0) ||
-                !payMethod ||
-                (payMethod === 'card' && (!cardType || !cardBrand))
+                !payMethod
               }
               sx={{
                 borderRadius: 2,
