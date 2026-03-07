@@ -11,6 +11,39 @@ import NotificationsActiveIcon from '@mui/icons-material/NotificationsActive';
 import AccountBalanceWalletIcon from '@mui/icons-material/AccountBalanceWallet';
 
 /**
+ * Indica si un pedido del sistema es "solicitud de cobro" (pago efectivo/tarjeta en mesa).
+ * Misma lógica que getTableStatus para request-payment.
+ */
+export function isPayRequestOrder(order) {
+  if (!order) return false;
+  const items = order?.items || [];
+  const hasPayItem = items.some((item) => {
+    const prodName = (item?.product?.name || item?.name || item?.notes || '').toUpperCase();
+    return prodName.includes('SOLICITUD DE COBRO') || prodName.includes('💳');
+  });
+  if (hasPayItem) return true;
+  const notes = (order?.customerNotes || '').toUpperCase();
+  return notes.includes('SOLICITA COBRAR') || notes.includes('CUENTA');
+}
+
+/**
+ * Dado un array de pedidos del sistema, devuelve los números de mesa que tienen solicitud de cobro activa.
+ * Usado por el banner de alerta global.
+ */
+export function getTablesRequestingPayment(systemOrders) {
+  if (!Array.isArray(systemOrders)) return [];
+  const tableNumbers = new Set();
+  systemOrders.forEach((order) => {
+    if (!isPayRequestOrder(order)) return;
+    const raw = order?.mesa_sesion?.mesa?.number ?? order?.mesa ?? order?.tableNumber ?? null;
+    if (raw == null) return;
+    const tableNum = Number(raw);
+    if (!Number.isNaN(tableNum)) tableNumbers.add(tableNum);
+  });
+  return Array.from(tableNumbers);
+}
+
+/**
  * Componente mejorado para mostrar el estado de las mesas en tiempo real
  * Estados: disponible, ocupada, por limpiar, reservada, llamando
  */

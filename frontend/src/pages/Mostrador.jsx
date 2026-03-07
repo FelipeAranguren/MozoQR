@@ -4,7 +4,8 @@ import { useParams } from 'react-router-dom';
 import { api } from '../api';
 import { closeAccount, openSession } from '../api/tenant';
 import { fetchTables, fetchActiveOrders } from '../api/tables';
-import TablesStatusGridEnhanced from '../components/TablesStatusGridEnhanced';
+import TablesStatusGridEnhanced, { getTablesRequestingPayment } from '../components/TablesStatusGridEnhanced';
+import PaymentRequestAlertBanner from '../components/PaymentRequestAlertBanner';
 import {
   Box, Typography, Card, CardContent, List, ListItem, Button,
   Divider, Grid, TextField, Snackbar, Alert,
@@ -2052,6 +2053,11 @@ export default function Mostrador() {
     () => pedidosFiltrados.filter((p) => isSystemOrder(p) && isActive(p.order_status)),
     [pedidosFiltrados]
   );
+  // Mesas con solicitud de cobro activa (violeta) — para el banner de alerta global
+  const mesasSolicitandoCobro = useMemo(
+    () => getTablesRequestingPayment(pedidosSistema),
+    [pedidosSistema]
+  );
   const pedidosListos = useMemo(
     () => pedidosFiltrados
       .filter((p) => p.order_status === 'served' && !isSystemOrder(p))
@@ -2599,16 +2605,20 @@ export default function Mostrador() {
 
   // ---- UI ----
   return (
-    <Box
-      sx={{
-        p: { xs: 1.5, sm: 2, md: 3 },
-        overflowX: 'hidden',
-        width: '100%',
-        minHeight: '100vh',
-        boxSizing: 'border-box',
-        '& *': { boxSizing: 'border-box' },
-      }}
-    >
+    <>
+      {/* Alerta global: mesas solicitando la cuenta (sticky, solo visible si hay al menos una) */}
+      <PaymentRequestAlertBanner tableNumbers={mesasSolicitandoCobro} />
+
+      <Box
+        sx={{
+          p: { xs: 1.5, sm: 2, md: 3 },
+          overflowX: 'hidden',
+          width: '100%',
+          minHeight: '100vh',
+          boxSizing: 'border-box',
+          '& *': { boxSizing: 'border-box' },
+        }}
+      >
       {/* Encabezado */}
       <Box sx={{ display: 'flex', flexDirection: { xs: 'column', sm: 'row' }, alignItems: { xs: 'stretch', sm: 'center' }, gap: 2, flexWrap: 'wrap', mb: 2 }}>
         <Box sx={{ flexGrow: 1, minWidth: 0 }}>
@@ -3836,6 +3846,7 @@ export default function Mostrador() {
           </Button>
         </DialogActions>
       </Dialog>
-    </Box>
+      </Box>
+    </>
   );
 }

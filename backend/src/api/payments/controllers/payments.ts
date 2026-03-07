@@ -497,8 +497,9 @@ export default {
       const accessToken = getMpAccessToken(strapi);
       if (!accessToken) {
         logPaymentEnvDiagnostics(strapi);
-        ctx.status = 500;
-        ctx.body = { ok: false, error: 'Falta MP_ACCESS_TOKEN. Revisá variables de entorno (Railway: Variables del servicio).' };
+        const baseFront = getPaymentStatusBaseUrl();
+        ctx.status = 302;
+        ctx.redirect(`${baseFront}/payment-failure?reason=config_error`);
         return;
       }
 
@@ -534,16 +535,20 @@ export default {
       }
 
       if (!orderRef) {
-        ctx.status = 400;
-        ctx.body = { ok: false, error: 'No se pudo determinar orderId (external_reference/orderRef)' };
+        strapi?.log?.warn?.('[payments.confirm] No se pudo determinar orderId (external_reference/orderRef). Redirigiendo a failure.');
+        const baseFront = getPaymentStatusBaseUrl();
+        ctx.status = 302;
+        ctx.redirect(`${baseFront}/payment-failure?reason=no_order_ref`);
         return;
       }
 
       // 3) Resolver PK del pedido con múltiples estrategias
       const orderPk = await resolveOrderPk(strapi, orderRef);
       if (!orderPk) {
-        ctx.status = 404;
-        ctx.body = { ok: false, error: `Pedido no encontrado para ref: ${orderRef}` };
+        strapi?.log?.warn?.(`[payments.confirm] Pedido no encontrado para ref: ${orderRef}. Redirigiendo a failure.`);
+        const baseFront = getPaymentStatusBaseUrl();
+        ctx.status = 302;
+        ctx.redirect(`${baseFront}/payment-failure?reason=order_not_found&orderRef=${encodeURIComponent(String(orderRef))}`);
         return;
       }
 
@@ -574,21 +579,34 @@ export default {
         }
       }
 
-      // 6) Redirección al front si vino "redirect"
-      const redirect = (ctx.request.query?.redirect as string) || null;
-      if (redirect) {
-        const dest = ensureHttpUrl(redirect);
-        ctx.status = 302;
-        ctx.redirect(dest);
-        return;
+      // 6) Redirección al front: nunca devolver JSON aquí para que el usuario no vea JSON tras el pago.
+      // MP a veces reemplaza la query al redirigir y se pierde "redirect"; en ese caso construimos la URL.
+      const redirectParam = (ctx.request.query?.redirect as string) || null;
+      if (redirectParam) {
+        try {
+          const dest = ensureHttpUrl(redirectParam);
+          ctx.status = 302;
+          ctx.redirect(dest);
+          return;
+        } catch (_) {
+          /* redirect inválido, usar fallback */
+        }
       }
 
-      ctx.body = { ok: true, orderId: orderPk, status: normalizedStatus || status || 'approved' };
+      // Fallback: construir URL de éxito en el frontend (evita que el usuario vea JSON).
+      const baseFront = getPaymentStatusBaseUrl();
+      const dest =
+        `${baseFront}/pago/success?orderId=${encodeURIComponent(String(orderPk))}&status=${encodeURIComponent(normalizedStatus || 'approved')}` +
+        (paymentIdQ ? `&payment_id=${encodeURIComponent(String(paymentIdQ))}` : '');
+      ctx.status = 302;
+      ctx.redirect(dest);
+      return;
     } catch (e: any) {
       const strapi = ctx.strapi;
       strapi?.log?.error?.('[payments.confirm] ', e?.response?.data || e?.message);
-      ctx.status = 500;
-      ctx.body = { ok: false, error: e?.message || 'Error confirmando pago' };
+      const baseFront = getPaymentStatusBaseUrl();
+      ctx.status = 302;
+      ctx.redirect(`${baseFront}/payment-failure?reason=error`);
     }
   },
 

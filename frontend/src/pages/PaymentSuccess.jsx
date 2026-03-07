@@ -1,5 +1,5 @@
 // Página de retorno de Mercado Pago cuando el pago fue aprobado (auto_return: 'approved').
-// back_urls.success apunta aquí. Muestra "Procesando tu pedido..." mientras el webhook actualiza la orden.
+// back_urls.success apunta aquí. MP envía por query: payment_id, status, preference_id, external_reference, etc.
 import React, { useEffect, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { Box, Container, CircularProgress, Typography } from "@mui/material";
@@ -29,6 +29,7 @@ export default function PaymentSuccess() {
   }, [isPending]);
 
   const slug = searchParams.get("slug");
+  // MP también puede enviar payment_id, collection_id, preference_id, external_reference por query
 
   return (
     <Container maxWidth="sm" sx={{ py: 6, minHeight: "100vh", display: "flex", alignItems: "center" }}>

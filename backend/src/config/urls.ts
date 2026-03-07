@@ -19,39 +19,39 @@ export function ensureHttpUrl(url?: string | null, fallback?: string): string {
 }
 
 /**
- * Get frontend URL from environment variables
+ * Get frontend URL from environment variables.
+ * En producción (NODE_ENV=production) no usar localhost para back_urls de Mercado Pago.
  */
 export function getFrontendUrl(): string {
-  return ensureHttpUrl(
-    process.env.FRONTEND_URL || 
+  const raw =
+    process.env.FRONTEND_URL ||
     process.env.VITE_API_URL?.replace(/\/api\/?$/, '') ||
-    '',
-    'http://localhost:5173' // Fallback solo para desarrollo
-  );
+    '';
+  if (raw && raw.trim().length > 0) return ensureHttpUrl(raw.trim());
+  const isProd = process.env.NODE_ENV === 'production';
+  return ensureHttpUrl(isProd ? 'https://mozoqr.vercel.app' : 'http://localhost:5173');
 }
 
 /**
- * Get backend URL from environment variables or Strapi config
+ * Get backend URL from environment variables or Strapi config.
+ * En producción definir BACKEND_URL, STRAPI_URL o PUBLIC_URL para back_urls de Mercado Pago.
  */
 export function getBackendUrl(strapiConfig?: any): string {
-  // Try environment variables first
-  const envUrl = process.env.BACKEND_URL || 
-                 process.env.STRAPI_URL || 
+  const envUrl = process.env.BACKEND_URL ||
+                 process.env.STRAPI_URL ||
                  process.env.PUBLIC_URL;
-  
-  if (envUrl) {
-    return ensureHttpUrl(envUrl);
+
+  if (envUrl && String(envUrl).trim().length > 0) {
+    return ensureHttpUrl(envUrl.trim());
   }
-  
-  // Fallback to Strapi config if available
+
   if (strapiConfig) {
     const strapiUrl = strapiConfig.get?.('server.url');
-    if (strapiUrl) {
+    if (strapiUrl && String(strapiUrl).trim().length > 0) {
       return ensureHttpUrl(strapiUrl);
     }
   }
-  
-  // Last resort: localhost for development
+
   return 'http://localhost:1337';
 }
 
