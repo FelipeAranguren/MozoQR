@@ -92,12 +92,18 @@ export default function DemoLanding() {
             pb: { xs: 4, md: 8 }
         }}>
             <Box sx={{
-                transform: 'scale(0.75)',
-                transformOrigin: 'top center',
                 width: '100%',
-                maxWidth: '1200px'
+                maxWidth: { xs: '100%', md: '1200px' },
+                transform: { xs: 'none', md: 'scale(0.75)' },
+                transformOrigin: 'top center',
+                px: { xs: 1, sm: 2, md: 0 }
             }}>
-                <Container maxWidth="lg">
+                <Container
+                    maxWidth="lg"
+                    sx={{
+                        px: { xs: 1.5, sm: 2, md: 3 }
+                    }}
+                >
                 {/* Header */}
                 <Box sx={{ textAlign: 'center', mb: 8 }}>
                     <motion.div
@@ -147,7 +153,7 @@ export default function DemoLanding() {
                     initial="hidden"
                     animate="visible"
                 >
-                    <Grid container spacing={4}>
+                    <Grid container spacing={{ xs: 2, md: 4 }}>
                         {roles.map((role) => (
                             <Grid item xs={12} md={6} key={role.id}>
                                 <motion.div
@@ -158,7 +164,7 @@ export default function DemoLanding() {
                                     <Card
                                         elevation={0}
                                         sx={{
-                                            p: 4,
+                                            p: { xs: 2.5, md: 4 },
                                             height: '100%',
                                             borderRadius: 4,
                                             border: '1px solid',
@@ -171,17 +177,18 @@ export default function DemoLanding() {
                                             }
                                         }}
                                     >
-                                        <Box sx={{ display: 'flex', alignItems: 'flex-start', mb: 3 }}>
+                                        <Box sx={{ display: 'flex', alignItems: 'flex-start', mb: { xs: 2, md: 3 } }}>
                                             <Box sx={{
-                                                p: 2,
+                                                p: { xs: 1.5, md: 2 },
                                                 borderRadius: 3,
                                                 bgcolor: alpha(role.color, 0.1),
                                                 color: role.color,
-                                                mr: 3
+                                                mr: { xs: 2, md: 3 },
+                                                flexShrink: 0
                                             }}>
                                                 {role.icon}
                                             </Box>
-                                            <Box>
+                                            <Box sx={{ minWidth: 0, flex: 1 }}>
                                                 <Typography variant="h5" fontWeight="bold" gutterBottom>
                                                     {role.title}
                                                 </Typography>
@@ -191,7 +198,7 @@ export default function DemoLanding() {
                                             </Box>
                                         </Box>
 
-                                        <Box sx={{ mb: 4, pl: 2 }}>
+                                        <Box sx={{ mb: { xs: 3, md: 4 }, pl: { xs: 0, md: 2 } }}>
                                             {role.features.map((feature, idx) => (
                                                 <Box key={idx} sx={{ display: 'flex', alignItems: 'center', mb: 1 }}>
                                                     <CheckCircleIcon sx={{ fontSize: 18, color: role.color, mr: 1.5, opacity: 0.8 }} />
