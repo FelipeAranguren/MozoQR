@@ -15,22 +15,32 @@ const METODOS_PAGO_UID = 'api::metodos-pago.metodos-pago';
 const ORDER_UID = 'api::pedido.pedido';
 
 /**
+ * Misma lógica que el frontend: encuentra el método con provider === 'mercado_pago' y active === true.
+ * Comparación estricta: provider debe ser exactamente 'mercado_pago' (snake_case); active booleano true (o 1 en BD).
+ */
+function findMercadoPagoActivo(rows: any[]): any {
+  const list = Array.isArray(rows) ? rows : [];
+  return list.find((r: any) => {
+    const provider = r?.provider;
+    const active = r?.active;
+    const providerOk = provider === 'mercado_pago';
+    const activeOk = active === true || active === 1;
+    return providerOk && activeOk;
+  }) ?? null;
+}
+
+/**
  * Obtiene el access_token de Mercado Pago del restaurante desde MetodosPago.
- * Misma lógica que el frontend: filtrar por provider === 'mercado_pago' y active === true.
  * Solo uso server-side; nunca exponer mp_access_token al cliente.
  */
 async function getMpAccessTokenForRestaurant(strapi: any, restauranteId: number): Promise<string | null> {
   if (!restauranteId || !strapi?.entityService) return null;
   try {
     const rows = await strapi.entityService.findMany(METODOS_PAGO_UID, {
-      filters: {
-        restaurante: restauranteId,
-        provider: 'mercado_pago',
-        active: true,
-      },
-      limit: 1,
+      filters: { restaurante: restauranteId },
+      limit: 50,
     });
-    const first = Array.isArray(rows) ? rows[0] : null;
+    const first = findMercadoPagoActivo(rows);
     if (!first?.mp_access_token) return null;
     const token = String(first.mp_access_token).trim();
     return token.length > 0 ? token : null;
@@ -301,7 +311,14 @@ export default {
         '[payments] createPreference token: restauranteId=' + (restauranteId ?? 'n/a') + ', token=' + (tokenStr ? 'ok' : 'FALTA'),
       );
       if (!tokenStr) {
-        strapi?.log?.warn?.('[payments] No se encontró MetodosPago con provider=mercado_pago y active=true para este restaurante.');
+        const rows = await strapi.entityService.findMany(METODOS_PAGO_UID, {
+          filters: { restaurante: restauranteId ?? 0 },
+          limit: 20,
+        });
+        strapi?.log?.warn?.(
+          '[payments] No se encontró MetodosPago con provider=mercado_pago y active=true.',
+          { restauranteId, metodosCount: Array.isArray(rows) ? rows.length : 0, providers: Array.isArray(rows) ? rows.map((r: any) => r?.provider) : [] },
+        );
         ctx.status = 500;
         ctx.body = {
           ok: false,

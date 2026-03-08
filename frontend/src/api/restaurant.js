@@ -3,9 +3,10 @@ import { api } from '../api';
 import { uploadImage } from './menu';
 
 /**
- * Normaliza el array metodos_pagos (Strapi v4/v5) y obtiene el método Mercado Pago activo.
- * Condición: provider === 'mercado_pago' Y (active no es false; si no viene en la API se considera activo).
- * @param {Array|undefined} metodosPagos - attr.metodos_pagos (puede ser .data o array)
+ * Misma lógica que el backend: encuentra el método con provider === 'mercado_pago' y active === true.
+ * Comparación estricta: provider exactamente 'mercado_pago' (snake_case); active booleano true (o 1).
+ * No comparar contra "Mercado Pago", "mercado-pago" ni active como string 'true'.
+ * @param {Array|undefined} metodosPagos - restaurante.metodos_pagos (puede ser .data o array)
  * @returns {{ hasMercadoPago: boolean, mp_public_key: string|null, mpMethod: object|null }}
  */
 export function getMercadoPagoFromMetodos(metodosPagos) {
@@ -15,8 +16,9 @@ export function getMercadoPagoFromMetodos(metodosPagos) {
     const a = m?.attributes ?? m;
     const provider = a?.provider ?? m?.provider;
     const active = a?.active ?? m?.active;
-    const isActive = active !== false && active !== 'false';
-    return provider === 'mercado_pago' && isActive;
+    const providerOk = provider === 'mercado_pago';
+    const activeOk = active === true || active === 1;
+    return providerOk && activeOk;
   });
   const attrs = mpMethod ? (mpMethod.attributes ?? mpMethod) : null;
   const mpPublicKey = attrs?.mp_public_key ?? mpMethod?.mp_public_key ?? null;
