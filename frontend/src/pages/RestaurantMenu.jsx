@@ -33,7 +33,6 @@ import { useCart } from '../context/CartContext';
 import { fetchMenus, openSession, releaseTableIfNoOrders } from '../api/tenant';
 import { fetchTables, fetchTable } from '../api/tables';
 import { fetchRestaurant } from '../api/restaurant';
-import { getMercadoPagoAvailable } from '../api/payments';
 import { http } from '../api/tenant';
 import useTableSession from '../hooks/useTableSession';
 import StickyFooter from '../components/StickyFooter';
@@ -449,15 +448,10 @@ export default function RestaurantMenu() {
           }
         }
 
-        // Mercado Pago: desde MetodosPago (con populate) o fallback al .env (modo compatibilidad)
+        // Mercado Pago: solo si existe en restaurante.metodos_pagos (provider === 'mercado_pago' y active === true)
         try {
-          const [rest, availability] = await Promise.all([
-            fetchRestaurant(slug),
-            getMercadoPagoAvailable(slug),
-          ]);
-          const fromMetodos = Boolean(rest?.hasMercadoPago ?? rest?.mp_public_key);
-          const fromFallback = Boolean(availability?.available);
-          setHasMercadoPago(fromMetodos || fromFallback);
+          const rest = await fetchRestaurant(slug);
+          setHasMercadoPago(Boolean(rest?.hasMercadoPago));
         } catch (e) {
           console.warn('Error obteniendo métodos de pago del restaurante:', e);
         }

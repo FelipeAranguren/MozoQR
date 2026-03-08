@@ -1,6 +1,7 @@
 // frontend/src/hooks/useRestaurantes.js
 import { useState, useEffect } from 'react';
 import axios from 'axios';
+import { getMercadoPagoFromMetodos } from '../api/restaurant';
 
 const API_URL = import.meta.env?.VITE_API_URL || 'http://localhost:1337/api';
 
@@ -56,10 +57,7 @@ export function useRestaurantes() {
           logoUrl = urlRel ? (urlRel.startsWith('http') ? urlRel : `${base}${urlRel}`) : null;
         }
 
-        const metodosPagos = attr.metodos_pagos?.data ?? attr.metodos_pagos ?? [];
-        const list = Array.isArray(metodosPagos) ? metodosPagos : [];
-        const mpMethod = list.find((m) => (m.attributes?.provider ?? m.provider) === 'mercado_pago' && (m.attributes?.active ?? m.active));
-        const mpPublicKey = mpMethod ? (mpMethod.attributes?.mp_public_key ?? mpMethod.mp_public_key ?? null) : null;
+        const { hasMercadoPago: hasMP, mp_public_key: mpPublicKey } = getMercadoPagoFromMetodos(attr.metodos_pagos);
 
         return {
           id: r.id,
@@ -68,6 +66,7 @@ export function useRestaurantes() {
           owner_email: attr.owner_email || null,
           suscripcion: attr.Suscripcion || attr.suscripcion || 'basic',
           mp_public_key: mpPublicKey || null,
+          hasMercadoPago: hasMP,
           logo: logoUrl,
           mesas: attr.mesas?.data?.length || (Array.isArray(attr.mesas) ? attr.mesas.length : 0) || 0,
           mesa_sesions: attr.mesa_sesions?.data?.length || (Array.isArray(attr.mesa_sesions) ? attr.mesa_sesions.length : 0) || 0,

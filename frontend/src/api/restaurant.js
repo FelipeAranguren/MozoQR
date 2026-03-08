@@ -2,6 +2,31 @@
 import { api } from '../api';
 import { uploadImage } from './menu';
 
+/**
+ * Normaliza el array metodos_pagos (Strapi v4/v5) y obtiene el método Mercado Pago activo.
+ * Condición: provider === 'mercado_pago' Y (active no es false; si no viene en la API se considera activo).
+ * @param {Array|undefined} metodosPagos - attr.metodos_pagos (puede ser .data o array)
+ * @returns {{ hasMercadoPago: boolean, mp_public_key: string|null, mpMethod: object|null }}
+ */
+export function getMercadoPagoFromMetodos(metodosPagos) {
+  const raw = metodosPagos?.data ?? metodosPagos;
+  const list = Array.isArray(raw) ? raw : [];
+  const mpMethod = list.find((m) => {
+    const a = m?.attributes ?? m;
+    const provider = a?.provider ?? m?.provider;
+    const active = a?.active ?? m?.active;
+    const isActive = active !== false && active !== 'false';
+    return provider === 'mercado_pago' && isActive;
+  });
+  const attrs = mpMethod ? (mpMethod.attributes ?? mpMethod) : null;
+  const mpPublicKey = attrs?.mp_public_key ?? mpMethod?.mp_public_key ?? null;
+  return {
+    hasMercadoPago: Boolean(mpMethod && mpPublicKey),
+    mp_public_key: mpPublicKey || null,
+    mpMethod: mpMethod || null,
+  };
+}
+
 // Helper para obtener token de autenticación
 function getAuthHeaders() {
   const token = localStorage.getItem('strapi_jwt') || localStorage.getItem('jwt');
@@ -124,12 +149,10 @@ export async function fetchRestaurant(slug) {
       console.error('fetchRestaurant: No se encontró ID ni documentId en la respuesta:', data);
     }
 
-    // mp_public_key y métodos de pago desde MetodosPago (nunca exponer mp_access_token al cliente)
-    const metodosPagos = attr.metodos_pagos?.data ?? attr.metodos_pagos ?? [];
-    const list = Array.isArray(metodosPagos) ? metodosPagos : [];
-    const mpMethod = list.find((m) => (m.attributes?.provider ?? m.provider) === 'mercado_pago' && (m.attributes?.active ?? m.active));
-    const mpPublicKey = mpMethod ? (mpMethod.attributes?.mp_public_key ?? mpMethod.mp_public_key ?? null) : null;
-    const hasMercadoPago = Boolean(mpPublicKey);
+    // Solo desde restaurante.metodos_pagos: provider === 'mercado_pago' Y active === true (nunca desde restaurante ni env)
+    const { hasMercadoPago, mp_public_key: mpPublicKey } = getMercadoPagoFromMetodos(attr.metodos_pagos);
+    const rawList = attr.metodos_pagos?.data ?? attr.metodos_pagos ?? [];
+    const list = Array.isArray(rawList) ? rawList : [];
 
     return {
       id: restaurantId || documentIdValue,
@@ -142,8 +165,8 @@ export async function fetchRestaurant(slug) {
       mp_public_key: mpPublicKey,
       hasMercadoPago,
       metodos_pagos: list.map((m) => {
-        const a = m.attributes || m;
-        return { provider: a.provider, active: a.active, mp_public_key: a.mp_public_key, alias_cbu: a.alias_cbu };
+        const a = m?.attributes ?? m;
+        return { provider: a?.provider, active: a?.active, mp_public_key: a?.mp_public_key, alias_cbu: a?.alias_cbu };
       }),
       createdAt: attr.createdAt || null,
       updatedAt: attr.updatedAt || null
