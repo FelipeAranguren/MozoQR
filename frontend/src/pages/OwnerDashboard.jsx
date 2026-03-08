@@ -721,10 +721,10 @@ export default function OwnerDashboard() {
         transition: 'all 0.3s ease'
       }}
     >
-      {/* Header + períodos */}
+      {/* Header + períodos: título a la izquierda, botones (Ver menú + Vista) a la esquina superior derecha */}
       <Box sx={{ 
         display: 'flex', 
-        alignItems: 'center', 
+        alignItems: 'flex-start', 
         justifyContent: 'space-between', 
         mb: isEjecutiva ? 4 : 4, 
         flexWrap: 'wrap', 
@@ -748,46 +748,54 @@ export default function OwnerDashboard() {
             Plan: <strong>{plan || 'BASIC'}</strong>
           </Typography>
         </Box>
-        </Box>
-        <Box sx={{ display: 'flex', gap: 2, alignItems: 'center', flexWrap: 'wrap' }}>
-          <Button
-            variant="outlined"
-            size="small"
-            startIcon={<OpenInNewIcon />}
-            onClick={() => window.open(`/${slug}/menu`, '_blank', 'noopener,noreferrer')}
-            sx={{ textTransform: 'none' }}
-          >
-            Ver menú
-          </Button>
-          {/* Selector de Vista */}
-          <ToggleButtonGroup
-            value={viewMode}
-            exclusive
-            onChange={(e, newMode) => {
-              if (newMode !== null) setViewMode(newMode);
-            }}
-            size="small"
-            sx={{
-              '& .MuiToggleButton-root': {
-                textTransform: 'none',
-                fontWeight: 600,
-                px: 2,
-                border: `1px solid ${MARANA_COLORS.border}`,
-                '&.Mui-selected': {
-                  bgcolor: MARANA_COLORS.primary,
-                  color: '#fff',
-                  '&:hover': {
+
+        {/* Esquina superior derecha: Ver menú + selector de vista, luego fila de períodos */}
+        <Box sx={{ 
+          display: 'flex', 
+          flexDirection: 'column', 
+          alignItems: { xs: 'stretch', sm: 'flex-end' }, 
+          gap: 2,
+          minWidth: 0
+        }}>
+          <Box sx={{ display: 'flex', gap: 2, alignItems: 'center', flexWrap: 'wrap' }}>
+            <Button
+              variant="outlined"
+              size="small"
+              startIcon={<OpenInNewIcon />}
+              onClick={() => window.open(`/${slug}/menu`, '_blank', 'noopener,noreferrer')}
+              sx={{ textTransform: 'none' }}
+            >
+              Ver menú
+            </Button>
+            <ToggleButtonGroup
+              value={viewMode}
+              exclusive
+              onChange={(e, newMode) => {
+                if (newMode !== null) setViewMode(newMode);
+              }}
+              size="small"
+              sx={{
+                '& .MuiToggleButton-root': {
+                  textTransform: 'none',
+                  fontWeight: 600,
+                  px: 2,
+                  border: `1px solid ${MARANA_COLORS.border}`,
+                  '&.Mui-selected': {
                     bgcolor: MARANA_COLORS.primary,
-                    opacity: 0.9
+                    color: '#fff',
+                    '&:hover': {
+                      bgcolor: MARANA_COLORS.primary,
+                      opacity: 0.9
+                    }
                   }
                 }
-              }
-            }}
-          >
-            <ToggleButton value="operativa">Vista Operativa</ToggleButton>
-            <ToggleButton value="ejecutiva">Vista Ejecutiva</ToggleButton>
-          </ToggleButtonGroup>
-        <Box sx={{ display: 'flex', gap: 1, alignItems: 'center', flexWrap: 'wrap' }}>
+              }}
+            >
+              <ToggleButton value="operativa">Vista Operativa</ToggleButton>
+              <ToggleButton value="ejecutiva">Vista Ejecutiva</ToggleButton>
+            </ToggleButtonGroup>
+          </Box>
+          <Box sx={{ display: 'flex', gap: 1, alignItems: 'center', flexWrap: 'wrap' }}>
           {PERIODS.filter(p => p.key !== 'custom').map((p) => (
             <Button
               key={p.key}
@@ -854,6 +862,7 @@ export default function OwnerDashboard() {
               />
             </Box>
           )}
+          </Box>
         </Box>
       </Box>
 
