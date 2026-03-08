@@ -732,7 +732,7 @@ export default function OwnerDashboard() {
         pb: isEjecutiva ? 3 : 0,
         borderBottom: isEjecutiva ? `2px solid ${MARANA_COLORS.border}` : 'none'
       }}>
-        <Box>
+        <Box sx={{ flex: 1, minWidth: 0 }}>
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 0.5 }}>
             <Typography variant="h4" sx={{ fontWeight: 700 }}>
               {isEjecutiva ? 'Vista Ejecutiva' : 'Dashboard'} — {prettyName(slug)}
@@ -744,127 +744,118 @@ export default function OwnerDashboard() {
               sx={{ fontWeight: 600 }}
             />
           </Box>
-          <Typography variant="body2" color="text.secondary">
+          <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
             Plan: <strong>{plan || 'BASIC'}</strong>
           </Typography>
-        </Box>
-
-        {/* Esquina superior derecha: Ver menú + selector de vista, luego fila de períodos */}
-        <Box sx={{ 
-          display: 'flex', 
-          flexDirection: 'column', 
-          alignItems: { xs: 'stretch', sm: 'flex-end' }, 
-          gap: 2,
-          minWidth: 0,
-          flexShrink: 0,
-          ml: 'auto'
-        }}>
-          <Box sx={{ display: 'flex', gap: 2, alignItems: 'center', flexWrap: 'wrap', justifyContent: { xs: 'flex-start', sm: 'flex-end' } }}>
-            <Button
-              variant="outlined"
-              size="small"
-              startIcon={<OpenInNewIcon />}
-              onClick={() => window.open(`/${slug}/menu`, '_blank', 'noopener,noreferrer')}
-              sx={{ textTransform: 'none' }}
-            >
-              Ver menú
-            </Button>
-            <ToggleButtonGroup
-              value={viewMode}
-              exclusive
-              onChange={(e, newMode) => {
-                if (newMode !== null) setViewMode(newMode);
-              }}
-              size="small"
-              sx={{
-                '& .MuiToggleButton-root': {
-                  textTransform: 'none',
-                  fontWeight: 600,
-                  px: 2,
-                  border: `1px solid ${MARANA_COLORS.border}`,
-                  '&.Mui-selected': {
-                    bgcolor: MARANA_COLORS.primary,
-                    color: '#fff',
-                    '&:hover': {
-                      bgcolor: MARANA_COLORS.primary,
-                      opacity: 0.9
-                    }
-                  }
-                }
-              }}
-            >
-              <ToggleButton value="operativa">Vista Operativa</ToggleButton>
-              <ToggleButton value="ejecutiva">Vista Ejecutiva</ToggleButton>
-            </ToggleButtonGroup>
-          </Box>
+          {/* Fila de períodos debajo del título y plan */}
           <Box sx={{ display: 'flex', gap: 1, alignItems: 'center', flexWrap: 'wrap' }}>
-          {PERIODS.filter(p => p.key !== 'custom').map((p) => (
+            {PERIODS.filter(p => p.key !== 'custom').map((p) => (
+              <Button
+                key={p.key}
+                onClick={() => setPeriodKey(p.key)}
+                variant={p.key === periodKey ? 'contained' : 'outlined'}
+                size="small"
+                sx={{
+                  minWidth: 'auto',
+                  px: 2,
+                  textTransform: 'none',
+                  ...(p.key === periodKey && {
+                    bgcolor: MARANA_COLORS.primary,
+                    '&:hover': { bgcolor: MARANA_COLORS.primary, opacity: 0.9 }
+                  })
+                }}
+              >
+                {p.label}
+              </Button>
+            ))}
             <Button
-              key={p.key}
-              onClick={() => setPeriodKey(p.key)}
-              variant={p.key === periodKey ? 'contained' : 'outlined'}
+              onClick={() => setPeriodKey('custom')}
+              variant={periodKey === 'custom' ? 'contained' : 'outlined'}
               size="small"
               sx={{
                 minWidth: 'auto',
                 px: 2,
                 textTransform: 'none',
-                ...(p.key === periodKey && {
+                ...(periodKey === 'custom' && {
                   bgcolor: MARANA_COLORS.primary,
                   '&:hover': { bgcolor: MARANA_COLORS.primary, opacity: 0.9 }
                 })
               }}
             >
-              {p.label}
+              Personalizado
             </Button>
-          ))}
+            {periodKey === 'custom' && (
+              <Box sx={{ display: 'flex', gap: 1, alignItems: 'center', ml: 1 }}>
+                <input
+                  type="date"
+                  value={customStart}
+                  max={customEnd}
+                  onChange={(e) => setCustomStart(e.target.value)}
+                  style={{
+                    padding: '8px 12px',
+                    border: `1px solid ${MARANA_COLORS.border}`,
+                    borderRadius: 8,
+                    background: '#fff',
+                    fontFamily: 'Inter, sans-serif'
+                  }}
+                />
+                <Typography variant="body2" color="text.secondary">—</Typography>
+                <input
+                  type="date"
+                  value={customEnd}
+                  min={customStart}
+                  onChange={(e) => setCustomEnd(e.target.value)}
+                  style={{
+                    padding: '8px 12px',
+                    border: `1px solid ${MARANA_COLORS.border}`,
+                    borderRadius: 8,
+                    background: '#fff',
+                    fontFamily: 'Inter, sans-serif'
+                  }}
+                />
+              </Box>
+            )}
+          </Box>
+        </Box>
+
+        {/* Esquina superior derecha: solo Ver menú + selector de vista */}
+        <Box sx={{ display: 'flex', gap: 2, alignItems: 'center', flexWrap: 'wrap', flexShrink: 0, ml: 'auto' }}>
           <Button
-            onClick={() => setPeriodKey('custom')}
-            variant={periodKey === 'custom' ? 'contained' : 'outlined'}
+            variant="outlined"
+            size="small"
+            startIcon={<OpenInNewIcon />}
+            onClick={() => window.open(`/${slug}/menu`, '_blank', 'noopener,noreferrer')}
+            sx={{ textTransform: 'none' }}
+          >
+            Ver menú
+          </Button>
+          <ToggleButtonGroup
+            value={viewMode}
+            exclusive
+            onChange={(e, newMode) => {
+              if (newMode !== null) setViewMode(newMode);
+            }}
             size="small"
             sx={{
-              minWidth: 'auto',
-              px: 2,
-              textTransform: 'none',
-              ...(periodKey === 'custom' && {
-                bgcolor: MARANA_COLORS.primary,
-                '&:hover': { bgcolor: MARANA_COLORS.primary, opacity: 0.9 }
-              })
+              '& .MuiToggleButton-root': {
+                textTransform: 'none',
+                fontWeight: 600,
+                px: 2,
+                border: `1px solid ${MARANA_COLORS.border}`,
+                '&.Mui-selected': {
+                  bgcolor: MARANA_COLORS.primary,
+                  color: '#fff',
+                  '&:hover': {
+                    bgcolor: MARANA_COLORS.primary,
+                    opacity: 0.9
+                  }
+                }
+              }
             }}
           >
-            Personalizado
-          </Button>
-          {periodKey === 'custom' && (
-            <Box sx={{ display: 'flex', gap: 1, alignItems: 'center', ml: 1 }}>
-              <input
-                type="date"
-                value={customStart}
-                max={customEnd}
-                onChange={(e) => setCustomStart(e.target.value)}
-                style={{
-                  padding: '8px 12px',
-                  border: `1px solid ${MARANA_COLORS.border}`,
-                  borderRadius: 8,
-                  background: '#fff',
-                  fontFamily: 'Inter, sans-serif'
-                }}
-              />
-              <Typography variant="body2" color="text.secondary">—</Typography>
-              <input
-                type="date"
-                value={customEnd}
-                min={customStart}
-                onChange={(e) => setCustomEnd(e.target.value)}
-                style={{
-                  padding: '8px 12px',
-                  border: `1px solid ${MARANA_COLORS.border}`,
-                  borderRadius: 8,
-                  background: '#fff',
-                  fontFamily: 'Inter, sans-serif'
-                }}
-              />
-            </Box>
-          )}
-          </Box>
+            <ToggleButton value="operativa">Vista Operativa</ToggleButton>
+            <ToggleButton value="ejecutiva">Vista Ejecutiva</ToggleButton>
+          </ToggleButtonGroup>
         </Box>
       </Box>
 
