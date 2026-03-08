@@ -755,9 +755,11 @@ export default function OwnerDashboard() {
           flexDirection: 'column', 
           alignItems: { xs: 'stretch', sm: 'flex-end' }, 
           gap: 2,
-          minWidth: 0
+          minWidth: 0,
+          flexShrink: 0,
+          ml: 'auto'
         }}>
-          <Box sx={{ display: 'flex', gap: 2, alignItems: 'center', flexWrap: 'wrap' }}>
+          <Box sx={{ display: 'flex', gap: 2, alignItems: 'center', flexWrap: 'wrap', justifyContent: { xs: 'flex-start', sm: 'flex-end' } }}>
             <Button
               variant="outlined"
               size="small"
