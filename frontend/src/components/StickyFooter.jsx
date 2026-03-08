@@ -1344,7 +1344,7 @@ export default function StickyFooter({ table, tableSessionId, restaurantName, se
 
                   {payMethod === 'cash' && (
                     <Typography variant="body2" color="text.secondary">
-                      Se enviará una solicitud al staff para cobrar en mesa.
+                      Se enviará una solicitud al staff para cobrar con efectivo en la mesa.
                     </Typography>
                   )}
 
