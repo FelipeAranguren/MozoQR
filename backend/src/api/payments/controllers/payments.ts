@@ -263,6 +263,45 @@ export default {
     ctx.body = { ok: true, msg: 'payments api up' };
   },
 
+  /**
+   * GET /payments/mercado-pago-available?slug=xxx
+   * Indica si Mercado Pago está disponible para este restaurante:
+   * - Por MetodosPago (provider=mercado_pago, active): available=true, fallback=false
+   * - Por .env (MP_ACCESS_TOKEN): available=true, fallback=true (modo compatibilidad)
+   * - Si no hay ninguno: available=false
+   */
+  async getMercadoPagoAvailable(ctx: any) {
+    const strapi = ctx.strapi;
+    const slug = (ctx.request.query?.slug ?? '').toString().trim();
+    try {
+      // 1) Si hay slug, priorizar token desde MetodosPago de ese restaurante
+      if (slug) {
+        const restauranteId = await getRestauranteIdBySlug(strapi, slug);
+        if (restauranteId) {
+          const tokenFromMetodos = await getMpAccessTokenForRestaurant(strapi, restauranteId);
+          if (tokenFromMetodos) {
+            ctx.body = { available: true, fallback: false };
+            return;
+          }
+        }
+      }
+      // 2) Plan B: credenciales del .env (modo compatibilidad mientras se migra a MetodosPago)
+      const tokenEnv = getMpAccessToken(strapi)
+        || process.env.MP_ACCESS_TOKEN
+        || process.env.MERCADOPAGO_ACCESS_TOKEN
+        || process.env.MERCADO_PAGO_ACCESS_TOKEN;
+      const hasEnvToken = tokenEnv && typeof tokenEnv === 'string' && tokenEnv.trim().length > 0;
+      if (hasEnvToken) {
+        ctx.body = { available: true, fallback: true };
+        return;
+      }
+      ctx.body = { available: false };
+    } catch (e: any) {
+      strapi?.log?.warn?.('[payments.getMercadoPagoAvailable]', e?.message);
+      ctx.body = { available: false };
+    }
+  },
+
   async createPreference(ctx: any) {
     const strapi = ctx.strapi;
 

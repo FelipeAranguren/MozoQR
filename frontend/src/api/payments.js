@@ -1,6 +1,25 @@
 import { client, unwrap } from './client';
 
 /**
+ * Consulta si Mercado Pago está disponible para un restaurante (por MetodosPago o por fallback .env).
+ * @param {string} slug - Slug del restaurante
+ * @returns {Promise<{ available: boolean, fallback?: boolean }>}
+ */
+export async function getMercadoPagoAvailable(slug) {
+  if (!slug) return { available: false };
+  try {
+    const res = await client.get('/payments/mercado-pago-available', { params: { slug } });
+    const data = res?.data;
+    return {
+      available: Boolean(data?.available),
+      fallback: Boolean(data?.fallback),
+    };
+  } catch (e) {
+    return { available: false };
+  }
+}
+
+/**
  * Crea una preferencia de pago en el backend.
  * Respuesta exitosa: { ok: true, preference_id, init_point, sandbox_init_point, payment_id }.
  * Si la petición falla (response.ok falso o error de red), no se accede a data.config ni a otras propiedades.

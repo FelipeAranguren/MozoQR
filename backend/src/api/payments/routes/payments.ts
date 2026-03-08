@@ -12,6 +12,12 @@ export default {
       config: { auth: false, policies: [], middlewares: [] },
     },
     {
+      method: 'GET',
+      path: '/payments/mercado-pago-available',
+      handler: 'payments.getMercadoPagoAvailable',
+      config: { auth: false, policies: [], middlewares: [] },
+    },
+    {
       method: 'POST',
       path: '/payments/create-preference',
       handler: 'payments.createPreference',

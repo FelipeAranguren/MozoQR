@@ -36,7 +36,8 @@
       "type": "string"
     },
     "active": {
-      "type": "boolean"
+      "type": "boolean",
+      "default": true
     },
     "restaurante": {
       "type": "relation",

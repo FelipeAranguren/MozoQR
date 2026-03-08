@@ -538,7 +538,7 @@ export interface ApiMetodosPagoMetodosPago extends Struct.CollectionTypeSchema {
     draftAndPublish: true;
   };
   attributes: {
-    active: Schema.Attribute.Boolean;
+    active: Schema.Attribute.Boolean & Schema.Attribute.DefaultTo<true>;
     alias_cbu: Schema.Attribute.String;
     cbu: Schema.Attribute.String;
     createdAt: Schema.Attribute.DateTime;
