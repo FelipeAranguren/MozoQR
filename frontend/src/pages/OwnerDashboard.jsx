@@ -721,105 +721,34 @@ export default function OwnerDashboard() {
         transition: 'all 0.3s ease'
       }}
     >
-      {/* Header + períodos: título a la izquierda, botones (Ver menú + Vista) a la esquina superior derecha */}
+      {/* Header: fila 1 = título + Ver menú/toggle; fila 2 = períodos a ancho completo */}
       <Box sx={{ 
         display: 'flex', 
-        alignItems: 'flex-start', 
-        justifyContent: 'space-between', 
+        flexDirection: 'column',
         mb: isEjecutiva ? 4 : 4, 
-        flexWrap: 'wrap', 
-        gap: 2,
+        gap: 0,
         pb: isEjecutiva ? 3 : 0,
         borderBottom: isEjecutiva ? `2px solid ${MARANA_COLORS.border}` : 'none'
       }}>
-        <Box sx={{ flex: 1, minWidth: 0 }}>
-          <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 0.5 }}>
-            <Typography variant="h4" sx={{ fontWeight: 700 }}>
-              {isEjecutiva ? 'Vista Ejecutiva' : 'Dashboard'} — {prettyName(slug)}
-            </Typography>
-            <Chip 
-              label={isEjecutiva ? 'Vista Ejecutiva' : 'Vista Operativa'}
-              color={isEjecutiva ? 'secondary' : 'primary'}
-              size="small"
-              sx={{ fontWeight: 600 }}
-            />
-          </Box>
-          <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-            Plan: <strong>{plan || 'BASIC'}</strong>
-          </Typography>
-          {/* Fila de períodos debajo del título y plan */}
-          <Box sx={{ display: 'flex', gap: 1, alignItems: 'center', flexWrap: 'wrap' }}>
-            {PERIODS.filter(p => p.key !== 'custom').map((p) => (
-              <Button
-                key={p.key}
-                onClick={() => setPeriodKey(p.key)}
-                variant={p.key === periodKey ? 'contained' : 'outlined'}
+        {/* Fila 1: título + plan a la izquierda, Ver menú + vista a la derecha */}
+        <Box sx={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', flexWrap: 'wrap', gap: 2 }}>
+          <Box>
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 0.5 }}>
+              <Typography variant="h4" sx={{ fontWeight: 700 }}>
+                {isEjecutiva ? 'Vista Ejecutiva' : 'Dashboard'} — {prettyName(slug)}
+              </Typography>
+              <Chip 
+                label={isEjecutiva ? 'Vista Ejecutiva' : 'Vista Operativa'}
+                color={isEjecutiva ? 'secondary' : 'primary'}
                 size="small"
-                sx={{
-                  minWidth: 'auto',
-                  px: 2,
-                  textTransform: 'none',
-                  ...(p.key === periodKey && {
-                    bgcolor: MARANA_COLORS.primary,
-                    '&:hover': { bgcolor: MARANA_COLORS.primary, opacity: 0.9 }
-                  })
-                }}
-              >
-                {p.label}
-              </Button>
-            ))}
-            <Button
-              onClick={() => setPeriodKey('custom')}
-              variant={periodKey === 'custom' ? 'contained' : 'outlined'}
-              size="small"
-              sx={{
-                minWidth: 'auto',
-                px: 2,
-                textTransform: 'none',
-                ...(periodKey === 'custom' && {
-                  bgcolor: MARANA_COLORS.primary,
-                  '&:hover': { bgcolor: MARANA_COLORS.primary, opacity: 0.9 }
-                })
-              }}
-            >
-              Personalizado
-            </Button>
-            {periodKey === 'custom' && (
-              <Box sx={{ display: 'flex', gap: 1, alignItems: 'center', ml: 1 }}>
-                <input
-                  type="date"
-                  value={customStart}
-                  max={customEnd}
-                  onChange={(e) => setCustomStart(e.target.value)}
-                  style={{
-                    padding: '8px 12px',
-                    border: `1px solid ${MARANA_COLORS.border}`,
-                    borderRadius: 8,
-                    background: '#fff',
-                    fontFamily: 'Inter, sans-serif'
-                  }}
-                />
-                <Typography variant="body2" color="text.secondary">—</Typography>
-                <input
-                  type="date"
-                  value={customEnd}
-                  min={customStart}
-                  onChange={(e) => setCustomEnd(e.target.value)}
-                  style={{
-                    padding: '8px 12px',
-                    border: `1px solid ${MARANA_COLORS.border}`,
-                    borderRadius: 8,
-                    background: '#fff',
-                    fontFamily: 'Inter, sans-serif'
-                  }}
-                />
-              </Box>
-            )}
+                sx={{ fontWeight: 600 }}
+              />
+            </Box>
+            <Typography variant="body2" color="text.secondary">
+              Plan: <strong>{plan || 'BASIC'}</strong>
+            </Typography>
           </Box>
-        </Box>
-
-        {/* Esquina superior derecha: solo Ver menú + selector de vista */}
-        <Box sx={{ display: 'flex', gap: 2, alignItems: 'center', flexWrap: 'wrap', flexShrink: 0, ml: 'auto' }}>
+          <Box sx={{ display: 'flex', gap: 2, alignItems: 'center', flexShrink: 0, ml: 'auto' }}>
           <Button
             variant="outlined"
             size="small"
@@ -856,6 +785,90 @@ export default function OwnerDashboard() {
             <ToggleButton value="operativa">Vista Operativa</ToggleButton>
             <ToggleButton value="ejecutiva">Vista Ejecutiva</ToggleButton>
           </ToggleButtonGroup>
+          </Box>
+        </Box>
+
+        {/* Fila 2: espacio debajo del título y fila de períodos en una sola línea (como el rectángulo marcado) */}
+        <Box sx={{ mt: 3, width: '100%' }}>
+          <Box sx={{ 
+            display: 'flex', 
+            gap: 1, 
+            alignItems: 'center', 
+            flexWrap: 'nowrap', 
+            overflowX: 'auto',
+            pb: 0.5,
+            '&::-webkit-scrollbar': { height: 6 },
+            '&::-webkit-scrollbar-thumb': { borderRadius: 3, bgcolor: 'action.hover' }
+          }}>
+            {PERIODS.filter(p => p.key !== 'custom').map((p) => (
+              <Button
+                key={p.key}
+                onClick={() => setPeriodKey(p.key)}
+                variant={p.key === periodKey ? 'contained' : 'outlined'}
+                size="small"
+                sx={{
+                  minWidth: 'auto',
+                  flexShrink: 0,
+                  px: 2,
+                  textTransform: 'none',
+                  ...(p.key === periodKey && {
+                    bgcolor: MARANA_COLORS.primary,
+                    '&:hover': { bgcolor: MARANA_COLORS.primary, opacity: 0.9 }
+                  })
+                }}
+              >
+                {p.label}
+              </Button>
+            ))}
+            <Button
+              onClick={() => setPeriodKey('custom')}
+              variant={periodKey === 'custom' ? 'contained' : 'outlined'}
+              size="small"
+              sx={{
+                minWidth: 'auto',
+                flexShrink: 0,
+                px: 2,
+                textTransform: 'none',
+                ...(periodKey === 'custom' && {
+                  bgcolor: MARANA_COLORS.primary,
+                  '&:hover': { bgcolor: MARANA_COLORS.primary, opacity: 0.9 }
+                })
+              }}
+            >
+              Personalizado
+            </Button>
+            {periodKey === 'custom' && (
+              <Box sx={{ display: 'flex', gap: 1, alignItems: 'center', ml: 1, flexShrink: 0 }}>
+                <input
+                  type="date"
+                  value={customStart}
+                  max={customEnd}
+                  onChange={(e) => setCustomStart(e.target.value)}
+                  style={{
+                    padding: '8px 12px',
+                    border: `1px solid ${MARANA_COLORS.border}`,
+                    borderRadius: 8,
+                    background: '#fff',
+                    fontFamily: 'Inter, sans-serif'
+                  }}
+                />
+                <Typography variant="body2" color="text.secondary">—</Typography>
+                <input
+                  type="date"
+                  value={customEnd}
+                  min={customStart}
+                  onChange={(e) => setCustomEnd(e.target.value)}
+                  style={{
+                    padding: '8px 12px',
+                    border: `1px solid ${MARANA_COLORS.border}`,
+                    borderRadius: 8,
+                    background: '#fff',
+                    fontFamily: 'Inter, sans-serif'
+                  }}
+                />
+              </Box>
+            )}
+          </Box>
         </Box>
       </Box>
 
