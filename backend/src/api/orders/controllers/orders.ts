@@ -3,10 +3,35 @@ import { MercadoPagoConfig, Payment } from 'mercadopago';
 
 /** UID del Content Type pedido en Strapi (api::pedido.pedido) */
 const ORDER_UID = 'api::pedido.pedido';
+const METODOS_PAGO_UID = 'api::metodos-pago.metodos-pago';
 
-/** Token de MP: solo process.env.MP_ACCESS_TOKEN (Railway reconoce esta variable). */
-function getMpAccessToken(): string | null {
-  const raw = process.env.MP_ACCESS_TOKEN;
+/**
+ * Obtiene el access_token de Mercado Pago del restaurante desde MetodosPago (provider=mercado_pago, active=true).
+ * Solo uso server-side.
+ */
+async function getMpAccessTokenForRestaurant(strapi: any, restauranteId: number): Promise<string | null> {
+  if (!restauranteId || !strapi?.db) return null;
+  try {
+    const rows = await strapi.db.query(METODOS_PAGO_UID).findMany({
+      where: {
+        restaurante: restauranteId,
+        provider: 'mercado_pago',
+        active: true,
+      },
+      limit: 1,
+    });
+    const first = Array.isArray(rows) ? rows[0] : null;
+    if (!first?.mp_access_token) return null;
+    const token = String(first.mp_access_token).trim();
+    return token.length > 0 ? token : null;
+  } catch (_e) {
+    return null;
+  }
+}
+
+/** Fallback legacy: token desde env. */
+function getMpAccessTokenEnv(): string | null {
+  const raw = process.env.MP_ACCESS_TOKEN || process.env.MERCADOPAGO_ACCESS_TOKEN || process.env.MERCADO_PAGO_ACCESS_TOKEN;
   if (raw == null || typeof raw !== 'string') return null;
   const trimmed = raw.trim();
   return trimmed.length > 0 ? trimmed : null;
@@ -94,18 +119,14 @@ export default factories.createCoreController(ORDER_UID, ({ strapi }) => ({
         return ctx.send({ ok: true, message: 'ignored', reason: 'missing type or data.id' }, 200);
       }
 
-      const accessToken = getMpAccessToken();
-      if (!accessToken) {
-        strapi.log.error('[orders.webhook] Falta MP_ACCESS_TOKEN en variables de entorno (Railway).');
-        return ctx.send({ ok: false, error: 'Token not configured' }, 500);
-      }
-
+      // Para tipo 'payment' necesitamos el token para llamar a la API de MP. Lo obtenemos después de tener external_ref.
+      // Primero intentamos con un token genérico (legacy) para poder obtener el pago y su external_reference.
+      let accessToken: string | null = getMpAccessTokenEnv();
       let externalRef: string | null = null;
       let shouldMarkPaid = false;
 
       if (type === 'payment') {
-        // Notificación de tipo payment: obtener pago y su external_reference
-        const client = new MercadoPagoConfig({ accessToken });
+        const client = new MercadoPagoConfig({ accessToken: accessToken || '' });
         const paymentApi = new Payment(client);
         let mpPayment: any;
         try {

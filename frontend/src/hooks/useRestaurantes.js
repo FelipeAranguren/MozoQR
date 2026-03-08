@@ -32,8 +32,8 @@ export function useRestaurantes() {
         headers.Authorization = `Bearer ${token}`;
       }
 
-      // Obtener todos los restaurantes con populate
-      const res = await axios.get(`${API_URL}/restaurantes?populate=*`, { headers });
+      // Obtener todos los restaurantes con populate (metodos_pagos para clave pública MP; mp_access_token no se expone)
+      const res = await axios.get(`${API_URL}/restaurantes?populate=*&populate[metodos_pagos]=true`, { headers });
 
       // Mapear los datos de Strapi a un formato más usable
       const data = res.data?.data || [];
@@ -56,16 +56,18 @@ export function useRestaurantes() {
           logoUrl = urlRel ? (urlRel.startsWith('http') ? urlRel : `${base}${urlRel}`) : null;
         }
 
+        const metodosPagos = attr.metodos_pagos?.data ?? attr.metodos_pagos ?? [];
+        const list = Array.isArray(metodosPagos) ? metodosPagos : [];
+        const mpMethod = list.find((m) => (m.attributes?.provider ?? m.provider) === 'mercado_pago' && (m.attributes?.active ?? m.active));
+        const mpPublicKey = mpMethod ? (mpMethod.attributes?.mp_public_key ?? mpMethod.mp_public_key ?? null) : null;
+
         return {
           id: r.id,
           name: attr.name || r.name || `Restaurante ${r.id}`,
           slug: attr.slug || r.slug || String(r.id),
           owner_email: attr.owner_email || null,
           suscripcion: attr.Suscripcion || attr.suscripcion || 'basic',
-          mp_access_token: attr.mp_access_token || null,
-          mp_public_key: attr.mp_public_key || null,
-          cbu: attr.cbu || null,
-          cuenta_bancaria: attr.cuenta_bancaria || null,
+          mp_public_key: mpPublicKey || null,
           logo: logoUrl,
           mesas: attr.mesas?.data?.length || (Array.isArray(attr.mesas) ? attr.mesas.length : 0) || 0,
           mesa_sesions: attr.mesa_sesions?.data?.length || (Array.isArray(attr.mesa_sesions) ? attr.mesa_sesions.length : 0) || 0,

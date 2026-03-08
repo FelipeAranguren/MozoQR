@@ -47,20 +47,6 @@
       "target": "api::pedido.pedido",
       "mappedBy": "restaurante"
     },
-    "mp_access_token": {
-      "type": "text",
-      "private": true
-    },
-    "mp_public_key": {
-      "type": "string",
-      "private": true
-    },
-    "cbu": {
-      "type": "text"
-    },
-    "cuenta_bancaria": {
-      "type": "string"
-    },
     "mesas": {
       "type": "relation",
       "relation": "oneToMany",
@@ -112,6 +98,12 @@
       "type": "relation",
       "relation": "oneToMany",
       "target": "api::subscription.subscription",
+      "mappedBy": "restaurante"
+    },
+    "metodos_pagos": {
+      "type": "relation",
+      "relation": "oneToMany",
+      "target": "api::metodos-pago.metodos-pago",
       "mappedBy": "restaurante"
     }
   }

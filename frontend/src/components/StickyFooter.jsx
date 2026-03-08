@@ -78,7 +78,7 @@ const clearOpenOrders = (slug, table) => {
   localStorage.removeItem(openOrdersKey(slug, table));
 };
 
-export default function StickyFooter({ table, tableSessionId, restaurantName, sessionReady = true }) {
+export default function StickyFooter({ table, tableSessionId, restaurantName, sessionReady = true, hasMercadoPago = false }) {
   const { items, subtotal, addItem, removeItem, clearCart } = useCart();
   const { slug } = useParams();
   const navigate = useNavigate();
@@ -1311,17 +1311,19 @@ export default function StickyFooter({ table, tableSessionId, restaurantName, se
                   <Typography variant="subtitle2" sx={{ fontWeight: 600 }}>
                     Método de pago
                   </Typography>
-                  <Box sx={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 1 }}>
-                    <Button
-                      size="small"
-                      variant="outlined"
-                      onClick={handlePayWithMercadoPago}
-                      disabled={payLoading}
-                      sx={{ textTransform: 'none' }}
-                      startIcon={payLoading ? <CircularProgress size={16} color="inherit" /> : null}
-                    >
-                      {payLoading ? 'Redirigiendo…' : 'Mercado Pago'}
-                    </Button>
+                  <Box sx={{ display: 'grid', gridTemplateColumns: hasMercadoPago ? '1fr 1fr 1fr' : '1fr 1fr', gap: 1 }}>
+                    {hasMercadoPago && (
+                      <Button
+                        size="small"
+                        variant="outlined"
+                        onClick={handlePayWithMercadoPago}
+                        disabled={payLoading}
+                        sx={{ textTransform: 'none' }}
+                        startIcon={payLoading ? <CircularProgress size={16} color="inherit" /> : null}
+                      >
+                        {payLoading ? 'Redirigiendo…' : 'Mercado Pago'}
+                      </Button>
+                    )}
                     <Button
                       size="small"
                       variant={payMethod === 'card' ? 'contained' : 'outlined'}
@@ -1706,28 +1708,30 @@ export default function StickyFooter({ table, tableSessionId, restaurantName, se
               Método de pago
             </Typography>
 
-            {/* Opciones de pago directas: Mercado Pago, Tarjeta, Efectivo */}
+            {/* Opciones de pago directas: Mercado Pago (solo si está configurado), Tarjeta, Efectivo */}
             <Box sx={{ display: 'flex', gap: 1, mb: 2, flexDirection: { xs: 'column', sm: 'row' } }}>
-              <Button
-                fullWidth
-                variant="outlined"
-                startIcon={payLoading ? <CircularProgress size={20} sx={{ color: '#2196F3' }} /> : <AttachMoneyIcon />}
-                onClick={handlePayWithMercadoPago}
-                disabled={payLoading}
-                sx={{
-                  borderRadius: 2,
-                  textTransform: 'none',
-                  py: 1.5,
-                  color: '#2196F3',
-                  borderColor: '#2196F3',
-                  '&:hover': {
-                    bgcolor: alpha('#2196F3', 0.1),
-                    borderColor: '#0b7dda',
-                  },
-                }}
-              >
-                {payLoading ? 'Redirigiendo…' : 'Mercado Pago'}
-              </Button>
+              {hasMercadoPago && (
+                <Button
+                  fullWidth
+                  variant="outlined"
+                  startIcon={payLoading ? <CircularProgress size={20} sx={{ color: '#2196F3' }} /> : <AttachMoneyIcon />}
+                  onClick={handlePayWithMercadoPago}
+                  disabled={payLoading}
+                  sx={{
+                    borderRadius: 2,
+                    textTransform: 'none',
+                    py: 1.5,
+                    color: '#2196F3',
+                    borderColor: '#2196F3',
+                    '&:hover': {
+                      bgcolor: alpha('#2196F3', 0.1),
+                      borderColor: '#0b7dda',
+                    },
+                  }}
+                >
+                  {payLoading ? 'Redirigiendo…' : 'Mercado Pago'}
+                </Button>
+              )}
               <Button
                 fullWidth
                 variant={payMethod === 'card' ? 'contained' : 'outlined'}

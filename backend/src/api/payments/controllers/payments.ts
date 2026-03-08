@@ -10,11 +10,97 @@ import { MercadoPagoConfig, Preference, Payment } from 'mercadopago';
 import { ensureHttpUrl, getFrontendUrl, getBackendUrl, isHttps } from '../../../config/urls';
 
 const PRODUCTO_UID = 'api::producto.producto';
-const EXPECTED_TOKEN_PREFIX = 'APP_USR';
+const RESTAURANTE_UID = 'api::restaurante.restaurante';
+const METODOS_PAGO_UID = 'api::metodos-pago.metodos-pago';
+const ORDER_UID = 'api::pedido.pedido';
+
+/**
+ * Obtiene el access_token de Mercado Pago del restaurante desde MetodosPago (provider=mercado_pago, active=true).
+ * Solo uso server-side; nunca exponer este valor al cliente.
+ */
+async function getMpAccessTokenForRestaurant(strapi: any, restauranteId: number): Promise<string | null> {
+  if (!restauranteId || !strapi?.db) return null;
+  try {
+    const rows = await strapi.db.query(METODOS_PAGO_UID).findMany({
+      where: {
+        restaurante: restauranteId,
+        provider: 'mercado_pago',
+        active: true,
+      },
+      limit: 1,
+    });
+    const first = Array.isArray(rows) ? rows[0] : null;
+    if (!first?.mp_access_token) return null;
+    const token = String(first.mp_access_token).trim();
+    return token.length > 0 ? token : null;
+  } catch (_e) {
+    return null;
+  }
+}
+
+/** Resuelve el ID del restaurante por slug. */
+async function getRestauranteIdBySlug(strapi: any, slug: string): Promise<number | null> {
+  if (!slug || typeof slug !== 'string' || !strapi?.db) return null;
+  try {
+    const row = await strapi.db.query(RESTAURANTE_UID).findOne({
+      where: { slug: slug.trim() },
+      select: ['id'],
+    });
+    return row?.id != null ? Number(row.id) : null;
+  } catch (_e) {
+    return null;
+  }
+}
+
+/**
+ * Obtiene el restauranteId asociado a un pedido (por id numérico o documentId).
+ */
+async function getRestauranteIdFromOrder(strapi: any, orderRef: string | number): Promise<number | null> {
+  if (orderRef == null || !strapi?.db) return null;
+  try {
+    const order = await strapi.entityService.findOne(ORDER_UID, Number(orderRef), {
+      fields: ['id'],
+      populate: { restaurante: { fields: ['id'] } },
+    });
+    if (!order?.restaurante) return null;
+    const id = order.restaurante?.id ?? order.restaurante;
+    return id != null ? Number(id) : null;
+  } catch (_e) {
+    return null;
+  }
+}
+
+/**
+ * Resuelve el token de MP para un pedido/restaurante: por orderId (recomendado) o por slug.
+ * Fallback legacy: config/env (para migración gradual).
+ */
+async function resolveMpAccessToken(
+  strapi: any,
+  opts: { orderId?: string | number | null; slug?: string | null }
+): Promise<{ token: string | null; restauranteId: number | null }> {
+  let restauranteId: number | null = null;
+  if (opts.orderId != null && opts.orderId !== '') {
+    restauranteId = await getRestauranteIdFromOrder(strapi, opts.orderId as string | number);
+  }
+  if (restauranteId == null && opts.slug) {
+    restauranteId = await getRestauranteIdBySlug(strapi, String(opts.slug));
+  }
+  if (restauranteId != null) {
+    const token = await getMpAccessTokenForRestaurant(strapi, restauranteId);
+    if (token) return { token, restauranteId };
+  }
+  // Fallback legacy: env/config (opcional; quitar cuando todos los restaurantes usen MetodosPago)
+  const raw = strapi?.config?.get?.('server.mercadopagoToken')
+    || process.env.MP_ACCESS_TOKEN
+    || process.env.MERCADOPAGO_ACCESS_TOKEN
+    || process.env.MERCADO_PAGO_ACCESS_TOKEN;
+  const token = raw && typeof raw === 'string' ? raw.trim() : null;
+  return { token: token || null, restauranteId };
+}
 
 /**
  * Obtiene MP_ACCESS_TOKEN desde la config global (config/server.ts → mercadopagoToken).
- * Strapi carga env() al arranque; método estable en Railway.
+ * Usado solo como fallback cuando no hay token por restaurante (legacy).
  */
 function getMpAccessToken(strapi?: any): string | null {
   const raw = strapi?.config?.get?.('server.mercadopagoToken');
@@ -183,35 +269,19 @@ export default {
     try {
       const { items, cartItems, orderId, amount, slug } = ctx.request.body || {};
 
-      // Prioridad: process.env en cada request (Railway inyecta vars en runtime).
-      // Strapi config puede haberse cargado antes de que existan las variables.
-      const fromEnv =
-        process.env.MP_ACCESS_TOKEN ||
-        process.env.MERCADOPAGO_ACCESS_TOKEN ||
-        process.env.MERCADO_PAGO_ACCESS_TOKEN;
-      let fromConfig: string | undefined;
-      try {
-        const serverConfig = strapi?.config?.get?.('server');
-        fromConfig = (serverConfig && typeof serverConfig === 'object' && (serverConfig as any).mercadopagoToken) || strapi?.config?.get?.('server.mercadopagoToken');
-      } catch (_) {
-        fromConfig = undefined;
-      }
-      const tokenStr =
-        (typeof fromEnv === 'string' && fromEnv.trim() ? fromEnv.trim() : null) ||
-        (typeof fromConfig === 'string' && fromConfig.trim() ? fromConfig.trim() : null) ||
-        null;
-
+      // Token por restaurante: MetodosPago (provider=mercado_pago) asociado al pedido o al slug.
+      const { token: tokenStr, restauranteId } = await resolveMpAccessToken(strapi, { orderId, slug });
       strapi?.log?.info?.(
-        '[payments] createPreference token: env=' + (fromEnv ? 'ok' : 'no') + ', config=' + (fromConfig ? 'ok' : 'no') + ', final=' + (tokenStr ? 'ok' : 'FALTA'),
+        '[payments] createPreference token: restauranteId=' + (restauranteId ?? 'n/a') + ', token=' + (tokenStr ? 'ok' : 'FALTA'),
       );
       if (!tokenStr) {
-        strapi?.log?.warn?.('[payments] Ninguna fuente tiene token (config, MP_ACCESS_TOKEN, MERCADOPAGO_ACCESS_TOKEN).');
+        strapi?.log?.warn?.('[payments] No hay token de Mercado Pago para este restaurante (configurá MetodosPago con provider=mercado_pago y active=true).');
         logPaymentEnvDiagnostics(strapi);
         ctx.status = 500;
         ctx.body = {
           ok: false,
           error:
-            'Falta token de Mercado Pago. En Railway: Variables del servicio, agregá MP_ACCESS_TOKEN (o MERCADOPAGO_ACCESS_TOKEN). Redeploy después.',
+            'Mercado Pago no está configurado para este restaurante. El dueño debe agregar un método de pago Mercado Pago activo.',
         };
         return;
       }
@@ -441,14 +511,14 @@ export default {
 
   async cardPay(ctx: any) {
     try {
-      const { token, issuer_id, payment_method_id, transaction_amount, installments, payer, description, orderId } =
+      const { token, issuer_id, payment_method_id, transaction_amount, installments, payer, description, orderId, slug } =
         ctx.request.body || {};
 
-      const accessToken = getMpAccessToken(ctx.strapi);
+      const { token: accessToken } = await resolveMpAccessToken(ctx.strapi, { orderId, slug });
       if (!accessToken) {
         logPaymentEnvDiagnostics(ctx.strapi);
         ctx.status = 500;
-        ctx.body = { error: 'Falta MP_ACCESS_TOKEN. Revisá variables de entorno (Railway: Variables del servicio).' };
+        ctx.body = { error: 'Mercado Pago no configurado para este restaurante. Revisá MetodosPago (provider=mercado_pago) o variables de entorno.' };
         return;
       }
 
@@ -494,7 +564,12 @@ export default {
       const statusQ = (q.status ?? q.collection_status ?? '').toString().toLowerCase() || null;
       const orderRefQ = (q.orderRef ?? '').toString() || null; // <- fallback extra que nosotros pasamos
 
-      const accessToken = getMpAccessToken(strapi);
+      // Token del restaurante del pedido (por orderRef en query); si no hay orderRef, fallback a config/env.
+      const restauranteId = orderRefQ ? await getRestauranteIdFromOrder(strapi, orderRefQ) : null;
+      let accessToken: string | null = restauranteId
+        ? await getMpAccessTokenForRestaurant(strapi, restauranteId)
+        : null;
+      if (!accessToken) accessToken = getMpAccessToken(strapi);
       if (!accessToken) {
         logPaymentEnvDiagnostics(strapi);
         const baseFront = getPaymentStatusBaseUrl();

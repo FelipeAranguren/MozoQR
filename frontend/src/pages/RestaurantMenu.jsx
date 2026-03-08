@@ -32,6 +32,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { useCart } from '../context/CartContext';
 import { fetchMenus, openSession, releaseTableIfNoOrders } from '../api/tenant';
 import { fetchTables, fetchTable } from '../api/tables';
+import { fetchRestaurant } from '../api/restaurant';
 import { http } from '../api/tenant';
 import useTableSession from '../hooks/useTableSession';
 import StickyFooter from '../components/StickyFooter';
@@ -88,6 +89,7 @@ export default function RestaurantMenu() {
   const [menuRetryKey, setMenuRetryKey] = useState(0);
   const [isTableValid, setIsTableValid] = useState(undefined); // undefined = chequeando, true = ok, false = no existe
   const [sessionReady, setSessionReady] = useState(false); // true cuando openSession completó o no hay mesa
+  const [hasMercadoPago, setHasMercadoPago] = useState(false); // desde MetodosPago del restaurante
 
   const { items, addItem, removeItem } = useCart();
   const [changeTableDialog, setChangeTableDialog] = useState(false);
@@ -446,6 +448,14 @@ export default function RestaurantMenu() {
           }
         }
 
+        // Métodos de pago del restaurante (para mostrar/ocultar Mercado Pago)
+        try {
+          const rest = await fetchRestaurant(slug);
+          setHasMercadoPago(Boolean(rest?.hasMercadoPago ?? rest?.mp_public_key));
+        } catch (e) {
+          console.warn('Error obteniendo métodos de pago del restaurante:', e);
+        }
+
         // Si hay categorías, mostrar todos los productos inicialmente
         if (categoriasData.length > 0) {
           // Mostrar todos los productos de todas las categorías inicialmente
@@ -718,7 +728,7 @@ export default function RestaurantMenu() {
             No se encontró el restaurante o no tiene productos disponibles.
           </Typography>
         )}
-        <StickyFooter table={table} tableSessionId={tableSessionId} restaurantName={nombreRestaurante} sessionReady={sessionReady} />
+        <StickyFooter table={table} tableSessionId={tableSessionId} restaurantName={nombreRestaurante} sessionReady={sessionReady} hasMercadoPago={hasMercadoPago} />
       </Container>
     );
   }
@@ -1293,7 +1303,7 @@ export default function RestaurantMenu() {
         <Box sx={{ height: { xs: 150, sm: 160 } }} />
 
         {/* Footer con resumen y confirmación */}
-        <StickyFooter table={table} tableSessionId={tableSessionId} restaurantName={nombreRestaurante} sessionReady={sessionReady} />
+        <StickyFooter table={table} tableSessionId={tableSessionId} restaurantName={nombreRestaurante} sessionReady={sessionReady} hasMercadoPago={hasMercadoPago} />
 
         {/* Diálogo confirmar cambiar mesa */}
         <Dialog open={changeTableDialog} onClose={() => setChangeTableDialog(false)} maxWidth="xs" fullWidth>

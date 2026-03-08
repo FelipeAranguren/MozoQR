@@ -527,6 +527,46 @@ export interface ApiMesaMesa extends Struct.CollectionTypeSchema {
   };
 }
 
+export interface ApiMetodosPagoMetodosPago extends Struct.CollectionTypeSchema {
+  collectionName: 'metodos_pagos';
+  info: {
+    displayName: 'MetodosPago';
+    pluralName: 'metodos-pagos';
+    singularName: 'metodos-pago';
+  };
+  options: {
+    draftAndPublish: true;
+  };
+  attributes: {
+    active: Schema.Attribute.Boolean;
+    alias_cbu: Schema.Attribute.String;
+    cbu: Schema.Attribute.String;
+    createdAt: Schema.Attribute.DateTime;
+    createdBy: Schema.Attribute.Relation<'oneToOne', 'admin::user'> &
+      Schema.Attribute.Private;
+    locale: Schema.Attribute.String & Schema.Attribute.Private;
+    localizations: Schema.Attribute.Relation<
+      'oneToMany',
+      'api::metodos-pago.metodos-pago'
+    > &
+      Schema.Attribute.Private;
+    mp_access_token: Schema.Attribute.String & Schema.Attribute.Private;
+    mp_public_key: Schema.Attribute.String;
+    mp_webhook_secret: Schema.Attribute.String;
+    provider: Schema.Attribute.Enumeration<
+      ['mercado_pago', 'tarjeta_posnet', 'efectivo']
+    >;
+    publishedAt: Schema.Attribute.DateTime;
+    restaurante: Schema.Attribute.Relation<
+      'manyToOne',
+      'api::restaurante.restaurante'
+    >;
+    updatedAt: Schema.Attribute.DateTime;
+    updatedBy: Schema.Attribute.Relation<'oneToOne', 'admin::user'> &
+      Schema.Attribute.Private;
+  };
+}
+
 export interface ApiOwnerCommentOwnerComment
   extends Struct.CollectionTypeSchema {
   collectionName: 'owner_comments';
@@ -762,11 +802,9 @@ export interface ApiRestauranteRestaurante extends Struct.CollectionTypeSchema {
       'oneToMany',
       'api::categoria.categoria'
     >;
-    cbu: Schema.Attribute.Text;
     createdAt: Schema.Attribute.DateTime;
     createdBy: Schema.Attribute.Relation<'oneToOne', 'admin::user'> &
       Schema.Attribute.Private;
-    cuenta_bancaria: Schema.Attribute.String;
     is_demo: Schema.Attribute.Boolean & Schema.Attribute.DefaultTo<false>;
     locale: Schema.Attribute.String & Schema.Attribute.Private;
     localizations: Schema.Attribute.Relation<
@@ -780,8 +818,10 @@ export interface ApiRestauranteRestaurante extends Struct.CollectionTypeSchema {
       'api::mesa-sesion.mesa-sesion'
     >;
     mesas: Schema.Attribute.Relation<'oneToMany', 'api::mesa.mesa'>;
-    mp_access_token: Schema.Attribute.Text & Schema.Attribute.Private;
-    mp_public_key: Schema.Attribute.String & Schema.Attribute.Private;
+    metodos_pagos: Schema.Attribute.Relation<
+      'oneToMany',
+      'api::metodos-pago.metodos-pago'
+    >;
     name: Schema.Attribute.String & Schema.Attribute.Required;
     owner_comments: Schema.Attribute.Relation<
       'oneToMany',
@@ -1327,6 +1367,7 @@ export interface PluginUsersPermissionsUser
       Schema.Attribute.SetMinMaxLength<{
         minLength: 6;
       }>;
+    fullname: Schema.Attribute.String;
     locale: Schema.Attribute.String & Schema.Attribute.Private;
     localizations: Schema.Attribute.Relation<
       'oneToMany',
@@ -1376,6 +1417,7 @@ declare module '@strapi/strapi' {
       'api::item-pedido.item-pedido': ApiItemPedidoItemPedido;
       'api::mesa-sesion.mesa-sesion': ApiMesaSesionMesaSesion;
       'api::mesa.mesa': ApiMesaMesa;
+      'api::metodos-pago.metodos-pago': ApiMetodosPagoMetodosPago;
       'api::owner-comment.owner-comment': ApiOwnerCommentOwnerComment;
       'api::payments.payment': ApiPaymentsPayment;
       'api::pedido.pedido': ApiPedidoPedido;

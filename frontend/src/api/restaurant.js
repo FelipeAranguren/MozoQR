@@ -57,7 +57,7 @@ export async function fetchRestaurant(slug) {
     // Agregar timestamp para evitar caché del navegador, especialmente útil después de actualizar el logo
     const timestamp = Date.now();
     const res = await api.get(
-      `/restaurantes?filters[slug][$eq]=${slug}&populate[logo]=true&_t=${timestamp}`,
+      `/restaurantes?filters[slug][$eq]=${slug}&populate[logo]=true&populate[metodos_pagos]=true&_t=${timestamp}`,
       { headers: getAuthHeaders() }
     );
     
@@ -119,23 +119,32 @@ export async function fetchRestaurant(slug) {
     }
     
     const documentIdValue = data.documentId || null;
-    
+
     if (!restaurantId && !documentIdValue) {
       console.error('fetchRestaurant: No se encontró ID ni documentId en la respuesta:', data);
     }
-    
+
+    // mp_public_key y métodos de pago desde MetodosPago (nunca exponer mp_access_token al cliente)
+    const metodosPagos = attr.metodos_pagos?.data ?? attr.metodos_pagos ?? [];
+    const list = Array.isArray(metodosPagos) ? metodosPagos : [];
+    const mpMethod = list.find((m) => (m.attributes?.provider ?? m.provider) === 'mercado_pago' && (m.attributes?.active ?? m.active));
+    const mpPublicKey = mpMethod ? (mpMethod.attributes?.mp_public_key ?? mpMethod.mp_public_key ?? null) : null;
+    const hasMercadoPago = Boolean(mpPublicKey);
+
     return {
-      id: restaurantId || documentIdValue, // Preferir ID numérico, fallback a documentId
+      id: restaurantId || documentIdValue,
       documentId: documentIdValue,
       name: attr.name || '',
       slug: attr.slug || '',
       logo: logoUrl,
       logoId: logoId,
       suscripcion: attr.Suscripcion || attr.suscripcion || 'BASIC',
-      mp_access_token: attr.mp_access_token || null,
-      mp_public_key: attr.mp_public_key || null,
-      cbu: attr.cbu || null,
-      cuenta_bancaria: attr.cuenta_bancaria || null,
+      mp_public_key: mpPublicKey,
+      hasMercadoPago,
+      metodos_pagos: list.map((m) => {
+        const a = m.attributes || m;
+        return { provider: a.provider, active: a.active, mp_public_key: a.mp_public_key, alias_cbu: a.alias_cbu };
+      }),
       createdAt: attr.createdAt || null,
       updatedAt: attr.updatedAt || null
     };
@@ -244,14 +253,11 @@ export async function updateRestaurant(slug, restaurantData) {
     }
     // Si logoUpdate es undefined, no incluimos el campo logo en el payload (mantener el actual)
 
+    // Campos de pago (mp_*, cbu, etc.) se gestionan en MetodosPago, no en Restaurante
     const payload = {
       data: {
         ...(restaurantData.name !== undefined && { name: restaurantData.name }),
-        ...(logoUpdate !== undefined && { logo: logoUpdate }),
-        ...(restaurantData.mp_access_token !== undefined && { mp_access_token: restaurantData.mp_access_token }),
-        ...(restaurantData.mp_public_key !== undefined && { mp_public_key: restaurantData.mp_public_key }),
-        ...(restaurantData.cbu !== undefined && { cbu: restaurantData.cbu }),
-        ...(restaurantData.cuenta_bancaria !== undefined && { cuenta_bancaria: restaurantData.cuenta_bancaria })
+        ...(logoUpdate !== undefined && { logo: logoUpdate })
       }
     };
 

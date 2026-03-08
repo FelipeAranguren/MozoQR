@@ -1,0 +1,48 @@
+{
+  "kind": "collectionType",
+  "collectionName": "metodos_pagos",
+  "info": {
+    "singularName": "metodos-pago",
+    "pluralName": "metodos-pagos",
+    "displayName": "MetodosPago"
+  },
+  "options": {
+    "draftAndPublish": true
+  },
+  "pluginOptions": {},
+  "attributes": {
+    "provider": {
+      "type": "enumeration",
+      "enum": [
+        "mercado_pago",
+        "tarjeta_posnet",
+        "efectivo"
+      ]
+    },
+    "mp_public_key": {
+      "type": "string"
+    },
+    "mp_access_token": {
+      "type": "string",
+      "private": true
+    },
+    "mp_webhook_secret": {
+      "type": "string"
+    },
+    "cbu": {
+      "type": "string"
+    },
+    "alias_cbu": {
+      "type": "string"
+    },
+    "active": {
+      "type": "boolean"
+    },
+    "restaurante": {
+      "type": "relation",
+      "relation": "manyToOne",
+      "target": "api::restaurante.restaurante",
+      "inversedBy": "metodos_pagos"
+    }
+  }
+}
