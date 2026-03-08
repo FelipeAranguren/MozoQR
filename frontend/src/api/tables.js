@@ -213,8 +213,9 @@ export async function fetchActiveOrders(slug) {
   if (!slug) return [];
 
   try {
+    // Excluir paid y cancelled: solo pedidos realmente activos (pending, preparing, served, etc.)
     const res = await api.get(
-      `/pedidos?filters[restaurante][slug][$eq]=${slug}&filters[order_status][$ne]=paid&publicationState=preview&populate[mesa_sesion][populate]=mesa&sort[0]=createdAt:desc&pagination[pageSize]=200`,
+      `/pedidos?filters[restaurante][slug][$eq]=${slug}&filters[$and][0][order_status][$ne]=paid&filters[$and][1][order_status][$ne]=cancelled&publicationState=preview&populate[mesa_sesion][populate]=mesa&sort[0]=createdAt:desc&pagination[pageSize]=200`,
       { headers: getAuthHeaders() }
     );
 

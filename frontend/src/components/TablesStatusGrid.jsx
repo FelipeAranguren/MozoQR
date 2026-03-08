@@ -15,12 +15,16 @@ export default function TablesStatusGrid({
   onTableClick
 }) {
 
-  // Agrupar pedidos por mesa
+  // Excluir solo cancelados: no deben sumar al contador ni marcar la mesa como ocupada
+  const isCountedForTable = (order) => order?.order_status !== 'cancelled';
+
+  // Agrupar pedidos por mesa (ignorar cancelled; paid sí se incluye para "Por limpiar")
   const ordersByTable = React.useMemo(() => {
     try {
       const map = new Map();
       if (Array.isArray(orders)) {
         orders.forEach(order => {
+          if (!isCountedForTable(order)) return;
           const tableNum = order?.mesa_sesion?.mesa?.number || order?.mesa || order?.tableNumber || null;
           if (tableNum != null) {
             if (!map.has(tableNum)) {
@@ -37,12 +41,13 @@ export default function TablesStatusGrid({
     }
   }, [orders]);
 
-  // Agrupar pedidos del sistema (llamadas de mozo) por mesa
+  // Agrupar pedidos del sistema (llamadas de mozo) por mesa (excluir cancelled)
   const systemOrdersByTable = React.useMemo(() => {
     try {
       const map = new Map();
       if (Array.isArray(systemOrders)) {
         systemOrders.forEach(order => {
+          if (order?.order_status === 'cancelled') return;
           const tableNum = order?.mesa_sesion?.mesa?.number || order?.mesa || order?.tableNumber || null;
           if (tableNum != null) {
             if (!map.has(tableNum)) {

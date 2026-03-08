@@ -62,6 +62,7 @@ export default function PayWithMercadoPago({
       if (data == null || typeof data !== "object") {
         const msg = "El servidor de pagos no devolvió una respuesta válida. Intentá de nuevo.";
         setErrorMsg(msg);
+        setLoading(false);
         alert(msg);
         return;
       }
@@ -71,25 +72,26 @@ export default function PayWithMercadoPago({
           (typeof data.error === "string" && data.error) ||
           "Hubo un problema técnico. No se pudo preparar el pago.";
         setErrorMsg(msg);
+        setLoading(false);
         alert(msg);
         return;
       }
       const url = data.init_point;
       if (!url || typeof url !== "string") {
         setErrorMsg("No se recibió el enlace de pago.");
+        setLoading(false);
         alert("No se recibió el enlace de pago. Intentá de nuevo.");
         return;
       }
-      window.location.href = url; // redirige a Checkout Pro
+      window.location.href = url; // redirige a Checkout Pro; no setLoading(false), la ventana cambia
     } catch (err) {
       const msg =
         (err && typeof err.message === "string" && err.message) ||
         "No pudimos iniciar el pago. Revisá tu conexión e intentá de nuevo.";
       console.error("PayWithMercadoPago error:", msg);
       setErrorMsg(msg);
-      alert(msg);
-    } finally {
       setLoading(false);
+      alert(msg);
     }
   }
 
@@ -116,8 +118,9 @@ export default function PayWithMercadoPago({
         variant={variant}
         sx={{ textTransform: "none" }}
         aria-label={label}
+        startIcon={loading ? <CircularProgress size={20} color="inherit" /> : null}
       >
-        {loading ? <CircularProgress size={22} /> : label}
+        {loading ? "Redirigiendo…" : label}
       </Button>
     </>
   );

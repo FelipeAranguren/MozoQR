@@ -20,8 +20,16 @@ import { createOrder, closeAccount, hasOpenAccount, fetchOrderDetails } from '..
 import { createMobbexCheckout, createMpPreference } from '../api/payments';
 import { saveLastReceiptToStorage } from '../utils/receipt';
 
+// Redondear a 2 decimales para montos en pesos (evitar pérdida de centavos)
+const roundMoney = (n) => Math.round(Number(n) * 100) / 100;
+
 const money = (n) =>
-  new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS' }).format(Number(n) || 0);
+  new Intl.NumberFormat('es-AR', {
+    style: 'currency',
+    currency: 'ARS',
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  }).format(Number(n) ?? 0);
 
 // --- Helpers de estado
 const getStatusLabel = (status) => {
@@ -186,12 +194,13 @@ export default function StickyFooter({ table, tableSessionId, restaurantName, se
   }, [couponDiscount, accountTotal, orderDetails]);
 
   // Total con propina y descuento (usar orderDetails si está disponible, sino accountTotal)
+  // Valores como float; redondeo a 2 decimales solo para consistencia en display y envío a pasarela
   const totalWithTip = useMemo(() => {
     const baseTotal = orderDetails.length > 0
       ? orderDetails.reduce((sum, o) => sum + (Number(o.total) || 0), 0)
       : accountTotal;
     const totalAfterDiscount = baseTotal - couponDiscountAmount;
-    return Math.max(0, totalAfterDiscount + tipAmount);
+    return roundMoney(Math.max(0, totalAfterDiscount + tipAmount));
   }, [accountTotal, tipAmount, orderDetails, couponDiscountAmount]);
 
   // Polling para sincronizar pedidos cuando hay cuenta abierta (detectar cancelaciones)
@@ -240,9 +249,9 @@ export default function StickyFooter({ table, tableSessionId, restaurantName, se
           setOrderDetails(activeOrders);
           // Calcular total desde los pedidos detallados (solo activos, sin cancelados)
           const calculatedTotal = activeOrders.reduce((sum, o) => sum + (Number(o.total) || 0), 0);
-          // Actualizar propina basada en el nuevo total
+          // Actualizar propina basada en el nuevo total (conservar centavos)
           if (tipPercentage > 0) {
-            setTipAmount((calculatedTotal * tipPercentage) / 100);
+            setTipAmount(roundMoney((calculatedTotal * tipPercentage) / 100));
           }
         })
         .catch((err) => {
@@ -266,14 +275,14 @@ export default function StickyFooter({ table, tableSessionId, restaurantName, se
     }
   }, [payOpen, slug, table, tableSessionId, tipPercentage]);
 
-  // Resetear propina cuando cambia el total (ej. al cargar orderDetails)
+  // Resetear propina cuando cambia el total (ej. al cargar orderDetails); conservar centavos
   useEffect(() => {
     const baseTotal = orderDetails.length > 0
       ? orderDetails.reduce((sum, o) => sum + (Number(o.total) || 0), 0)
       : accountTotal;
     const totalAfterDiscount = Math.max(0, baseTotal - couponDiscountAmount);
     if (tipPercentage > 0 && totalAfterDiscount > 0) {
-      setTipAmount(Math.round((totalAfterDiscount * tipPercentage) / 100));
+      setTipAmount(roundMoney((totalAfterDiscount * tipPercentage) / 100));
     }
   }, [accountTotal, tipPercentage, orderDetails, couponDiscountAmount]);
 
@@ -303,7 +312,7 @@ export default function StickyFooter({ table, tableSessionId, restaurantName, se
         ? subtotal * (couponDiscount.value / 100)
         : Math.min(couponDiscount.value, subtotal)
       : 0;
-    const total = Math.max(0, subtotal - discount + tipAmount);
+    const total = roundMoney(Math.max(0, subtotal - discount + tipAmount));
     const restaurant = { name: restaurantName || slug || 'Restaurante' };
     const receiptItems = items.length > 0 ? items : [{ name: 'Cuenta', quantity: 1, unitPrice: total, totalPrice: total }];
     const effectiveMethod =
@@ -498,7 +507,7 @@ export default function StickyFooter({ table, tableSessionId, restaurantName, se
           ? subtotalBase * (couponDiscount.value / 100)
           : Math.min(couponDiscount.value, subtotalBase)
         : 0;
-      const totalBase = Math.max(0, subtotalBase - discountBase + tipAmount);
+      const totalBase = roundMoney(Math.max(0, subtotalBase - discountBase + tipAmount));
       const restaurantBase = { name: restaurantName || slug || 'Restaurante' };
       const receiptItemsBase =
         itemsForReceipt.length > 0
@@ -530,13 +539,13 @@ export default function StickyFooter({ table, tableSessionId, restaurantName, se
       }
 
       window.location.href = url;
+      // No setPayLoading(false): la página redirige; el estado se mantiene hasta el cambio de ventana
     } catch (err) {
       console.error(err);
       const msg =
         err?.message ||
         'No se pudo iniciar el pago con Mercado Pago. Intentá de nuevo.';
       setSnack({ open: true, msg, severity: 'error' });
-    } finally {
       setPayLoading(false);
     }
   };
@@ -1223,7 +1232,7 @@ export default function StickyFooter({ table, tableSessionId, restaurantName, se
                               : accountTotal;
                             const totalAfterDiscount = Math.max(0, baseTotal - couponDiscountAmount);
                             setTipPercentage(percent);
-                            setTipAmount(percent > 0 ? Math.round((totalAfterDiscount * percent) / 100) : 0);
+                            setTipAmount(percent > 0 ? roundMoney((totalAfterDiscount * percent) / 100) : 0);
                           }}
                           sx={{ textTransform: 'none', minWidth: 0 }}
                         >
@@ -1309,8 +1318,9 @@ export default function StickyFooter({ table, tableSessionId, restaurantName, se
                       onClick={handlePayWithMercadoPago}
                       disabled={payLoading}
                       sx={{ textTransform: 'none' }}
+                      startIcon={payLoading ? <CircularProgress size={16} color="inherit" /> : null}
                     >
-                      Mercado Pago
+                      {payLoading ? 'Redirigiendo…' : 'Mercado Pago'}
                     </Button>
                     <Button
                       size="small"
@@ -1609,7 +1619,7 @@ export default function StickyFooter({ table, tableSessionId, restaurantName, se
                         : accountTotal;
                       const totalAfterDiscount = Math.max(0, baseTotal - couponDiscountAmount);
                       setTipPercentage(percent);
-                      setTipAmount(percent > 0 ? Math.round((totalAfterDiscount * percent) / 100) : 0);
+                      setTipAmount(percent > 0 ? roundMoney((totalAfterDiscount * percent) / 100) : 0);
                     }}
                     sx={{ flex: 1, textTransform: 'none' }}
                   >
@@ -1626,7 +1636,7 @@ export default function StickyFooter({ table, tableSessionId, restaurantName, se
                 value={tipAmount > 0 && tipPercentage === 0 ? tipAmount : ''}
                 onChange={(e) => {
                   const value = Number(e.target.value) || 0;
-                  setTipAmount(value);
+                  setTipAmount(roundMoney(value));
                   setTipPercentage(0);
                 }}
                 InputProps={{
@@ -1701,7 +1711,7 @@ export default function StickyFooter({ table, tableSessionId, restaurantName, se
               <Button
                 fullWidth
                 variant="outlined"
-                startIcon={<AttachMoneyIcon />}
+                startIcon={payLoading ? <CircularProgress size={20} sx={{ color: '#2196F3' }} /> : <AttachMoneyIcon />}
                 onClick={handlePayWithMercadoPago}
                 disabled={payLoading}
                 sx={{
@@ -1716,7 +1726,7 @@ export default function StickyFooter({ table, tableSessionId, restaurantName, se
                   },
                 }}
               >
-                Mercado Pago
+                {payLoading ? 'Redirigiendo…' : 'Mercado Pago'}
               </Button>
               <Button
                 fullWidth
