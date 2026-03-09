@@ -8,7 +8,8 @@ export async function fetchMercadoPagoMethod(restaurantId) {
   if (!restaurantId) return null;
   const res = await client.get('/metodos-pagos', {
     params: {
-      'filters[restaurante][id][$eq]': restaurantId,
+      // Filtro alineado con el backend: relacion manyToOne por id numérico
+      'filters[restaurante][$eq]': restaurantId,
       'filters[provider][$eq]': 'mercado_pago',
     },
   });
