@@ -14,6 +14,11 @@ const RESTAURANTE_UID = 'api::restaurante.restaurante';
 const METODOS_PAGO_UID = 'api::metodos-pago.metodos-pago';
 const ORDER_UID = 'api::pedido.pedido';
 
+/** Obtiene la instancia de Strapi (ctx.strapi o fallback global para rutas custom). */
+function getStrapi(ctx: any): any {
+  return ctx?.strapi ?? (typeof global !== 'undefined' && (global as any).__STRAPI__) ?? null;
+}
+
 /**
  * Misma lógica que el frontend: encuentra el método con provider === 'mercado_pago' y active === true.
  * Comparación estricta: provider debe ser exactamente 'mercado_pago' (snake_case); active booleano true (o 1 en BD).
@@ -275,7 +280,11 @@ export default {
    * - Si no hay ninguno: available=false
    */
   async getMercadoPagoAvailable(ctx: any) {
-    const strapi = ctx.strapi;
+    const strapi = getStrapi(ctx);
+    if (!strapi?.entityService) {
+      ctx.body = { available: false };
+      return;
+    }
     const slug = (ctx.request.query?.slug ?? '').toString().trim();
     try {
       if (!slug) {
@@ -296,7 +305,12 @@ export default {
   },
 
   async createPreference(ctx: any) {
-    const strapi = ctx.strapi;
+    const strapi = getStrapi(ctx);
+    if (!strapi?.entityService) {
+      ctx.status = 500;
+      ctx.body = { ok: false, error: 'Error de configuración del servidor. Intente más tarde.' };
+      return;
+    }
 
     try {
       const { items, cartItems, orderId, amount, slug, restauranteId: bodyRestauranteId } = ctx.request.body || {};
@@ -311,13 +325,23 @@ export default {
         '[payments] createPreference token: restauranteId=' + (restauranteId ?? 'n/a') + ', token=' + (tokenStr ? 'ok' : 'FALTA'),
       );
       if (!tokenStr) {
-        const rows = await strapi.entityService.findMany(METODOS_PAGO_UID, {
-          filters: { restaurante: restauranteId ?? 0 },
-          limit: 20,
-        });
+        let metodosCount = 0;
+        let providers: string[] = [];
+        if (strapi?.entityService && restauranteId != null) {
+          try {
+            const rows = await strapi.entityService.findMany(METODOS_PAGO_UID, {
+              filters: { restaurante: restauranteId },
+              limit: 20,
+            });
+            metodosCount = Array.isArray(rows) ? rows.length : 0;
+            providers = Array.isArray(rows) ? rows.map((r: any) => r?.provider).filter(Boolean) : [];
+          } catch (_) {
+            /* ignore */
+          }
+        }
         strapi?.log?.warn?.(
           '[payments] No se encontró MetodosPago con provider=mercado_pago y active=true.',
-          { restauranteId, metodosCount: Array.isArray(rows) ? rows.length : 0, providers: Array.isArray(rows) ? rows.map((r: any) => r?.provider) : [] },
+          { restauranteId, metodosCount, providers },
         );
         ctx.status = 500;
         ctx.body = {
@@ -520,7 +544,6 @@ export default {
         payment_id: paymentId,
       };
     } catch (e: any) {
-      const strapi = ctx.strapi;
       const mpData = e?.response?.data;
       const msg = e?.message ?? 'Error desconocido';
       const detail = mpData ? JSON.stringify(mpData) : msg;
@@ -552,13 +575,19 @@ export default {
   },
 
   async cardPay(ctx: any) {
+    const strapi = getStrapi(ctx);
+    if (!strapi?.entityService) {
+      ctx.status = 500;
+      ctx.body = { error: 'Error de configuración del servidor.' };
+      return;
+    }
     try {
       const { token, issuer_id, payment_method_id, transaction_amount, installments, payer, description, orderId, slug } =
         ctx.request.body || {};
 
-      const { token: accessToken } = await resolveMpAccessToken(ctx.strapi, { orderId, slug });
+      const { token: accessToken } = await resolveMpAccessToken(strapi, { orderId, slug });
       if (!accessToken) {
-        logPaymentEnvDiagnostics(ctx.strapi);
+        logPaymentEnvDiagnostics(strapi);
         ctx.status = 500;
         ctx.body = { error: 'Mercado Pago no configurado para este restaurante. Revisá MetodosPago (provider=mercado_pago) o variables de entorno.' };
         return;
@@ -589,7 +618,6 @@ export default {
 
       ctx.body = { id: mpRes?.id, status: mpRes?.status, status_detail: mpRes?.status_detail };
     } catch (e: any) {
-      const strapi = ctx.strapi;
       strapi?.log?.error?.('cardPay ERROR ->', e?.response?.data || e?.message);
       ctx.status = 500;
       ctx.body = { error: e?.message || 'Error procesando pago', details: e?.response?.data ?? null };
@@ -598,8 +626,14 @@ export default {
 
   // Confirmar pago al volver del redirect (sin webhook)
   async confirm(ctx: any) {
+    const strapi = getStrapi(ctx);
+    if (!strapi?.entityService) {
+      const baseFront = getPaymentStatusBaseUrl();
+      ctx.status = 302;
+      ctx.redirect(`${baseFront}/payment-failure?reason=config_error`);
+      return;
+    }
     try {
-      const strapi = ctx.strapi;
       const q = ctx.request.query || {};
       const paymentIdQ = q.payment_id ?? q.collection_id;
       const preferenceIdQ = q.preference_id ?? q.preference_id;
@@ -716,7 +750,6 @@ export default {
       ctx.redirect(dest);
       return;
     } catch (e: any) {
-      const strapi = ctx.strapi;
       strapi?.log?.error?.('[payments.confirm] ', e?.response?.data || e?.message);
       const baseFront = getPaymentStatusBaseUrl();
       ctx.status = 302;
@@ -729,7 +762,12 @@ export default {
    * Mock/Manual payment creation
    */
   async create(ctx: any) {
-    const strapi = ctx.strapi;
+    const strapi = getStrapi(ctx);
+    if (!strapi?.entityService) {
+      ctx.status = 500;
+      ctx.body = { data: { ok: false, error: 'Error de configuración del servidor.' } };
+      return;
+    }
     const restauranteId = ctx.state.restauranteId;
     const payload = (ctx.request.body && ctx.request.body.data) || ctx.request.body || {};
     const { orderId, status, amount, provider, externalRef } = payload;

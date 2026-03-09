@@ -22,6 +22,7 @@ export default {
    * run jobs, or perform some special logic.
    */
   async bootstrap({ strapi } /*: { strapi: Core.Strapi } */) {
+    (global as any).__STRAPI__ = strapi;
     // Auto-migration (safe): ensure new mesa state columns exist.
     // This prevents runtime 500s when DB schema is older than the content-type.
     try {
