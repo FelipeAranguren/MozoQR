@@ -63,8 +63,9 @@ export default function RestaurantSettings() {
         // Cargar credenciales de Mercado Pago (si existen)
         try {
           setMpLoading(true);
-          const metodo = await fetchMercadoPagoMethod(data.id);
-          setMpMetodoId(metodo?.id || null);
+          const restaurantIdentifier = data.documentId || data.id;
+          const metodo = await fetchMercadoPagoMethod(restaurantIdentifier);
+          setMpMetodoId(metodo?.documentId || metodo?.id || null);
           setMpPublicKey(metodo?.mp_public_key || '');
           // Por seguridad, nunca mostramos el access token existente; el campo queda vacío para introducir uno nuevo.
           setMpAccessToken('');
@@ -315,19 +316,22 @@ export default function RestaurantSettings() {
                   <Button
                     variant="outlined"
                     onClick={async () => {
-                      if (!restaurant?.id) return;
+                      const restaurantIdentifier = restaurant?.documentId || restaurant?.id;
+                      if (!restaurantIdentifier) return;
                       setMpSaving(true);
                       try {
                         await saveMercadoPagoMethod({
-                          restaurantId: restaurant.id,
+                          restaurantDocumentId: restaurant?.documentId,
+                          restaurantId: restaurant?.id,
+                          metodoDocumentId: mpMetodoId,
                           metodoId: mpMetodoId,
                           mp_public_key: mpPublicKey.trim(),
                           mp_access_token: mpAccessToken.trim() || undefined,
                         });
                         setMessage({ type: 'success', text: 'Credenciales de Mercado Pago guardadas correctamente' });
                         // Volver a cargar para refrescar estado (en especial, id del método)
-                        const metodo = await fetchMercadoPagoMethod(restaurant.id);
-                        setMpMetodoId(metodo?.id || null);
+                        const metodo = await fetchMercadoPagoMethod(restaurantIdentifier);
+                        setMpMetodoId(metodo?.documentId || metodo?.id || null);
                         setMpPublicKey(metodo?.mp_public_key || '');
                         setMpAccessToken('');
                       } catch (error) {
