@@ -60,14 +60,27 @@ export default function RestaurantSettings() {
         setRestaurant(data);
         setName(data.name || '');
 
-        // Cargar credenciales de Mercado Pago desde los datos ya populados del restaurante
-        setMpLoading(true);
-        const initialMpId = data.mp_method_id || null;
-        setMpMetodoId(initialMpId);
-        setMpPublicKey(data.mp_public_key || '');
-        // Por seguridad, nunca mostramos el access token existente; el campo queda vacío para introducir uno nuevo.
-        setMpAccessToken('');
-        setMpLoading(false);
+        // Cargar credenciales de Mercado Pago
+        try {
+          setMpLoading(true);
+          // Primero usar lo que viene populado en el restaurante (para mostrar rápido)
+          setMpPublicKey(data.mp_public_key || '');
+
+          // Luego obtener el método vía API para asegurarnos de tener el documentId correcto
+          const restaurantIdentifier = data.documentId || data.id;
+          const metodo = await fetchMercadoPagoMethod(restaurantIdentifier);
+          setMpMetodoId(metodo?.documentId || metodo?.id || data.mp_method_id || null);
+          // Si por algún motivo mp_public_key no vino en el restaurante, usar el del método directo
+          if (!data.mp_public_key && metodo?.mp_public_key) {
+            setMpPublicKey(metodo.mp_public_key);
+          }
+          // Por seguridad, nunca mostramos el access token existente; el campo queda vacío para introducir uno nuevo.
+          setMpAccessToken('');
+        } catch (e) {
+          console.error('Error fetching Mercado Pago method:', e);
+        } finally {
+          setMpLoading(false);
+        }
         
         // Limpiar URL de objeto si existe antes de establecer el nuevo preview
         // (el nuevo preview será una URL del servidor, no un objeto URL)

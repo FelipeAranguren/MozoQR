@@ -67,7 +67,8 @@ export async function saveMercadoPagoMethod({
     },
   };
 
-  const metodoIdentifier = metodoDocumentId ?? metodoId;
+  // Para Strapi v5, priorizar siempre documentId para el PUT
+  const metodoIdentifier = metodoDocumentId || metodoId;
   if (metodoIdentifier) {
     await client.put(`/metodos-pagos/${metodoIdentifier}`, payload);
   } else {
