@@ -59,21 +59,15 @@ export default function RestaurantSettings() {
       if (data) {
         setRestaurant(data);
         setName(data.name || '');
-        
-        // Cargar credenciales de Mercado Pago (si existen)
-        try {
-          setMpLoading(true);
-          const restaurantIdentifier = data.documentId || data.id;
-          const metodo = await fetchMercadoPagoMethod(restaurantIdentifier);
-          setMpMetodoId(metodo?.documentId || metodo?.id || null);
-          setMpPublicKey(metodo?.mp_public_key || '');
-          // Por seguridad, nunca mostramos el access token existente; el campo queda vacío para introducir uno nuevo.
-          setMpAccessToken('');
-        } catch (e) {
-          console.error('Error fetching Mercado Pago method:', e);
-        } finally {
-          setMpLoading(false);
-        }
+
+        // Cargar credenciales de Mercado Pago desde los datos ya populados del restaurante
+        setMpLoading(true);
+        const initialMpId = data.mp_method_id || null;
+        setMpMetodoId(initialMpId);
+        setMpPublicKey(data.mp_public_key || '');
+        // Por seguridad, nunca mostramos el access token existente; el campo queda vacío para introducir uno nuevo.
+        setMpAccessToken('');
+        setMpLoading(false);
         
         // Limpiar URL de objeto si existe antes de establecer el nuevo preview
         // (el nuevo preview será una URL del servidor, no un objeto URL)
@@ -329,10 +323,8 @@ export default function RestaurantSettings() {
                           mp_access_token: mpAccessToken.trim() || undefined,
                         });
                         setMessage({ type: 'success', text: 'Credenciales de Mercado Pago guardadas correctamente' });
-                        // Volver a cargar para refrescar estado (en especial, id del método)
-                        const metodo = await fetchMercadoPagoMethod(restaurantIdentifier);
-                        setMpMetodoId(metodo?.documentId || metodo?.id || null);
-                        setMpPublicKey(metodo?.mp_public_key || '');
+                        // Volver a cargar el restaurante para refrescar estado (id y public key del método)
+                        await loadRestaurant();
                         setMpAccessToken('');
                       } catch (error) {
                         console.error('Error saving Mercado Pago credentials:', error);

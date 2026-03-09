@@ -151,10 +151,19 @@ export async function fetchRestaurant(slug) {
       console.error('fetchRestaurant: No se encontró ID ni documentId en la respuesta:', data);
     }
 
-    // Solo desde restaurante.metodos_pagos: provider === 'mercado_pago' Y active === true (nunca desde restaurante ni env)
-    const { hasMercadoPago, mp_public_key: mpPublicKey } = getMercadoPagoFromMetodos(attr.metodos_pagos);
+    // Solo desde restaurante.metodos_pagos: provider === 'mercado_pago' Y active === true (nunca desde .env)
+    const { hasMercadoPago, mp_public_key: mpPublicKey, mpMethod } = getMercadoPagoFromMetodos(attr.metodos_pagos);
     const rawList = attr.metodos_pagos?.data ?? attr.metodos_pagos ?? [];
     const list = Array.isArray(rawList) ? rawList : [];
+
+    // Intentar obtener un identificador estable del método de pago (id numérico o documentId)
+    const mpMethodAttrs = mpMethod ? (mpMethod.attributes ?? mpMethod) : null;
+    const mpMethodId =
+      mpMethod?.id ??
+      mpMethod?.documentId ??
+      mpMethodAttrs?.documentId ??
+      mpMethodAttrs?.id ??
+      null;
 
     return {
       id: restaurantId || documentIdValue,
@@ -166,6 +175,8 @@ export async function fetchRestaurant(slug) {
       suscripcion: attr.Suscripcion || attr.suscripcion || 'BASIC',
       mp_public_key: mpPublicKey,
       hasMercadoPago,
+       // Identificador del método Mercado Pago, si existe (se usa para actualizar en lugar de crear uno nuevo)
+      mp_method_id: mpMethodId,
       metodos_pagos: list.map((m) => {
         const a = m?.attributes ?? m;
         return { provider: a?.provider, active: a?.active, mp_public_key: a?.mp_public_key, alias_cbu: a?.alias_cbu };
