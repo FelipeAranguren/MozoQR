@@ -1,10 +1,12 @@
 import { client } from './client';
 
 /**
- * Detecta si un valor parece ser un documentId de Strapi v5 (string alfanumérico ~25 chars).
+ * Detecta si un valor parece ser un documentId de Strapi v5
+ * (string alfanumérico de longitud típica 24, pero permitimos un rango).
  */
 function isDocumentId(val) {
-  return typeof val === 'string' && /^[a-z0-9]{25}$/i.test(val.trim());
+  const v = typeof val === 'string' ? val.trim() : '';
+  return /^[a-z0-9]{20,40}$/i.test(v);
 }
 
 /**
@@ -15,7 +17,7 @@ function isDocumentId(val) {
 export async function fetchMercadoPagoMethod(restaurantIdentifier) {
   if (restaurantIdentifier == null) return null;
   const params = { 'filters[provider][$eq]': 'mercado_pago' };
-  // Strapi v5: filtrar por documentId de la relación
+  // Strapi v5: filtrar por documentId de la relación cuando el identificador no es claramente numérico
   if (isDocumentId(restaurantIdentifier)) {
     params['filters[restaurante][documentId][$eq]'] = restaurantIdentifier;
   } else {
@@ -40,7 +42,7 @@ export async function fetchMercadoPagoMethod(restaurantIdentifier) {
  * - provider fijo: 'mercado_pago'
  * - active se fuerza a true
  * - mp_access_token es write-only: si viene vacío no se modifica el existente
- * - Strapi v5 requiere documentId para la relación restaurante y para la URL de PUT
+ * - Strapi v5 permite usar documentId para la relación restaurante y para la URL de PUT
  */
 export async function saveMercadoPagoMethod({
   restaurantDocumentId,
@@ -54,8 +56,6 @@ export async function saveMercadoPagoMethod({
   if (!restId) {
     throw new Error('restaurantDocumentId o restaurantId requerido para guardar credenciales de Mercado Pago');
   }
-
-  // Strapi v5: la relación manyToOne acepta documentId directamente; v4 acepta id numérico
 
   const payload = {
     data: {
