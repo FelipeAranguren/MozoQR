@@ -11,12 +11,14 @@ import {
   CardContent,
   Grid,
   CircularProgress,
-  Alert
+  Alert,
+  Divider,
 } from '@mui/material';
 import CloudUploadIcon from '@mui/icons-material/CloudUpload';
 import SaveIcon from '@mui/icons-material/Save';
 import { MARANA_COLORS } from '../../../theme';
 import { fetchRestaurant, updateRestaurant } from '../../../api/restaurant';
+import { fetchMercadoPagoMethod, saveMercadoPagoMethod } from '../../../api/paymentMethods';
 
 export default function RestaurantSettings() {
   const { slug } = useParams();
@@ -27,6 +29,11 @@ export default function RestaurantSettings() {
   const [saving, setSaving] = useState(false);
   const [restaurant, setRestaurant] = useState(null);
   const [name, setName] = useState('');
+  const [mpLoading, setMpLoading] = useState(false);
+  const [mpSaving, setMpSaving] = useState(false);
+  const [mpMetodoId, setMpMetodoId] = useState(null);
+  const [mpPublicKey, setMpPublicKey] = useState('');
+  const [mpAccessToken, setMpAccessToken] = useState('');
   const [logoPreview, setLogoPreview] = useState(null);
   const [logoFile, setLogoFile] = useState(null);
   const [removeLogo, setRemoveLogo] = useState(false);
@@ -52,6 +59,20 @@ export default function RestaurantSettings() {
       if (data) {
         setRestaurant(data);
         setName(data.name || '');
+        
+        // Cargar credenciales de Mercado Pago (si existen)
+        try {
+          setMpLoading(true);
+          const metodo = await fetchMercadoPagoMethod(data.id);
+          setMpMetodoId(metodo?.id || null);
+          setMpPublicKey(metodo?.mp_public_key || '');
+          // Por seguridad, nunca mostramos el access token existente; el campo queda vacío para introducir uno nuevo.
+          setMpAccessToken('');
+        } catch (e) {
+          console.error('Error fetching Mercado Pago method:', e);
+        } finally {
+          setMpLoading(false);
+        }
         
         // Limpiar URL de objeto si existe antes de establecer el nuevo preview
         // (el nuevo preview será una URL del servidor, no un objeto URL)
@@ -237,6 +258,100 @@ export default function RestaurantSettings() {
                 </Box>
               </CardContent>
             </Card>
+
+          {/* Credenciales de pago – Mercado Pago */}
+          <Card
+            sx={{
+              border: `1px solid ${MARANA_COLORS.border}`,
+              borderRadius: 3,
+              boxShadow: '0px 1px 3px rgba(0,0,0,0.05)',
+              mt: 3,
+            }}
+          >
+            <CardContent sx={{ p: 3 }}>
+              <Typography variant="h6" sx={{ fontWeight: 700, mb: 1.5 }}>
+                Credenciales de Pago
+              </Typography>
+              <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+                Configurá las credenciales de Mercado Pago para este restaurante. Estas claves se usan para generar pagos
+                y nunca se muestran completas.
+              </Typography>
+              <Divider sx={{ mb: 2 }} />
+
+              <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                <TextField
+                  label="Public Key de Mercado Pago"
+                  fullWidth
+                  value={mpPublicKey}
+                  onChange={(e) => setMpPublicKey(e.target.value)}
+                  placeholder="Ejemplo: APP_USR-6632523e-xxxx-4b8d-b4c1-0f3cxxxxxxx"
+                  helperText="Clave pública de tu aplicación de Mercado Pago (solo lectura en el frontend)."
+                  InputProps={{
+                    sx: {
+                      bgcolor: 'white',
+                      borderRadius: 2,
+                    },
+                  }}
+                />
+
+                <TextField
+                  label="Access Token de Mercado Pago"
+                  fullWidth
+                  type="password"
+                  value={mpAccessToken}
+                  onChange={(e) => setMpAccessToken(e.target.value)}
+                  placeholder="Ejemplo: APP_USR-1136052360410590-xxxx-9e9e-xxxxxxxxxxxx"
+                  helperText="Por seguridad, nunca mostramos el token guardado. Dejá este campo vacío para mantener el actual; ingresá uno nuevo solo si necesitás reemplazarlo."
+                  InputProps={{
+                    sx: {
+                      bgcolor: 'white',
+                      borderRadius: 2,
+                      fontFamily: 'monospace',
+                    },
+                  }}
+                />
+
+                <Box sx={{ display: 'flex', justifyContent: 'flex-end', mt: 1 }}>
+                  <Button
+                    variant="outlined"
+                    onClick={async () => {
+                      if (!restaurant?.id) return;
+                      setMpSaving(true);
+                      try {
+                        await saveMercadoPagoMethod({
+                          restaurantId: restaurant.id,
+                          metodoId: mpMetodoId,
+                          mp_public_key: mpPublicKey.trim(),
+                          mp_access_token: mpAccessToken.trim() || undefined,
+                        });
+                        setMessage({ type: 'success', text: 'Credenciales de Mercado Pago guardadas correctamente' });
+                        // Volver a cargar para refrescar estado (en especial, id del método)
+                        const metodo = await fetchMercadoPagoMethod(restaurant.id);
+                        setMpMetodoId(metodo?.id || null);
+                        setMpPublicKey(metodo?.mp_public_key || '');
+                        setMpAccessToken('');
+                      } catch (error) {
+                        console.error('Error saving Mercado Pago credentials:', error);
+                        setMessage({
+                          type: 'error',
+                          text:
+                            error?.response?.data?.error?.message ||
+                            'Error al guardar las credenciales de Mercado Pago',
+                        });
+                      } finally {
+                        setMpSaving(false);
+                      }
+                    }}
+                    disabled={mpSaving || mpLoading}
+                    startIcon={mpSaving ? <CircularProgress size={18} sx={{ color: 'inherit' }} /> : null}
+                    sx={{ minWidth: 200 }}
+                  >
+                    {mpSaving ? 'Guardando credenciales...' : 'Guardar credenciales de pago'}
+                  </Button>
+                </Box>
+              </Box>
+            </CardContent>
+          </Card>
           </Grid>
 
           {/* Logo */}
