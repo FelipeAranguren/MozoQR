@@ -328,12 +328,14 @@ export default function RestaurantSettings() {
                         setMpAccessToken(metodo?.mp_access_token || '');
                       } catch (error) {
                         console.error('Error saving Mercado Pago credentials:', error);
-                        setMessage({
-                          type: 'error',
-                          text:
-                            error?.response?.data?.error?.message ||
-                            'Error al guardar las credenciales de Mercado Pago',
-                        });
+                        const errMsg =
+                          error?.response?.data?.error?.message
+                          || error?.response?.data?.message
+                          || (error?.response?.status === 403 ? 'No tenés permiso para editar este restaurante.' : null)
+                          || (error?.response?.status === 404 ? 'Ruta de pago no encontrada.' : null)
+                          || error?.message
+                          || 'Error al guardar las credenciales de Mercado Pago';
+                        setMessage({ type: 'error', text: errMsg });
                       } finally {
                         setMpSaving(false);
                       }

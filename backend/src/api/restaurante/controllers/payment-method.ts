@@ -2,7 +2,8 @@
  * Controller para obtener y actualizar el método de pago Mercado Pago de un restaurante.
  * Rutas: GET/PUT /restaurants/:slug/payment-method
  * - Evita duplicados: siempre actualiza el existente en lugar de crear uno nuevo.
- * - Expone mp_access_token para que el owner pueda verlo en la UI (solo en este endpoint).
+ * - Usa db.query para leer mp_access_token (entityService puede omitir atributos private).
+ * - Usa db.query().update() para que los cambios persistan en la base.
  */
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
@@ -22,7 +23,8 @@ function findMercadoPagoActivo(rows: any[]): any {
 export default {
   /**
    * GET /restaurants/:slug/payment-method
-   * Devuelve el método Mercado Pago del restaurante (incluye mp_access_token para el owner).
+   * Devuelve el método Mercado Pago del restaurante (incluye mp_access_token).
+   * Usamos db.query para obtener todos los campos, incluido el private mp_access_token.
    */
   async find(ctx: any) {
     const slug = ctx.params?.slug;
@@ -31,37 +33,36 @@ export default {
     }
 
     const strapi = ctx.strapi;
-    if (!strapi?.entityService) {
+    if (!strapi?.db) {
       return ctx.internalServerError('Strapi no disponible');
     }
 
     try {
-      const [restaurante] = await strapi.entityService.findMany(RESTAURANTE_UID, {
-        filters: { slug: String(slug).trim() },
-        fields: ['id'],
+      const [restaurante] = await strapi.db.query(RESTAURANTE_UID).findMany({
+        where: { slug: String(slug).trim() },
+        select: ['id'],
         limit: 1,
       });
       if (!restaurante?.id) {
         return ctx.notFound('Restaurante no encontrado');
       }
 
-      const restauranteId = restaurante.id ?? restaurante.attributes?.id;
-      const rows = await strapi.entityService.findMany(METODOS_PAGO_UID, {
-        filters: { restaurante: restauranteId },
+      const rows = await strapi.db.query(METODOS_PAGO_UID).findMany({
+        where: { restaurante: restaurante.id },
         limit: 50,
       });
       const metodo = findMercadoPagoActivo(rows);
       if (!metodo) {
-        return ctx.body = { data: null };
+        ctx.body = { data: null };
+        return;
       }
 
-      const attrs = metodo.attributes ?? metodo;
       ctx.body = {
         data: {
           id: metodo.id,
           documentId: metodo.documentId ?? metodo.id,
-          mp_public_key: attrs.mp_public_key ?? metodo.mp_public_key ?? '',
-          mp_access_token: attrs.mp_access_token ?? metodo.mp_access_token ?? '',
+          mp_public_key: metodo.mp_public_key ?? '',
+          mp_access_token: metodo.mp_access_token ?? '',
         },
       };
     } catch (e) {
@@ -73,7 +74,7 @@ export default {
   /**
    * PUT /restaurants/:slug/payment-method
    * Actualiza el método existente o crea uno nuevo si no existe.
-   * Nunca crea duplicados: siempre actualiza el registro existente para ese restaurante.
+   * Usamos db.query().update() para que los cambios persistan.
    */
   async update(ctx: any) {
     const slug = ctx.params?.slug;
@@ -82,7 +83,7 @@ export default {
     }
 
     const strapi = ctx.strapi;
-    if (!strapi?.entityService) {
+    if (!strapi?.db) {
       return ctx.internalServerError('Strapi no disponible');
     }
 
@@ -96,50 +97,57 @@ export default {
     const mp_access_token = data.mp_access_token ?? undefined;
 
     try {
-      const [restaurante] = await strapi.entityService.findMany(RESTAURANTE_UID, {
-        filters: { slug: String(slug).trim() },
-        fields: ['id'],
+      const [restaurante] = await strapi.db.query(RESTAURANTE_UID).findMany({
+        where: { slug: String(slug).trim() },
+        select: ['id'],
         limit: 1,
       });
       if (!restaurante?.id) {
         return ctx.notFound('Restaurante no encontrado');
       }
 
-      const restauranteId = restaurante.id ?? restaurante.attributes?.id;
-      const rows = await strapi.entityService.findMany(METODOS_PAGO_UID, {
-        filters: { restaurante: restauranteId },
+      const rows = await strapi.db.query(METODOS_PAGO_UID).findMany({
+        where: { restaurante: restaurante.id },
         limit: 50,
       });
       const existing = findMercadoPagoActivo(rows);
 
-      const updateData: any = {
-        provider: 'mercado_pago',
-        mp_public_key: mp_public_key != null ? String(mp_public_key) : undefined,
-        active: true,
-        restaurante: restauranteId,
-      };
-      if (mp_access_token !== undefined && mp_access_token !== null && String(mp_access_token).trim() !== '') {
-        updateData.mp_access_token = String(mp_access_token).trim();
-      }
-
       if (existing) {
-        const updated = await strapi.entityService.update(METODOS_PAGO_UID, existing.id, {
-          data: updateData,
+        const updatePayload: any = {
+          provider: 'mercado_pago',
+          active: true,
+          restaurante: restaurante.id,
+        };
+        if (mp_public_key != null) updatePayload.mp_public_key = String(mp_public_key).trim();
+        if (mp_access_token !== undefined && mp_access_token !== null && String(mp_access_token).trim() !== '') {
+          updatePayload.mp_access_token = String(mp_access_token).trim();
+        }
+        await strapi.db.query(METODOS_PAGO_UID).update({
+          where: { id: existing.id },
+          data: updatePayload,
         });
-        const attrs = updated?.attributes ?? updated;
+        const updated = await strapi.db.query(METODOS_PAGO_UID).findOne({
+          where: { id: existing.id },
+        });
         ctx.body = {
           data: {
             id: updated?.id,
             documentId: updated?.documentId ?? updated?.id,
-            mp_public_key: attrs?.mp_public_key ?? '',
+            mp_public_key: updated?.mp_public_key ?? '',
           },
         };
       } else {
+        const createPayload: any = {
+          provider: 'mercado_pago',
+          mp_public_key: mp_public_key != null ? String(mp_public_key).trim() : '',
+          active: true,
+          restaurante: restaurante.id,
+        };
+        if (mp_access_token !== undefined && mp_access_token !== null && String(mp_access_token).trim() !== '') {
+          createPayload.mp_access_token = String(mp_access_token).trim();
+        }
         const created = await strapi.entityService.create(METODOS_PAGO_UID, {
-          data: {
-            ...updateData,
-            mp_public_key: updateData.mp_public_key ?? '',
-          },
+          data: createPayload,
         });
         const attrs = created?.attributes ?? created;
         ctx.body = {
