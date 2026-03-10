@@ -72,9 +72,7 @@ export default function RestaurantSettings() {
           setMpPublicKey('');
           setMpAccessToken('');
           setMpHasAccessToken(false);
-          if (e?.response?.status === 403) {
-            setMessage({ type: 'error', text: 'No tenés permiso para ver las credenciales de este restaurante.' });
-          }
+          
         } finally {
           setMpLoading(false);
         }

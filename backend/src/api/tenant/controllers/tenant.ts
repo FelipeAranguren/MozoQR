@@ -1993,7 +1993,7 @@ export default {
     ctx.body = { message: 'Reset done (non-destructive)' };
   },
 
-  /** GET /restaurants/:slug/payment-method - Credenciales Mercado Pago (owner/staff). No expone mp_access_token; solo has_access_token para placeholder. */
+  /** GET /restaurants/:slug/payment-method - Credenciales Mercado Pago (owner/staff). Devuelve mp_public_key y mp_access_token para que el owner las vea en el dashboard. */
   async getPaymentMethod(ctx: Ctx) {
     const slug = ctx.params?.slug;
     if (!slug) {
@@ -2019,12 +2019,14 @@ export default {
         ctx.body = { data: null };
         return;
       }
-      const hasAccessToken = Boolean(metodo.mp_access_token && String(metodo.mp_access_token).trim().length > 0);
+      const token = metodo.mp_access_token ?? '';
+      const hasAccessToken = token.length > 0;
       ctx.body = {
         data: {
           id: metodo.id,
           documentId: metodo.documentId ?? metodo.id,
           mp_public_key: metodo.mp_public_key ?? '',
+          mp_access_token: token,
           has_access_token: hasAccessToken,
         },
       };

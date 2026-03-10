@@ -568,7 +568,7 @@ export default function OwnerDashboard() {
       .then((metodo) => {
         if (cancelled) return;
         setMpPublicKey(metodo?.mp_public_key ?? '');
-        setMpAccessToken(''); // Nunca se muestra el token por seguridad; el placeholder •••••••• se usa cuando has_access_token es true
+        setMpAccessToken(metodo?.mp_access_token ?? '');
         setMpHasAccessToken(metodo?.has_access_token ?? false);
       })
       .catch((err) => {
@@ -1175,7 +1175,7 @@ export default function OwnerDashboard() {
                     setMpMessage({ type: 'success', text: 'Credenciales guardadas correctamente.' });
                     const metodo = await fetchMercadoPagoMethodBySlug(slug);
                     setMpPublicKey(metodo?.mp_public_key ?? '');
-                    setMpAccessToken(''); // No se expone el token; se muestra placeholder si hay uno guardado
+                    setMpAccessToken(metodo?.mp_access_token ?? '');
                     setMpHasAccessToken(metodo?.has_access_token ?? false);
                   } catch (err) {
                     console.error('Error saving credentials:', err);
