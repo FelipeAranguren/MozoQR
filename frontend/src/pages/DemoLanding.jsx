@@ -31,12 +31,12 @@ export default function DemoLanding() {
         {
             id: 'staff',
             title: 'Staff / Cocina',
-            description: 'Gestión de comandas en tiempo real, KDS de cocina y estados de mesa.',
+            description: 'Gestión de pedidos en tiempo real, pedidos en cocina y estados de mesa.',
             icon: <KitchenIcon sx={{ fontSize: 40 }} />,
             color: '#009688', // Teal
             action: () => navigate(`/staff/${DEMO_SLUG}/orders`),
             buttonText: 'Ver Cocina / Staff',
-            features: ['Comandas', 'KDS', 'Mesas']
+            features: ['Recibir Pedidos', 'Pedidos en Cocina', 'Estado de Mesas']
         },
         {
             id: 'owner',
@@ -46,7 +46,7 @@ export default function DemoLanding() {
             color: '#2196F3', // Blue
             action: () => navigate(`/owner/${DEMO_SLUG}/dashboard`),
             buttonText: 'Panel de Dueño',
-            features: ['Dashboard', 'Métricas', 'Configuración']
+            features: ['Facturación', 'Métricas', 'Configuración', 'Inteligencia Artificial para optimizar tu negocio']
         },
         {
             id: 'admin',
