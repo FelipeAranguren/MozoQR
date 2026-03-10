@@ -25,6 +25,12 @@ export default {
     },
     {
       method: 'POST',
+      path: '/payments/create-subscription-preference',
+      handler: 'payments.createSubscriptionPreference',
+      config: { auth: false, policies: [], middlewares: [] },
+    },
+    {
+      method: 'POST',
       path: '/payments/card-pay',
       handler: 'payments.cardPay',
       config: { auth: false, policies: [], middlewares: [] },

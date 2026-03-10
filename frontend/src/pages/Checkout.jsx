@@ -23,6 +23,7 @@ import { MARANA_COLORS } from '../theme';
 import { useExchangeRate } from '../hooks/useExchangeRate';
 import { formatArs } from '../api/exchangeRate';
 import { PLAN_BASE_USD } from '../constants/planPricing';
+import { createSubscriptionPreference } from '../api/payments';
 
 /** Ícono/logo Mercado Pago (SVG inline para que siempre cargue, sin depender de URLs externas) */
 const MP_BLUE = '#009EE3';
@@ -71,9 +72,33 @@ export default function Checkout() {
   const { rate, loading } = useExchangeRate();
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
+  const [submitting, setSubmitting] = React.useState(false);
+  const [submitError, setSubmitError] = React.useState(null);
 
   const planOption = PLAN_OPTIONS.find((p) => p.key === selectedPlan) || PLAN_OPTIONS[0];
   const totalArs = planOption.priceUsd * rate;
+
+  const handleFinalizarCompra = async () => {
+    if (paymentMethod !== 'mercadopago') {
+      setSubmitError('Por ahora solo está disponible el pago con Mercado Pago.');
+      return;
+    }
+    setSubmitError(null);
+    setSubmitting(true);
+    try {
+      const result = await createSubscriptionPreference({ plan: selectedPlan });
+      const url = result?.init_point;
+      if (url) {
+        window.location.href = url;
+        return;
+      }
+      setSubmitError('No se recibió el link de pago. Intentá de nuevo.');
+    } catch (err) {
+      setSubmitError(err?.message || 'Error al generar el link de pago. Intentá de nuevo.');
+    } finally {
+      setSubmitting(false);
+    }
+  };
 
   return (
     <Box
@@ -228,15 +253,18 @@ export default function Checkout() {
           </CardContent>
         </Card>
 
+        {submitError && (
+          <Typography color="error" sx={{ mb: 2 }} role="alert">
+            {submitError}
+          </Typography>
+        )}
         {/* Botón finalizar */}
         <Button
           variant="contained"
           fullWidth
           size="large"
-          onClick={() => {
-            console.log('Checkout: Finalizar compra', { plan: selectedPlan, paymentMethod, totalArs });
-            alert('Próximamente');
-          }}
+          disabled={submitting}
+          onClick={handleFinalizarCompra}
           sx={{
             py: 1.5,
             fontSize: '1.1rem',
@@ -252,7 +280,14 @@ export default function Checkout() {
             },
           }}
         >
-          Finalizar compra
+          {submitting ? (
+            <>
+              <CircularProgress size={22} sx={{ color: 'inherit', mr: 1 }} />
+              Redirigiendo a Mercado Pago...
+            </>
+          ) : (
+            'Finalizar compra'
+          )}
         </Button>
 
         <Typography variant="body2" color="text.secondary" align="center" sx={{ mt: 2 }}>

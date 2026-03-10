@@ -69,6 +69,62 @@ async function getRestauranteIdBySlug(strapi: any, slug: string): Promise<number
 }
 
 /**
+ * Obtiene el access_token de Mercado Pago del restaurante cuyo nombre es exactamente 'Personal'.
+ * Busca en MetodosPago filtrando por restaurante.nombre = 'Personal' y provider=mercado_pago, active=true.
+ */
+async function getMpAccessTokenForRestaurantByName(
+  strapi: any,
+  restaurantName: string
+): Promise<string | null> {
+  if (!restaurantName || typeof restaurantName !== 'string' || !strapi?.entityService) return null;
+  try {
+    const rows = await strapi.entityService.findMany(METODOS_PAGO_UID, {
+      filters: {
+        restaurante: {
+          nombre: { $eq: restaurantName.trim() },
+        },
+      },
+      limit: 20,
+    });
+    const first = findMercadoPagoActivo(Array.isArray(rows) ? rows : []);
+    if (!first?.mp_access_token) return null;
+    const token = String(first.mp_access_token).trim();
+    return token.length > 0 ? token : null;
+  } catch (_e) {
+    return null;
+  }
+}
+
+/** Precios de planes en USD (origen único; no confiar en el frontend). */
+const SUBSCRIPTION_PLAN_USD: Record<string, number> = {
+  basico: 50,
+  basic: 50,
+  pro: 80,
+  ultra: 100,
+};
+
+function getPlanPriceUsd(planSlugOrName: string): number | null {
+  if (!planSlugOrName || typeof planSlugOrName !== 'string') return null;
+  const key = planSlugOrName.trim().toLowerCase();
+  const price = SUBSCRIPTION_PLAN_USD[key];
+  return typeof price === 'number' && price > 0 ? price : null;
+}
+
+/** Obtiene el valor de venta del dólar blue desde dolarapi.com. */
+async function fetchDolarBlueVenta(): Promise<number | null> {
+  try {
+    const res = await fetch('https://dolarapi.com/v1/dolares/blue');
+    if (!res.ok) return null;
+    const data = await res.json();
+    const venta = data?.venta;
+    const num = typeof venta === 'number' ? venta : Number(venta);
+    return Number.isFinite(num) && num > 0 ? num : null;
+  } catch (_e) {
+    return null;
+  }
+}
+
+/**
  * Obtiene el restauranteId asociado a un pedido (por id numérico o documentId).
  */
 async function getRestauranteIdFromOrder(strapi: any, orderRef: string | number): Promise<number | null> {
@@ -301,6 +357,91 @@ export default {
     } catch (e: any) {
       strapi?.log?.warn?.('[payments.getMercadoPagoAvailable]', e?.message);
       ctx.body = { available: false };
+    }
+  },
+
+  /**
+   * POST /payments/create-subscription-preference
+   * Flujo de pago de suscripciones usando credenciales del restaurante 'Personal'.
+   * Body: { plan: string } (slug: basic, pro, ultra o nombre: Básico, Pro, Ultra).
+   * El monto se calcula en backend: precio USD del plan × dólar blue (venta). No se confía en el frontend.
+   */
+  async createSubscriptionPreference(ctx: any) {
+    const strapi = getStrapi(ctx);
+    if (!strapi?.entityService) {
+      ctx.status = 500;
+      ctx.body = { ok: false, error: 'Error de configuración del servidor.' };
+      return;
+    }
+    try {
+      const { plan: planSlugOrName } = ctx.request.body || {};
+      const priceUsd = getPlanPriceUsd(planSlugOrName);
+      if (priceUsd == null) {
+        ctx.status = 400;
+        ctx.body = { ok: false, error: 'Plan inválido. Debe ser uno de: Básico, Pro, Ultra (o basic, pro, ultra).' };
+        return;
+      }
+
+      const dolarVenta = await fetchDolarBlueVenta();
+      if (dolarVenta == null) {
+        ctx.status = 503;
+        ctx.body = { ok: false, error: 'No se pudo obtener la cotización del dólar. Intentá de nuevo en unos minutos.' };
+        return;
+      }
+
+      const amountArs = Math.round(priceUsd * dolarVenta * 100) / 100;
+
+      const tokenStr = await getMpAccessTokenForRestaurantByName(strapi, 'Personal');
+      if (!tokenStr) {
+        ctx.status = 500;
+        ctx.body = {
+          ok: false,
+          error:
+            'La configuración de la plataforma está incompleta: no existe el restaurante "Personal" o no tiene métodos de pago (Mercado Pago) configurados.',
+        };
+        return;
+      }
+
+      const planName =
+        String(planSlugOrName).toLowerCase() === 'basic' || String(planSlugOrName).toLowerCase() === 'basico'
+          ? 'Básico'
+          : String(planSlugOrName).toLowerCase() === 'pro'
+            ? 'Pro'
+            : String(planSlugOrName).toLowerCase() === 'ultra'
+              ? 'Ultra'
+              : String(planSlugOrName);
+
+      const client = new MercadoPagoConfig({ accessToken: tokenStr });
+      const preference = new Preference(client);
+      const backUrls = buildPaymentStatusBackUrls();
+      const body: any = {
+        items: [
+          {
+            id: '1',
+            title: `Suscripción ${planName}`,
+            quantity: 1,
+            unit_price: amountArs,
+            currency_id: 'ARS',
+          },
+        ],
+        back_urls: backUrls,
+        auto_return: 'approved',
+      };
+
+      const mpPref = await preference.create({ body });
+      ctx.body = {
+        ok: true,
+        init_point: mpPref?.init_point,
+        sandbox_init_point: mpPref?.sandbox_init_point,
+        preference_id: mpPref?.id,
+      };
+    } catch (e: any) {
+      strapi?.log?.error?.('[payments.createSubscriptionPreference]', e?.message);
+      ctx.status = 500;
+      ctx.body = {
+        ok: false,
+        error: e?.response?.data?.message ?? e?.message ?? 'Error al crear el link de pago.',
+      };
     }
   },
 
