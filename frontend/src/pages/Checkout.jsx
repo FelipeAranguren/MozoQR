@@ -24,6 +24,25 @@ import { useExchangeRate } from '../hooks/useExchangeRate';
 import { formatArs } from '../api/exchangeRate';
 import { PLAN_BASE_USD } from '../constants/planPricing';
 
+/** Ícono/logo Mercado Pago (SVG inline para que siempre cargue, sin depender de URLs externas) */
+const MP_BLUE = '#009EE3';
+function MercadoPagoLogo() {
+  return (
+    <Box
+      component="svg"
+      xmlns="http://www.w3.org/2000/svg"
+      viewBox="0 0 40 28"
+      sx={{ height: 28, width: 40, flexShrink: 0 }}
+      aria-hidden
+    >
+      <rect x="0" y="4" width="36" height="20" rx="3" ry="3" fill={MP_BLUE} opacity="0.15" stroke={MP_BLUE} strokeWidth="1.5" />
+      <rect x="4" y="8" width="28" height="4" rx="1" fill={MP_BLUE} opacity="0.4" />
+      <circle cx="8" cy="18" r="2" fill={MP_BLUE} />
+      <circle cx="14" cy="18" r="2" fill={MP_BLUE} opacity="0.6" />
+    </Box>
+  );
+}
+
 const PLAN_OPTIONS = [
   { key: 'basic', planKey: 'BASIC', name: 'Básico', priceUsd: PLAN_BASE_USD.BASIC, color: MARANA_COLORS.textSecondary },
   { key: 'pro', planKey: 'PRO', name: 'Pro', priceUsd: PLAN_BASE_USD.PRO, color: MARANA_COLORS.secondary },
@@ -137,22 +156,22 @@ export default function Checkout() {
                     '&:hover': { borderColor: alpha(MARANA_COLORS.primary, 0.5) },
                   }}
                 >
-                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, flexWrap: 'wrap' }}>
                     <FormControlLabel
                       value="mercadopago"
                       control={<Radio sx={{ color: MARANA_COLORS.primary, '&.Mui-checked': { color: MARANA_COLORS.primary } }} />}
                       label=""
                       sx={{ m: 0 }}
                     />
-                    <Box
-                      component="img"
-                      src="https://http2.mlstatic.com/frontend-assets/ml-web-navigation/ui-navigation/5.21.22/mercadopago/mercadopago-logo.svg"
-                      alt="Mercado Pago"
-                      sx={{ height: 28, objectFit: 'contain' }}
-                    />
-                    <Typography fontWeight="600" color="text.primary">
-                      Mercado Pago
-                    </Typography>
+                    <MercadoPagoLogo />
+                    <Box>
+                      <Typography fontWeight="600" color="text.primary">
+                        Mercado Pago
+                      </Typography>
+                      <Typography variant="body2" color="text.secondary">
+                        El pago se realizará en pesos argentinos (ARS)
+                      </Typography>
+                    </Box>
                   </Box>
                 </Card>
               </RadioGroup>
