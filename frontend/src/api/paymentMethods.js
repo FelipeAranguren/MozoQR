@@ -1,4 +1,4 @@
-import { api } from '../api';
+import { client as api } from './client';
 
 /**
  * Obtiene el método de pago Mercado Pago para un restaurante por slug.

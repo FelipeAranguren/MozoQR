@@ -69,6 +69,9 @@ export default function RestaurantSettings() {
           console.error('Error fetching Mercado Pago method:', e);
           setMpPublicKey(data.mp_public_key || '');
           setMpAccessToken('');
+          if (e?.response?.status === 403) {
+            setMessage({ type: 'error', text: 'No tenés permiso para ver las credenciales de este restaurante.' });
+          }
         } finally {
           setMpLoading(false);
         }

@@ -81,5 +81,17 @@ export default {
       handler: 'tenant.debugSession',
       config: { policies: [], middlewares: [], auth: false },
     },
+    {
+      method: 'GET',
+      path: '/restaurants/:slug/payment-method',
+      handler: 'tenant.getPaymentMethod',
+      config: { auth: {}, policies: ['global::by-restaurant-owner'] },
+    },
+    {
+      method: 'PUT',
+      path: '/restaurants/:slug/payment-method',
+      handler: 'tenant.updatePaymentMethod',
+      config: { auth: {}, policies: ['global::by-restaurant-owner'] },
+    },
   ],
 };

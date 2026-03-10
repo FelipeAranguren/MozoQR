@@ -1942,5 +1942,126 @@ export default {
     });
 
     ctx.body = { message: 'Reset done (non-destructive)' };
-  }
+  },
+
+  /** GET /restaurants/:slug/payment-method - Credenciales Mercado Pago (incluye mp_access_token) */
+  async getPaymentMethod(ctx: Ctx) {
+    const slug = ctx.params?.slug;
+    if (!slug) {
+      ctx.badRequest?.('Slug requerido');
+      return;
+    }
+    const METODOS_PAGO_UID = 'api::metodos-pago.metodos-pago';
+    try {
+      const restaurante = await getRestaurantBySlug(String(slug).trim());
+      const rows = await strapi.db.query(METODOS_PAGO_UID).findMany({
+        where: { restaurante: restaurante.id },
+        orderBy: { id: 'asc' },
+        limit: 50,
+      });
+      const metodo = (Array.isArray(rows) ? rows : []).find(
+        (r: any) => r?.provider === 'mercado_pago' && (r?.active === true || r?.active === 1)
+      );
+      if (!metodo) {
+        ctx.body = { data: null };
+        return;
+      }
+      ctx.body = {
+        data: {
+          id: metodo.id,
+          documentId: metodo.documentId ?? metodo.id,
+          mp_public_key: metodo.mp_public_key ?? '',
+          mp_access_token: metodo.mp_access_token ?? '',
+        },
+      };
+    } catch (e: any) {
+      console.error('[getPaymentMethod]', e);
+      if (e?.name === 'NotFoundError') {
+        ctx.notFound?.(e.message);
+        return;
+      }
+      ctx.status = 500;
+      ctx.body = { error: { message: 'Error al obtener el método de pago' } };
+    }
+  },
+
+  /** PUT /restaurants/:slug/payment-method - Actualizar credenciales Mercado Pago */
+  async updatePaymentMethod(ctx: Ctx) {
+    const slug = ctx.params?.slug;
+    if (!slug) {
+      ctx.badRequest?.('Slug requerido');
+      return;
+    }
+    const body = ctx.request?.body;
+    const data = body?.data ?? body;
+    if (!data || typeof data !== 'object') {
+      ctx.badRequest?.('Datos inválidos');
+      return;
+    }
+    const METODOS_PAGO_UID = 'api::metodos-pago.metodos-pago';
+    const mp_public_key = data.mp_public_key ?? null;
+    const mp_access_token = data.mp_access_token ?? undefined;
+    try {
+      const restaurante = await getRestaurantBySlug(String(slug).trim());
+      const rows = await strapi.db.query(METODOS_PAGO_UID).findMany({
+        where: { restaurante: restaurante.id },
+        orderBy: { id: 'asc' },
+        limit: 50,
+      });
+      const existing = (Array.isArray(rows) ? rows : []).find(
+        (r: any) => r?.provider === 'mercado_pago' && (r?.active === true || r?.active === 1)
+      );
+      if (existing) {
+        const updatePayload: any = {
+          provider: 'mercado_pago',
+          active: true,
+          restaurante: restaurante.id,
+        };
+        if (mp_public_key != null) updatePayload.mp_public_key = String(mp_public_key).trim();
+        if (mp_access_token !== undefined && mp_access_token !== null && String(mp_access_token).trim() !== '') {
+          updatePayload.mp_access_token = String(mp_access_token).trim();
+        }
+        await strapi.entityService.update(METODOS_PAGO_UID, existing.id, {
+          data: updatePayload,
+        });
+        const updated = await strapi.db.query(METODOS_PAGO_UID).findOne({
+          where: { id: existing.id },
+        });
+        ctx.body = {
+          data: {
+            id: (updated as any)?.id,
+            documentId: (updated as any)?.documentId ?? (updated as any)?.id,
+            mp_public_key: (updated as any)?.mp_public_key ?? '',
+          },
+        };
+      } else {
+        const createPayload: any = {
+          provider: 'mercado_pago',
+          mp_public_key: mp_public_key != null ? String(mp_public_key).trim() : '',
+          active: true,
+          restaurante: restaurante.id,
+        };
+        if (mp_access_token !== undefined && mp_access_token !== null && String(mp_access_token).trim() !== '') {
+          createPayload.mp_access_token = String(mp_access_token).trim();
+        }
+        const created = await strapi.entityService.create(METODOS_PAGO_UID, { data: createPayload });
+        const attrs = (created as any)?.attributes ?? created;
+        ctx.body = {
+          data: {
+            id: (created as any)?.id,
+            documentId: (created as any)?.documentId ?? (created as any)?.id,
+            mp_public_key: attrs?.mp_public_key ?? '',
+          },
+        };
+      }
+    } catch (e: any) {
+      console.error('[updatePaymentMethod]', e);
+      if (e?.name === 'NotFoundError') {
+        ctx.notFound?.(e.message);
+        return;
+      }
+      ctx.status = 500;
+      ctx.body = { error: { message: 'Error al guardar el método de pago' } };
+    }
+  },
 };
