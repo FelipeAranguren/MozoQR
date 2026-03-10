@@ -568,7 +568,7 @@ export default function OwnerDashboard() {
       .then((metodo) => {
         if (cancelled) return;
         setMpPublicKey(metodo?.mp_public_key ?? '');
-        setMpAccessToken(metodo?.mp_access_token ?? '');
+        setMpAccessToken(''); // Nunca se muestra el token por seguridad; el placeholder •••••••• se usa cuando has_access_token es true
         setMpHasAccessToken(metodo?.has_access_token ?? false);
       })
       .catch((err) => {
@@ -1131,7 +1131,7 @@ export default function OwnerDashboard() {
               Credenciales de Pago (Mercado Pago)
             </Typography>
             <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-              Claves del restaurante guardadas en la base de datos. Editá y guardá para actualizar.
+              Configurá las credenciales de Mercado Pago para este restaurante. Estas claves se usan para generar pagos y nunca se muestran completas.
             </Typography>
             {mpMessage.text && (
               <Alert severity={mpMessage.type === 'error' ? 'error' : 'success'} sx={{ mb: 2 }} onClose={() => setMpMessage({ type: '', text: '' })}>
@@ -1140,17 +1140,17 @@ export default function OwnerDashboard() {
             )}
             <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, maxWidth: 560 }}>
               <TextField
-                label="Public Key"
+                label="Public Key de Mercado Pago"
                 fullWidth
                 size="small"
                 value={mpPublicKey}
                 onChange={(e) => setMpPublicKey(e.target.value)}
-                placeholder="APP_USR-..."
+                placeholder="Clave pública de tu aplicación de Mercado Pago."
                 disabled={mpLoading}
                 sx={{ '& .MuiOutlinedInput-root': { bgcolor: '#fff' } }}
               />
               <TextField
-                label="Access Token"
+                label="Access Token de Mercado Pago"
                 fullWidth
                 size="small"
                 type="password"
@@ -1158,7 +1158,7 @@ export default function OwnerDashboard() {
                 onChange={(e) => setMpAccessToken(e.target.value)}
                 placeholder={mpHasAccessToken ? '•••••••• (ya cargado)' : 'APP_USR-...'}
                 disabled={mpLoading}
-                helperText={mpHasAccessToken && !mpAccessToken ? 'Ya hay un token guardado. Dejá vacío para mantenerlo.' : 'Dejá vacío para mantener el actual.'}
+                helperText={mpHasAccessToken && !mpAccessToken ? 'Ya hay un token guardado. Dejá este campo vacío para mantener el actual; ingresá uno nuevo solo si necesitás reemplazarlo.' : 'Dejá este campo vacío para mantener el actual; ingresá uno nuevo solo si necesitás reemplazarlo.'}
                 sx={{ '& .MuiOutlinedInput-root': { bgcolor: '#fff' } }}
               />
               <Button
@@ -1172,10 +1172,10 @@ export default function OwnerDashboard() {
                       mp_public_key: mpPublicKey.trim(),
                       mp_access_token: mpAccessToken.trim() || undefined,
                     });
-                    setMpMessage({ type: 'success', text: 'Credenciales guardadas correctamente' });
+                    setMpMessage({ type: 'success', text: 'Credenciales guardadas correctamente.' });
                     const metodo = await fetchMercadoPagoMethodBySlug(slug);
                     setMpPublicKey(metodo?.mp_public_key ?? '');
-                    setMpAccessToken(metodo?.mp_access_token ?? '');
+                    setMpAccessToken(''); // No se expone el token; se muestra placeholder si hay uno guardado
                     setMpHasAccessToken(metodo?.has_access_token ?? false);
                   } catch (err) {
                     console.error('Error saving credentials:', err);

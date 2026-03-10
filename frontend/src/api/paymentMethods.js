@@ -3,8 +3,9 @@ import { client as api } from './client';
 /**
  * Obtiene el método de pago Mercado Pago del restaurante desde el backend (metodos_pagos).
  * GET /restaurants/:slug/payment-method (requiere auth + ser owner).
+ * El backend no devuelve mp_access_token por seguridad; usa has_access_token para mostrar placeholder (••••••••).
  * @param {string} slug - Slug del restaurante
- * @returns {Promise<{ id, documentId, mp_public_key, mp_access_token, has_access_token }|null>}
+ * @returns {Promise<{ id, documentId, mp_public_key, has_access_token }|null>}
  */
 export async function fetchMercadoPagoMethodBySlug(slug) {
   if (!slug) return null;
@@ -15,7 +16,6 @@ export async function fetchMercadoPagoMethodBySlug(slug) {
     id: data.id,
     documentId: data.documentId || data.id,
     mp_public_key: (data.mp_public_key != null && data.mp_public_key !== undefined) ? String(data.mp_public_key) : '',
-    mp_access_token: (data.mp_access_token != null && data.mp_access_token !== undefined) ? String(data.mp_access_token) : '',
     has_access_token: Boolean(data.has_access_token),
   };
 }

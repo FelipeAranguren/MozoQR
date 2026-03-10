@@ -1993,7 +1993,7 @@ export default {
     ctx.body = { message: 'Reset done (non-destructive)' };
   },
 
-  /** GET /restaurants/:slug/payment-method - Credenciales Mercado Pago (owner/staff; incluye mp_access_token vía db) */
+  /** GET /restaurants/:slug/payment-method - Credenciales Mercado Pago (owner/staff). No expone mp_access_token; solo has_access_token para placeholder. */
   async getPaymentMethod(ctx: Ctx) {
     const slug = ctx.params?.slug;
     if (!slug) {
@@ -2019,14 +2019,12 @@ export default {
         ctx.body = { data: null };
         return;
       }
-      const token = metodo.mp_access_token ?? '';
-      const hasAccessToken = token.length > 0;
+      const hasAccessToken = Boolean(metodo.mp_access_token && String(metodo.mp_access_token).trim().length > 0);
       ctx.body = {
         data: {
           id: metodo.id,
           documentId: metodo.documentId ?? metodo.id,
           mp_public_key: metodo.mp_public_key ?? '',
-          mp_access_token: token,
           has_access_token: hasAccessToken,
         },
       };
@@ -2041,7 +2039,7 @@ export default {
     }
   },
 
-  /** PUT /restaurants/:slug/payment-method - Upsert credenciales Mercado Pago (update si existe, create si no) */
+  /** PUT /restaurants/:slug/payment-method - Upsert credenciales Mercado Pago: update registro existente o create uno nuevo (sin duplicar). */
   async updatePaymentMethod(ctx: Ctx) {
     const slug = ctx.params?.slug;
     if (!slug) {
@@ -2081,11 +2079,19 @@ export default {
         if (mp_access_token !== undefined && mp_access_token !== null && String(mp_access_token).trim() !== '') {
           updatePayload.mp_access_token = String(mp_access_token).trim();
         }
-        await strapi.entityService.update(METODOS_PAGO_UID, existing.id, {
-          data: updatePayload,
-        });
+        const idToUse = (existing as any).documentId ?? (existing as any).id;
+        if (typeof strapi.documents === 'function') {
+          await strapi.documents(METODOS_PAGO_UID).update({
+            documentId: String(idToUse),
+            data: updatePayload,
+          });
+        } else {
+          await strapi.entityService.update(METODOS_PAGO_UID, idToUse, {
+            data: updatePayload,
+          });
+        }
         const updated = await strapi.db.query(METODOS_PAGO_UID).findOne({
-          where: { id: existing.id },
+          where: { id: (existing as any).id },
         });
         ctx.body = {
           data: {
