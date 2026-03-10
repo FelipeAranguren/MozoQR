@@ -1,7 +1,7 @@
 // src/pages/OwnerDashboard.jsx
 import React, { useEffect, useMemo, useState, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { Box, Grid, Typography, Button, ToggleButtonGroup, ToggleButton, Chip } from '@mui/material';
+import { Box, Grid, Typography, Button, ToggleButtonGroup, ToggleButton, Chip, TextField, CircularProgress, Alert } from '@mui/material';
 import SalesByDayChart from '../components/SalesByDayChart';
 import KpiCardEnhanced from '../components/KpiCardEnhanced';
 import PlanGate from '../components/PlanGate';
@@ -27,6 +27,7 @@ import { fetchTables, fetchActiveOrders } from '../api/tables';
 import { fetchCategories } from '../api/menu';
 import { client } from '../api/client';
 import { createOwnerComment } from '../api/comments';
+import { fetchMercadoPagoMethodBySlug, saveMercadoPagoMethodBySlug } from '../api/paymentMethods';
 // Aliases for compatibility with existing code
 const api = client;
 const http = client;
@@ -364,6 +365,14 @@ export default function OwnerDashboard() {
   const [commentSuccess, setCommentSuccess] = useState(false);
   const [commentError, setCommentError] = useState(null);
 
+  // Credenciales Mercado Pago (desde metodos_pagos en backend)
+  const [mpPublicKey, setMpPublicKey] = useState('');
+  const [mpAccessToken, setMpAccessToken] = useState('');
+  const [mpHasAccessToken, setMpHasAccessToken] = useState(false);
+  const [mpLoading, setMpLoading] = useState(false);
+  const [mpSaving, setMpSaving] = useState(false);
+  const [mpMessage, setMpMessage] = useState({ type: '', text: '' });
+
   const end = useMemo(() => {
     return isCustom ? endOfDay(fromISODateInputLocal(customEnd)) : endOfDay(new Date());
   }, [periodKey, customEnd, isCustom]);
@@ -548,6 +557,36 @@ export default function OwnerDashboard() {
       })
       .finally(() => setIsLoading(false));
   }, [slug, periodKey, start.getTime(), end.getTime()]);
+
+  // Cargar credenciales Mercado Pago desde backend (metodos_pagos)
+  useEffect(() => {
+    if (!slug) return;
+    let cancelled = false;
+    setMpLoading(true);
+    setMpMessage({ type: '', text: '' });
+    fetchMercadoPagoMethodBySlug(slug)
+      .then((metodo) => {
+        if (cancelled) return;
+        setMpPublicKey(metodo?.mp_public_key ?? '');
+        setMpAccessToken(metodo?.mp_access_token ?? '');
+        setMpHasAccessToken(metodo?.has_access_token ?? false);
+      })
+      .catch((err) => {
+        if (cancelled) return;
+        console.error('Error loading payment credentials:', err);
+        setMpPublicKey('');
+        setMpAccessToken('');
+        setMpHasAccessToken(false);
+        setMpMessage({
+          type: 'error',
+          text: err?.response?.status === 403
+            ? 'No tenés permiso para ver las credenciales.'
+            : err?.response?.data?.error?.message || err?.message || 'Error al cargar credenciales',
+        });
+      })
+      .finally(() => { if (!cancelled) setMpLoading(false); });
+    return () => { cancelled = true; };
+  }, [slug]);
 
   const derivedKpis = useMemo(() => {
     const today = new Date();
@@ -1075,6 +1114,86 @@ export default function OwnerDashboard() {
                 {isSubmittingComment ? 'Enviando...' : 'Enviar Comentario'}
               </Button>
             </form>
+          </Box>
+
+          {/* Credenciales de Pago (Mercado Pago) - datos desde metodos_pagos en backend */}
+          <Box
+            sx={{
+              border: `1px solid ${MARANA_COLORS.border}`,
+              borderRadius: 3,
+              background: '#fff',
+              p: 3,
+              boxShadow: '0px 1px 3px rgba(0,0,0,0.05)',
+              mb: 3
+            }}
+          >
+            <Typography variant="h6" sx={{ fontWeight: 600, mb: 1.5 }}>
+              Credenciales de Pago (Mercado Pago)
+            </Typography>
+            <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+              Claves del restaurante guardadas en la base de datos. Editá y guardá para actualizar.
+            </Typography>
+            {mpMessage.text && (
+              <Alert severity={mpMessage.type === 'error' ? 'error' : 'success'} sx={{ mb: 2 }} onClose={() => setMpMessage({ type: '', text: '' })}>
+                {mpMessage.text}
+              </Alert>
+            )}
+            <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, maxWidth: 560 }}>
+              <TextField
+                label="Public Key"
+                fullWidth
+                size="small"
+                value={mpPublicKey}
+                onChange={(e) => setMpPublicKey(e.target.value)}
+                placeholder="APP_USR-..."
+                disabled={mpLoading}
+                sx={{ '& .MuiOutlinedInput-root': { bgcolor: '#fff' } }}
+              />
+              <TextField
+                label="Access Token"
+                fullWidth
+                size="small"
+                type="password"
+                value={mpAccessToken}
+                onChange={(e) => setMpAccessToken(e.target.value)}
+                placeholder={mpHasAccessToken ? '•••••••• (ya cargado)' : 'APP_USR-...'}
+                disabled={mpLoading}
+                helperText={mpHasAccessToken && !mpAccessToken ? 'Ya hay un token guardado. Dejá vacío para mantenerlo.' : 'Dejá vacío para mantener el actual.'}
+                sx={{ '& .MuiOutlinedInput-root': { bgcolor: '#fff' } }}
+              />
+              <Button
+                variant="contained"
+                onClick={async () => {
+                  if (!slug) return;
+                  setMpSaving(true);
+                  setMpMessage({ type: '', text: '' });
+                  try {
+                    await saveMercadoPagoMethodBySlug(slug, {
+                      mp_public_key: mpPublicKey.trim(),
+                      mp_access_token: mpAccessToken.trim() || undefined,
+                    });
+                    setMpMessage({ type: 'success', text: 'Credenciales guardadas correctamente' });
+                    const metodo = await fetchMercadoPagoMethodBySlug(slug);
+                    setMpPublicKey(metodo?.mp_public_key ?? '');
+                    setMpAccessToken(metodo?.mp_access_token ?? '');
+                    setMpHasAccessToken(metodo?.has_access_token ?? false);
+                  } catch (err) {
+                    console.error('Error saving credentials:', err);
+                    setMpMessage({
+                      type: 'error',
+                      text: err?.response?.data?.error?.message || err?.response?.data?.message || err?.message || 'Error al guardar',
+                    });
+                  } finally {
+                    setMpSaving(false);
+                  }
+                }}
+                disabled={mpSaving || mpLoading}
+                startIcon={mpSaving ? <CircularProgress size={18} sx={{ color: 'inherit' }} /> : null}
+                sx={{ alignSelf: 'flex-start', bgcolor: MARANA_COLORS.primary, '&:hover': { bgcolor: MARANA_COLORS.primary, opacity: 0.9 } }}
+              >
+                {mpSaving ? 'Guardando...' : 'Guardar credenciales'}
+              </Button>
+            </Box>
           </Box>
 
           {/* Actividad Reciente y Top Productos */}
