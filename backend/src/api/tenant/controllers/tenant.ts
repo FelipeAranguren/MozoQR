@@ -108,21 +108,47 @@ async function getRestaurantBySlug(slug: string) {
 
 /** Verifica que el usuario actual sea owner o staff del restaurante (por slug). Devuelve true si tiene acceso. */
 async function canAccessRestaurant(ctx: Ctx, slug: string): Promise<boolean> {
-  const user = ctx.state?.user;
+  const user = ctx.state?.user as { id: number | string; email?: string } | undefined;
   if (!user?.id) return false;
+  const userId = user.id;
+  const userEmail = (user as any).email ? String((user as any).email).trim().toLowerCase() : '';
   try {
     const restaurante = await getRestaurantBySlug(String(slug).trim());
+    // Probar con id tal cual (Strapi puede devolver number o string desde JWT)
     const members = await strapi.db.query('api::restaurant-member.restaurant-member').findMany({
       where: {
         restaurante: { id: restaurante.id },
-        users_permissions_user: { id: Number(user.id) },
+        users_permissions_user: { id: userId },
         active: true,
       },
       select: ['id', 'role'],
       limit: 1,
     });
-    const m = Array.isArray(members) ? members[0] : null;
-    return !!m && (m.role === 'owner' || m.role === 'staff');
+    let m = Array.isArray(members) ? members[0] : null;
+    if (!m && (typeof userId === 'string' && /^\d+$/.test(userId))) {
+      const membersByNum = await strapi.db.query('api::restaurant-member.restaurant-member').findMany({
+        where: {
+          restaurante: { id: restaurante.id },
+          users_permissions_user: { id: Number(userId) },
+          active: true,
+        },
+        select: ['id', 'role'],
+        limit: 1,
+      });
+      m = Array.isArray(membersByNum) ? membersByNum[0] : null;
+    }
+    if (m && (m.role === 'owner' || m.role === 'staff')) return true;
+    // Fallback: si el restaurante tiene owner_email y coincide con el usuario, permitir (legacy)
+    if (userEmail) {
+      const [restWithEmail] = await strapi.db.query('api::restaurante.restaurante').findMany({
+        where: { id: restaurante.id },
+        select: ['id', 'owner_email'],
+        limit: 1,
+      });
+      const ownerEmail = restWithEmail?.owner_email ? String(restWithEmail.owner_email).trim().toLowerCase() : '';
+      if (ownerEmail && ownerEmail === userEmail) return true;
+    }
+    return false;
   } catch {
     return false;
   }
