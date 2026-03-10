@@ -31,12 +31,12 @@ export default function DemoLanding() {
         {
             id: 'staff',
             title: 'Staff / Cocina',
-            description: 'Gestión de pedidos en tiempo real, pedidos en cocina y estados de mesa.',
+            description: 'Gestión de pedidos en tiempo real y estado de mesas.',
             icon: <KitchenIcon sx={{ fontSize: 40 }} />,
             color: '#009688', // Teal
             action: () => navigate(`/staff/${DEMO_SLUG}/orders`),
             buttonText: 'Ver Cocina / Staff',
-            features: ['Recibir Pedidos', 'Pedidos en Cocina', 'Estado de Mesas']
+            features: ['Mostrador', 'Pedidos en Cocina', 'Estado de Mesas']
         },
         {
             id: 'owner',
@@ -46,18 +46,8 @@ export default function DemoLanding() {
             color: '#2196F3', // Blue
             action: () => navigate(`/owner/${DEMO_SLUG}/dashboard`),
             buttonText: 'Panel de Dueño',
-            features: ['Facturación', 'Métricas', 'Configuración', 'Inteligencia Artificial para optimizar tu negocio']
+            features: ['Facturación', 'Métricas', 'Configuración', 'Inteligencia Artificial para Optimizar tu Negocio']
         },
-        {
-            id: 'admin',
-            title: 'Admin General',
-            description: 'Vista de super-administrador para gestionar múltiples restaurantes y suscripciones.',
-            icon: <AdminPanelSettingsIcon sx={{ fontSize: 40 }} />,
-            color: '#673AB7', // Deep Purple
-            action: () => navigate('/admin/dashboard'),
-            buttonText: 'Admin Plataforma',
-            features: ['SaaS', 'Usuarios', 'Global']
-        }
     ];
 
     const containerVariants = {
