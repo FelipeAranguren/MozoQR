@@ -1993,17 +1993,11 @@ export default {
     ctx.body = { message: 'Reset done (non-destructive)' };
   },
 
-  /** GET /restaurants/:slug/payment-method - Credenciales Mercado Pago (owner/staff). Devuelve mp_public_key y mp_access_token para que el owner las vea en el dashboard. */
+  /** GET /restaurants/:slug/payment-method - Credenciales Mercado Pago (owner/staff). La policy by-restaurant-owner verifica acceso. */
   async getPaymentMethod(ctx: Ctx) {
     const slug = ctx.params?.slug;
     if (!slug) {
       ctx.badRequest?.('Slug requerido');
-      return;
-    }
-    const canAccess = await canAccessRestaurant(ctx, slug);
-    if (!canAccess) {
-      ctx.status = 403;
-      ctx.body = { error: { message: 'No tenés permiso para ver las credenciales de este restaurante.' } };
       return;
     }
     const METODOS_PAGO_UID = 'api::metodos-pago.metodos-pago';
@@ -2041,17 +2035,11 @@ export default {
     }
   },
 
-  /** PUT /restaurants/:slug/payment-method - Upsert credenciales Mercado Pago: update registro existente o create uno nuevo (sin duplicar). */
+  /** PUT /restaurants/:slug/payment-method - Upsert credenciales Mercado Pago: update registro existente o create uno nuevo (sin duplicar). La policy by-restaurant-owner verifica acceso. */
   async updatePaymentMethod(ctx: Ctx) {
     const slug = ctx.params?.slug;
     if (!slug) {
       ctx.badRequest?.('Slug requerido');
-      return;
-    }
-    const canAccess = await canAccessRestaurant(ctx, slug);
-    if (!canAccess) {
-      ctx.status = 403;
-      ctx.body = { error: { message: 'No tenés permiso para editar las credenciales de este restaurante.' } };
       return;
     }
     const body = ctx.request?.body;
