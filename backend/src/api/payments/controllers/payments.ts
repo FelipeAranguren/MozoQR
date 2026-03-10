@@ -70,7 +70,8 @@ async function getRestauranteIdBySlug(strapi: any, slug: string): Promise<number
 
 /**
  * Obtiene el access_token de Mercado Pago del restaurante cuyo nombre es exactamente 'Personal'.
- * Busca en MetodosPago filtrando por restaurante.nombre = 'Personal' y provider=mercado_pago, active=true.
+ * Busca en MetodosPago filtrando por restaurante.name = 'Personal' y provider=mercado_pago, active=true.
+ * (El schema de Restaurante usa el atributo "name", no "nombre".)
  */
 async function getMpAccessTokenForRestaurantByName(
   strapi: any,
@@ -81,7 +82,7 @@ async function getMpAccessTokenForRestaurantByName(
     const rows = await strapi.entityService.findMany(METODOS_PAGO_UID, {
       filters: {
         restaurante: {
-          nombre: { $eq: restaurantName.trim() },
+          name: { $eq: restaurantName.trim() },
         },
       },
       limit: 20,
@@ -90,6 +91,30 @@ async function getMpAccessTokenForRestaurantByName(
     if (!first?.mp_access_token) return null;
     const token = String(first.mp_access_token).trim();
     return token.length > 0 ? token : null;
+  } catch (_e) {
+    return null;
+  }
+}
+
+/** documentId del restaurante 'Personal' para suscripciones (fallback si la búsqueda por name falla). */
+const PERSONAL_RESTAURANT_DOCUMENT_ID = 'a89pkyzu88uy8zwhqwl4zseu';
+
+/**
+ * Obtiene el access_token de MP del restaurante identificado por documentId (ej. Personal).
+ */
+async function getMpAccessTokenForRestaurantByDocumentId(
+  strapi: any,
+  documentId: string
+): Promise<string | null> {
+  if (!documentId || typeof documentId !== 'string' || !strapi?.db) return null;
+  try {
+    const restaurante = await strapi.db.query(RESTAURANTE_UID).findOne({
+      where: { documentId: documentId.trim() },
+      select: ['id'],
+    });
+    const restauranteId = restaurante?.id != null ? Number(restaurante.id) : null;
+    if (restauranteId == null) return null;
+    return getMpAccessTokenForRestaurant(strapi, restauranteId);
   } catch (_e) {
     return null;
   }
@@ -391,7 +416,10 @@ export default {
 
       const amountArs = Math.round(priceUsd * dolarVenta * 100) / 100;
 
-      const tokenStr = await getMpAccessTokenForRestaurantByName(strapi, 'Personal');
+      let tokenStr = await getMpAccessTokenForRestaurantByName(strapi, 'Personal');
+      if (!tokenStr) {
+        tokenStr = await getMpAccessTokenForRestaurantByDocumentId(strapi, PERSONAL_RESTAURANT_DOCUMENT_ID);
+      }
       if (!tokenStr) {
         ctx.status = 500;
         ctx.body = {
