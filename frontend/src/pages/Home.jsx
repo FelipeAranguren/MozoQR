@@ -2,7 +2,7 @@
 import React from 'react'
 import { useNavigate } from 'react-router-dom'
 import { motion } from 'framer-motion'
-import { Container, Typography, Button, Grid, Card, Box, List, ListItem, ListItemIcon, ListItemText } from '@mui/material'
+import { Container, Typography, Button, Grid, Card, Box, List, ListItem, ListItemIcon, ListItemText, Chip, CircularProgress } from '@mui/material'
 import QrCodeIcon from '@mui/icons-material/QrCode'
 import SmartphoneIcon from '@mui/icons-material/Smartphone'
 import CreditCardIcon from '@mui/icons-material/CreditCard'
@@ -14,9 +14,12 @@ import ArrowForwardIcon from '@mui/icons-material/ArrowForward'
 import StarIcon from '@mui/icons-material/Star'
 import heroImage from '../assets/hero-image.jpg'
 import { MARANA_COLORS } from '../theme'
+import { useDolarBlue } from '../hooks/useDolarBlue'
+import { formatPriceARS, formatPriceUSD } from '../constants/planPricing'
 
 export default function Home() {
   const navigate = useNavigate()
+  const { blueVenta, loading: dolarLoading } = useDolarBlue()
 
   const features = [
     {
@@ -54,11 +57,11 @@ export default function Home() {
     { text: 'Obtén datos valiosos sobre preferencias', stat: '100%' }
   ]
 
-  // Planes (misma estructura y beneficios que OwnerDashboard PlanComparison)
+  // Planes (misma estructura y beneficios que OwnerDashboard PlanComparison). Precios en USD.
   const plans = {
     BASIC: {
       name: 'Básico',
-      price: 'Gratis',
+      priceUsd: 50,
       description: 'Control operacional esencial',
       color: MARANA_COLORS.textSecondary,
       features: [
@@ -77,12 +80,12 @@ export default function Home() {
         'Sin exportaciones',
         'Sin múltiples sucursales'
       ],
-      cta: 'Comenzar gratis',
+      cta: 'Elegir plan',
       ctaAction: () => navigate('/demo')
     },
     PRO: {
       name: 'Pro',
-      price: 'Consultar',
+      priceUsd: 80,
       description: 'Optimización con datos y análisis avanzados',
       color: MARANA_COLORS.secondary,
       features: [
@@ -112,7 +115,7 @@ export default function Home() {
     },
     ULTRA: {
       name: 'Ultra',
-      price: 'Consultar',
+      priceUsd: 100,
       description: 'Inteligencia y automatización total',
       color: MARANA_COLORS.primary,
       features: [
@@ -559,9 +562,23 @@ export default function Home() {
                         <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
                           {planData.description}
                         </Typography>
-                        <Typography variant="h4" fontWeight="bold" sx={{ color: planData.color, mb: 2 }}>
-                          {planData.price}
-                        </Typography>
+                        <Box sx={{ mb: 2 }}>
+                          {dolarLoading ? (
+                            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                              <CircularProgress size={24} sx={{ color: planData.color }} />
+                              <Typography variant="body2" color="text.secondary">Cargando precio…</Typography>
+                            </Box>
+                          ) : (
+                            <>
+                              <Typography variant="h4" fontWeight="bold" sx={{ color: planData.color }}>
+                                {formatPriceARS(planData.priceUsd * blueVenta)}
+                              </Typography>
+                              <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
+                                ({formatPriceUSD(planData.priceUsd)})
+                              </Typography>
+                            </>
+                          )}
+                        </Box>
 
                         <Typography variant="subtitle2" fontWeight="700" sx={{ mb: 1 }}>
                           Incluye:
@@ -635,6 +652,9 @@ export default function Home() {
                 </Grid>
               ))}
             </Grid>
+            <Typography variant="caption" display="block" sx={{ mt: 3, textAlign: 'center', color: 'text.secondary' }}>
+              Cotización del dólar blue utilizada: {formatPriceARS(blueVenta)} (Fuente: Dolar API)
+            </Typography>
           </motion.div>
         </Container>
       </Box>

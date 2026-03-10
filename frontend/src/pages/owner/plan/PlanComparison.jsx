@@ -1,14 +1,15 @@
 // frontend/src/pages/owner/plan/PlanComparison.jsx
 import React from 'react';
-import { Grid, Card, CardContent, Box, Typography, Button, List, ListItem, ListItemIcon, ListItemText, Chip } from '@mui/material';
+import { Grid, Card, CardContent, Box, Typography, Button, List, ListItem, ListItemIcon, ListItemText, Chip, CircularProgress } from '@mui/material';
 import CheckIcon from '@mui/icons-material/Check';
 import CloseIcon from '@mui/icons-material/Close';
 import { MARANA_COLORS } from '../../../theme';
+import { useDolarBlue } from '../../../hooks/useDolarBlue';
+import { PLAN_BASE_USD, formatPriceARS, formatPriceUSD } from '../../../constants/planPricing';
 
 const plans = {
   BASIC: {
     name: 'Básico',
-    price: 'Gratis',
     description: 'Control operacional esencial',
     color: MARANA_COLORS.textSecondary,
     features: [
@@ -30,7 +31,6 @@ const plans = {
   },
   PRO: {
     name: 'Pro',
-    price: 'Consultar',
     description: 'Optimización con datos y análisis avanzados',
     color: MARANA_COLORS.secondary,
     features: [
@@ -58,7 +58,6 @@ const plans = {
   },
   ULTRA: {
     name: 'Ultra',
-    price: 'Consultar',
     description: 'Inteligencia y automatización total',
     color: MARANA_COLORS.primary,
     features: [
@@ -95,6 +94,7 @@ const planHierarchy = {
 
 export default function PlanComparison({ currentPlan, slug }) {
   const currentLevel = planHierarchy[currentPlan] || 1;
+  const { blueVenta, loading } = useDolarBlue();
 
   const handleUpgrade = (targetPlan) => {
     // Por ahora solo muestra un mensaje, luego se puede integrar con sistema de pagos
@@ -102,6 +102,7 @@ export default function PlanComparison({ currentPlan, slug }) {
   };
 
   return (
+    <>
     <Grid container spacing={3}>
       {Object.entries(plans).map(([planKey, planData]) => {
         const planLevel = planHierarchy[planKey] || 1;
@@ -149,9 +150,23 @@ export default function PlanComparison({ currentPlan, slug }) {
                   <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
                     {planData.description}
                   </Typography>
-                  <Typography variant="h4" sx={{ fontWeight: 700, color: planData.color }}>
-                    {planData.price}
-                  </Typography>
+                  <Box sx={{ display: 'flex', alignItems: 'baseline', flexWrap: 'wrap', gap: 1 }}>
+                    {loading ? (
+                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                        <CircularProgress size={24} sx={{ color: planData.color }} />
+                        <Typography variant="body2" color="text.secondary">Cargando precio…</Typography>
+                      </Box>
+                    ) : (
+                      <>
+                        <Typography variant="h4" sx={{ fontWeight: 700, color: planData.color }}>
+                          {formatPriceARS(PLAN_BASE_USD[planKey] * blueVenta)}
+                        </Typography>
+                        <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
+                          ({formatPriceUSD(PLAN_BASE_USD[planKey])})
+                        </Typography>
+                      </>
+                    )}
+                  </Box>
                 </Box>
 
                 <Box sx={{ flexGrow: 1, mb: 3 }}>
@@ -229,6 +244,10 @@ export default function PlanComparison({ currentPlan, slug }) {
         );
       })}
     </Grid>
+    <Typography variant="caption" display="block" sx={{ mt: 3, textAlign: 'center', color: 'text.secondary' }}>
+      Cotización del dólar blue utilizada: {formatPriceARS(blueVenta)} (Fuente: Dolar API)
+    </Typography>
+  </>
   );
 }
 
