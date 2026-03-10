@@ -1944,7 +1944,7 @@ export default {
     ctx.body = { message: 'Reset done (non-destructive)' };
   },
 
-  /** GET /restaurants/:slug/payment-method - Credenciales Mercado Pago (incluye mp_access_token) */
+  /** GET /restaurants/:slug/payment-method - Credenciales Mercado Pago (solo owner; incluye mp_access_token vía db) */
   async getPaymentMethod(ctx: Ctx) {
     const slug = ctx.params?.slug;
     if (!slug) {
@@ -1955,23 +1955,24 @@ export default {
     try {
       const restaurante = await getRestaurantBySlug(String(slug).trim());
       const rows = await strapi.db.query(METODOS_PAGO_UID).findMany({
-        where: { restaurante: restaurante.id },
+        where: { restaurante: restaurante.id, provider: 'mercado_pago' },
         orderBy: { id: 'asc' },
         limit: 50,
       });
-      const metodo = (Array.isArray(rows) ? rows : []).find(
-        (r: any) => r?.provider === 'mercado_pago' && (r?.active === true || r?.active === 1)
-      );
+      const metodo = Array.isArray(rows) ? rows[0] : null;
       if (!metodo) {
         ctx.body = { data: null };
         return;
       }
+      const token = metodo.mp_access_token ?? '';
+      const hasAccessToken = token.length > 0;
       ctx.body = {
         data: {
           id: metodo.id,
           documentId: metodo.documentId ?? metodo.id,
           mp_public_key: metodo.mp_public_key ?? '',
-          mp_access_token: metodo.mp_access_token ?? '',
+          mp_access_token: token,
+          has_access_token: hasAccessToken,
         },
       };
     } catch (e: any) {
@@ -1985,7 +1986,7 @@ export default {
     }
   },
 
-  /** PUT /restaurants/:slug/payment-method - Actualizar credenciales Mercado Pago */
+  /** PUT /restaurants/:slug/payment-method - Upsert credenciales Mercado Pago (update si existe, create si no) */
   async updatePaymentMethod(ctx: Ctx) {
     const slug = ctx.params?.slug;
     if (!slug) {
@@ -2004,13 +2005,11 @@ export default {
     try {
       const restaurante = await getRestaurantBySlug(String(slug).trim());
       const rows = await strapi.db.query(METODOS_PAGO_UID).findMany({
-        where: { restaurante: restaurante.id },
+        where: { restaurante: restaurante.id, provider: 'mercado_pago' },
         orderBy: { id: 'asc' },
-        limit: 50,
+        limit: 1,
       });
-      const existing = (Array.isArray(rows) ? rows : []).find(
-        (r: any) => r?.provider === 'mercado_pago' && (r?.active === true || r?.active === 1)
-      );
+      const existing = Array.isArray(rows) ? rows[0] : null;
       if (existing) {
         const updatePayload: any = {
           provider: 'mercado_pago',
@@ -2032,6 +2031,7 @@ export default {
             id: (updated as any)?.id,
             documentId: (updated as any)?.documentId ?? (updated as any)?.id,
             mp_public_key: (updated as any)?.mp_public_key ?? '',
+            has_access_token: Boolean((updated as any)?.mp_access_token),
           },
         };
       } else {
@@ -2051,6 +2051,7 @@ export default {
             id: (created as any)?.id,
             documentId: (created as any)?.documentId ?? (created as any)?.id,
             mp_public_key: attrs?.mp_public_key ?? '',
+            has_access_token: Boolean(attrs?.mp_access_token),
           },
         };
       }

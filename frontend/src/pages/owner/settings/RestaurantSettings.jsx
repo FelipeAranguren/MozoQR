@@ -33,6 +33,7 @@ export default function RestaurantSettings() {
   const [mpSaving, setMpSaving] = useState(false);
   const [mpPublicKey, setMpPublicKey] = useState('');
   const [mpAccessToken, setMpAccessToken] = useState('');
+  const [mpHasAccessToken, setMpHasAccessToken] = useState(false);
   const [logoPreview, setLogoPreview] = useState(null);
   const [logoFile, setLogoFile] = useState(null);
   const [removeLogo, setRemoveLogo] = useState(false);
@@ -59,16 +60,18 @@ export default function RestaurantSettings() {
         setRestaurant(data);
         setName(data.name || '');
 
-        // Cargar credenciales de Mercado Pago desde el endpoint por slug (incluye access token)
+        // Credenciales solo desde metodos_pagos (endpoint /restaurants/:slug/payment-method)
         try {
           setMpLoading(true);
           const metodo = await fetchMercadoPagoMethodBySlug(slug);
-          setMpPublicKey(metodo?.mp_public_key || data.mp_public_key || '');
-          setMpAccessToken(metodo?.mp_access_token || '');
+          setMpPublicKey(metodo?.mp_public_key ?? '');
+          setMpAccessToken(metodo?.mp_access_token ?? '');
+          setMpHasAccessToken(metodo?.has_access_token ?? false);
         } catch (e) {
           console.error('Error fetching Mercado Pago method:', e);
-          setMpPublicKey(data.mp_public_key || '');
+          setMpPublicKey('');
           setMpAccessToken('');
+          setMpHasAccessToken(false);
           if (e?.response?.status === 403) {
             setMessage({ type: 'error', text: 'No tenés permiso para ver las credenciales de este restaurante.' });
           }
@@ -302,8 +305,10 @@ export default function RestaurantSettings() {
                   type="password"
                   value={mpAccessToken}
                   onChange={(e) => setMpAccessToken(e.target.value)}
-                  placeholder="Ejemplo: APP_USR-1136052360410590-xxxx-9e9e-xxxxxxxxxxxx"
-                  helperText="Dejá este campo vacío para mantener el actual; ingresá uno nuevo solo si necesitás reemplazarlo."
+                  placeholder={mpHasAccessToken ? '•••••••• (ya cargado)' : 'Ejemplo: APP_USR-1136052360410590-xxxx-9e9e-xxxxxxxxxxxx'}
+                  helperText={mpHasAccessToken && !mpAccessToken
+                    ? 'Ya hay un token guardado (no se muestra por seguridad). Dejá vacío para mantenerlo; ingresá uno nuevo para reemplazarlo.'
+                    : 'Dejá este campo vacío para mantener el actual; ingresá uno nuevo solo si necesitás reemplazarlo.'}
                   InputProps={{
                     sx: {
                       bgcolor: 'white',
@@ -325,10 +330,11 @@ export default function RestaurantSettings() {
                           mp_access_token: mpAccessToken.trim() || undefined,
                         });
                         setMessage({ type: 'success', text: 'Credenciales de Mercado Pago guardadas correctamente' });
-                        // Volver a cargar credenciales desde el backend
+                        // Sincronizar estado con backend (solo desde metodos_pagos)
                         const metodo = await fetchMercadoPagoMethodBySlug(slug);
-                        setMpPublicKey(metodo?.mp_public_key || '');
-                        setMpAccessToken(metodo?.mp_access_token || '');
+                        setMpPublicKey(metodo?.mp_public_key ?? '');
+                        setMpAccessToken(metodo?.mp_access_token ?? '');
+                        setMpHasAccessToken(metodo?.has_access_token ?? false);
                       } catch (error) {
                         console.error('Error saving Mercado Pago credentials:', error);
                         const errMsg =
