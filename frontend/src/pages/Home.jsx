@@ -81,7 +81,7 @@ export default function Home() {
         'Sin múltiples sucursales'
       ],
       cta: 'Elegir plan',
-      ctaAction: () => navigate('/demo')
+      ctaAction: () => navigate('/checkout?plan=basic')
     },
     PRO: {
       name: 'Pro',
@@ -110,8 +110,8 @@ export default function Home() {
         'Sin exportaciones avanzadas',
         'Sin análisis de estacionalidad'
       ],
-      cta: 'Contactar ventas',
-      ctaAction: () => window.location.href = 'mailto:ventas@mozoqr.com'
+      cta: 'Elegir plan',
+      ctaAction: () => navigate('/checkout?plan=pro')
     },
     ULTRA: {
       name: 'Ultra',
@@ -141,8 +141,8 @@ export default function Home() {
         'Vista Operativa vs Ejecutiva'
       ],
       limitations: [],
-      cta: 'Contactar ventas',
-      ctaAction: () => window.location.href = 'mailto:ventas@mozoqr.com'
+      cta: 'Elegir plan',
+      ctaAction: () => navigate('/checkout?plan=ultra')
     }
   }
 
@@ -572,9 +572,12 @@ export default function Home() {
                             <>
                               <Typography variant="h4" fontWeight="bold" sx={{ color: planData.color }}>
                                 {formatPriceARS(planData.priceUsd * blueVenta)}
+                                <Typography component="span" variant="body2" fontWeight="500" color="text.secondary" sx={{ ml: 0.5 }}>
+                                  /mes
+                                </Typography>
                               </Typography>
                               <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
-                                ({formatPriceUSD(planData.priceUsd)})
+                                ({formatPriceUSD(planData.priceUsd)}) · coste a pagar por mes
                               </Typography>
                             </>
                           )}
@@ -653,7 +656,7 @@ export default function Home() {
               ))}
             </Grid>
             <Typography variant="caption" display="block" sx={{ mt: 3, textAlign: 'center', color: 'text.secondary' }}>
-              Cotización del dólar blue utilizada: {formatPriceARS(blueVenta)} (Fuente: Dolar API)
+              Cotización del dólar blue utilizada: {formatPriceARS(blueVenta)}
             </Typography>
           </motion.div>
         </Container>

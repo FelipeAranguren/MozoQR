@@ -160,9 +160,12 @@ export default function PlanComparison({ currentPlan, slug }) {
                       <>
                         <Typography variant="h4" sx={{ fontWeight: 700, color: planData.color }}>
                           {formatPriceARS(PLAN_BASE_USD[planKey] * blueVenta)}
+                          <Typography component="span" variant="body2" fontWeight="500" color="text.secondary" sx={{ ml: 0.5 }}>
+                            /mes
+                          </Typography>
                         </Typography>
                         <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
-                          ({formatPriceUSD(PLAN_BASE_USD[planKey])})
+                          ({formatPriceUSD(PLAN_BASE_USD[planKey])}) · coste a pagar por mes
                         </Typography>
                       </>
                     )}
@@ -245,7 +248,7 @@ export default function PlanComparison({ currentPlan, slug }) {
       })}
     </Grid>
     <Typography variant="caption" display="block" sx={{ mt: 3, textAlign: 'center', color: 'text.secondary' }}>
-      Cotización del dólar blue utilizada: {formatPriceARS(blueVenta)} (Fuente: Dolar API)
+      Cotización del dólar blue utilizada: {formatPriceARS(blueVenta)}
     </Typography>
   </>
   );

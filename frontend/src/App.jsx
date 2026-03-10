@@ -33,6 +33,7 @@ import AIPanel from './pages/owner/ai/AIPanel';
 import AdminDashboard from './pages/AdminDashboard';
 import ImpersonateCallback from './pages/ImpersonateCallback';
 import DemoLanding from './pages/DemoLanding';
+import Checkout from './pages/Checkout';
 
 // Si Grant/Strapi redirige a "/" (o otra ruta) con access_token, llevamos al usuario a la página que lo procesa
 function GoogleTokenRedirect({ children }) {
@@ -72,9 +73,10 @@ export default function App() {
           <Routes>
           {/* Cliente público - rutas simplificadas */}
           <Route path="/" element={<Home />} />
+          <Route path="/demo" element={<DemoLanding />} />
+          <Route path="/checkout" element={<Checkout />} />
           <Route path="/:slug" element={<RestaurantMenu />} />
           <Route path="/:slug/menu" element={<RestaurantMenu />} />
-          <Route path="/demo" element={<DemoLanding />} />
 
           {/* Staff autenticado */}
           <Route path="/staff/:slug/orders" element={<OwnerRouteGuard><Mostrador /></OwnerRouteGuard>} />
