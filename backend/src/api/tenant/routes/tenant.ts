@@ -85,13 +85,13 @@ export default {
       method: 'GET',
       path: '/restaurants/:slug/payment-method',
       handler: 'tenant.getPaymentMethod',
-      config: { auth: {}, policies: ['global::by-restaurant-owner'] },
+      config: { auth: {} },
     },
     {
       method: 'PUT',
       path: '/restaurants/:slug/payment-method',
       handler: 'tenant.updatePaymentMethod',
-      config: { auth: {}, policies: ['global::by-restaurant-owner'] },
+      config: { auth: {} },
     },
   ],
 };
