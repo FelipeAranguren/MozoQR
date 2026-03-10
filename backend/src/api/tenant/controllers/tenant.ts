@@ -26,6 +26,7 @@ type Ctx = {
   request: { body: any };
   body?: any;
   status?: number;
+  state?: { user?: { id: number | string } };
   forbidden?: (message?: string) => void;
   badRequest?: (message?: string) => void;
   unauthorized?: (message?: string) => void;
@@ -103,6 +104,28 @@ async function getRestaurantBySlug(slug: string) {
   const r = allRows[0];
   if (!r?.id) throw new NotFoundError('Restaurante no encontrado');
   return { id: r.id as ID, documentId: r.documentId as string, name: r.name as string };
+}
+
+/** Verifica que el usuario actual sea owner o staff del restaurante (por slug). Devuelve true si tiene acceso. */
+async function canAccessRestaurant(ctx: Ctx, slug: string): Promise<boolean> {
+  const user = ctx.state?.user;
+  if (!user?.id) return false;
+  try {
+    const restaurante = await getRestaurantBySlug(String(slug).trim());
+    const members = await strapi.db.query('api::restaurant-member.restaurant-member').findMany({
+      where: {
+        restaurante: { id: restaurante.id },
+        users_permissions_user: { id: Number(user.id) },
+        active: true,
+      },
+      select: ['id', 'role'],
+      limit: 1,
+    });
+    const m = Array.isArray(members) ? members[0] : null;
+    return !!m && (m.role === 'owner' || m.role === 'staff');
+  } catch {
+    return false;
+  }
 }
 
 /**
@@ -1944,11 +1967,17 @@ export default {
     ctx.body = { message: 'Reset done (non-destructive)' };
   },
 
-  /** GET /restaurants/:slug/payment-method - Credenciales Mercado Pago (solo owner; incluye mp_access_token vía db) */
+  /** GET /restaurants/:slug/payment-method - Credenciales Mercado Pago (owner/staff; incluye mp_access_token vía db) */
   async getPaymentMethod(ctx: Ctx) {
     const slug = ctx.params?.slug;
     if (!slug) {
       ctx.badRequest?.('Slug requerido');
+      return;
+    }
+    const canAccess = await canAccessRestaurant(ctx, slug);
+    if (!canAccess) {
+      ctx.status = 403;
+      ctx.body = { error: { message: 'No tenés permiso para ver las credenciales de este restaurante.' } };
       return;
     }
     const METODOS_PAGO_UID = 'api::metodos-pago.metodos-pago';
@@ -1991,6 +2020,12 @@ export default {
     const slug = ctx.params?.slug;
     if (!slug) {
       ctx.badRequest?.('Slug requerido');
+      return;
+    }
+    const canAccess = await canAccessRestaurant(ctx, slug);
+    if (!canAccess) {
+      ctx.status = 403;
+      ctx.body = { error: { message: 'No tenés permiso para editar las credenciales de este restaurante.' } };
       return;
     }
     const body = ctx.request?.body;
