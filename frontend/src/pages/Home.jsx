@@ -31,7 +31,7 @@ export default function Home() {
     {
       icon: <SmartphoneIcon sx={{ fontSize: 40 }} />,
       title: 'Experiencia moderna',
-      desc: 'Interfaz intuitiva diseñada para todas las edades. Pedidos en 3 clics.',
+      desc: 'Interfaz intuitiva diseñada para todas las edades. Pedidos en 4 clics.',
       color: '#9C27B0'
     },
     {
@@ -577,7 +577,7 @@ export default function Home() {
                                 </Typography>
                               </Typography>
                               <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
-                                ({formatPriceUSD(planData.priceUsd)}) · coste a pagar por mes
+                                ({formatPriceUSD(planData.priceUsd)})
                               </Typography>
                             </>
                           )}
