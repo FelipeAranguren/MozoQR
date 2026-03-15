@@ -34,19 +34,21 @@ export default function PagoFailure() {
             Pedido: {orderId}
           </Typography>
         )}
-        <Box sx={{ display: "flex", flexDirection: "column", gap: 1 }}>
+        <Box sx={{ display: "flex", flexDirection: "column", gap: 1, mt: 2 }}>
           {slug && (
             <Button
               variant="contained"
+              size="large"
               fullWidth
               onClick={() => navigate(`/${slug}/menu`)}
-              sx={{ borderRadius: 2, py: 1.5 }}
+              sx={{ borderRadius: 2, py: 1.5, fontSize: "1rem", fontWeight: 600 }}
             >
-              Volver al menú e intentar de nuevo
+              Volver al Menú
             </Button>
           )}
           <Button
             variant={slug ? "outlined" : "contained"}
+            size="large"
             fullWidth
             onClick={() => navigate("/")}
             sx={{ borderRadius: 2, py: 1.5 }}

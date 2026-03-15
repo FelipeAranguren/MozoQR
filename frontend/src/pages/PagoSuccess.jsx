@@ -71,17 +71,17 @@ export default function PagoSuccess() {
         <ReceiptDialog open={receiptOpen} onClose={() => setReceiptOpen(false)} receiptData={receiptData} />
         {slug && (
           <Button
-            variant="outlined"
+            variant="contained"
             size="large"
             fullWidth
             onClick={() => navigate(`/${slug}/menu`)}
-            sx={{ mt: 2, borderRadius: 2, py: 1.5 }}
+            sx={{ mt: 2, borderRadius: 2, py: 1.5, fontSize: "1rem", fontWeight: 600 }}
           >
-            Volver al menú
+            Seguir Ordenando
           </Button>
         )}
         <Button
-          variant="contained"
+          variant={slug ? "outlined" : "contained"}
           size="large"
           fullWidth
           onClick={() => navigate("/")}

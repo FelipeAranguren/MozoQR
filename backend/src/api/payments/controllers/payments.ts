@@ -236,14 +236,15 @@ function getPaymentStatusBaseUrl(): string {
   return 'https://mozoqr.vercel.app';
 }
 
-/** back_urls al frontend: /payment-success y /payment-failure (auto_return approved) */
-function buildPaymentStatusBackUrls(): { success: string; failure: string; pending: string } {
+/** back_urls al frontend: /pago-success, /pago-failure, /pago-pending (auto_return approved) */
+function buildPaymentStatusBackUrls(slug?: string | null): { success: string; failure: string; pending: string } {
   const base = getPaymentStatusBaseUrl();
   const frontBase = process.env.FRONTEND_URL ? ensureHttpUrl(process.env.FRONTEND_URL).replace(/\/*$/, '') : base;
+  const slugParam = slug ? `?slug=${encodeURIComponent(slug)}` : '';
   return {
-    success: `${frontBase}/payment-success`,
-    failure: `${frontBase}/payment-failure`,
-    pending: `${frontBase}/payment-success?status=pending`,
+    success: `${frontBase}/pago-success${slugParam}`,
+    failure: `${frontBase}/pago-failure${slugParam}`,
+    pending: `${frontBase}/pago-pending${slugParam}`,
   };
 }
 
@@ -333,9 +334,9 @@ function buildBackendBackUrls(
   const encOrder = encodeURIComponent(orderId ?? '');
   const slugParam = slug ? `&slug=${encodeURIComponent(slug)}` : '';
 
-  const successFront = `${baseFront}/pago/success?orderId=${encOrder}${slugParam}`;
-  const failureFront = `${baseFront}/pago/failure?orderId=${encOrder}${slugParam}`;
-  const pendingFront = `${baseFront}/pago/pending?orderId=${encOrder}${slugParam}`;
+  const successFront = `${baseFront}/pago-success?orderId=${encOrder}${slugParam}`;
+  const failureFront = `${baseFront}/pago-failure?orderId=${encOrder}${slugParam}`;
+  const pendingFront = `${baseFront}/pago-pending?orderId=${encOrder}${slugParam}`;
 
   const wrap = (destFront: string) =>
     // Agrego orderRef para fallback si MP no me da external_reference
@@ -584,7 +585,7 @@ export default {
           });
         }
         saneItems = resolved.map((r) => ({ ...r, currency_id: 'ARS' as const }));
-        backUrls = buildPaymentStatusBackUrls();
+        backUrls = buildPaymentStatusBackUrls(slug ?? undefined);
       } else {
         // ---- Flujo legacy: items con precios o amount
         const hasItems = Array.isArray(items) && items.length > 0;

@@ -111,8 +111,12 @@ export default function App() {
           <Route path="/login" element={<Login />} />
           <Route path="/register" element={<Register />} />
 
-          {/* Páginas de pago */}
+          {/* Páginas de pago (Mercado Pago back_urls) */}
           <Route path="/connect/google/redirect" element={<GoogleRedirect />} />
+          <Route path="/pago-success" element={<PagoSuccess />} />
+          <Route path="/pago-failure" element={<PagoFailure />} />
+          <Route path="/pago-pending" element={<PagoPending />} />
+          {/* Legacy: redirigen a las rutas canónicas */}
           <Route path="/pago/success" element={<PagoSuccess />} />
           <Route path="/pago/failure" element={<PagoFailure />} />
           <Route path="/pago/pending" element={<PagoPending />} />
