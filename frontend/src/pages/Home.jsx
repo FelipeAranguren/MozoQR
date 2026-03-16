@@ -61,7 +61,8 @@ export default function Home() {
   const plans = {
     BASIC: {
       name: 'Básico',
-      priceUsd: 50,
+      // Precio simbólico para pruebas
+      priceUsd: 0.0007,
       description: 'Control operacional esencial',
       color: MARANA_COLORS.textSecondary,
       features: [

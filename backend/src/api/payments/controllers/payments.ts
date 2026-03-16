@@ -120,10 +120,12 @@ async function getMpAccessTokenForRestaurantByDocumentId(
   }
 }
 
-/** Precios de planes en USD (origen único; no confiar en el frontend). */
+/** Precios de planes en USD (origen único; no confiar en el frontend).
+ * Para pruebas, el plan básico queda casi gratis (0.0007 USD ≈ 1 ARS).
+ */
 const SUBSCRIPTION_PLAN_USD: Record<string, number> = {
-  basico: 50,
-  basic: 50,
+  basico: 0.0007,
+  basic: 0.0007,
   pro: 80,
   ultra: 100,
 };
