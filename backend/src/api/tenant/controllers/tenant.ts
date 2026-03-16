@@ -2143,4 +2143,206 @@ export default {
       ctx.body = { error: { message: 'Error al guardar el método de pago' } };
     }
   },
+
+  /** POST /tenant/onboarding-restaurant - Crear restaurante + asignar owner + método de pago */
+  async onboardingRestaurant(ctx: Ctx) {
+    try {
+      const rawBody = ctx.request?.body;
+      const payload = getPayload(rawBody) || rawBody || {};
+
+      const name = String(payload.name || '').trim();
+      const slugInput = String(payload.slug || '').trim();
+      const ownerEmailRaw = String(payload.owner_email || payload.ownerEmail || '').trim();
+      const owner_email = ownerEmailRaw.toLowerCase();
+      const mp_access_token_raw = payload.mp_access_token || payload.mpAccessToken || '';
+      const mp_public_key_raw = payload.mp_public_key || payload.mpPublicKey || '';
+      const mp_access_token = String(mp_access_token_raw || '').trim();
+      const mp_public_key = String(mp_public_key_raw || '').trim();
+      const payment_status = (payload.payment_status || payload.status || '').toString().toLowerCase();
+      const payment_reference = String(payload.payment_reference || payload.paymentReference || '').trim();
+
+      if (!name) {
+        ctx.status = 400;
+        ctx.body = { error: { message: 'El nombre del restaurante es obligatorio.' } };
+        return;
+      }
+      if (!owner_email) {
+        ctx.status = 400;
+        ctx.body = { error: { message: 'El email del dueño es obligatorio.' } };
+        return;
+      }
+      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+      if (!emailRegex.test(owner_email)) {
+        ctx.status = 400;
+        ctx.body = { error: { message: 'Email inválido.' } };
+        return;
+      }
+
+      // Validación básica de pago exitoso (ajustable en el futuro)
+      if (payment_status && payment_status !== 'approved') {
+        ctx.status = 400;
+        ctx.body = { error: { message: 'Pago no válido para onboarding (status distinto de approved).' } };
+        return;
+      }
+
+      const slugBase = slugInput || name;
+      const normalizedSlug = String(slugBase)
+        .trim()
+        .toLowerCase()
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .replace(/[^a-z0-9\s-]/g, '')
+        .replace(/\s+/g, '-')
+        .replace(/-+/g, '-')
+        .replace(/^-|-$/g, '');
+
+      if (!normalizedSlug) {
+        ctx.status = 400;
+        ctx.body = { error: { message: 'No se pudo generar un slug válido. Probá con otro nombre.' } };
+        return;
+      }
+
+      const RESTAURANTE_UID = 'api::restaurante.restaurante';
+      const METODOS_PAGO_UID = 'api::metodos-pago.metodos-pago';
+      const MEMBER_UID = 'api::restaurant-member.restaurant-member';
+      const USER_UID = 'plugin::users-permissions.user';
+
+      // Verificar slug único; si existe, intentar sufijos incrementales
+      let finalSlug = normalizedSlug;
+      let suffix = 1;
+      // try a limited number of suffixes to avoid infinite loops
+      while (true) {
+        const existing = await strapi.db.query(RESTAURANTE_UID).findMany({
+          where: { slug: finalSlug },
+          select: ['id', 'slug'],
+          limit: 1,
+        });
+        if (!existing || existing.length === 0) break;
+        suffix += 1;
+        finalSlug = `${normalizedSlug}-${suffix}`;
+        if (suffix > 50) {
+          ctx.status = 400;
+          ctx.body = { error: { message: 'Ya existe un restaurante con un slug similar. Elegí otro nombre o slug.' } };
+          return;
+        }
+      }
+
+      // Verificar nombre duplicado simple
+      const existingByName = await strapi.db.query(RESTAURANTE_UID).findMany({
+        where: { name },
+        select: ['id', 'name', 'slug'],
+        limit: 1,
+      });
+      if (existingByName && existingByName.length > 0) {
+        ctx.status = 400;
+        ctx.body = { error: { message: 'Ya existe un restaurante con este nombre. Elegí otro nombre o slug.' } };
+        return;
+      }
+
+      // Buscar usuario owner
+      const userRows = await strapi.db.query(USER_UID).findMany({
+        where: { email: owner_email },
+        select: ['id', 'email'],
+        limit: 1,
+      });
+      const user = Array.isArray(userRows) ? userRows[0] : userRows;
+      if (!user?.id) {
+        ctx.status = 400;
+        ctx.body = { error: { message: 'No se encontró un usuario con ese email. Pedile que se registre primero.' } };
+        return;
+      }
+
+      // Crear restaurante
+      let restaurante;
+      try {
+        restaurante = await strapi.entityService.create(RESTAURANTE_UID, {
+          data: {
+            name,
+            slug: finalSlug,
+            owner_email,
+            Suscripcion: 'basic',
+            payment_reference: payment_reference || null,
+            publishedAt: new Date(),
+          },
+        });
+      } catch (e: any) {
+        strapi.log.error('[onboardingRestaurant] Error creando restaurante:', e?.message || e);
+        ctx.status = 500;
+        ctx.body = { error: { message: 'No se pudo crear el restaurante.' } };
+        return;
+      }
+
+      const restauranteId = (restaurante as any)?.id;
+
+      // Crear método de pago Mercado Pago si hay credenciales
+      if (restauranteId && (mp_access_token || mp_public_key)) {
+        try {
+          await strapi.entityService.create(METODOS_PAGO_UID, {
+            data: {
+              provider: 'mercado_pago',
+              mp_public_key: mp_public_key || '',
+              // No loguear ni exponer el access token
+              mp_access_token: mp_access_token || '',
+              active: true,
+              restaurante: restauranteId,
+              publishedAt: new Date(),
+            },
+          });
+        } catch (e: any) {
+          strapi.log.error('[onboardingRestaurant] Error creando método de pago:', e?.message || e);
+          // No abortar todo el onboarding por fallo de método de pago
+        }
+      }
+
+      // Crear/actualizar membership como owner
+      try {
+        const existingMembers = await strapi.db.query(MEMBER_UID).findMany({
+          where: {
+            restaurante: restauranteId,
+            users_permissions_user: user.id,
+          },
+          select: ['id', 'role', 'active'],
+          limit: 1,
+        });
+        const member = Array.isArray(existingMembers) ? existingMembers[0] : existingMembers;
+        if (member?.id) {
+          await strapi.db.query(MEMBER_UID).update({
+            where: { id: member.id },
+            data: {
+              role: 'owner',
+              active: true,
+            },
+          });
+        } else {
+          await strapi.entityService.create(MEMBER_UID, {
+            data: {
+              users_permissions_user: user.id,
+              restaurante: restauranteId,
+              role: 'owner',
+              active: true,
+              publishedAt: new Date(),
+            },
+          });
+        }
+      } catch (e: any) {
+        strapi.log.error('[onboardingRestaurant] Error creando membership owner:', e?.message || e);
+        // No abortar el onboarding completo; el restaurante ya existe
+      }
+
+      ctx.status = 201;
+      ctx.body = {
+        data: {
+          id: restauranteId,
+          slug: finalSlug,
+          name,
+          owner_email,
+        },
+      };
+    } catch (e: any) {
+      const msg = e?.message || 'Error inesperado en onboarding de restaurante';
+      strapi.log.error('[onboardingRestaurant] Error inesperado:', msg);
+      ctx.status = 500;
+      ctx.body = { error: { message: msg } };
+    }
+  },
 };

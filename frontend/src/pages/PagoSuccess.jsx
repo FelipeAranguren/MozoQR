@@ -51,6 +51,19 @@ export default function PagoSuccess() {
     if (receiptData) setReceiptOpen(true);
   };
 
+  const handleSeguirOrdenando = () => {
+    if (slug) {
+      // Usamos recarga completa para evitar problemas de contexto de router
+      window.location.href = `/${slug}/menu`;
+    } else {
+      navigate("/");
+    }
+  };
+
+  const handleVolverInicio = () => {
+    window.location.href = "/";
+  };
+
   return (
     <Container maxWidth="sm" sx={{ py: 4, minHeight: "100vh", display: "flex", alignItems: "center" }}>
       <Paper elevation={3} sx={{ p: 4, textAlign: "center", borderRadius: 3 }}>
@@ -74,7 +87,7 @@ export default function PagoSuccess() {
             variant="contained"
             size="large"
             fullWidth
-            onClick={() => navigate(`/${slug}/menu`)}
+            onClick={handleSeguirOrdenando}
             sx={{ mt: 2, borderRadius: 2, py: 1.5, fontSize: "1rem", fontWeight: 600 }}
           >
             Seguir Ordenando
@@ -84,7 +97,7 @@ export default function PagoSuccess() {
           variant={slug ? "outlined" : "contained"}
           size="large"
           fullWidth
-          onClick={() => navigate("/")}
+          onClick={handleVolverInicio}
           sx={{ mt: slug ? 1 : 2, borderRadius: 2, py: 1.5 }}
         >
           Volver al inicio

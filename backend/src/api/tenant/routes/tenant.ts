@@ -93,5 +93,11 @@ export default {
       handler: 'tenant.updatePaymentMethod',
       config: { auth: {} },
     },
+    {
+      method: 'POST',
+      path: '/tenant/onboarding-restaurant',
+      handler: 'tenant.onboardingRestaurant',
+      config: { auth: {} },
+    },
   ],
 };

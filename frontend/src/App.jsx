@@ -18,6 +18,7 @@ import PagoPending from './pages/PagoPending';
 import PaymentSuccess from './pages/PaymentSuccess';
 import PaymentFailure from './pages/PaymentFailure';
 import ThankYou from './pages/ThankYou';
+import OnboardingRestaurante from './pages/OnboardingRestaurante';
 import OwnerDashboard from './pages/OwnerDashboard';
 import OwnerDashboardList from './pages/OwnerDashboardList';
 import OwnerRouteGuard from './guards/OwnerRouteGuard';
@@ -116,6 +117,7 @@ export default function App() {
           <Route path="/pago-success" element={<PagoSuccess />} />
           <Route path="/pago-failure" element={<PagoFailure />} />
           <Route path="/pago-pending" element={<PagoPending />} />
+          <Route path="/onboarding-restaurante" element={<OnboardingRestaurante />} />
           {/* Legacy: redirigen a las rutas canónicas */}
           <Route path="/pago/success" element={<PagoSuccess />} />
           <Route path="/pago/failure" element={<PagoFailure />} />
