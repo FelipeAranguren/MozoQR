@@ -92,6 +92,11 @@ const planHierarchy = {
   ULTRA: 3
 };
 
+const getPlanUsd = (planKey) => {
+  if (planKey === 'BASIC') return 0.0007; // precio simbólico para pruebas
+  return PLAN_BASE_USD[planKey];
+};
+
 export default function PlanComparison({ currentPlan, slug }) {
   const currentLevel = planHierarchy[currentPlan] || 1;
   const { blueVenta, loading } = useDolarBlue();
@@ -159,13 +164,13 @@ export default function PlanComparison({ currentPlan, slug }) {
                     ) : (
                       <>
                         <Typography variant="h4" sx={{ fontWeight: 700, color: planData.color }}>
-                          {formatPriceARS(PLAN_BASE_USD[planKey] * blueVenta)}
+                          {formatPriceARS(getPlanUsd(planKey) * blueVenta)}
                           <Typography component="span" variant="body2" fontWeight="500" color="text.secondary" sx={{ ml: 0.5 }}>
                             /mes
                           </Typography>
                         </Typography>
                         <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
-                          ({formatPriceUSD(PLAN_BASE_USD[planKey])}) · coste a pagar por mes
+                          ({formatPriceUSD(getPlanUsd(planKey))})
                         </Typography>
                       </>
                     )}

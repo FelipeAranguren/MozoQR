@@ -45,7 +45,8 @@ function MercadoPagoLogo() {
 }
 
 const PLAN_OPTIONS = [
-  { key: 'basic', planKey: 'BASIC', name: 'Básico', priceUsd: PLAN_BASE_USD.BASIC, color: MARANA_COLORS.textSecondary },
+  // Para pruebas, el plan Básico queda casi gratis (0.0007 USD)
+  { key: 'basic', planKey: 'BASIC', name: 'Básico', priceUsd: 0.0007, color: MARANA_COLORS.textSecondary },
   { key: 'pro', planKey: 'PRO', name: 'Pro', priceUsd: PLAN_BASE_USD.PRO, color: MARANA_COLORS.secondary },
   { key: 'ultra', planKey: 'ULTRA', name: 'Ultra', priceUsd: PLAN_BASE_USD.ULTRA, color: MARANA_COLORS.primary },
 ];
