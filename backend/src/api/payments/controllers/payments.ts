@@ -238,14 +238,14 @@ function getPaymentStatusBaseUrl(): string {
   return 'https://mozoqr.vercel.app';
 }
 
-/** back_urls especiales para suscripciones: redirigen al onboarding en lugar de /pago-success */
+/** back_urls especiales para suscripciones: redirigen a onboarding-restaurante (no a /pago-success ni /:slug/menu) */
 function buildSubscriptionBackUrls(): { success: string; failure: string; pending: string } {
   const frontBase = getFrontendUrl().replace(/\/*$/, '');
   return {
     // MP agregará ?status=approved|...&payment_id=...&preference_id=...
-    success: `${frontBase}/onboarding?from=pago-success`,
-    failure: `${frontBase}/onboarding?from=pago-failure`,
-    pending: `${frontBase}/onboarding?from=pago-pending`,
+    success: `${frontBase}/onboarding-restaurante?from=pago-success`,
+    failure: `${frontBase}/onboarding-restaurante?from=pago-failure`,
+    pending: `${frontBase}/onboarding-restaurante?from=pago-pending`,
   };
 }
 
