@@ -19,8 +19,10 @@ import SaveIcon from '@mui/icons-material/Save';
 import { MARANA_COLORS } from '../../../theme';
 import { fetchRestaurant, updateRestaurant } from '../../../api/restaurant';
 import { fetchMercadoPagoMethodBySlug, saveMercadoPagoMethodBySlug } from '../../../api/paymentMethods';
+import { useDemoAccess } from '../../../context/DemoAccessContext';
 
 export default function RestaurantSettings() {
+  const { isDemoAccess } = useDemoAccess();
   const { slug } = useParams();
   const fileInputRef = useRef(null);
   const logoObjectUrlRef = useRef(null); // Ref para almacenar la URL del objeto y poder acceder desde cualquier función
@@ -376,7 +378,7 @@ export default function RestaurantSettings() {
                 </Typography>
 
                 <Box
-                  onClick={() => fileInputRef.current?.click()}
+                  onClick={() => !isDemoAccess && fileInputRef.current?.click()}
                   sx={{
                     border: `2px dashed ${MARANA_COLORS.border}`,
                     borderRadius: 2,
@@ -409,10 +411,12 @@ export default function RestaurantSettings() {
                         variant="outlined"
                         size="small"
                         onClick={(e) => {
+                          if (isDemoAccess) return;
                           e.stopPropagation();
                           fileInputRef.current?.click();
                         }}
                         sx={{ mr: 1 }}
+                        disabled={isDemoAccess}
                       >
                         Cambiar
                       </Button>
@@ -421,9 +425,11 @@ export default function RestaurantSettings() {
                         size="small"
                         color="error"
                         onClick={(e) => {
+                          if (isDemoAccess) return;
                           e.stopPropagation();
                           handleRemoveLogo();
                         }}
+                        disabled={isDemoAccess}
                       >
                         Eliminar
                       </Button>
@@ -445,6 +451,7 @@ export default function RestaurantSettings() {
                     accept="image/*"
                     onChange={handleLogoChange}
                     style={{ display: 'none' }}
+                    disabled={isDemoAccess}
                   />
                 </Box>
 
@@ -462,14 +469,14 @@ export default function RestaurantSettings() {
                 type="submit"
                 variant="contained"
                 startIcon={saving ? <CircularProgress size={20} sx={{ color: 'white' }} /> : <SaveIcon />}
-                disabled={saving}
+                disabled={saving || isDemoAccess}
                 sx={{
                   bgcolor: MARANA_COLORS.primary,
                   '&:hover': { bgcolor: MARANA_COLORS.primary },
                   minWidth: 150
                 }}
               >
-                {saving ? 'Guardando...' : 'Guardar Cambios'}
+                {saving ? 'Guardando...' : isDemoAccess ? 'Cambios deshabilitados en demo' : 'Guardar Cambios'}
               </Button>
             </Box>
           </Grid>

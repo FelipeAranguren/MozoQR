@@ -28,10 +28,12 @@ import AccessTimeIcon from '@mui/icons-material/AccessTime';
 import RestaurantIcon from '@mui/icons-material/Restaurant';
 import { MARANA_COLORS } from '../../../theme';
 import ConfirmActionModal from '../../../components/ui/ConfirmActionModal';
+import { useDemoAccess } from '../../../context/DemoAccessContext';
 import { fetchTables, fetchActiveOrders, createTable, updateTable, deleteTable } from '../../../api/tables';
 import TablesStatusGrid from '../../../components/TablesStatusGrid';
 
 export default function TablesList() {
+  const { isDemoAccess } = useDemoAccess();
   const { slug } = useParams();
   const navigate = useNavigate();
   
@@ -406,20 +408,22 @@ export default function TablesList() {
         </DialogActions>
       </Dialog>
 
-      <ConfirmActionModal
-        isOpen={!!tableToDelete}
-        onClose={() => !deleting && setTableToDelete(null)}
-        onConfirm={handleConfirmDeleteTable}
-        title="Eliminar mesa"
-        message={
-          tableToDelete
-            ? `¿Estás seguro de eliminar "${tableToDelete.name || `Mesa ${tableToDelete.number}`}"? Esta acción no se puede deshacer.`
-            : ''
-        }
-        confirmLabel="Eliminar"
-        cancelLabel="Cancelar"
-        loading={deleting}
-      />
+      {!isDemoAccess && (
+        <ConfirmActionModal
+          isOpen={!!tableToDelete}
+          onClose={() => !deleting && setTableToDelete(null)}
+          onConfirm={handleConfirmDeleteTable}
+          title="Eliminar mesa"
+          message={
+            tableToDelete
+              ? `¿Estás seguro de eliminar "${tableToDelete.name || `Mesa ${tableToDelete.number}`}"? Esta acción no se puede deshacer.`
+              : ''
+          }
+          confirmLabel="Eliminar"
+          cancelLabel="Cancelar"
+          loading={deleting}
+        />
+      )}
     </Container>
   );
 }

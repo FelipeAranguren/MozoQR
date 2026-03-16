@@ -21,6 +21,7 @@ import DeleteIcon from '@mui/icons-material/Delete';
 import FolderIcon from '@mui/icons-material/Folder';
 import { MARANA_COLORS } from '../../../theme';
 import ConfirmActionModal from '../../../components/ui/ConfirmActionModal';
+import { useDemoAccess } from '../../../context/DemoAccessContext';
 import {
   fetchCategories,
   createCategory,
@@ -29,6 +30,7 @@ import {
 } from '../../../api/menu';
 
 export default function CategoriesManagement({ slug }) {
+  const { isDemoAccess } = useDemoAccess();
   const [categories, setCategories] = useState([]);
   const [loading, setLoading] = useState(true);
   const [openDialog, setOpenDialog] = useState(false);
@@ -251,13 +253,15 @@ export default function CategoriesManagement({ slug }) {
                         size="small"
                         onClick={() => handleOpenDialog(category)}
                         sx={{ color: MARANA_COLORS.primary }}
+                        disabled={isDemoAccess}
                       >
                         <EditIcon />
                       </IconButton>
                       <IconButton
                         size="small"
-                        onClick={() => handleDeleteClick(category)}
+                        onClick={() => !isDemoAccess && handleDeleteClick(category)}
                         sx={{ color: MARANA_COLORS.accent }}
+                        disabled={isDemoAccess}
                         aria-label={`Eliminar categoría ${category.name}`}
                       >
                         <DeleteIcon />
@@ -321,32 +325,35 @@ export default function CategoriesManagement({ slug }) {
             Cancelar
           </Button>
           <Button
-            onClick={handleSave}
+            onClick={isDemoAccess ? undefined : handleSave}
             variant="contained"
             sx={{
               bgcolor: MARANA_COLORS.primary,
               '&:hover': { bgcolor: MARANA_COLORS.primary }
             }}
+            disabled={isDemoAccess}
           >
             Guardar
           </Button>
         </DialogActions>
       </Dialog>
 
-      <ConfirmActionModal
-        isOpen={!!categoryToDelete}
-        onClose={() => !deleting && setCategoryToDelete(null)}
-        onConfirm={handleConfirmDelete}
-        title="Eliminar categoría"
-        message={
-          categoryToDelete
-            ? `¿Estás seguro que deseas eliminar la categoría "${categoryToDelete.name}"? Los productos quedarán sin categoría.`
-            : ''
-        }
-        confirmLabel="Eliminar"
-        cancelLabel="Cancelar"
-        loading={deleting}
-      />
+      {!isDemoAccess && (
+        <ConfirmActionModal
+          isOpen={!!categoryToDelete}
+          onClose={() => !deleting && setCategoryToDelete(null)}
+          onConfirm={handleConfirmDelete}
+          title="Eliminar categoría"
+          message={
+            categoryToDelete
+              ? `¿Estás seguro que deseas eliminar la categoría "${categoryToDelete.name}"? Los productos quedarán sin categoría.`
+              : ''
+          }
+          confirmLabel="Eliminar"
+          cancelLabel="Cancelar"
+          loading={deleting}
+        />
+      )}
     </Box>
   );
 }

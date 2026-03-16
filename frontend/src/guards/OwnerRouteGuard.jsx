@@ -1,6 +1,7 @@
 // frontend/src/guards/OwnerRouteGuard.jsx
 import { useEffect, useRef, useState } from "react";
 import { Navigate, useParams } from "react-router-dom";
+import { DemoAccessProvider } from "../context/DemoAccessContext";
 
 // Misma base que el resto de la app para que el JWT sea válido en el mismo backend
 function getBaseUrl() {
@@ -18,6 +19,7 @@ export default function OwnerRouteGuard({ children }) {
   const [allowed, setAllowed] = useState(null);
   const [token, setToken] = useState(() => readToken());
   const [error, setError] = useState(null);
+  const [isDemoAccess, setIsDemoAccess] = useState(false);
   const lastTokenRef = useRef(token);
 
   // watcher del token (misma pestaña + focus/tab)
@@ -42,26 +44,53 @@ export default function OwnerRouteGuard({ children }) {
   useEffect(() => {
     let cancelled = false;
 
-    if (!token) {
-      console.warn('[OwnerRouteGuard] No token found');
-      setAllowed(false);
-      setError('No hay token de autenticación. Por favor, inicia sesión.');
-      return;
-    }
-
     if (!slug) {
       console.warn('[OwnerRouteGuard] No slug found');
       setAllowed(false);
       setError('No se especificó el restaurante.');
+      setIsDemoAccess(false);
       return;
     }
 
     setAllowed(null); // mostrando "Verificando acceso..."
     setError(null);
+    setIsDemoAccess(false);
     
     (async () => {
       try {
         const baseUrl = getBaseUrl();
+
+        // 1) Verificar si el restaurante es demo (is_demo === true)
+        try {
+          const demoRes = await fetch(
+            `${baseUrl}/api/restaurantes?filters[slug][$eq]=${encodeURIComponent(slug)}&fields[0]=id&fields[1]=slug&fields[2]=is_demo`
+          );
+          const demoJson = await demoRes.json().catch(() => ({}));
+          const restaurant = demoJson?.data?.[0];
+          const attrs = restaurant?.attributes || restaurant || {};
+          const isDemo = attrs?.is_demo === true;
+
+          if (!cancelled && isDemo) {
+            console.info('[OwnerRouteGuard] Demo restaurant detected, allowing public access for slug:', slug);
+            setIsDemoAccess(true);
+            setAllowed(true);
+            setError(null);
+            return; // No seguir con validación de token / roles
+          }
+        } catch (demoErr) {
+          console.warn('[OwnerRouteGuard] Error checking is_demo, falling back to auth guard:', demoErr);
+        }
+
+        // 2) Si no es demo, requerir autenticación como antes
+        if (!token) {
+          if (!cancelled) {
+            console.warn('[OwnerRouteGuard] No token found (non-demo restaurant)');
+            setAllowed(false);
+            setError('No hay token de autenticación. Por favor, inicia sesión.');
+          }
+          return;
+        }
+
         const url = `${baseUrl}/api/owner/${slug}/authz-check`;
         const res = await fetch(url, {
           method: 'GET',
@@ -69,14 +98,16 @@ export default function OwnerRouteGuard({ children }) {
           credentials: 'include',
         });
         
-        const data = await res.json().catch(() => ({}));
+        await res.json().catch(() => ({}));
         
         if (!cancelled) {
           if (res.ok) {
             setAllowed(true);
             setError(null);
+            setIsDemoAccess(false);
           } else {
             setAllowed(false);
+            setIsDemoAccess(false);
             // Proporcionar mensaje de error más descriptivo
             if (res.status === 401) {
               setError('Tu sesión ha expirado. Por favor, inicia sesión nuevamente.');
@@ -91,6 +122,7 @@ export default function OwnerRouteGuard({ children }) {
         console.error('[OwnerRouteGuard] Error:', err);
         if (!cancelled) {
           setAllowed(false);
+          setIsDemoAccess(false);
           setError(`Error de conexión: ${err.message}. Verifica que el servidor esté funcionando.`);
         }
       }
@@ -113,5 +145,13 @@ export default function OwnerRouteGuard({ children }) {
     return <Navigate to="/no-access" replace state={{ error }} />;
   }
   
+  if (isDemoAccess) {
+    return (
+      <DemoAccessProvider isDemoAccess>
+        {children}
+      </DemoAccessProvider>
+    );
+  }
+
   return children;
 }

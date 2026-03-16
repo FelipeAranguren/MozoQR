@@ -38,10 +38,12 @@ import {
   uploadImage
 } from '../../../api/menu';
 import ProductForm from './ProductForm';
+import { useDemoAccess } from '../../../context/DemoAccessContext';
 
 export default function ProductsManagement({ slug }) {
   console.log('ProductsManagement renderizado', { slug });
   
+  const { isDemoAccess } = useDemoAccess();
   const [products, setProducts] = useState([]);
   const [categories, setCategories] = useState([]);
   const [filteredProducts, setFilteredProducts] = useState([]);
@@ -443,17 +445,22 @@ export default function ProductsManagement({ slug }) {
         open={Boolean(anchorEl)}
         onClose={handleMenuClose}
       >
-        <MenuItem onClick={() => { handleMenuClose(); handleOpenDialog(selectedProduct); }}>
-          <EditIcon sx={{ mr: 1, fontSize: 20 }} /> Editar
+        <MenuItem
+          onClick={() => { handleMenuClose(); handleOpenDialog(selectedProduct); }}
+          disabled={isDemoAccess}
+        >
+          <EditIcon sx={{ mr: 1, fontSize: 20 }} /> {isDemoAccess ? 'Editar (solo demo)' : 'Editar'}
         </MenuItem>
         <MenuItem
           onClick={() => {
+            if (isDemoAccess) return;
             setProductToDelete(selectedProduct);
             handleMenuClose();
           }}
           sx={{ color: MARANA_COLORS.accent }}
+          disabled={isDemoAccess}
         >
-          <DeleteIcon sx={{ mr: 1, fontSize: 20 }} /> Eliminar
+          <DeleteIcon sx={{ mr: 1, fontSize: 20 }} /> {isDemoAccess ? 'Eliminar deshabilitado en demo' : 'Eliminar'}
         </MenuItem>
       </Menu>
 
@@ -494,12 +501,13 @@ export default function ProductsManagement({ slug }) {
           </Button>
           <Button
             onClick={() => {
+              if (isDemoAccess) return;
               if (formRef.current) {
                 formRef.current.submit();
               }
             }}
             variant="contained"
-            disabled={uploading}
+            disabled={uploading || isDemoAccess}
             sx={{
               bgcolor: MARANA_COLORS.primary,
               '&:hover': { bgcolor: MARANA_COLORS.primary }
@@ -517,20 +525,22 @@ export default function ProductsManagement({ slug }) {
         </DialogActions>
       </Dialog>
 
-      <ConfirmActionModal
-        isOpen={!!productToDelete}
-        onClose={() => !deleting && setProductToDelete(null)}
-        onConfirm={handleConfirmDeleteProduct}
-        title="Eliminar producto"
-        message={
-          productToDelete
-            ? `¿Estás seguro de eliminar "${productToDelete.name}"? Esta acción no se puede deshacer.`
-            : ''
-        }
-        confirmLabel="Eliminar"
-        cancelLabel="Cancelar"
-        loading={deleting}
-      />
+      {!isDemoAccess && (
+        <ConfirmActionModal
+          isOpen={!!productToDelete}
+          onClose={() => !deleting && setProductToDelete(null)}
+          onConfirm={handleConfirmDeleteProduct}
+          title="Eliminar producto"
+          message={
+            productToDelete
+              ? `¿Estás seguro de eliminar "${productToDelete.name}"? Esta acción no se puede deshacer.`
+              : ''
+          }
+          confirmLabel="Eliminar"
+          cancelLabel="Cancelar"
+          loading={deleting}
+        />
+      )}
     </Box>
   );
 }
