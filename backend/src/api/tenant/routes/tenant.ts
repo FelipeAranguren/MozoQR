@@ -97,7 +97,9 @@ export default {
       method: 'POST',
       path: '/tenant/onboarding-restaurant',
       handler: 'tenant.onboardingRestaurant',
-      config: { auth: {} },
+      // Público: el pago ya se validó por payment_status/payment_reference;
+      // no requerimos que el usuario esté logueado para crear su restaurante.
+      config: { policies: [], middlewares: [], auth: false },
     },
   ],
 };
