@@ -238,6 +238,17 @@ function getPaymentStatusBaseUrl(): string {
   return 'https://mozoqr.vercel.app';
 }
 
+/** back_urls especiales para suscripciones: redirigen al onboarding en lugar de /pago-success */
+function buildSubscriptionBackUrls(): { success: string; failure: string; pending: string } {
+  const frontBase = getFrontendUrl().replace(/\/*$/, '');
+  return {
+    // MP agregará ?status=approved|...&payment_id=...&preference_id=...
+    success: `${frontBase}/onboarding?from=pago-success`,
+    failure: `${frontBase}/onboarding?from=pago-failure`,
+    pending: `${frontBase}/onboarding?from=pago-pending`,
+  };
+}
+
 /** back_urls al frontend: /pago-success, /pago-failure, /pago-pending (auto_return approved) */
 function buildPaymentStatusBackUrls(slug?: string | null): { success: string; failure: string; pending: string } {
   const base = getPaymentStatusBaseUrl();
@@ -444,7 +455,8 @@ export default {
 
       const client = new MercadoPagoConfig({ accessToken: tokenStr });
       const preference = new Preference(client);
-      const backUrls = buildPaymentStatusBackUrls();
+      // Para suscripciones redirigimos directo al onboarding
+      const backUrls = buildSubscriptionBackUrls();
       const body: any = {
         items: [
           {

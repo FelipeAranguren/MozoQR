@@ -52,16 +52,17 @@ export default function PagoSuccess() {
   };
 
   const handleSeguirOrdenando = () => {
-    if (slug) {
-      // Usamos recarga completa para evitar problemas de contexto de router
-      window.location.href = `/${slug}/menu`;
-    } else {
-      navigate("/");
-    }
+    // El carrito ya se limpia en el efecto de confirmación de pago,
+    // aquí solo nos aseguramos de enviar al usuario a la raíz del restaurante.
+    if (slug) window.location.href = `/${slug}`;
+    else navigate("/");
   };
 
   const handleVolverInicio = () => {
-    window.location.href = "/";
+    // Siempre que tengamos slug, volvemos a la raíz del restaurante,
+    // sin parámetros de la orden anterior para forzar un nuevo ciclo de pedido.
+    if (slug) window.location.href = `/${slug}`;
+    else window.location.href = "/";
   };
 
   return (

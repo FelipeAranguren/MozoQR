@@ -55,7 +55,7 @@ export default function PaymentSuccess() {
               <Typography
                 component="button"
                 variant="body2"
-                onClick={() => navigate(`/${slug}/menu`)}
+                onClick={() => navigate(`/${slug}`)}
                 sx={{ cursor: "pointer", color: "primary.main", textDecoration: "underline", border: "none", background: "none" }}
               >
                 Volver al menú
@@ -64,7 +64,7 @@ export default function PaymentSuccess() {
             <Typography
               component="button"
               variant="body2"
-              onClick={() => navigate("/")}
+              onClick={() => navigate(slug ? `/${slug}` : "/")}
               sx={{ cursor: "pointer", color: "primary.main", textDecoration: "underline", border: "none", background: "none" }}
             >
               Volver al inicio
