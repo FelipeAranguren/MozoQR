@@ -123,7 +123,7 @@ async function getMpAccessTokenForRestaurantByDocumentId(
 /** Precios de planes en USD (origen único; no confiar en el frontend). */
 const SUBSCRIPTION_PLAN_USD: Record<string, number> = {
   basico: 50,
-  basic: 50,
+  basic: .0007,
   pro: 80,
   ultra: 100,
 };
