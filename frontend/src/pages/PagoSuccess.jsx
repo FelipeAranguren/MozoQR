@@ -54,14 +54,14 @@ export default function PagoSuccess() {
   const handleSeguirOrdenando = () => {
     // El carrito ya se limpia en el efecto de confirmación de pago,
     // aquí solo nos aseguramos de enviar al usuario a la raíz del restaurante.
-    if (slug) window.location.href = `/${slug}`;
+    if (slug) window.location.href = `/${slug}/menu`;
     else navigate("/");
   };
 
   const handleVolverInicio = () => {
     // Siempre que tengamos slug, volvemos a la raíz del restaurante,
     // sin parámetros de la orden anterior para forzar un nuevo ciclo de pedido.
-    if (slug) window.location.href = `/${slug}`;
+    if (slug) window.location.href = `/${slug}/menu`;
     else window.location.href = "/";
   };
 
