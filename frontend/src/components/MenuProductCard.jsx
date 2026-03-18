@@ -78,27 +78,33 @@ export default function MenuProductCard({
               <span className="text-white text-[26px] leading-none font-extrabold">+</span>
             </button>
           ) : (
-            <div className="flex items-center bg-[#f3f6f6] border border-[#d9efec] rounded-full px-2 py-1 gap-2">
-              <button
-                type="button"
-                onClick={onSub}
-                aria-label={`Quitar ${nombre}`}
-                className="w-9 h-9 rounded-full flex items-center justify-center bg-white border border-[#d9efec] select-none"
-                style={{ color: teal }}
-              >
-                <span className="text-[22px] leading-none font-extrabold">-</span>
-              </button>
+            <div className="flex items-center gap-2">
+              {/* Pill clara para '-' y cantidad */}
+              <div className="h-11 flex items-center bg-[#f0f5f5] rounded-full px-4">
+                <button
+                  type="button"
+                  onClick={onSub}
+                  aria-label={`Quitar ${nombre}`}
+                  className="w-8 h-8 flex items-center justify-center select-none"
+                  style={{ color: teal }}
+                >
+                  <span className="text-[26px] leading-none font-extrabold">-</span>
+                </button>
 
-              <div className="min-w-[20px] text-center text-black font-extrabold text-[16px]">{qty}</div>
+                <div className="min-w-[18px] text-center text-black font-extrabold text-[16px]">
+                  {qty}
+                </div>
+              </div>
 
+              {/* Botón '+' teal separado */}
               <button
                 type="button"
                 onClick={onAdd}
                 aria-label={`Sumar ${nombre}`}
-                className="w-9 h-9 rounded-full flex items-center justify-center bg-white border border-[#d9efec] select-none"
-                style={{ color: teal }}
+                className="w-11 h-11 rounded-full flex items-center justify-center select-none"
+                style={{ backgroundColor: teal }}
               >
-                <span className="text-[22px] leading-none font-extrabold">+</span>
+                <span className="text-white text-[26px] leading-none font-extrabold">+</span>
               </button>
             </div>
           )}
