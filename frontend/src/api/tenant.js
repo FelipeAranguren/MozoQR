@@ -68,6 +68,13 @@ export async function fetchMenus(slug) {
           price: p.price,
           image: p?.image?.url ? buildMediaURL(p.image.url) : p?.image || null,
           description: p?.description ?? null,
+          popular:
+            p?.popular ??
+            p?.isPopular ??
+            p?.esPopular ??
+            p?.popularidad ??
+            p?.popularidadScore ??
+            p?.is_popular,
         });
       });
     });
@@ -117,6 +124,17 @@ export async function fetchMenus(slug) {
         price: p.price,
         image: buildMediaURL(rel),
         description,
+        popular:
+          p?.popular ??
+          p?.isPopular ??
+          p?.esPopular ??
+          p?.popularidad ??
+          p?.popularidadScore ??
+          p?.is_popular ??
+          p?.attributes?.popular ??
+          p?.attributes?.isPopular ??
+          p?.attributes?.esPopular ??
+          p?.attributes?.popularidad,
         categoryId,
         categoryName
       };

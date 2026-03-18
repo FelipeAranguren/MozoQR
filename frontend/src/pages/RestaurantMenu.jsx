@@ -6,10 +6,7 @@ import {
   Container,
   Typography,
   Card,
-  CardMedia,
   CircularProgress,
-  CardContent,
-  CardActions,
   Button,
   TextField,
   InputAdornment,
@@ -38,7 +35,7 @@ import useTableSession from '../hooks/useTableSession';
 import StickyFooter from '../components/StickyFooter';
 import { devLog } from '../utils/devLog';
 import { withRetry } from '../utils/retry';
-import QtyStepper from '../components/QtyStepper';
+import MenuProductCard from '../components/MenuProductCard';
 import TableSelector from '../components/TableSelector';
 
 const PLACEHOLDER = 'https://via.placeholder.com/600x400?text=No+Image';
@@ -185,6 +182,13 @@ export default function RestaurantMenu() {
             precio: p.price,
             imagen: img,
             descripcion,
+              popular:
+                p?.popular ??
+                p?.isPopular ??
+                p?.esPopular ??
+                p?.popularidad ??
+                p?.popularidadScore ??
+                p?.is_popular,
             categoriaId: cat.id,
           };
         });
@@ -484,6 +488,13 @@ export default function RestaurantMenu() {
                   precio: p.price, // price -> precio
                   imagen: p.image || PLACEHOLDER, // image -> imagen
                   descripcion: descripcion, // description -> descripcion
+                  popular:
+                    p?.popular ??
+                    p?.isPopular ??
+                    p?.esPopular ??
+                    p?.popularidad ??
+                    p?.popularidadScore ??
+                    p?.is_popular,
                   categoriaId: cat.id
                 };
               })
@@ -517,6 +528,13 @@ export default function RestaurantMenu() {
                 precio: p.price,
                 imagen: img,
                 descripcion,
+                popular:
+                  p?.popular ??
+                  p?.isPopular ??
+                  p?.esPopular ??
+                  p?.popularidad ??
+                  p?.popularidadScore ??
+                  p?.is_popular,
               };
             });
 
@@ -561,6 +579,13 @@ export default function RestaurantMenu() {
                 precio: p.price,
                 imagen: img,
                 descripcion,
+                popular:
+                  p?.popular ??
+                  p?.isPopular ??
+                  p?.esPopular ??
+                  p?.popularidad ??
+                  p?.popularidadScore ??
+                  p?.is_popular,
               };
             });
 
@@ -686,7 +711,7 @@ export default function RestaurantMenu() {
             <Skeleton key={i} variant="rounded" width={100} height={36} sx={{ flexShrink: 0 }} />
           ))}
         </Box>
-        <Box sx={{ display: 'grid', gap: 1.75, mt: 3 }}>
+        <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: 1.75, mt: 3 }}>
           {[1, 2, 3, 4].map((i) => (
             <ProductSkeleton key={i} />
           ))}
@@ -745,198 +770,15 @@ export default function RestaurantMenu() {
         transition={{ duration: 0.3, delay: index * 0.04 }}
         whileHover={{ scale: 1.02 }}
         style={{ originX: 0.5 }}
+        className="w-full h-full"
       >
-        <Card
-          elevation={0}
-          sx={(theme) => ({
-            position: 'relative',
-            display: 'flex',
-            alignItems: 'stretch',
-            gap: 1.25,
-            p: 1.5,
-            minWidth: 260,
-            maxWidth: 320,
-            borderRadius: 4,
-            boxSizing: 'border-box',
-            background:
-              theme.palette.mode === 'light'
-                ? `linear-gradient(145deg, ${alpha(theme.palette.primary.light, 0.04)}, ${theme.palette.common.white})`
-                : `linear-gradient(145deg, ${alpha('#101522', 0.95)}, ${alpha('#050814', 0.98)})`,
-            border: `1px solid ${alpha(
-              theme.palette.primary.main,
-              qty > 0 ? 0.35 : theme.palette.mode === 'light' ? 0.08 : 0.25
-            )}`,
-            boxShadow:
-              qty > 0
-                ? '0 18px 45px rgba(0,0,0,0.18)'
-                : theme.palette.mode === 'light'
-                  ? '0 10px 30px rgba(15, 118, 110, 0.12)'
-                  : '0 14px 40px rgba(0,0,0,0.7)',
-            flexDirection: 'row',
-            overflow: 'hidden',
-            transition: 'all 0.25s ease',
-            '&:hover': {
-              borderColor: alpha(theme.palette.primary.main, 0.7),
-              boxShadow:
-                theme.palette.mode === 'light'
-                  ? '0 22px 50px rgba(15, 118, 110, 0.2)'
-                  : '0 22px 55px rgba(0,0,0,0.9)',
-              transform: 'translateY(-2px)',
-            },
-          })}
-        >
-          {/* Imagen */}
-          <Box
-            sx={{
-              width: 110,
-              flexShrink: 0,
-              borderRadius: 3,
-              overflow: 'hidden',
-              position: 'relative',
-              boxShadow: '0 10px 25px rgba(0,0,0,0.25)',
-            }}
-          >
-            <CardMedia
-              component="img"
-              image={plato.imagen}
-              alt={plato.nombre}
-              loading="lazy"
-              sx={{
-                width: '100%',
-                height: '100%',
-                aspectRatio: '4 / 3',
-                objectFit: 'cover',
-                display: 'block',
-                transition: 'transform 0.35s ease',
-                '&:hover': {
-                  transform: 'scale(1.08)',
-                },
-              }}
-            />
-            {qty > 0 && (
-              <Chip
-                label={qty}
-                size="small"
-                sx={{
-                  position: 'absolute',
-                  top: 8,
-                  right: 8,
-                  background:
-                    'linear-gradient(135deg, #22c55e, #16a34a)',
-                  color: 'white',
-                  fontWeight: 700,
-                  height: 24,
-                  minWidth: 24,
-                  fontSize: '0.75rem',
-                  boxShadow: '0 4px 12px rgba(0,0,0,0.35)',
-                }}
-              />
-            )}
-          </Box>
-
-          {/* Texto */}
-          <CardContent
-            sx={{
-              p: 0,
-              pl: 1.5,
-              flex: 1,
-              minWidth: 0,
-              display: 'flex',
-              flexDirection: 'column',
-            }}
-          >
-            <Box
-              sx={{
-                display: 'flex',
-                alignItems: 'baseline',
-                gap: 0.75,
-                flexWrap: 'wrap',
-                mb: 0.75,
-                minWidth: 0,
-              }}
-            >
-              <Typography
-                variant="subtitle1"
-                sx={{
-                  fontWeight: 800,
-                  fontSize: { xs: 17, sm: 18 },
-                  minWidth: 0,
-                  lineHeight: 1.3,
-                }}
-                title={plato.nombre}
-              >
-                {plato.nombre}
-              </Typography>
-            </Box>
-
-            <Box
-              sx={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: 1,
-                mb: 1,
-              }}
-            >
-              <Typography
-                variant="h6"
-                sx={{
-                  fontWeight: 800,
-                  color: 'primary.main',
-                  fontSize: { xs: 16, sm: 18 },
-                }}
-              >
-                {money(plato.precio)}
-              </Typography>
-              <Box
-                sx={{
-                  height: 3,
-                  width: 26,
-                  bgcolor: (theme) => alpha(theme.palette.primary.main, 0.18),
-                  borderRadius: 999,
-                }}
-              />
-            </Box>
-
-            {plato.descripcion && (
-              <Typography
-                variant="body2"
-                sx={{
-                  color: 'text.secondary',
-                  display: '-webkit-box',
-                  WebkitLineClamp: 2,
-                  WebkitBoxOrient: 'vertical',
-                  overflow: 'hidden',
-                  fontSize: { xs: '0.875rem', sm: '0.9375rem' },
-                  lineHeight: 1.5,
-                  flex: 1,
-                }}
-                title={plato.descripcion}
-              >
-                {plato.descripcion}
-              </Typography>
-            )}
-          </CardContent>
-
-          {/* Stepper */}
-          <CardActions
-            sx={{
-              p: 0,
-              ml: 1,
-              flexDirection: 'column',
-              alignItems: 'center',
-              justifyContent: 'center',
-              gap: 0.5,
-              flexShrink: 0,
-              minWidth: 90,
-            }}
-          >
-            <QtyStepper
-              value={qty}
-              onAdd={() => addItem({ id: plato.id, nombre: plato.nombre, precio: plato.precio })}
-              onSub={() => removeItem(plato.id)}
-            />
-          </CardActions>
-        </Card>
+        <MenuProductCard
+          producto={plato}
+          qty={qty}
+          priceFormatted={money(plato.precio)}
+          onAdd={() => addItem({ id: plato.id, nombre: plato.nombre, precio: plato.precio })}
+          onSub={() => removeItem(plato.id)}
+        />
       </motion.div>
     );
   };
@@ -1278,7 +1120,7 @@ export default function RestaurantMenu() {
                   initial={{ opacity: 0 }}
                   animate={{ opacity: 1 }}
                   exit={{ opacity: 0 }}
-                  style={{ display: 'grid', gap: 16 }}
+                  className="grid grid-cols-2 gap-4"
                 >
                   {productosFiltrados.map((plato, index) =>
                     renderProductCard(plato, index)
@@ -1324,23 +1166,7 @@ export default function RestaurantMenu() {
                     </Box>
 
                     {categoria.productos && categoria.productos.length > 0 ? (
-                      <Box
-                        sx={{
-                          display: 'flex',
-                          gap: 1.5,
-                          overflowX: 'auto',
-                          pb: 1,
-                          px: 0.25,
-                          scrollbarWidth: 'thin',
-                          '&::-webkit-scrollbar': {
-                            height: 6,
-                          },
-                          '&::-webkit-scrollbar-thumb': {
-                            backgroundColor: 'rgba(15,118,110,0.45)',
-                            borderRadius: 999,
-                          },
-                        }}
-                      >
+                      <Box className="grid grid-cols-2 gap-4 pb-1">
                         {categoria.productos.map((plato, index) =>
                           renderProductCard(plato, index)
                         )}
