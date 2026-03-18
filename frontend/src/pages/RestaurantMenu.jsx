@@ -733,121 +733,387 @@ export default function RestaurantMenu() {
     );
   }
 
+  // --------- Helpers de UI
+  const renderProductCard = (plato, index) => {
+    const qty = items.find((i) => i.id === plato.id)?.qty || 0;
+    return (
+      <motion.div
+        key={plato.id}
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        exit={{ opacity: 0, scale: 0.9 }}
+        transition={{ duration: 0.3, delay: index * 0.04 }}
+        whileHover={{ scale: 1.02 }}
+        style={{ originX: 0.5 }}
+      >
+        <Card
+          elevation={0}
+          sx={(theme) => ({
+            position: 'relative',
+            display: 'flex',
+            alignItems: 'stretch',
+            gap: 1.25,
+            p: 1.5,
+            minWidth: 260,
+            maxWidth: 320,
+            borderRadius: 4,
+            boxSizing: 'border-box',
+            background:
+              theme.palette.mode === 'light'
+                ? `linear-gradient(145deg, ${alpha(theme.palette.primary.light, 0.04)}, ${theme.palette.common.white})`
+                : `linear-gradient(145deg, ${alpha('#101522', 0.95)}, ${alpha('#050814', 0.98)})`,
+            border: `1px solid ${alpha(
+              theme.palette.primary.main,
+              qty > 0 ? 0.35 : theme.palette.mode === 'light' ? 0.08 : 0.25
+            )}`,
+            boxShadow:
+              qty > 0
+                ? '0 18px 45px rgba(0,0,0,0.18)'
+                : theme.palette.mode === 'light'
+                  ? '0 10px 30px rgba(15, 118, 110, 0.12)'
+                  : '0 14px 40px rgba(0,0,0,0.7)',
+            flexDirection: 'row',
+            overflow: 'hidden',
+            transition: 'all 0.25s ease',
+            '&:hover': {
+              borderColor: alpha(theme.palette.primary.main, 0.7),
+              boxShadow:
+                theme.palette.mode === 'light'
+                  ? '0 22px 50px rgba(15, 118, 110, 0.2)'
+                  : '0 22px 55px rgba(0,0,0,0.9)',
+              transform: 'translateY(-2px)',
+            },
+          })}
+        >
+          {/* Imagen */}
+          <Box
+            sx={{
+              width: 110,
+              flexShrink: 0,
+              borderRadius: 3,
+              overflow: 'hidden',
+              position: 'relative',
+              boxShadow: '0 10px 25px rgba(0,0,0,0.25)',
+            }}
+          >
+            <CardMedia
+              component="img"
+              image={plato.imagen}
+              alt={plato.nombre}
+              loading="lazy"
+              sx={{
+                width: '100%',
+                height: '100%',
+                aspectRatio: '4 / 3',
+                objectFit: 'cover',
+                display: 'block',
+                transition: 'transform 0.35s ease',
+                '&:hover': {
+                  transform: 'scale(1.08)',
+                },
+              }}
+            />
+            {qty > 0 && (
+              <Chip
+                label={qty}
+                size="small"
+                sx={{
+                  position: 'absolute',
+                  top: 8,
+                  right: 8,
+                  background:
+                    'linear-gradient(135deg, #22c55e, #16a34a)',
+                  color: 'white',
+                  fontWeight: 700,
+                  height: 24,
+                  minWidth: 24,
+                  fontSize: '0.75rem',
+                  boxShadow: '0 4px 12px rgba(0,0,0,0.35)',
+                }}
+              />
+            )}
+          </Box>
+
+          {/* Texto */}
+          <CardContent
+            sx={{
+              p: 0,
+              pl: 1.5,
+              flex: 1,
+              minWidth: 0,
+              display: 'flex',
+              flexDirection: 'column',
+            }}
+          >
+            <Box
+              sx={{
+                display: 'flex',
+                alignItems: 'baseline',
+                gap: 0.75,
+                flexWrap: 'wrap',
+                mb: 0.75,
+                minWidth: 0,
+              }}
+            >
+              <Typography
+                variant="subtitle1"
+                sx={{
+                  fontWeight: 800,
+                  fontSize: { xs: 17, sm: 18 },
+                  minWidth: 0,
+                  lineHeight: 1.3,
+                }}
+                title={plato.nombre}
+              >
+                {plato.nombre}
+              </Typography>
+            </Box>
+
+            <Box
+              sx={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: 1,
+                mb: 1,
+              }}
+            >
+              <Typography
+                variant="h6"
+                sx={{
+                  fontWeight: 800,
+                  color: 'primary.main',
+                  fontSize: { xs: 16, sm: 18 },
+                }}
+              >
+                {money(plato.precio)}
+              </Typography>
+              <Box
+                sx={{
+                  height: 3,
+                  width: 26,
+                  bgcolor: (theme) => alpha(theme.palette.primary.main, 0.18),
+                  borderRadius: 999,
+                }}
+              />
+            </Box>
+
+            {plato.descripcion && (
+              <Typography
+                variant="body2"
+                sx={{
+                  color: 'text.secondary',
+                  display: '-webkit-box',
+                  WebkitLineClamp: 2,
+                  WebkitBoxOrient: 'vertical',
+                  overflow: 'hidden',
+                  fontSize: { xs: '0.875rem', sm: '0.9375rem' },
+                  lineHeight: 1.5,
+                  flex: 1,
+                }}
+                title={plato.descripcion}
+              >
+                {plato.descripcion}
+              </Typography>
+            )}
+          </CardContent>
+
+          {/* Stepper */}
+          <CardActions
+            sx={{
+              p: 0,
+              ml: 1,
+              flexDirection: 'column',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: 0.5,
+              flexShrink: 0,
+              minWidth: 90,
+            }}
+          >
+            <QtyStepper
+              value={qty}
+              onAdd={() => addItem({ id: plato.id, nombre: plato.nombre, precio: plato.precio })}
+              onSub={() => removeItem(plato.id)}
+            />
+          </CardActions>
+        </Card>
+      </motion.div>
+    );
+  };
+
+  const showingSearch = Boolean(searchQuery.trim());
+  const categoriasVisibles =
+    categoriaSeleccionada == null
+      ? categorias
+      : categorias.filter((cat) =>
+          [cat.id, cat.documentId, String(cat.id)].includes(
+            categoriaSeleccionada
+          )
+        );
+
   // --------- UI principal
   return (
-    <Box sx={{ width: '100%', position: 'relative', minHeight: '100vh' }}>
+    <Box
+      sx={{
+        width: '100%',
+        position: 'relative',
+        minHeight: '100vh',
+        background: (theme) =>
+          theme.palette.mode === 'light'
+            ? 'radial-gradient(circle at top left, #e0f2f1 0, #f9fafb 40%, #ffffff 100%)'
+            : 'radial-gradient(circle at top left, #0f172a 0, #020617 55%, #000000 100%)',
+      }}
+    >
+      <Box
+        sx={(theme) => ({
+          position: 'absolute',
+          inset: 0,
+          pointerEvents: 'none',
+          backgroundImage:
+            theme.palette.mode === 'light'
+              ? 'radial-gradient(circle at 10% 20%, rgba(0,150,136,0.12) 0, transparent 40%), radial-gradient(circle at 90% 10%, rgba(255,159,64,0.12) 0, transparent 45%)'
+              : 'radial-gradient(circle at 10% 20%, rgba(34,197,94,0.12) 0, transparent 40%), radial-gradient(circle at 90% 10%, rgba(56,189,248,0.16) 0, transparent 45%)',
+          opacity: 0.9,
+        })}
+      />
+
       <Container
         component="main"
         maxWidth="sm"
         disableGutters
         sx={{
-          px: { xs: 1.25, sm: 2 },
-          py: { xs: 3, sm: 4 },
           position: 'relative',
-          borderRadius: 0,
-          bgcolor: 'transparent',
-          boxShadow: 'none',
+          zIndex: 1,
+          px: { xs: 1.5, sm: 2.5 },
+          py: { xs: 2.5, sm: 3.5 },
         }}
       >
         {/* Header */}
-        <Box sx={{ textAlign: 'center' }}>
-          <Typography
-            component="h1"
-            sx={{
-              fontWeight: 700,
-              lineHeight: 1.15,
-              letterSpacing: 0.5,
-              mb: 1,
-              fontSize: 'clamp(22px, 4.2vw, 32px)',
-              wordBreak: 'break-word',
-            }}
-          >
-            Menú de{' '}
-            <Box component="span" sx={{ fontWeight: 800 }}>
-              {nombreRestaurante || slug}
-            </Box>
-          </Typography>
-
+        <Box
+          sx={(theme) => ({
+            mb: 3,
+            borderRadius: 4,
+            p: 2,
+            pb: 2.5,
+            background:
+              theme.palette.mode === 'light'
+                ? 'linear-gradient(135deg, #ffffff, #e0f2f1)'
+                : 'linear-gradient(135deg, #020617, #0f172a)',
+            boxShadow:
+              theme.palette.mode === 'light'
+                ? '0 18px 45px rgba(15,118,110,0.15)'
+                : '0 22px 55px rgba(0,0,0,0.9)',
+            position: 'relative',
+            overflow: 'hidden',
+          })}
+        >
           <Box
-            sx={(theme) => ({
-              width: 120,
-              height: 2,
-              mx: 'auto',
-              borderRadius: 999,
-              background:
-                theme.palette.mode === 'light' ? 'rgba(0,0,0,0.12)' : 'rgba(255,255,255,0.24)',
-              position: 'relative',
-              mb: 0.5,
-              '&::after': {
-                content: '""',
-                position: 'absolute',
-                left: '50%',
-                top: -1,
-                transform: 'translateX(-50%)',
-                width: 40,
-                height: 4,
-                borderRadius: 999,
-                backgroundColor: theme.palette.primary.main,
-                boxShadow: '0 2px 8px rgba(0,0,0,0.10)',
-              },
-            })}
-          />
-
-          <Typography
-            variant="caption"
             sx={{
-              color: 'text.secondary',
-              letterSpacing: 1,
-              textTransform: 'uppercase',
-              mt: 1.5,
-              display: 'block',
+              position: 'absolute',
+              inset: 0,
+              pointerEvents: 'none',
+              background:
+                'radial-gradient(circle at 0 0, rgba(56,189,248,0.15) 0, transparent 55%)',
             }}
-          >
-            Elegí tus platos favoritos
-          </Typography>
-          {table && (
-            <Button
-              size="small"
-              onClick={() => (items.length > 0 ? setChangeTableDialog(true) : navigate(`/${slug}/menu`))}
-              startIcon={<SwapHorizIcon sx={{ fontSize: 16 }} />}
+          />
+          <Box sx={{ position: 'relative', textAlign: 'left' }}>
+            <Typography
+              component="h1"
               sx={{
-                mt: 1,
-                textTransform: 'none',
-                color: 'text.secondary',
-                fontSize: '0.75rem',
-                minWidth: 0,
-                px: 0.5,
-                '&:hover': { color: 'primary.main', bgcolor: 'transparent' },
+                fontWeight: 800,
+                lineHeight: 1.1,
+                letterSpacing: 0.4,
+                mb: 0.75,
+                fontSize: 'clamp(22px, 5vw, 30px)',
+                wordBreak: 'break-word',
               }}
             >
-              Mesa {table} · Cambiar
-            </Button>
-          )}
+              {nombreRestaurante || slug}
+            </Typography>
+            <Typography
+              variant="body2"
+              sx={{
+                color: 'text.secondary',
+                mb: 1.5,
+              }}
+            >
+              Elegí tus platos favoritos, enviá tu pedido y disfrutá en mesa.
+            </Typography>
+
+            <Box
+              sx={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                gap: 1,
+                flexWrap: 'wrap',
+              }}
+            >
+              <Chip
+                label={table ? `Mesa ${table}` : 'Sin mesa seleccionada'}
+                color="primary"
+                variant="filled"
+                size="small"
+                sx={{
+                  borderRadius: 999,
+                  fontWeight: 600,
+                  px: 1.25,
+                  bgcolor: 'primary.main',
+                  color: 'white',
+                }}
+              />
+              {table && (
+                <Button
+                  size="small"
+                  onClick={() =>
+                    items.length > 0 ? setChangeTableDialog(true) : navigate(`/${slug}/menu`)
+                  }
+                  startIcon={<SwapHorizIcon sx={{ fontSize: 16 }} />}
+                  sx={{
+                    textTransform: 'none',
+                    fontSize: '0.78rem',
+                    px: 1,
+                    borderRadius: 999,
+                    bgcolor: (theme) =>
+                      theme.palette.mode === 'light'
+                        ? alpha('#ffffff', 0.8)
+                        : alpha('#020617', 0.7),
+                    boxShadow: '0 6px 18px rgba(0,0,0,0.18)',
+                    '&:hover': {
+                      bgcolor: (theme) =>
+                        theme.palette.mode === 'light'
+                          ? alpha('#ffffff', 1)
+                          : alpha('#020617', 0.95),
+                    },
+                  }}
+                >
+                  Cambiar mesa
+                </Button>
+              )}
+            </Box>
+          </Box>
         </Box>
 
         {/* Barra de búsqueda */}
-        <Box sx={{ mt: 3, mb: 2 }}>
+        <Box sx={{ mb: 2 }}>
           <TextField
             fullWidth
-            placeholder="Buscar productos..."
+            placeholder="Buscar por nombre o descripción..."
             aria-label="Buscar productos en el menú"
             value={searchQuery}
             onChange={(e) => {
               setSearchQuery(e.target.value);
               if (e.target.value) {
-                // Si hay búsqueda, mostrar todos los productos
                 const todosLosProductos = categorias.flatMap((cat) => cat.productos || []);
                 setProductosTodos(todosLosProductos);
                 setProductos(todosLosProductos);
               } else {
-                // Si se limpia la búsqueda, volver a la categoría seleccionada
                 if (categoriaSeleccionada) {
                   const categoria = findCategoria(categoriaSeleccionada);
                   if (categoria) {
                     setProductos(categoria.productos || []);
                   }
                 } else {
-                  // Mostrar todos si no hay categoría seleccionada
                   const todosLosProductos = categorias.flatMap((cat) => cat.productos || []);
                   setProductosTodos(todosLosProductos);
                   setProductos(todosLosProductos);
@@ -863,43 +1129,51 @@ export default function RestaurantMenu() {
             }}
             sx={{
               '& .MuiOutlinedInput-root': {
-                borderRadius: 3,
+                borderRadius: 999,
                 backgroundColor: (theme) =>
-                  theme.palette.mode === 'light' ? 'rgba(0,0,0,0.02)' : 'rgba(255,255,255,0.05)',
-                '&:hover': {
-                  backgroundColor: (theme) =>
-                    theme.palette.mode === 'light' ? 'rgba(0,0,0,0.04)' : 'rgba(255,255,255,0.08)',
+                  theme.palette.mode === 'light'
+                    ? 'rgba(255,255,255,0.9)'
+                    : 'rgba(15,23,42,0.95)',
+                boxShadow:
+                  '0 10px 30px rgba(15,118,110,0.15)',
+                '& fieldset': {
+                  borderColor: (theme) => alpha(theme.palette.primary.main, 0.22),
                 },
-                '&.Mui-focused': {
-                  backgroundColor: (theme) =>
-                    theme.palette.mode === 'light' ? 'rgba(0,0,0,0.04)' : 'rgba(255,255,255,0.08)',
+                '&:hover fieldset': {
+                  borderColor: (theme) => alpha(theme.palette.primary.main, 0.5),
+                },
+                '&.Mui-focused fieldset': {
+                  borderColor: (theme) => alpha(theme.palette.primary.main, 0.8),
                 },
               },
             }}
           />
         </Box>
 
-        {/* Filtro de categorías - Chips similares a ProductsManagement - Siempre visible */}
+        {/* Filtro de categorías */}
         {categorias.length > 0 && (
           <Box
             sx={{
               mb: 3,
-              mt: -1,
               display: 'flex',
               gap: 1,
-              flexWrap: 'wrap',
               overflowX: 'auto',
               pb: 1,
               px: { xs: 0.5, sm: 0 },
-              // Asegurar visibilidad
-              minHeight: 40,
-              alignItems: 'center',
+              scrollbarWidth: 'thin',
+              '&::-webkit-scrollbar': {
+                height: 6,
+              },
+              '&::-webkit-scrollbar-thumb': {
+                backgroundColor: 'rgba(15,118,110,0.35)',
+                borderRadius: 999,
+              },
             }}
           >
             <Chip
-              label="Todas"
+              label="Todas las categorías"
               onClick={() => {
-                setSearchQuery(''); // Limpiar búsqueda
+                setSearchQuery('');
                 const todosLosProductos = categorias.flatMap((cat) => cat.productos || []);
                 setProductosTodos(todosLosProductos);
                 setProductos(todosLosProductos);
@@ -907,23 +1181,28 @@ export default function RestaurantMenu() {
               }}
               color={categoriaSeleccionada === null ? 'primary' : 'default'}
               sx={{
-                bgcolor: categoriaSeleccionada === null ? 'primary.main' : 'background.paper',
+                bgcolor:
+                  categoriaSeleccionada === null ? 'primary.main' : 'rgba(255,255,255,0.9)',
                 color: categoriaSeleccionada === null ? 'white' : 'text.primary',
-                fontWeight: categoriaSeleccionada === null ? 600 : 400,
-                cursor: 'pointer',
-                '&:hover': {
-                  bgcolor: categoriaSeleccionada === null ? 'primary.dark' : 'action.hover',
-                },
+                fontWeight: categoriaSeleccionada === null ? 700 : 500,
+                borderRadius: 999,
+                px: 1.5,
+                boxShadow:
+                  categoriaSeleccionada === null
+                    ? '0 10px 25px rgba(15,118,110,0.4)'
+                    : 'none',
               }}
             />
             {categorias.map((cat) => (
               <Chip
                 key={cat.id ?? cat.documentId ?? cat.name}
-                label={`${cat.name} ${cat.productos && cat.productos.length > 0 ? `(${cat.productos.length})` : ''}`}
+                label={`${cat.name}${
+                  cat.productos && cat.productos.length > 0 ? ` (${cat.productos.length})` : ''
+                }`}
                 onClick={() => {
                   const id = cat.id ?? cat.documentId;
                   setCategoriaSeleccionada(id);
-                  setSearchQuery(''); // Limpiar búsqueda al cambiar categoría
+                  setSearchQuery('');
                   setProductos(cat.productos || []);
                   setTimeout(() => {
                     const productosSection = document.getElementById('productos-section');
@@ -934,366 +1213,149 @@ export default function RestaurantMenu() {
                 }}
                 color={categoriaSeleccionada === (cat.id ?? cat.documentId) ? 'primary' : 'default'}
                 sx={{
-                  bgcolor: categoriaSeleccionada === (cat.id ?? cat.documentId) ? 'primary.main' : 'background.paper',
-                  color: categoriaSeleccionada === (cat.id ?? cat.documentId) ? 'white' : 'text.primary',
-                  fontWeight: categoriaSeleccionada === (cat.id ?? cat.documentId) ? 600 : 400,
-                  cursor: 'pointer',
-                  '&:hover': {
-                    bgcolor: categoriaSeleccionada === (cat.id ?? cat.documentId) ? 'primary.dark' : 'action.hover',
-                  },
+                  bgcolor:
+                    categoriaSeleccionada === (cat.id ?? cat.documentId)
+                      ? 'primary.main'
+                      : 'rgba(255,255,255,0.9)',
+                  color:
+                    categoriaSeleccionada === (cat.id ?? cat.documentId)
+                      ? 'white'
+                      : 'text.primary',
+                  fontWeight:
+                    categoriaSeleccionada === (cat.id ?? cat.documentId) ? 700 : 500,
+                  borderRadius: 999,
+                  px: 1.5,
                 }}
               />
             ))}
           </Box>
         )}
 
-        {/* Navegación de categorías - Tabs horizontales deslizables (Opcional - duplicado con chips arriba) */}
-        {false && categorias.length > 0 && !searchQuery && categoriaSeleccionada && (
-          <Box
-            sx={{
-              mt: 2,
-              mb: 3,
-              position: 'sticky',
-              top: 0,
-              zIndex: 10,
-              backgroundColor: 'background.default',
-              pb: 2,
-              pt: 1,
-            }}
-          >
-            <Box
-              sx={{
-                display: 'flex',
-                gap: 1,
-                overflowX: 'auto',
-                overflowY: 'hidden',
-                scrollbarWidth: 'thin',
-                '&::-webkit-scrollbar': {
-                  height: 6,
-                },
-                '&::-webkit-scrollbar-track': {
-                  backgroundColor: 'transparent',
-                },
-                '&::-webkit-scrollbar-thumb': {
-                  backgroundColor: 'rgba(0,0,0,0.2)',
-                  borderRadius: 3,
-                },
-                px: { xs: 0.5, sm: 0 },
-                pb: 1,
-              }}
-            >
-              {categorias.map((categoria) => {
-                const itemCount = getCategoryItemCount(categoria.id);
-                const isSelected = categoriaSeleccionada === categoria.id;
-                return (
-                  <motion.div
-                    key={categoria.id}
-                    whileHover={{ scale: 1.02 }}
-                    whileTap={{ scale: 0.98 }}
-                    style={{ flexShrink: 0 }}
-                  >
-                    <Button
-                      onClick={() => handleCategoriaClick(categoria.id)}
-                      variant={isSelected ? 'contained' : 'outlined'}
-                      sx={{
-                        minWidth: 'auto',
-                        px: 2.5,
-                        py: 1,
-                        borderRadius: 4,
-                        textTransform: 'none',
-                        fontWeight: isSelected ? 600 : 500,
-                        fontSize: '0.9375rem',
-                        boxShadow: isSelected ? 3 : 0,
-                        position: 'relative',
-                        whiteSpace: 'nowrap',
-                        '&:hover': {
-                          boxShadow: isSelected ? 4 : 2,
-                        },
-                        transition: 'all 0.2s ease-in-out',
-                      }}
-                    >
-                      {categoria.name}
-                      {itemCount > 0 && (
-                        <Chip
-                          label={itemCount}
-                          size="small"
-                          sx={{
-                            ml: 1,
-                            height: 20,
-                            minWidth: 20,
-                            fontSize: '0.7rem',
-                            fontWeight: 700,
-                            backgroundColor: isSelected ? 'rgba(255,255,255,0.3)' : 'primary.main',
-                            color: isSelected ? 'inherit' : 'white',
-                          }}
-                        />
-                      )}
-                    </Button>
-                  </motion.div>
-                );
-              })}
-            </Box>
-          </Box>
-        )}
-
         {/* Indicador de resultados de búsqueda */}
-        {searchQuery && (
-          <Box sx={{ mb: 2, mt: -1 }}>
+        {showingSearch && (
+          <Box sx={{ mb: 1 }}>
             <Typography variant="body2" color="text.secondary">
               {productosFiltrados.length === 0
-                ? 'No se encontraron productos'
-                : `${productosFiltrados.length} producto${productosFiltrados.length !== 1 ? 's' : ''} encontrado${productosFiltrados.length !== 1 ? 's' : ''}`}
+                ? 'No se encontraron productos.'
+                : `${productosFiltrados.length} producto${
+                    productosFiltrados.length !== 1 ? 's' : ''
+                  } encontrado${
+                    productosFiltrados.length !== 1 ? 's' : ''
+                  } para tu búsqueda.`}
             </Typography>
           </Box>
         )}
 
         {/* Lista de productos */}
-        <Box
-          id="productos-section"
-          sx={{
-            display: 'grid',
-            gap: { xs: 1.5, sm: 2 },
-            width: '100%',
-            mt: searchQuery ? 2 : 0,
-            overflowX: 'hidden',
-            overflowY: 'visible',
-            py: 0.5,
-            pb: 2,
-            px: { xs: 0, sm: 0.5 },
-          }}
-        >
+        <Box id="productos-section" sx={{ pb: 2 }}>
           <AnimatePresence mode="wait">
-            {productosFiltrados.length === 0 && searchQuery ? (
-              <motion.div
-                key="empty"
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0 }}
-              >
-                <Box
-                  sx={{
-                    textAlign: 'center',
-                    py: 8,
-                    px: 2,
-                  }}
+            {showingSearch ? (
+              productosFiltrados.length === 0 ? (
+                <motion.div
+                  key="empty"
+                  initial={{ opacity: 0, y: 20 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0 }}
                 >
-                  <Typography variant="h6" color="text.secondary" gutterBottom>
-                    No se encontraron productos
-                  </Typography>
-                  <Typography variant="body2" color="text.secondary">
-                    Intenta con otros términos de búsqueda
-                  </Typography>
-                </Box>
-              </motion.div>
+                  <Box
+                    sx={{
+                      textAlign: 'center',
+                      py: 6,
+                      px: 2,
+                    }}
+                  >
+                    <Typography variant="h6" color="text.secondary" gutterBottom>
+                      No se encontraron productos
+                    </Typography>
+                    <Typography variant="body2" color="text.secondary">
+                      Probá con otro nombre o descripción.
+                    </Typography>
+                  </Box>
+                </motion.div>
+              ) : (
+                <motion.div
+                  key="search-list"
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  exit={{ opacity: 0 }}
+                  style={{ display: 'grid', gap: 16 }}
+                >
+                  {productosFiltrados.map((plato, index) =>
+                    renderProductCard(plato, index)
+                  )}
+                </motion.div>
+              )
             ) : (
               <motion.div
-                key="list"
+                key="categories-layout"
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}
                 exit={{ opacity: 0 }}
-                style={{ display: 'grid', gap: 'inherit', width: '100%' }}
+                style={{ display: 'flex', flexDirection: 'column', gap: 24 }}
               >
-                {productosFiltrados.map((plato, index) => {
-                  const qty = items.find((i) => i.id === plato.id)?.qty || 0;
-                  return (
-                    <motion.div
-                      key={plato.id}
-                      initial={{ opacity: 0, y: 20 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      exit={{ opacity: 0, scale: 0.9 }}
-                      transition={{ duration: 0.3, delay: index * 0.05 }}
-                      whileHover={{ scale: 1.01 }}
-                      style={{ originX: 0.5 }}
+                {categoriasVisibles.map((categoria) => (
+                  <Box key={categoria.id ?? categoria.documentId ?? categoria.name}>
+                    <Box
+                      sx={{
+                        display: 'flex',
+                        alignItems: 'baseline',
+                        justifyContent: 'space-between',
+                        mb: 1.5,
+                      }}
                     >
-                      <Card
-                        elevation={0}
-                        sx={(theme) => ({
-                          position: 'relative',
-                          display: 'flex',
-                          alignItems: 'stretch',
-                          gap: { xs: 1, sm: 1.25 },
-                          p: { xs: 1.25, sm: 1.5 },
-                          borderRadius: 4,
-                          mx: { xs: 0, sm: 0 },
-                          boxSizing: 'border-box',
-                          background:
-                            theme.palette.mode === 'light'
-                              ? `linear-gradient(180deg, ${theme.palette.common.white} 0%, ${alpha(
-                                theme.palette.common.white,
-                                0.98
-                              )} 100%)`
-                              : `linear-gradient(180deg, ${alpha('#1e1e1e', 1)} 0%, ${alpha(
-                                '#1e1e1e',
-                                0.95
-                              )} 100%)`,
-                          border: `1px solid ${alpha(theme.palette.common.black, qty > 0 ? 0.12 : 0.06)}`,
-                          boxShadow:
-                            qty > 0
-                              ? theme.palette.mode === 'light'
-                                ? '0 8px 32px rgba(0,0,0,0.08), 0 2px 0 rgba(0,0,0,0.03)'
-                                : '0 8px 32px rgba(0,0,0,0.4)'
-                              : theme.palette.mode === 'light'
-                                ? '0 4px 20px rgba(0,0,0,0.04), 0 1px 0 rgba(0,0,0,0.02)'
-                                : '0 6px 24px rgba(0,0,0,0.3)',
-                          flexDirection: 'row',
-                          transition: 'all 0.3s ease',
-                          overflow: 'hidden', // Evitar que el sombreado se corte
-                          '&:hover': {
-                            borderColor: alpha(theme.palette.primary.main, 0.3),
-                            boxShadow:
-                              theme.palette.mode === 'light'
-                                ? '0 12px 40px rgba(0,0,0,0.1), 0 2px 0 rgba(0,0,0,0.04)'
-                                : '0 12px 40px rgba(0,0,0,0.5)',
-                          },
-                        })}
+                      <Typography
+                        variant="h6"
+                        sx={{
+                          fontWeight: 800,
+                          fontSize: 18,
+                        }}
                       >
-                        {/* Imagen */}
-                        <Box
-                          sx={{
-                            width: { xs: 90, sm: 110 },
-                            flexShrink: 0,
-                            borderRadius: 2.5,
-                            overflow: 'hidden',
-                            position: 'relative',
-                            boxShadow: '0 2px 8px rgba(0,0,0,0.1)',
-                          }}
+                        {categoria.name}
+                      </Typography>
+                      {categoria.productos && categoria.productos.length > 0 && (
+                        <Typography
+                          variant="caption"
+                          sx={{ color: 'text.secondary', fontWeight: 500 }}
                         >
-                          <CardMedia
-                            component="img"
-                            image={plato.imagen}
-                            alt={plato.nombre}
-                            loading="lazy"
-                            sx={{
-                              width: '100%',
-                              height: '100%',
-                              aspectRatio: '1 / 1',
-                              objectFit: 'cover',
-                              display: 'block',
-                              transition: 'transform 0.3s ease',
-                              '&:hover': {
-                                transform: 'scale(1.05)',
-                              },
-                            }}
-                          />
-                          {qty > 0 && (
-                            <Chip
-                              label={qty}
-                              size="small"
-                              sx={{
-                                position: 'absolute',
-                                top: 8,
-                                right: 8,
-                                backgroundColor: 'primary.main',
-                                color: 'white',
-                                fontWeight: 700,
-                                height: 24,
-                                minWidth: 24,
-                                fontSize: '0.75rem',
-                                boxShadow: '0 2px 8px rgba(0,0,0,0.2)',
-                              }}
-                            />
-                          )}
-                        </Box>
+                          {categoria.productos.length} opción
+                          {categoria.productos.length !== 1 ? 'es' : ''}
+                        </Typography>
+                      )}
+                    </Box>
 
-                        {/* Texto */}
-                        <CardContent sx={{ p: 0, flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column' }}>
-                          <Box
-                            sx={{
-                              display: 'flex',
-                              alignItems: 'baseline',
-                              gap: 1,
-                              flexWrap: 'wrap',
-                              mb: 0.75,
-                              minWidth: 0,
-                            }}
-                          >
-                            <Typography
-                              variant="subtitle1"
-                              sx={{
-                                fontWeight: 700,
-                                fontSize: { xs: 17, sm: 19 },
-                                minWidth: 0,
-                                lineHeight: 1.3,
-                              }}
-                              title={plato.nombre}
-                            >
-                              {plato.nombre}
-                            </Typography>
-                          </Box>
-
-                          <Box
-                            sx={{
-                              display: 'flex',
-                              alignItems: 'center',
-                              gap: 1,
-                              mb: 1,
-                            }}
-                          >
-                            <Typography
-                              variant="h6"
-                              sx={{
-                                fontWeight: 700,
-                                color: 'primary.main',
-                                fontSize: { xs: 16, sm: 18 },
-                              }}
-                            >
-                              {money(plato.precio)}
-                            </Typography>
-                            <Box
-                              sx={{
-                                height: 3,
-                                width: 24,
-                                bgcolor: 'divider',
-                                borderRadius: 1.5,
-                              }}
-                            />
-                          </Box>
-
-                          {plato.descripcion && (
-                            <Typography
-                              variant="body2"
-                              sx={{
-                                color: 'text.secondary',
-                                display: '-webkit-box',
-                                WebkitLineClamp: 2,
-                                WebkitBoxOrient: 'vertical',
-                                overflow: 'hidden',
-                                fontSize: { xs: '0.875rem', sm: '0.9375rem' },
-                                lineHeight: 1.5,
-                                flex: 1,
-                              }}
-                              title={plato.descripcion}
-                            >
-                              {plato.descripcion}
-                            </Typography>
-                          )}
-                        </CardContent>
-
-                        {/* Stepper */}
-                        <CardActions
-                          sx={{
-                            p: 0,
-                            ml: { xs: 0.5, sm: 1 },
-                            flexDirection: 'column',
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                            gap: 0.5,
-                            flexShrink: 0,
-                            minWidth: { xs: 85, sm: 100 },
-                          }}
-                        >
-                          <QtyStepper
-                            value={qty}
-                            onAdd={() =>
-                              addItem({ id: plato.id, nombre: plato.nombre, precio: plato.precio })
-                            }
-                            onSub={() => removeItem(plato.id)}
-                          />
-                        </CardActions>
-                      </Card>
-                    </motion.div>
-                  );
-                })}
+                    {categoria.productos && categoria.productos.length > 0 ? (
+                      <Box
+                        sx={{
+                          display: 'flex',
+                          gap: 1.5,
+                          overflowX: 'auto',
+                          pb: 1,
+                          px: 0.25,
+                          scrollbarWidth: 'thin',
+                          '&::-webkit-scrollbar': {
+                            height: 6,
+                          },
+                          '&::-webkit-scrollbar-thumb': {
+                            backgroundColor: 'rgba(15,118,110,0.45)',
+                            borderRadius: 999,
+                          },
+                        }}
+                      >
+                        {categoria.productos.map((plato, index) =>
+                          renderProductCard(plato, index)
+                        )}
+                      </Box>
+                    ) : (
+                      <Typography
+                        variant="body2"
+                        color="text.secondary"
+                        sx={{ fontStyle: 'italic', mb: 0.5 }}
+                      >
+                        No hay productos disponibles en esta categoría por el momento.
+                      </Typography>
+                    )}
+                  </Box>
+                ))}
               </motion.div>
             )}
           </AnimatePresence>
@@ -1303,19 +1365,38 @@ export default function RestaurantMenu() {
         <Box sx={{ height: { xs: 150, sm: 160 } }} />
 
         {/* Footer con resumen y confirmación */}
-        <StickyFooter table={table} tableSessionId={tableSessionId} restaurantName={nombreRestaurante} sessionReady={sessionReady} hasMercadoPago={hasMercadoPago} />
+        <StickyFooter
+          table={table}
+          tableSessionId={tableSessionId}
+          restaurantName={nombreRestaurante}
+          sessionReady={sessionReady}
+          hasMercadoPago={hasMercadoPago}
+        />
 
         {/* Diálogo confirmar cambiar mesa */}
-        <Dialog open={changeTableDialog} onClose={() => setChangeTableDialog(false)} maxWidth="xs" fullWidth>
+        <Dialog
+          open={changeTableDialog}
+          onClose={() => setChangeTableDialog(false)}
+          maxWidth="xs"
+          fullWidth
+        >
           <DialogTitle>Cambiar de mesa</DialogTitle>
           <DialogContent>
             <Typography variant="body2" color="text.secondary">
-              Tenés {items.length} {items.length === 1 ? 'ítem' : 'ítems'} en el carrito. Al cambiar de mesa se pierde el carrito actual. ¿Continuar?
+              Tenés {items.length} {items.length === 1 ? 'ítem' : 'ítems'} en el carrito. Al cambiar
+              de mesa se pierde el carrito actual. ¿Continuar?
             </Typography>
           </DialogContent>
           <DialogActions>
             <Button onClick={() => setChangeTableDialog(false)}>Cancelar</Button>
-            <Button variant="contained" color="primary" onClick={() => { setChangeTableDialog(false); navigate(`/${slug}/menu`); }}>
+            <Button
+              variant="contained"
+              color="primary"
+              onClick={() => {
+                setChangeTableDialog(false);
+                navigate(`/${slug}/menu`);
+              }}
+            >
               Cambiar mesa
             </Button>
           </DialogActions>
