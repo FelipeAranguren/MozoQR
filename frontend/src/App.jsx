@@ -35,6 +35,7 @@ import AdminDashboard from './pages/AdminDashboard';
 import ImpersonateCallback from './pages/ImpersonateCallback';
 import DemoLanding from './pages/DemoLanding';
 import Checkout from './pages/Checkout';
+import ScrollToTop from './components/ScrollToTop';
 
 // Si Grant/Strapi redirige a "/" (o otra ruta) con access_token, llevamos al usuario a la página que lo procesa
 function GoogleTokenRedirect({ children }) {
@@ -69,6 +70,7 @@ export default function App() {
     <BrowserRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
       <AuthProvider>
         <GoogleTokenRedirect>
+          <ScrollToTop />
           <CssBaseline />
           <ConditionalHeader />
           <Routes>
