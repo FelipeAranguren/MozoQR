@@ -768,8 +768,11 @@ export default function RestaurantMenu() {
   }
 
   // --------- Helpers de UI
-  const renderProductCard = (plato, index) => {
+  const renderProductCard = (plato, index, { layout = 'grid' } = {}) => {
     const qty = items.find((i) => i.id === plato.id)?.qty || 0;
+    // En "row" forzamos una sola fila por categoría (scroll horizontal),
+    // así evitamos que el card salte a otra línea.
+    const wrapperClassName = layout === 'row' ? 'w-[260px] flex-shrink-0' : 'w-full';
     return (
       <motion.div
         key={plato.id}
@@ -779,7 +782,7 @@ export default function RestaurantMenu() {
         transition={{ duration: 0.3, delay: index * 0.04 }}
         whileHover={{ scale: 1.02 }}
         style={{ originX: 0.5 }}
-        className="w-full"
+        className={wrapperClassName}
       >
         <MenuProductCard
           producto={plato}
@@ -1132,7 +1135,7 @@ export default function RestaurantMenu() {
                   className="grid grid-cols-2 gap-4"
                 >
                   {productosFiltrados.map((plato, index) =>
-                    renderProductCard(plato, index)
+                    renderProductCard(plato, index, { layout: 'grid' })
                   )}
                 </motion.div>
               )
@@ -1175,9 +1178,9 @@ export default function RestaurantMenu() {
                     </Box>
 
                     {categoria.productos && categoria.productos.length > 0 ? (
-                      <Box className="grid grid-cols-2 gap-4 pb-1">
+                      <Box className="flex flex-nowrap gap-4 overflow-x-auto pb-1">
                         {categoria.productos.map((plato, index) =>
-                          renderProductCard(plato, index)
+                          renderProductCard(plato, index, { layout: 'row' })
                         )}
                       </Box>
                     ) : (
