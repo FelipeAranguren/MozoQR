@@ -6,6 +6,7 @@ import OpenInNewIcon from '@mui/icons-material/OpenInNew';
 import { MARANA_COLORS } from '../../../theme';
 import ProductsManagement from './ProductsManagement';
 import CategoriesManagement from './CategoriesManagement';
+import MenuDesignManagement from './MenuDesignManagement';
 
 export default function MenuManagement() {
   const { slug } = useParams();
@@ -64,11 +65,13 @@ export default function MenuManagement() {
         >
           <Tab label="Productos" />
           <Tab label="Categorías" />
+          <Tab label="Diseño" />
         </Tabs>
       </Box>
 
       {activeTab === 0 && <ProductsManagement slug={slug} />}
       {activeTab === 1 && <CategoriesManagement slug={slug} />}
+      {activeTab === 2 && <MenuDesignManagement slug={slug} />}
     </Container>
   );
 }

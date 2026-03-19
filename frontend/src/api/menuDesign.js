@@ -2,6 +2,8 @@ import { api } from '../api';
 
 const MENU_DESIGN_FIELDS = [
   'menu_design',
+  'menu_diseno',
+  'diseno_menu',
   'menuDesign',
   'design_version',
   'designVersion',
@@ -39,16 +41,22 @@ export function readMenuDesignFromRestaurant(restaurant) {
 
 export async function fetchRestaurantMenuDesign(slug) {
   if (!slug) return 'v2';
+  const qs = `/restaurantes?filters[slug][$eq]=${encodeURIComponent(slug)}&pagination[pageSize]=1`;
   try {
-    const res = await api.get(
-      `/restaurantes?filters[slug][$eq]=${encodeURIComponent(slug)}&pagination[pageSize]=1`,
-      { headers: getAuthHeaders() }
-    );
+    // Intento público primero (el menú del cliente no debería requerir auth)
+    const res = await api.get(qs);
     const restaurant = res?.data?.data?.[0];
     return readMenuDesignFromRestaurant(restaurant);
   } catch (err) {
-    console.warn('No se pudo leer diseño de menú, usando v2 por defecto:', err?.message || err);
-    return 'v2';
+    try {
+      // Fallback autenticado para paneles owner
+      const res = await api.get(qs, { headers: getAuthHeaders() });
+      const restaurant = res?.data?.data?.[0];
+      return readMenuDesignFromRestaurant(restaurant);
+    } catch (authErr) {
+      console.warn('No se pudo leer diseño de menú, usando v2 por defecto:', authErr?.message || err?.message || authErr || err);
+      return 'v2';
+    }
   }
 }
 
@@ -84,5 +92,10 @@ export async function updateRestaurantMenuDesign(slug, design) {
     }
   }
 
-  throw lastError || new Error('No se pudo guardar el diseño del menú');
+  const status = lastError?.response?.status;
+  const backendMessage = lastError?.response?.data?.error?.message || lastError?.response?.data?.message;
+  throw new Error(
+    backendMessage ||
+      (status ? `No se pudo guardar el diseño (HTTP ${status}). Verificá que el campo exista en Restaurante.` : 'No se pudo guardar el diseño del menú')
+  );
 }
