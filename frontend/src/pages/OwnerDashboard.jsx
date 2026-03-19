@@ -28,6 +28,7 @@ import { fetchCategories } from '../api/menu';
 import { client } from '../api/client';
 import { createOwnerComment } from '../api/comments';
 import { fetchMercadoPagoMethodBySlug, saveMercadoPagoMethodBySlug } from '../api/paymentMethods';
+import { readMenuDesignFromRestaurant, updateRestaurantMenuDesign } from '../api/menuDesign';
 // Aliases for compatibility with existing code
 const api = client;
 const http = client;
@@ -372,6 +373,9 @@ export default function OwnerDashboard() {
   const [mpLoading, setMpLoading] = useState(false);
   const [mpSaving, setMpSaving] = useState(false);
   const [mpMessage, setMpMessage] = useState({ type: '', text: '' });
+  const [menuDesign, setMenuDesign] = useState('v2');
+  const [menuDesignSaving, setMenuDesignSaving] = useState(false);
+  const [menuDesignMessage, setMenuDesignMessage] = useState({ type: '', text: '' });
 
   const end = useMemo(() => {
     return isCustom ? endOfDay(fromISODateInputLocal(customEnd)) : endOfDay(new Date());
@@ -513,6 +517,7 @@ export default function OwnerDashboard() {
           const restaurantId = restaurant.id || restaurant.documentId;
           const restaurantName = attr.name || restaurant.name || prettyName(slug);
           setRestaurantInfo({ id: restaurantId, name: restaurantName });
+          setMenuDesign(readMenuDesignFromRestaurant(restaurant));
 
           // Usar TODOS los productos obtenidos (incluidos no disponibles) para métricas del owner
           const productsWithoutImage = productos.filter(p => !p.image).length;
@@ -543,6 +548,7 @@ export default function OwnerDashboard() {
             totalCategories: 0,
             productsWithoutCategory
           });
+          setMenuDesign('v2');
         }
       })
       .catch((err) => {
@@ -557,6 +563,10 @@ export default function OwnerDashboard() {
       })
       .finally(() => setIsLoading(false));
   }, [slug, periodKey, start.getTime(), end.getTime()]);
+
+  useEffect(() => {
+    setMenuDesignMessage({ type: '', text: '' });
+  }, [slug]);
 
   // Cargar credenciales Mercado Pago desde backend (metodos_pagos)
   useEffect(() => {
@@ -788,6 +798,49 @@ export default function OwnerDashboard() {
             </Typography>
           </Box>
           <Box sx={{ display: 'flex', gap: 2, alignItems: 'center', flexShrink: 0, ml: 'auto' }}>
+          <ToggleButtonGroup
+            value={menuDesign}
+            exclusive
+            onChange={async (e, newDesign) => {
+              if (!newDesign || menuDesignSaving || !slug) return;
+              const previous = menuDesign;
+              setMenuDesign(newDesign);
+              setMenuDesignSaving(true);
+              setMenuDesignMessage({ type: '', text: '' });
+              try {
+                await updateRestaurantMenuDesign(slug, newDesign);
+                setMenuDesignMessage({ type: 'success', text: 'Diseño guardado.' });
+              } catch (err) {
+                setMenuDesign(previous);
+                setMenuDesignMessage({
+                  type: 'error',
+                  text: err?.response?.data?.error?.message || err?.message || 'No se pudo guardar el diseño.',
+                });
+              } finally {
+                setMenuDesignSaving(false);
+              }
+            }}
+            size="small"
+            sx={{
+              '& .MuiToggleButton-root': {
+                textTransform: 'none',
+                fontWeight: 600,
+                px: 2,
+                border: `1px solid ${MARANA_COLORS.border}`,
+                '&.Mui-selected': {
+                  bgcolor: MARANA_COLORS.secondary,
+                  color: '#fff',
+                  '&:hover': {
+                    bgcolor: MARANA_COLORS.secondary,
+                    opacity: 0.9
+                  }
+                }
+              }
+            }}
+          >
+            <ToggleButton value="v1" disabled={menuDesignSaving}>Diseño Clásico</ToggleButton>
+            <ToggleButton value="v2" disabled={menuDesignSaving}>Diseño Moderno</ToggleButton>
+          </ToggleButtonGroup>
           <Button
             variant="outlined"
             size="small"
@@ -826,6 +879,13 @@ export default function OwnerDashboard() {
           </ToggleButtonGroup>
           </Box>
         </Box>
+        {menuDesignMessage.text && (
+          <Box sx={{ mt: 1 }}>
+            <Alert severity={menuDesignMessage.type === 'error' ? 'error' : 'success'}>
+              {menuDesignMessage.text}
+            </Alert>
+          </Box>
+        )}
 
         {/* Fila 2: espacio debajo del título y fila de períodos en una sola línea (como el rectángulo marcado) */}
         <Box sx={{ mt: 3, width: '100%' }}>

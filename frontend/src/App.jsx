@@ -5,7 +5,7 @@ import { CssBaseline } from '@mui/material';
 import Header from './components/Header';
 import Home from './pages/Home';
 import Restaurants from './pages/Restaurants';
-import RestaurantMenu from './pages/RestaurantMenu';
+import RestaurantMenuEntry from './pages/RestaurantMenuEntry';
 import Mostrador from './pages/Mostrador';
 import CargarProductos from './pages/CargarProductos';
 import { AuthProvider } from './context/AuthContext';
@@ -78,8 +78,8 @@ export default function App() {
           <Route path="/" element={<Home />} />
           <Route path="/demo" element={<DemoLanding />} />
           <Route path="/checkout" element={<Checkout />} />
-          <Route path="/:slug" element={<RestaurantMenu />} />
-          <Route path="/:slug/menu" element={<RestaurantMenu />} />
+          <Route path="/:slug" element={<RestaurantMenuEntry />} />
+          <Route path="/:slug/menu" element={<RestaurantMenuEntry />} />
 
           {/* Staff autenticado */}
           <Route path="/staff/:slug/orders" element={<OwnerRouteGuard><Mostrador /></OwnerRouteGuard>} />
