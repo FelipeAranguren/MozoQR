@@ -91,7 +91,22 @@ export default function MenuDesignManagement({ slug }) {
       {message.text && (
         <Alert
           severity={message.type === 'error' ? 'error' : 'success'}
-          sx={{ mt: 2 }}
+          sx={{
+            mt: 2,
+            display: 'flex',
+            alignItems: 'center',
+            '& .MuiAlert-icon': {
+              alignItems: 'center',
+              display: 'flex',
+              mt: 0,
+              py: 0,
+            },
+            '& .MuiAlert-message': {
+              py: 0,
+              display: 'flex',
+              alignItems: 'center',
+            },
+          }}
         >
           <Box
             component="span"
