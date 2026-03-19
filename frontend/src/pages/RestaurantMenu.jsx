@@ -42,6 +42,15 @@ const PLACEHOLDER = 'https://via.placeholder.com/600x400?text=No+Image';
 const money = (n) =>
   new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS' }).format(Number(n) || 0);
 
+// Cards del menú (sin centavos); los totales siguen usando `money` (con centavos).
+const moneyNoCents = (n) =>
+  new Intl.NumberFormat('es-AR', {
+    style: 'currency',
+    currency: 'ARS',
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 0,
+  }).format(Number(n) || 0);
+
 // ---- Helper: convierte Rich Text (Blocks) de Strapi a texto plano
 const blocksToText = (blocks) => {
   if (!Array.isArray(blocks)) return '';
@@ -775,7 +784,7 @@ export default function RestaurantMenu() {
         <MenuProductCard
           producto={plato}
           qty={qty}
-          priceFormatted={money(plato.precio)}
+          priceFormatted={moneyNoCents(plato.precio)}
           onAdd={() => addItem({ id: plato.id, nombre: plato.nombre, precio: plato.precio })}
           onSub={() => removeItem(plato.id)}
         />

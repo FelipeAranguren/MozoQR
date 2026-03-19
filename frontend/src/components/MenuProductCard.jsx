@@ -80,12 +80,12 @@ export default function MenuProductCard({
           ) : (
             <div className="flex items-center gap-2">
               {/* Pill clara para '-' y cantidad */}
-              <div className="h-11 flex items-center bg-[#f0f5f5] rounded-full px-4">
+              <div className="h-11 flex items-center bg-[#f0f5f5] rounded-full px-3">
                 <button
                   type="button"
                   onClick={onSub}
                   aria-label={`Quitar ${nombre}`}
-                  className="w-8 h-8 flex items-center justify-center select-none"
+                  className="w-11 h-11 flex items-center justify-center select-none"
                   style={{ color: teal }}
                 >
                   <span className="text-[26px] leading-none font-extrabold">-</span>
