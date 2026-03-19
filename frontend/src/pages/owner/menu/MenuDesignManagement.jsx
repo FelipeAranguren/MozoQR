@@ -92,20 +92,25 @@ export default function MenuDesignManagement({ slug }) {
         <Alert
           severity={message.type === 'error' ? 'error' : 'success'}
           sx={{ mt: 2 }}
-          action={
-            message.type !== 'error' ? (
-              <Button
-                color="inherit"
-                size="small"
-                onClick={() => window.open(`/${slug}/menu`, '_blank', 'noopener,noreferrer')}
-                sx={{ textTransform: 'none', fontWeight: 700 }}
-              >
-                Ver menú
-              </Button>
-            ) : null
-          }
         >
           {message.text}
+          {message.type !== 'error' ? (
+            <Button
+              color="inherit"
+              size="small"
+              onClick={() => window.open(`/${slug}/menu`, '_blank', 'noopener,noreferrer')}
+              sx={{
+                textTransform: 'none',
+                fontWeight: 700,
+                minWidth: 'auto',
+                ml: 0.75,
+                p: 0,
+                verticalAlign: 'baseline',
+              }}
+            >
+              Ver menú
+            </Button>
+          ) : null}
         </Alert>
       )}
     </Box>
