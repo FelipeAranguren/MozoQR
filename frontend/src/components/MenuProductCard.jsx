@@ -8,6 +8,39 @@ function coerceBool(v) {
   return s === 'true' || s === '1' || s === 'yes' || s === 'y';
 }
 
+function IconPlus({ className = '' }) {
+  return (
+    <svg
+      className={className}
+      width="18"
+      height="18"
+      viewBox="0 0 18 18"
+      fill="none"
+      xmlns="http://www.w3.org/2000/svg"
+      aria-hidden
+    >
+      <path d="M9 3V15" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" />
+      <path d="M3 9H15" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" />
+    </svg>
+  );
+}
+
+function IconMinus({ className = '' }) {
+  return (
+    <svg
+      className={className}
+      width="18"
+      height="18"
+      viewBox="0 0 18 18"
+      fill="none"
+      xmlns="http://www.w3.org/2000/svg"
+      aria-hidden
+    >
+      <path d="M3.2 9H14.8" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" />
+    </svg>
+  );
+}
+
 export default function MenuProductCard({
   producto,
   qty = 0,
@@ -51,17 +84,22 @@ export default function MenuProductCard({
       </div>
 
       <div className="p-4 flex flex-col">
-        <h3 className="text-black font-extrabold text-[18px] leading-snug">{nombre}</h3>
+        <h3
+          className="text-black font-extrabold text-[18px] leading-snug overflow-hidden [display:-webkit-box] [-webkit-line-clamp:1] [-webkit-box-orient:vertical]"
+          title={nombre}
+        >
+          {nombre}
+        </h3>
 
         {descripcion ? (
           <p
-            className="mt-2 text-[#6b7280] text-[14px] leading-[1.35] overflow-hidden [display:-webkit-box] [-webkit-line-clamp:2] [-webkit-box-orient:vertical]"
+            className="mt-2 text-[#6b7280] text-[14px] leading-[1.35] overflow-hidden [display:-webkit-box] [-webkit-line-clamp:2] [-webkit-box-orient:vertical] min-h-[40px]"
             title={descripcion}
           >
             {descripcion}
           </p>
         ) : (
-          <div className="mt-2 h-[32px]" />
+          <div className="mt-2 min-h-[40px]" />
         )}
 
         <div className="mt-auto pt-3 flex items-center justify-between">
@@ -72,10 +110,10 @@ export default function MenuProductCard({
               type="button"
               onClick={onAdd}
               aria-label={`Agregar ${nombre}`}
-              className="w-11 h-11 rounded-full flex items-center justify-center select-none"
+              className="w-11 h-11 rounded-full flex items-center justify-center select-none text-white"
               style={{ backgroundColor: teal }}
             >
-              <span className="text-white text-[26px] leading-none font-extrabold">+</span>
+              <IconPlus />
             </button>
           ) : (
             <div className="flex items-center gap-2">
@@ -88,7 +126,7 @@ export default function MenuProductCard({
                   className="w-11 h-11 flex items-center justify-center select-none"
                   style={{ color: teal }}
                 >
-                  <span className="text-[26px] leading-none font-extrabold">-</span>
+                <IconMinus />
                 </button>
 
                 <div className="min-w-[18px] text-center text-black font-extrabold text-[16px]">
@@ -101,10 +139,10 @@ export default function MenuProductCard({
                 type="button"
                 onClick={onAdd}
                 aria-label={`Sumar ${nombre}`}
-                className="w-11 h-11 rounded-full flex items-center justify-center select-none"
+                className="w-11 h-11 rounded-full flex items-center justify-center select-none text-white"
                 style={{ backgroundColor: teal }}
               >
-                <span className="text-white text-[26px] leading-none font-extrabold">+</span>
+                <IconPlus />
               </button>
             </div>
           )}

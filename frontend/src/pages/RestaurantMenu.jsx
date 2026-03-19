@@ -1178,7 +1178,7 @@ export default function RestaurantMenu() {
                     </Box>
 
                     {categoria.productos && categoria.productos.length > 0 ? (
-                      <Box className="flex flex-nowrap gap-4 overflow-x-auto pb-1">
+                      <Box className="flex flex-nowrap items-stretch gap-4 overflow-x-auto pb-1">
                         {categoria.productos.map((plato, index) =>
                           renderProductCard(plato, index, { layout: 'row' })
                         )}
