@@ -83,7 +83,13 @@ export async function updateRestaurantMenuDesign(slug, design) {
     try {
       const res = await api.put(
         `/restaurantes/${restaurantId}`,
-        { data: { [fieldName]: normalizedDesign } },
+        {
+          data: {
+            [fieldName]: normalizedDesign,
+            // Restaurante usa draftAndPublish; forzamos publish para que el menú público vea el cambio.
+            publishedAt: new Date().toISOString(),
+          },
+        },
         { headers: getAuthHeaders() }
       );
       return res?.data?.data || null;
