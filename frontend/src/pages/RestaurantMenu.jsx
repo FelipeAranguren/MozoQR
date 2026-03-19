@@ -21,8 +21,9 @@ import {
   Fab,
 } from '@mui/material';
 import SearchIcon from '@mui/icons-material/Search';
-import SwapHorizIcon from '@mui/icons-material/SwapHoriz';
 import KeyboardArrowUpIcon from '@mui/icons-material/KeyboardArrowUp';
+import RoomOutlinedIcon from '@mui/icons-material/RoomOutlined';
+import KeyboardArrowDownIcon from '@mui/icons-material/KeyboardArrowDown';
 import { alpha } from '@mui/material/styles';
 import { motion, AnimatePresence } from 'framer-motion';
 
@@ -845,40 +846,24 @@ export default function RestaurantMenu() {
         {/* Header */}
         <Box
           sx={(theme) => ({
-            mb: 3,
-            borderRadius: 4,
-            p: 2,
-            pb: 2.5,
-            background:
-              theme.palette.mode === 'light'
-                ? 'linear-gradient(135deg, #ffffff, #e0f2f1)'
-                : 'linear-gradient(135deg, #020617, #0f172a)',
-            boxShadow:
-              theme.palette.mode === 'light'
-                ? '0 18px 45px rgba(15,118,110,0.15)'
-                : '0 22px 55px rgba(0,0,0,0.9)',
+            mb: 2.5,
+            p: 0,
+            pb: 2,
+            background: 'transparent',
+            boxShadow: 'none',
             position: 'relative',
-            overflow: 'hidden',
+            overflow: 'visible',
           })}
         >
-          <Box
-            sx={{
-              position: 'absolute',
-              inset: 0,
-              pointerEvents: 'none',
-              background:
-                'radial-gradient(circle at 0 0, rgba(56,189,248,0.15) 0, transparent 55%)',
-            }}
-          />
           <Box sx={{ position: 'relative', textAlign: 'left' }}>
             <Typography
               component="h1"
               sx={{
                 fontWeight: 800,
                 lineHeight: 1.1,
-                letterSpacing: 0.4,
-                mb: 0.75,
-                fontSize: 'clamp(22px, 5vw, 30px)',
+                letterSpacing: 0,
+                mb: 0.5,
+                fontSize: 'clamp(30px, 6vw, 40px)',
                 wordBreak: 'break-word',
               }}
             >
@@ -888,63 +873,41 @@ export default function RestaurantMenu() {
               variant="body2"
               sx={{
                 color: 'text.secondary',
-                mb: 1.5,
+                mb: 1.25,
+                textTransform: 'uppercase',
+                letterSpacing: '0.12em',
+                fontWeight: 700,
+                fontSize: '0.95rem',
               }}
             >
-              Elegí tus platos favoritos, enviá tu pedido y disfrutá en mesa.
+              ELEGÍ TUS PLATOS FAVORITOS
             </Typography>
 
-            <Box
-              sx={{
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'space-between',
-                gap: 1,
-                flexWrap: 'wrap',
-              }}
-            >
-              <Chip
-                label={table ? `Mesa ${table}` : 'Sin mesa seleccionada'}
-                color="primary"
-                variant="filled"
-                size="small"
+            {table && (
+              <Button
+                variant="text"
+                onClick={() =>
+                  items.length > 0 ? setChangeTableDialog(true) : navigate(`/${slug}/menu`)
+                }
+                startIcon={<RoomOutlinedIcon sx={{ color: 'primary.main', fontSize: 18 }} />}
+                endIcon={<KeyboardArrowDownIcon sx={{ color: 'text.secondary', fontSize: 20 }} />}
                 sx={{
-                  borderRadius: 999,
-                  fontWeight: 600,
-                  px: 1.25,
-                  bgcolor: 'primary.main',
-                  color: 'white',
+                  textTransform: 'none',
+                  fontWeight: 800,
+                  color: 'text.secondary',
+                  px: 0,
+                  py: 0,
+                  minWidth: 'auto',
+                  alignSelf: 'flex-start',
+                  '&:hover': {
+                    backgroundColor: 'transparent',
+                    color: 'primary.main',
+                  },
                 }}
-              />
-              {table && (
-                <Button
-                  size="small"
-                  onClick={() =>
-                    items.length > 0 ? setChangeTableDialog(true) : navigate(`/${slug}/menu`)
-                  }
-                  startIcon={<SwapHorizIcon sx={{ fontSize: 16 }} />}
-                  sx={{
-                    textTransform: 'none',
-                    fontSize: '0.78rem',
-                    px: 1,
-                    borderRadius: 999,
-                    bgcolor: (theme) =>
-                      theme.palette.mode === 'light'
-                        ? alpha('#ffffff', 0.8)
-                        : alpha('#020617', 0.7),
-                    boxShadow: '0 6px 18px rgba(0,0,0,0.18)',
-                    '&:hover': {
-                      bgcolor: (theme) =>
-                        theme.palette.mode === 'light'
-                          ? alpha('#ffffff', 1)
-                          : alpha('#020617', 0.95),
-                    },
-                  }}
-                >
-                  Cambiar mesa
-                </Button>
-              )}
-            </Box>
+              >
+                {`Mesa ${table}`}
+              </Button>
+            )}
           </Box>
         </Box>
 
