@@ -32,7 +32,7 @@ export default function MenuProductCard({
 
   return (
     <div
-      className="w-full h-full bg-white rounded-[28px] overflow-hidden border border-[#e7f6f3] shadow-[0_12px_35px_rgba(0,0,0,0.08)]"
+      className="w-full bg-white rounded-[28px] overflow-hidden border border-[#e7f6f3] shadow-[0_12px_35px_rgba(0,0,0,0.08)]"
       style={{ WebkitTapHighlightColor: 'transparent' }}
     >
       <div className="relative w-full aspect-square bg-[#f3f6f6] rounded-t-[28px] overflow-hidden">
@@ -50,7 +50,7 @@ export default function MenuProductCard({
         ) : null}
       </div>
 
-      <div className="p-4 flex flex-col h-full">
+      <div className="p-4 flex flex-col">
         <h3 className="text-black font-extrabold text-[18px] leading-snug">{nombre}</h3>
 
         {descripcion ? (

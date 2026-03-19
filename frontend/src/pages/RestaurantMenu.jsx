@@ -770,7 +770,7 @@ export default function RestaurantMenu() {
         transition={{ duration: 0.3, delay: index * 0.04 }}
         whileHover={{ scale: 1.02 }}
         style={{ originX: 0.5 }}
-        className="w-full h-full"
+        className="w-full"
       >
         <MenuProductCard
           producto={plato}
