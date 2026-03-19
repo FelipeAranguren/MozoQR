@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Box, Typography, ToggleButtonGroup, ToggleButton, Alert, CircularProgress } from '@mui/material';
+import { Box, Typography, ToggleButtonGroup, ToggleButton, Alert, CircularProgress, Button } from '@mui/material';
 import { MARANA_COLORS } from '../../../theme';
 import { fetchRestaurantMenuDesign, updateRestaurantMenuDesign } from '../../../api/menuDesign';
 
@@ -89,7 +89,22 @@ export default function MenuDesignManagement({ slug }) {
       )}
 
       {message.text && (
-        <Alert severity={message.type === 'error' ? 'error' : 'success'} sx={{ mt: 2 }}>
+        <Alert
+          severity={message.type === 'error' ? 'error' : 'success'}
+          sx={{ mt: 2 }}
+          action={
+            message.type !== 'error' ? (
+              <Button
+                color="inherit"
+                size="small"
+                onClick={() => window.open(`/${slug}/menu`, '_blank', 'noopener,noreferrer')}
+                sx={{ textTransform: 'none', fontWeight: 700 }}
+              >
+                Ver menú
+              </Button>
+            ) : null
+          }
+        >
           {message.text}
         </Alert>
       )}
