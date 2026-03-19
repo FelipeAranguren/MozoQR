@@ -93,24 +93,37 @@ export default function MenuDesignManagement({ slug }) {
           severity={message.type === 'error' ? 'error' : 'success'}
           sx={{ mt: 2 }}
         >
-          {message.text}
-          {message.type !== 'error' ? (
-            <Button
-              color="inherit"
-              size="small"
-              onClick={() => window.open(`/${slug}/menu`, '_blank', 'noopener,noreferrer')}
-              sx={{
-                textTransform: 'none',
-                fontWeight: 700,
-                minWidth: 'auto',
-                ml: 0.75,
-                p: 0,
-                verticalAlign: 'baseline',
-              }}
-            >
-              Ver menú
-            </Button>
-          ) : null}
+          <Box
+            component="span"
+            sx={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: 0.75,
+              whiteSpace: 'nowrap',
+              flexWrap: 'nowrap',
+            }}
+          >
+            <Box component="span" sx={{ whiteSpace: 'nowrap' }}>
+              {message.text}
+            </Box>
+            {message.type !== 'error' ? (
+              <Button
+                color="inherit"
+                size="small"
+                onClick={() => window.open(`/${slug}/menu`, '_blank', 'noopener,noreferrer')}
+                sx={{
+                  textTransform: 'none',
+                  fontWeight: 700,
+                  minWidth: 'auto',
+                  p: 0,
+                  lineHeight: 1.2,
+                  whiteSpace: 'nowrap',
+                }}
+              >
+                Ver menú
+              </Button>
+            ) : null}
+          </Box>
         </Alert>
       )}
     </Box>
