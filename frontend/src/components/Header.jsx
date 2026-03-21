@@ -14,18 +14,44 @@ export default function Header() {
   };
 
   return (
-    <AppBar position="static">
-      <Toolbar>
-        <Link component={RouterLink} to="/" color="inherit" underline="none" sx={{ flexGrow: 1 }}>
-          <Typography variant="h6">MozoQR</Typography>
+    <AppBar position="static" sx={{ width: '100%', maxWidth: '100%', overflow: 'hidden' }}>
+      <Toolbar
+        sx={{
+          flexWrap: 'nowrap',
+          gap: 1,
+          maxWidth: '100%',
+          px: { xs: 1.5, sm: 2 },
+        }}
+      >
+        <Link
+          component={RouterLink}
+          to="/"
+          color="inherit"
+          underline="none"
+          sx={{ flexShrink: 0, mr: 'auto' }}
+        >
+          <Typography variant="h6" noWrap>MozoQR</Typography>
         </Link>
 
         {isAuthenticated ? (
           <>
-            <Typography sx={{ mr: 2 }}>
+            <Typography
+              variant="body2"
+              sx={{
+                mr: { xs: 0.5, sm: 2 },
+                minWidth: 0,
+                maxWidth: { xs: 'min(42vw, 9rem)', sm: '14rem' },
+                overflow: 'hidden',
+                textOverflow: 'ellipsis',
+                whiteSpace: 'nowrap',
+                textAlign: 'right',
+              }}
+            >
               {user?.username || user?.email || "Usuario"}
             </Typography>
-            <Button color="inherit" onClick={handleLogout}>Salir</Button>
+            <Button color="inherit" onClick={handleLogout} sx={{ flexShrink: 0, px: { xs: 1, sm: 2 } }}>
+              Salir
+            </Button>
           </>
         ) : (
           <>

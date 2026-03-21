@@ -212,28 +212,31 @@ export default function Home() {
   }
 
   return (
-    <div>
+    <Box component="main" sx={{ overflowX: 'hidden', width: '100%', maxWidth: '100%', minWidth: 0 }}>
       {/* Hero Section */}
       <Box sx={{
         py: { xs: 6, md: 12 },
         background: 'linear-gradient(to bottom right, #e0f2f1, #ffffff)',
         position: 'relative',
         overflow: 'hidden',
+        width: '100%',
+        maxWidth: '100%',
         '&::before': {
           content: '""',
           position: 'absolute',
-          top: { xs: '-20%', md: '-30%' },
-          right: { xs: '-40%', md: '-15%' },
-          width: { xs: '70%', md: '45%' },
-          height: { xs: '50%', md: '85%' },
+          top: { xs: '-15%', md: '-30%' },
+          right: { xs: 0, md: '-15%' },
+          width: { xs: 'min(72vw, 260px)', md: '45%' },
+          height: { xs: '42%', md: '85%' },
           borderRadius: '50%',
           background: `radial-gradient(circle, ${alpha(theme.palette.primary.main, 0.08)} 0%, transparent 70%)`,
-          pointerEvents: 'none'
+          pointerEvents: 'none',
+          transform: { xs: 'translateX(15%)', md: 'none' }
         }
       }}>
         <Container sx={{ position: 'relative', zIndex: 1 }}>
           <Grid container spacing={{ xs: 4, md: 6 }} alignItems="center">
-            <Grid item xs={12} md={6}>
+            <Grid item xs={12} md={6} sx={{ order: { xs: 1, md: 1 } }}>
               <motion.div
                 initial={{ opacity: 0, x: -50 }}
                 animate={{ opacity: 1, x: 0 }}
@@ -371,71 +374,10 @@ export default function Home() {
                     ))}
                   </Stack>
                 </Stack>
-
-                <motion.div
-                  initial={{ opacity: 0, y: 12 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ delay: 0.45, duration: 0.5 }}
-                >
-                  <Grid container spacing={{ xs: 2, sm: 2, md: 2 }}>
-                    {heroHighlights.map((h, i) => (
-                      <Grid item xs={12} sm={4} key={h.title}>
-                        <motion.div
-                          initial={{ opacity: 0, y: 16 }}
-                          animate={{ opacity: 1, y: 0 }}
-                          transition={{ delay: 0.55 + i * 0.08, duration: 0.45 }}
-                          whileHover={{ y: -4 }}
-                          style={{ height: '100%' }}
-                        >
-                          <Paper
-                            elevation={0}
-                            sx={{
-                              height: '100%',
-                              p: { xs: 2, sm: 2.25 },
-                              borderRadius: 2.5,
-                              textAlign: { xs: 'left', sm: 'left' },
-                              border: '1px solid',
-                              borderColor: 'divider',
-                              bgcolor: 'rgba(255,255,255,0.72)',
-                              backdropFilter: 'blur(8px)',
-                              transition: 'box-shadow 0.25s ease, border-color 0.25s ease',
-                              '&:hover': {
-                                boxShadow: '0 10px 28px rgba(0,0,0,0.08)',
-                                borderColor: alpha(h.color, 0.45)
-                              }
-                            }}
-                          >
-                            <Box
-                              sx={{
-                                width: 48,
-                                height: 48,
-                                borderRadius: 2,
-                                display: 'flex',
-                                alignItems: 'center',
-                                justifyContent: 'center',
-                                mb: 1.5,
-                                color: h.color,
-                                bgcolor: alpha(h.color, 0.12)
-                              }}
-                            >
-                              {h.icon}
-                            </Box>
-                            <Typography variant="subtitle1" fontWeight="bold" color="text.primary" gutterBottom>
-                              {h.title}
-                            </Typography>
-                            <Typography variant="body2" color="text.secondary" sx={{ lineHeight: 1.5 }}>
-                              {h.subtitle}
-                            </Typography>
-                          </Paper>
-                        </motion.div>
-                      </Grid>
-                    ))}
-                  </Grid>
-                </motion.div>
               </motion.div>
             </Grid>
 
-            <Grid item xs={12} md={6}>
+            <Grid item xs={12} md={6} sx={{ order: { xs: 3, md: 2 } }}>
               <motion.div
                 initial={{ opacity: 0, x: 50 }}
                 animate={{ opacity: 1, x: 0 }}
@@ -468,7 +410,8 @@ export default function Home() {
                       sx={{
                         position: 'absolute',
                         bottom: -24,
-                        left: -24,
+                        left: { xs: 0, md: 12 },
+                        maxWidth: { xs: 'none', md: 'calc(100% - 24px)' },
                         boxShadow: 4,
                         borderRadius: 2,
                         p: 2,
@@ -501,6 +444,75 @@ export default function Home() {
                     </Card>
                   </motion.div>
                 </Box>
+              </motion.div>
+            </Grid>
+
+            <Grid item xs={12} sx={{ order: { xs: 2, md: 3 } }}>
+              <motion.div
+                initial={{ opacity: 0, y: 12 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: 0.45, duration: 0.5 }}
+              >
+                <Grid container spacing={{ xs: 2, md: 3 }}>
+                  {heroHighlights.map((h, i) => (
+                    <Grid item xs={12} sm={4} key={h.title}>
+                      <motion.div
+                        initial={{ opacity: 0, y: 16 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        transition={{ delay: 0.55 + i * 0.08, duration: 0.45 }}
+                        whileHover={{ y: -4 }}
+                        style={{ height: '100%' }}
+                      >
+                        <Paper
+                          elevation={0}
+                          sx={{
+                            height: '100%',
+                            p: { xs: 2, md: 2.5 },
+                            borderRadius: 2.5,
+                            border: '1px solid',
+                            borderColor: 'divider',
+                            bgcolor: 'rgba(255,255,255,0.85)',
+                            backdropFilter: 'blur(8px)',
+                            transition: 'box-shadow 0.25s ease, border-color 0.25s ease',
+                            display: 'flex',
+                            flexDirection: { xs: 'column', md: 'row' },
+                            alignItems: { xs: 'stretch', md: 'flex-start' },
+                            gap: { xs: 1.5, md: 2.25 },
+                            minHeight: { md: 148 },
+                            '&:hover': {
+                              boxShadow: '0 12px 32px rgba(0,0,0,0.09)',
+                              borderColor: alpha(h.color, 0.45)
+                            }
+                          }}
+                        >
+                          <Box
+                            sx={{
+                              width: { xs: 48, md: 52 },
+                              height: { xs: 48, md: 52 },
+                              borderRadius: 2,
+                              flexShrink: 0,
+                              display: 'flex',
+                              alignItems: 'center',
+                              justifyContent: 'center',
+                              color: h.color,
+                              bgcolor: alpha(h.color, 0.12)
+                            }}
+                          >
+                            {h.icon}
+                          </Box>
+                          <Box sx={{ flex: 1, minWidth: 0, textAlign: { xs: 'left', md: 'left' } }}>
+                            <Typography variant="subtitle1" fontWeight="bold" color="text.primary" gutterBottom sx={{ mb: { xs: 0.5, md: 0.75 } }}>
+                              {h.title}
+                            </Typography>
+                            <Typography variant="body2" color="text.secondary" sx={{ lineHeight: 1.55, fontSize: { md: '0.9375rem' } }}>
+                              {h.subtitle}
+                            </Typography>
+                          </Box>
+                        </Paper>
+                      </motion.div>
+                    </Grid>
+                  ))}
+                </Grid>
               </motion.div>
             </Grid>
           </Grid>
@@ -1067,6 +1079,6 @@ export default function Home() {
           </Typography>
         </Container>
       </Box>
-    </div>
+    </Box>
   )
 }
