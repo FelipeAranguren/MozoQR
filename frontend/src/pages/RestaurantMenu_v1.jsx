@@ -1,6 +1,6 @@
 // src/pages/RestaurantMenu.jsx
 import React, { useEffect, useState, useMemo, useRef } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import {
   Box,
   Container,
@@ -77,6 +77,12 @@ export default function RestaurantMenu() {
   const { slug } = useParams();
   const { table, tableSessionId } = useTableSession();
   const navigate = useNavigate();
+  const location = useLocation();
+
+  const mesaOcupadaAlert =
+    location.state?.mesaOcupada != null && location.state?.mesaOcupada !== ''
+      ? { number: Number(location.state.mesaOcupada) }
+      : null;
 
   const [productos, setProductos] = useState(null);
   const [productosTodos, setProductosTodos] = useState([]);
@@ -305,14 +311,11 @@ export default function RestaurantMenu() {
         return true;
       } catch (err) {
         if (err?.response?.status === 409) {
-          if (retryCount < maxRetries) {
-            console.warn(`[RestaurantMenu] Mesa ${table} ocupada (409), reintentando en 1.5s...`);
-            await new Promise(r => setTimeout(r, 1500));
-            if (!cancelled) return openTableSession(retryCount + 1);
-          } else {
-            console.warn(`[RestaurantMenu] No se pudo ocupar Mesa ${table} después de ${maxRetries + 1} intentos.`);
-            navigate(`/${slug}/menu`);
-          }
+          console.warn(`[RestaurantMenu] Mesa ${table} ocupada (409). Volviendo al selector.`);
+          navigate(`/${slug}/menu`, {
+            replace: true,
+            state: { mesaOcupada: table },
+          });
           return false;
         }
         if (err?.response?.status === 404) {
@@ -662,7 +665,12 @@ export default function RestaurantMenu() {
 
   // Si no hay mesa seleccionada, mostrar el selector de mesas
   if (!table) {
-    return <TableSelector />;
+    return (
+      <TableSelector
+        mesaOcupadaAlert={mesaOcupadaAlert}
+        onDismissMesaOcupadaAlert={() => navigate(`/${slug}/menu`, { replace: true, state: {} })}
+      />
+    );
   }
 
   // --------- Estados de carga / vacío

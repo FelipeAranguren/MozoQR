@@ -19,6 +19,7 @@ import {
   Tooltip,
   Snackbar,
   Skeleton,
+  Alert,
 } from '@mui/material';
 import TableRestaurantIcon from '@mui/icons-material/TableRestaurant';
 import ShareIcon from '@mui/icons-material/Share';
@@ -26,7 +27,7 @@ import ContentCopyIcon from '@mui/icons-material/ContentCopy';
 import { fetchTables, fetchRestaurantName } from '../api/tables';
 import { withRetry } from '../utils/retry';
 
-export default function TableSelector() {
+export default function TableSelector({ mesaOcupadaAlert = null, onDismissMesaOcupadaAlert }) {
   const { slug } = useParams();
   const navigate = useNavigate();
   const [tables, setTables] = useState([]);
@@ -36,6 +37,14 @@ export default function TableSelector() {
   const [customTableDialog, setCustomTableDialog] = useState(false);
   const [customTableNumber, setCustomTableNumber] = useState('');
   const [snackbar, setSnackbar] = useState({ open: false, message: '' });
+  const [mesaOcupadaDismissed, setMesaOcupadaDismissed] = useState(false);
+
+  const blockedTableNumber =
+    mesaOcupadaAlert?.number != null && !mesaOcupadaDismissed ? Number(mesaOcupadaAlert.number) : null;
+
+  useEffect(() => {
+    setMesaOcupadaDismissed(false);
+  }, [mesaOcupadaAlert?.number]);
 
   const menuUrl = typeof window !== 'undefined' ? `${window.location.origin}/${slug}/menu` : '';
 
@@ -82,8 +91,20 @@ export default function TableSelector() {
   };
 
   const handleTableSelect = (tableNumber) => {
+    if (blockedTableNumber != null && Number(tableNumber) === blockedTableNumber) return;
     navigate(`/${slug}/menu?t=${tableNumber}`);
   };
+
+  const dismissMesaOcupada = () => {
+    setMesaOcupadaDismissed(true);
+    onDismissMesaOcupadaAlert?.();
+  };
+
+  const isContinueBlocked =
+    blockedTableNumber != null &&
+    customTableNumber !== '' &&
+    !isNaN(Number(customTableNumber)) &&
+    Number(customTableNumber) === blockedTableNumber;
 
   const handleCustomTable = () => {
     if (customTableNumber && !isNaN(Number(customTableNumber))) {
@@ -120,6 +141,22 @@ export default function TableSelector() {
 
   return (
     <Container maxWidth="md" sx={{ py: 4 }}>
+      {mesaOcupadaAlert?.number != null && !mesaOcupadaDismissed && (
+        <Alert
+          severity="warning"
+          variant="filled"
+          onClose={dismissMesaOcupada}
+          sx={{ mb: 3, textAlign: 'left' }}
+        >
+          <Typography variant="subtitle2" sx={{ fontWeight: 700, mb: 0.5 }}>
+            La mesa {mesaOcupadaAlert.number} ya está ocupada
+          </Typography>
+          <Typography variant="body2">
+            Otro dispositivo tiene la sesión activa en esa mesa. Elegí otra mesa o pedí ayuda al personal. No hace falta
+            volver a tocar la misma mesa: seguirá ocupada hasta que se libere.
+          </Typography>
+        </Alert>
+      )}
       <Box sx={{ textAlign: 'center', mb: 4 }}>
         <TableRestaurantIcon sx={{ fontSize: 64, color: 'primary.main', mb: 2 }} />
         {restaurantName && (
@@ -153,22 +190,31 @@ export default function TableSelector() {
       {tables.length > 0 ? (
         <>
           <Grid container spacing={2} sx={{ mb: 4 }}>
-            {tables.map((table) => (
+            {tables.map((table) => {
+              const isBlocked = blockedTableNumber != null && Number(table.number) === blockedTableNumber;
+              return (
               <Grid item xs={6} sm={4} md={3} key={table.id}>
+                <Tooltip title={isBlocked ? 'Esta mesa está ocupada; elegí otra' : ''} disableHoverListener={!isBlocked}>
+                  <Box component="span" sx={{ display: 'block', height: '100%' }}>
                 <Card
                   sx={{
                     height: '100%',
                     transition: 'all 0.2s',
-                    '&:hover': {
-                      transform: 'translateY(-4px)',
-                      boxShadow: 6,
-                    },
+                    ...(isBlocked
+                      ? { opacity: 0.55 }
+                      : {
+                          '&:hover': {
+                            transform: 'translateY(-4px)',
+                            boxShadow: 6,
+                          },
+                        }),
                   }}
                 >
-                  <CardActionArea
-                    onClick={() => handleTableSelect(table.number)}
-                    sx={{ height: '100%', p: 2 }}
-                  >
+                    <CardActionArea
+                      onClick={() => handleTableSelect(table.number)}
+                      disabled={isBlocked}
+                      sx={{ height: '100%', p: 2 }}
+                    >
                     <CardContent sx={{ textAlign: 'center', p: '0 !important' }}>
                       <TableRestaurantIcon
                         sx={{
@@ -188,8 +234,11 @@ export default function TableSelector() {
                     </CardContent>
                   </CardActionArea>
                 </Card>
+                  </Box>
+                </Tooltip>
               </Grid>
-            ))}
+            );
+            })}
           </Grid>
 
           <Box sx={{ textAlign: 'center' }}>
@@ -228,11 +277,16 @@ export default function TableSelector() {
             <Button
               variant="contained"
               onClick={handleCustomTable}
-              disabled={!customTableNumber || isNaN(Number(customTableNumber))}
+              disabled={!customTableNumber || isNaN(Number(customTableNumber)) || isContinueBlocked}
               sx={{ textTransform: 'none' }}
             >
               Continuar
             </Button>
+            {isContinueBlocked && (
+              <Typography variant="caption" color="warning.main" sx={{ display: 'block', mt: 1 }}>
+                Esa mesa está ocupada; probá con otro número.
+              </Typography>
+            )}
           </Box>
         </Box>
       ) : (
@@ -257,11 +311,16 @@ export default function TableSelector() {
             <Button
               variant="contained"
               onClick={handleCustomTable}
-              disabled={!customTableNumber || isNaN(Number(customTableNumber))}
+              disabled={!customTableNumber || isNaN(Number(customTableNumber)) || isContinueBlocked}
               sx={{ textTransform: 'none' }}
             >
               Continuar
             </Button>
+            {isContinueBlocked && (
+              <Typography variant="caption" color="warning.main" sx={{ display: 'block', mt: 1 }}>
+                Esa mesa está ocupada; probá con otro número.
+              </Typography>
+            )}
           </Box>
         </Box>
       )}
@@ -292,8 +351,11 @@ export default function TableSelector() {
           <Button onClick={() => setCustomTableDialog(false)}>Cancelar</Button>
           <Button
             variant="contained"
-            onClick={handleCustomTable}
-            disabled={!customTableNumber || isNaN(Number(customTableNumber))}
+            onClick={() => {
+              handleCustomTable();
+              setCustomTableDialog(false);
+            }}
+            disabled={!customTableNumber || isNaN(Number(customTableNumber)) || isContinueBlocked}
           >
             Continuar
           </Button>
