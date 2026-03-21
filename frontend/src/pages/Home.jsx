@@ -262,14 +262,14 @@ export default function Home() {
                   fontWeight="bold"
                   gutterBottom
                   sx={{
-                    fontSize: { xs: '2rem', md: '3rem', lg: '3.5rem' },
-                    lineHeight: 1.2
+                    fontSize: { xs: '1.75rem', sm: '2rem', md: '3rem', lg: '3.5rem' },
+                    lineHeight: 1.25
                   }}
                 >
-                  Ordená salón, cocina y{' '}
-                  <span style={{ color: '#00796B' }}>finanzas</span>
-                  <br />
-                  con un solo sistema
+                  Un solo sistema para{' '}
+                  <Box component="span" sx={{ color: 'primary.main' }}>
+                    mesa, cocina y finanzas
+                  </Box>
                 </Typography>
 
                 <Typography
@@ -325,8 +325,8 @@ export default function Home() {
                   </motion.div>
 
                   <Stack
-                    direction={{ xs: 'column', sm: 'row' }}
-                    spacing={{ xs: 1.5, sm: 2 }}
+                    direction="row"
+                    spacing={{ xs: 1, sm: 2 }}
                     sx={{ width: '100%' }}
                   >
                     {[
@@ -343,7 +343,7 @@ export default function Home() {
                         key={item.label}
                         whileHover={{ scale: 1.02 }}
                         whileTap={{ scale: 0.98 }}
-                        style={{ flex: 1, width: '100%' }}
+                        style={{ flex: 1, minWidth: 0, width: '100%' }}
                       >
                         <Button
                           variant="outlined"
@@ -353,11 +353,15 @@ export default function Home() {
                           onClick={item.onClick}
                           sx={{
                             py: 1.5,
-                            fontSize: { xs: '0.95rem', sm: '1rem' },
+                            px: { xs: 0.75, sm: 2 },
+                            fontSize: { xs: '0.8125rem', sm: '1rem' },
                             fontWeight: 600,
                             borderWidth: 2,
                             borderRadius: 2,
                             minHeight: 48,
+                            whiteSpace: 'normal',
+                            lineHeight: 1.25,
+                            textAlign: 'center',
                             '&:hover': { borderWidth: 2 }
                           }}
                         >
