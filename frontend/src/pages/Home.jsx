@@ -242,24 +242,7 @@ export default function Home() {
                 animate={{ opacity: 1, x: 0 }}
                 transition={{ duration: 0.6 }}
               >
-                <Box sx={{ mb: 2 }}>
-                  <Typography
-                    variant="body2"
-                    sx={{
-                      display: 'inline-block',
-                      px: 2,
-                      py: 1,
-                      bgcolor: 'primary.50',
-                      color: 'primary.700',
-                      borderRadius: '20px',
-                      fontWeight: 600,
-                      fontSize: '0.875rem'
-                    }}
-                  >
-                    Pedidos digitales · Cocina en vivo · Control del negocio
-                  </Typography>
-                </Box>
-
+                
                 <Typography
                   variant="h2"
                   fontWeight="bold"
