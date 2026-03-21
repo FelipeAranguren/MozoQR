@@ -2,7 +2,7 @@
 import React from 'react'
 import { useNavigate } from 'react-router-dom'
 import { motion } from 'framer-motion'
-import { Container, Typography, Button, Grid, Card, Box, List, ListItem, ListItemIcon, ListItemText, CircularProgress } from '@mui/material'
+import { Container, Typography, Button, Grid, Card, Box, List, ListItem, ListItemIcon, ListItemText, CircularProgress, Stack, Paper, useTheme } from '@mui/material'
 import QrCodeIcon from '@mui/icons-material/QrCode'
 import KitchenIcon from '@mui/icons-material/Kitchen'
 import ReceiptLongIcon from '@mui/icons-material/ReceiptLong'
@@ -11,13 +11,18 @@ import CheckCircleIcon from '@mui/icons-material/CheckCircle'
 import CheckIcon from '@mui/icons-material/Check'
 import CloseIcon from '@mui/icons-material/Close'
 import ArrowForwardIcon from '@mui/icons-material/ArrowForward'
+import SyncAltIcon from '@mui/icons-material/SyncAlt'
+import TableRestaurantIcon from '@mui/icons-material/TableRestaurant'
+import PaymentsIcon from '@mui/icons-material/Payments'
 import heroImage from '../assets/hero-image.jpg'
+import { alpha } from '@mui/material/styles'
 import { MARANA_COLORS } from '../theme'
 import { useDolarBlue } from '../hooks/useDolarBlue'
 import { formatPriceARS, formatPriceUSD } from '../constants/planPricing'
 
 export default function Home() {
   const navigate = useNavigate()
+  const theme = useTheme()
   const { blueVenta, loading: dolarLoading } = useDolarBlue()
 
   const features = [
@@ -165,9 +170,24 @@ export default function Home() {
   }
 
   const heroHighlights = [
-    { title: 'Tiempo real', subtitle: 'Pedidos visibles en cocina y sala' },
-    { title: 'Una cuenta', subtitle: 'Todo lo de la mesa en un solo lugar' },
-    { title: 'Pagos digitales', subtitle: 'Cerrar sin pedir la cuenta en voz alta' }
+    {
+      title: 'Tiempo real',
+      subtitle: 'Pedidos visibles en cocina y sala al momento.',
+      icon: <SyncAltIcon sx={{ fontSize: 26 }} />,
+      color: theme.palette.primary.main
+    },
+    {
+      title: 'Una cuenta',
+      subtitle: 'Todo lo pedido en la mesa, en un solo lugar.',
+      icon: <TableRestaurantIcon sx={{ fontSize: 26 }} />,
+      color: theme.palette.secondary?.main || '#00796B'
+    },
+    {
+      title: 'Pagos digitales',
+      subtitle: 'Cerrar sin pedir la cuenta en voz alta.',
+      icon: <PaymentsIcon sx={{ fontSize: 26 }} />,
+      color: '#2E7D32'
+    }
   ]
 
   const containerVariants = {
@@ -198,10 +218,21 @@ export default function Home() {
         py: { xs: 6, md: 12 },
         background: 'linear-gradient(to bottom right, #e0f2f1, #ffffff)',
         position: 'relative',
-        overflow: 'hidden'
+        overflow: 'hidden',
+        '&::before': {
+          content: '""',
+          position: 'absolute',
+          top: { xs: '-20%', md: '-30%' },
+          right: { xs: '-40%', md: '-15%' },
+          width: { xs: '70%', md: '45%' },
+          height: { xs: '50%', md: '85%' },
+          borderRadius: '50%',
+          background: `radial-gradient(circle, ${alpha(theme.palette.primary.main, 0.08)} 0%, transparent 70%)`,
+          pointerEvents: 'none'
+        }
       }}>
-        <Container>
-          <Grid container spacing={6} alignItems="center">
+        <Container sx={{ position: 'relative', zIndex: 1 }}>
+          <Grid container spacing={{ xs: 4, md: 6 }} alignItems="center">
             <Grid item xs={12} md={6}>
               <motion.div
                 initial={{ opacity: 0, x: -50 }}
@@ -244,109 +275,158 @@ export default function Home() {
                 <Typography
                   variant="h6"
                   color="textSecondary"
-                  paragraph
+                  component="p"
                   sx={{
-                    fontSize: { xs: '1rem', md: '1.25rem' },
+                    fontSize: { xs: '1rem', sm: '1.0625rem', md: '1.25rem' },
                     mt: 2,
-                    mb: 3,
-                    lineHeight: 1.6
+                    mb: { xs: 3, md: 3.5 },
+                    lineHeight: 1.65,
+                    maxWidth: { md: 520, lg: 540 }
                   }}
                 >
-                  MozoQR conecta lo que pasa en la mesa con la cocina y con el panel del dueño: pedidos claros, cuenta automática por mesa, pagos sin pedir la cuenta, y estadísticas e IA para afinar tu operación.
+                  MozoQR conecta la mesa con la cocina y el panel del dueño:{' '}
+                  <Box component="span" sx={{ color: 'text.primary', fontWeight: 600 }}>
+                    pedidos claros
+                  </Box>
+                  , cuenta automática por mesa, pagos sin pedir la cuenta, y herramientas para ver picos, facturación y sugerencias con IA.
                 </Typography>
 
-                <Box sx={{ display: 'flex', gap: 2, flexWrap: 'wrap', mb: 4 }}>
+                <Stack
+                  spacing={{ xs: 1.5, sm: 2 }}
+                  sx={{
+                    mb: { xs: 3, md: 4 },
+                    width: '100%',
+                    maxWidth: { md: 520, lg: 'none' }
+                  }}
+                >
                   <motion.div
-                    whileHover={{ scale: 1.05 }}
-                    whileTap={{ scale: 0.95 }}
+                    whileHover={{ scale: 1.02 }}
+                    whileTap={{ scale: 0.98 }}
+                    style={{ width: '100%' }}
                   >
                     <Button
                       variant="contained"
                       size="large"
+                      fullWidth
                       onClick={() => navigate('/demo')}
                       endIcon={<ArrowForwardIcon />}
                       sx={{
-                        px: 4,
                         py: 1.5,
-                        fontSize: '1rem',
+                        fontSize: { xs: '0.95rem', sm: '1rem' },
                         fontWeight: 600,
                         boxShadow: 3,
-                        '&:hover': {
-                          boxShadow: 6
-                        }
+                        borderRadius: 2,
+                        minHeight: 48,
+                        '&:hover': { boxShadow: 6 }
                       }}
                     >
                       Probar gratis ahora
                     </Button>
                   </motion.div>
 
-                  <motion.div
-                    whileHover={{ scale: 1.05 }}
-                    whileTap={{ scale: 0.95 }}
+                  <Stack
+                    direction={{ xs: 'column', sm: 'row' }}
+                    spacing={{ xs: 1.5, sm: 2 }}
+                    sx={{ width: '100%' }}
                   >
-                    <Button
-                      variant="outlined"
-                      size="large"
-                      onClick={() => document.getElementById('planes')?.scrollIntoView({ behavior: 'smooth' })}
-                      sx={{
-                        px: 4,
-                        py: 1.5,
-                        fontSize: '1rem',
-                        fontWeight: 600,
-                        borderWidth: 2,
-                        '&:hover': {
-                          borderWidth: 2
-                        }
-                      }}
-                    >
-                      Ver Planes
-                    </Button>
-                  </motion.div>
-
-                  <motion.div
-                    whileHover={{ scale: 1.05 }}
-                    whileTap={{ scale: 0.95 }}
-                  >
-                    <Button
-                      variant="outlined"
-                      size="large"
-                      href="mailto:ventas@mozoqr.com"
-                      sx={{
-                        px: 4,
-                        py: 1.5,
-                        fontSize: '1rem',
-                        fontWeight: 600,
-                        borderWidth: 2,
-                        '&:hover': {
-                          borderWidth: 2
-                        }
-                      }}
-                    >
-                      Contactar Ventas
-                    </Button>
-                  </motion.div>
-                </Box>
+                    {[
+                      {
+                        label: 'Ver planes',
+                        onClick: () => document.getElementById('planes')?.scrollIntoView({ behavior: 'smooth' })
+                      },
+                      {
+                        label: 'Contactar ventas',
+                        href: 'mailto:ventas@mozoqr.com'
+                      }
+                    ].map((item) => (
+                      <motion.div
+                        key={item.label}
+                        whileHover={{ scale: 1.02 }}
+                        whileTap={{ scale: 0.98 }}
+                        style={{ flex: 1, width: '100%' }}
+                      >
+                        <Button
+                          variant="outlined"
+                          size="large"
+                          fullWidth
+                          href={item.href}
+                          onClick={item.onClick}
+                          sx={{
+                            py: 1.5,
+                            fontSize: { xs: '0.95rem', sm: '1rem' },
+                            fontWeight: 600,
+                            borderWidth: 2,
+                            borderRadius: 2,
+                            minHeight: 48,
+                            '&:hover': { borderWidth: 2 }
+                          }}
+                        >
+                          {item.label}
+                        </Button>
+                      </motion.div>
+                    ))}
+                  </Stack>
+                </Stack>
 
                 <motion.div
-                  initial={{ opacity: 0 }}
-                  animate={{ opacity: 1 }}
-                  transition={{ delay: 0.6 }}
+                  initial={{ opacity: 0, y: 12 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ delay: 0.45, duration: 0.5 }}
                 >
-                  <Box sx={{ display: 'flex', gap: { xs: 2, sm: 4 }, alignItems: 'stretch', flexWrap: 'wrap', justifyContent: { xs: 'center', md: 'flex-start' } }}>
+                  <Grid container spacing={{ xs: 2, sm: 2, md: 2 }}>
                     {heroHighlights.map((h, i) => (
-                      <React.Fragment key={h.title}>
-                        {i > 0 && <Box sx={{ width: '1px', minHeight: 48, bgcolor: 'divider', display: { xs: 'none', sm: 'block' } }} />}
-                        <Box sx={{ textAlign: { xs: 'center', md: 'left' }, maxWidth: 160 }}>
-                          <Typography variant="subtitle1" fontWeight="bold" color="text.primary">
-                            {h.title}
-                          </Typography>
-                          <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5, lineHeight: 1.4 }}>
-                            {h.subtitle}
-                          </Typography>
-                        </Box>
-                      </React.Fragment>
+                      <Grid item xs={12} sm={4} key={h.title}>
+                        <motion.div
+                          initial={{ opacity: 0, y: 16 }}
+                          animate={{ opacity: 1, y: 0 }}
+                          transition={{ delay: 0.55 + i * 0.08, duration: 0.45 }}
+                          whileHover={{ y: -4 }}
+                          style={{ height: '100%' }}
+                        >
+                          <Paper
+                            elevation={0}
+                            sx={{
+                              height: '100%',
+                              p: { xs: 2, sm: 2.25 },
+                              borderRadius: 2.5,
+                              textAlign: { xs: 'left', sm: 'left' },
+                              border: '1px solid',
+                              borderColor: 'divider',
+                              bgcolor: 'rgba(255,255,255,0.72)',
+                              backdropFilter: 'blur(8px)',
+                              transition: 'box-shadow 0.25s ease, border-color 0.25s ease',
+                              '&:hover': {
+                                boxShadow: '0 10px 28px rgba(0,0,0,0.08)',
+                                borderColor: alpha(h.color, 0.45)
+                              }
+                            }}
+                          >
+                            <Box
+                              sx={{
+                                width: 48,
+                                height: 48,
+                                borderRadius: 2,
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                mb: 1.5,
+                                color: h.color,
+                                bgcolor: alpha(h.color, 0.12)
+                              }}
+                            >
+                              {h.icon}
+                            </Box>
+                            <Typography variant="subtitle1" fontWeight="bold" color="text.primary" gutterBottom>
+                              {h.title}
+                            </Typography>
+                            <Typography variant="body2" color="text.secondary" sx={{ lineHeight: 1.5 }}>
+                              {h.subtitle}
+                            </Typography>
+                          </Paper>
+                        </motion.div>
+                      </Grid>
                     ))}
-                  </Box>
+                  </Grid>
                 </motion.div>
               </motion.div>
             </Grid>
