@@ -2,16 +2,15 @@
 import React from 'react'
 import { useNavigate } from 'react-router-dom'
 import { motion } from 'framer-motion'
-import { Container, Typography, Button, Grid, Card, Box, List, ListItem, ListItemIcon, ListItemText, Chip, CircularProgress } from '@mui/material'
+import { Container, Typography, Button, Grid, Card, Box, List, ListItem, ListItemIcon, ListItemText, CircularProgress } from '@mui/material'
 import QrCodeIcon from '@mui/icons-material/QrCode'
-import SmartphoneIcon from '@mui/icons-material/Smartphone'
-import CreditCardIcon from '@mui/icons-material/CreditCard'
-import BarChartIcon from '@mui/icons-material/BarChart'
+import KitchenIcon from '@mui/icons-material/Kitchen'
+import ReceiptLongIcon from '@mui/icons-material/ReceiptLong'
+import InsightsIcon from '@mui/icons-material/Insights'
 import CheckCircleIcon from '@mui/icons-material/CheckCircle'
 import CheckIcon from '@mui/icons-material/Check'
 import CloseIcon from '@mui/icons-material/Close'
 import ArrowForwardIcon from '@mui/icons-material/ArrowForward'
-import StarIcon from '@mui/icons-material/Star'
 import heroImage from '../assets/hero-image.jpg'
 import { MARANA_COLORS } from '../theme'
 import { useDolarBlue } from '../hooks/useDolarBlue'
@@ -24,37 +23,55 @@ export default function Home() {
   const features = [
     {
       icon: <QrCodeIcon sx={{ fontSize: 40 }} />,
-      title: 'Sin contacto',
-      desc: 'Los clientes escanean un QR y ordenan desde su celular. Experiencia segura e instantánea.',
+      title: 'Pedidos desde la mesa',
+      desc: 'El comensal abre el menú con QR, puede iniciar una cuenta y enviar pedidos que llegan al instante a cocina y sala.',
       color: '#2196F3'
     },
     {
-      icon: <SmartphoneIcon sx={{ fontSize: 40 }} />,
-      title: 'Experiencia moderna',
-      desc: 'Interfaz intuitiva diseñada para todas las edades. Pedidos en 4 clics.',
-      color: '#9C27B0'
+      icon: <KitchenIcon sx={{ fontSize: 40 }} />,
+      title: 'Cocina y mozos alineados',
+      desc: 'Los pedidos se preparan y sirven en orden: menos idas y vueltas, más claridad entre mesa, barra y cocina.',
+      color: '#009688'
     },
     {
-      icon: <CreditCardIcon sx={{ fontSize: 40 }} />,
-      title: 'Pagos digitales',
-      desc: 'Múltiples métodos de pago integrados y seguros. Sin efectivo, sin complicaciones.',
+      icon: <ReceiptLongIcon sx={{ fontSize: 40 }} />,
+      title: 'Cuenta de mesa automática',
+      desc: 'Todo lo pedido queda en una sola cuenta digital: menos confusiones al sumar y cerrar, y opción de pagar sin tener que pedir la cuenta.',
       color: '#4CAF50'
     },
     {
-      icon: <BarChartIcon sx={{ fontSize: 40 }} />,
-      title: 'Análisis en tiempo real',
-      desc: 'Dashboard con métricas de ventas y productos populares. Toma decisiones basadas en datos.',
+      icon: <InsightsIcon sx={{ fontSize: 40 }} />,
+      title: 'Dueño: operación y finanzas',
+      desc: 'Estadísticas como horarios pico, facturación e historial, más una IA que sugiere ajustes para ordenar tu negocio.',
       color: '#FF9800'
     }
   ]
 
   const benefits = [
-    { text: 'Reduce el tiempo de espera hasta un 60%', stat: '60%' },
-    { text: 'Aumenta el ticket promedio por mesa', stat: '+35%' },
-    { text: 'Libera personal para atención personalizada', stat: '2x' },
-    { text: 'Elimina errores en los pedidos', stat: '99%' },
-    { text: 'Configuración en menos de 24 horas', stat: '<24h' },
-    { text: 'Obtén datos valiosos sobre preferencias', stat: '100%' }
+    'Un solo flujo digital para comensales, cocina y caja.',
+    'Menos traslado de pedidos a mano: lo que pide el cliente queda registrado en el sistema.',
+    'Visibilidad para el dueño: qué se vende, cuándo se concentra la demanda y cómo cerrar la caja.',
+    'Pagos integrados al recorrido del cliente, sin depender de que alguien traiga la cuenta.',
+    'Escalable por plan: desde lo esencial hasta análisis avanzados e IA según tu suscripción.',
+    'Probá el recorrido completo en el entorno de demostración antes de comprometerte.'
+  ]
+
+  const flowPillars = [
+    {
+      title: 'En el salón',
+      subtitle: 'Experiencia del comensal',
+      body: 'Escanea, arma su pedido en una cuenta vinculada a la mesa y puede pagar cuando quiera, sin fricción extra al cerrar.'
+    },
+    {
+      title: 'En cocina y piso',
+      subtitle: 'Operación del día a día',
+      body: 'Los pedidos entran en tiempo real; el equipo ve qué cocinar y qué servir sin depender de papelitos sueltos o mensajes cruzados.'
+    },
+    {
+      title: 'En la oficina',
+      subtitle: 'Control del dueño',
+      body: 'Facturas, picos de demanda y reportes en un panel pensado para decidir con información, más recomendaciones de IA cuando tu plan lo incluye.'
+    }
   ]
 
   // Planes (misma estructura y beneficios que OwnerDashboard PlanComparison). Precios en USD.
@@ -147,25 +164,10 @@ export default function Home() {
     }
   }
 
-  const testimonials = [
-    {
-      name: 'Javier Taussig',
-      role: 'Dueño de La Parrilla Tuvi',
-      content: 'MozoQR transformó nuestro restaurante. Los clientes están más contentos y nuestras ventas aumentaron un 40% en el primer mes.',
-      rating: 5
-    },
-    {
-      name: 'Francisco Godino',
-      role: 'Gerente de Pizzería Italiana',
-      content: 'La mejor inversión que hemos hecho. El tiempo de servicio se redujo a la mitad y el personal puede enfocarse en la calidad.',
-      rating: 5
-    },
-    {
-      name: 'Javier Basombrio',
-      role: 'Fundador de Cafe Prime',
-      content: 'Increíblemente fácil de usar. Nuestros clientes aman la experiencia y nosotros amamos los datos que obtenemos.',
-      rating: 5
-    }
+  const heroHighlights = [
+    { title: 'Tiempo real', subtitle: 'Pedidos visibles en cocina y sala' },
+    { title: 'Una cuenta', subtitle: 'Todo lo de la mesa en un solo lugar' },
+    { title: 'Pagos digitales', subtitle: 'Cerrar sin pedir la cuenta en voz alta' }
   ]
 
   const containerVariants = {
@@ -220,7 +222,7 @@ export default function Home() {
                       fontSize: '0.875rem'
                     }}
                   >
-                    🚀 La solución #1 para restaurantes
+                    Pedidos digitales · Cocina en vivo · Control del negocio
                   </Typography>
                 </Box>
 
@@ -233,10 +235,10 @@ export default function Home() {
                     lineHeight: 1.2
                   }}
                 >
-                  Moderniza tu{' '}
-                  <span style={{ color: '#00796B' }}>restaurante</span>
+                  Ordená salón, cocina y{' '}
+                  <span style={{ color: '#00796B' }}>finanzas</span>
                   <br />
-                  en minutos
+                  con un solo sistema
                 </Typography>
 
                 <Typography
@@ -250,8 +252,7 @@ export default function Home() {
                     lineHeight: 1.6
                   }}
                 >
-                  Transforma la experiencia de tus clientes con pedidos digitales, pagos instantáneos y análisis en tiempo real.{' '}
-                  <strong style={{ color: '#212121' }}>Aumenta tus ventas mientras reduces costos.</strong>
+                  MozoQR conecta lo que pasa en la mesa con la cocina y con el panel del dueño: pedidos claros, cuenta automática por mesa, pagos sin pedir la cuenta, y estadísticas e IA para afinar tu operación.
                 </Typography>
 
                 <Box sx={{ display: 'flex', gap: 2, flexWrap: 'wrap', mb: 4 }}>
@@ -331,33 +332,20 @@ export default function Home() {
                   animate={{ opacity: 1 }}
                   transition={{ delay: 0.6 }}
                 >
-                  <Box sx={{ display: 'flex', gap: 4, alignItems: 'center', flexWrap: 'wrap' }}>
-                    <Box sx={{ textAlign: 'center' }}>
-                      <Typography variant="h4" fontWeight="bold" color="text.primary">
-                        +500
-                      </Typography>
-                      <Typography variant="body2" color="text.secondary">
-                        Restaurantes
-                      </Typography>
-                    </Box>
-                    <Box sx={{ width: '1px', height: '48px', bgcolor: 'divider' }} />
-                    <Box sx={{ textAlign: 'center' }}>
-                      <Typography variant="h4" fontWeight="bold" color="text.primary">
-                        99%
-                      </Typography>
-                      <Typography variant="body2" color="text.secondary">
-                        Satisfacción
-                      </Typography>
-                    </Box>
-                    <Box sx={{ width: '1px', height: '48px', bgcolor: 'divider' }} />
-                    <Box sx={{ textAlign: 'center' }}>
-                      <Typography variant="h4" fontWeight="bold" color="text.primary">
-                        24h
-                      </Typography>
-                      <Typography variant="body2" color="text.secondary">
-                        Configuración
-                      </Typography>
-                    </Box>
+                  <Box sx={{ display: 'flex', gap: { xs: 2, sm: 4 }, alignItems: 'stretch', flexWrap: 'wrap', justifyContent: { xs: 'center', md: 'flex-start' } }}>
+                    {heroHighlights.map((h, i) => (
+                      <React.Fragment key={h.title}>
+                        {i > 0 && <Box sx={{ width: '1px', minHeight: 48, bgcolor: 'divider', display: { xs: 'none', sm: 'block' } }} />}
+                        <Box sx={{ textAlign: { xs: 'center', md: 'left' }, maxWidth: 160 }}>
+                          <Typography variant="subtitle1" fontWeight="bold" color="text.primary">
+                            {h.title}
+                          </Typography>
+                          <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5, lineHeight: 1.4 }}>
+                            {h.subtitle}
+                          </Typography>
+                        </Box>
+                      </React.Fragment>
+                    ))}
                   </Box>
                 </motion.div>
               </motion.div>
@@ -422,7 +410,7 @@ export default function Home() {
                             Pedido confirmado
                           </Typography>
                           <Typography variant="caption" color="text.secondary">
-                            En 30 segundos
+                            Visible en cocina al instante
                           </Typography>
                         </Box>
                       </Box>
@@ -445,11 +433,11 @@ export default function Home() {
             transition={{ duration: 0.6 }}
           >
             <Typography variant="h4" align="center" gutterBottom fontWeight="bold">
-              Todo lo que necesitas en{' '}
-              <span style={{ color: '#00796B' }}>una plataforma</span>
+              De la mesa al dueño,{' '}
+              <span style={{ color: '#00796B' }}>sin saltos</span>
             </Typography>
             <Typography variant="subtitle1" align="center" color="textSecondary" paragraph sx={{ mb: 4 }}>
-              Funcionalidades diseñadas para aumentar tus ventas y mejorar la experiencia de tus clientes
+              Un mismo recorrido para quien come, quien cocina y quien administra: menos fricción operativa y más claridad financiera.
             </Typography>
           </motion.div>
 
@@ -675,12 +663,11 @@ export default function Home() {
                 transition={{ duration: 0.6 }}
               >
                 <Typography variant="h4" gutterBottom fontWeight="bold">
-                  Resultados que{' '}
-                  <span style={{ color: '#00796B' }}>hablan por sí solos</span>
+                  Qué aporta{' '}
+                  <span style={{ color: '#00796B' }}>a tu operación</span>
                 </Typography>
                 <Typography variant="body1" color="textSecondary" paragraph sx={{ mb: 4 }}>
-                  Miles de restaurantes ya están transformando su negocio con MozoQR.
-                  Únete a la revolución digital y comienza a ver resultados desde el primer día.
+                  No prometemos porcentajes mágicos: MozoQR está pensado para ordenar procesos que hoy suelen repartirse entre papel, memoria y mensajes sueltos.
                 </Typography>
 
                 <motion.div
@@ -690,7 +677,7 @@ export default function Home() {
                   viewport={{ once: true }}
                 >
                   <Box sx={{ mt: 2 }}>
-                    {benefits.map((b, i) => (
+                    {benefits.map((text, i) => (
                       <motion.div
                         key={i}
                         variants={itemVariants}
@@ -698,8 +685,7 @@ export default function Home() {
                         <Box
                           sx={{
                             display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'space-between',
+                            alignItems: 'flex-start',
                             gap: 2,
                             mb: 2,
                             p: 2,
@@ -710,18 +696,9 @@ export default function Home() {
                             transition: 'background-color 0.2s'
                           }}
                         >
-                          <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, flex: 1 }}>
-                            <CheckCircleIcon color="success" />
-                            <Typography variant="body1" fontWeight={500}>
-                              {b.text}
-                            </Typography>
-                          </Box>
-                          <Typography
-                            variant="h5"
-                            fontWeight="bold"
-                            sx={{ color: 'primary.main', minWidth: '60px', textAlign: 'right' }}
-                          >
-                            {b.stat}
+                          <CheckCircleIcon color="success" sx={{ mt: 0.25, flexShrink: 0 }} />
+                          <Typography variant="body1" fontWeight={500}>
+                            {text}
                           </Typography>
                         </Box>
                       </motion.div>
@@ -751,7 +728,7 @@ export default function Home() {
                     Comienza hoy mismo
                   </Typography>
                   <Typography variant="body2" color="textSecondary" paragraph sx={{ mb: 3 }}>
-                    Configuración en menos de 24 horas. Sin instalación, sin hardware adicional.
+                    Recorré la demo con rol de comensal, cocina y dueño. Sin tarjeta para explorar el flujo.
                   </Typography>
 
                   <motion.div
@@ -798,7 +775,7 @@ export default function Home() {
         </Container>
       </Box>
 
-      {/* Testimonials Section */}
+      {/* Tres frentes del producto (sin reseñas inventadas) */}
       <Box sx={{ py: { xs: 8, md: 12 }, backgroundColor: '#f9f9f9' }}>
         <Container>
           <motion.div
@@ -808,11 +785,11 @@ export default function Home() {
             transition={{ duration: 0.6 }}
           >
             <Typography variant="h4" align="center" gutterBottom fontWeight="bold">
-              Lo que dicen nuestros{' '}
-              <span style={{ color: '#00796B' }}>clientes</span>
+              Tres lugares,{' '}
+              <span style={{ color: '#00796B' }}>un mismo flujo</span>
             </Typography>
             <Typography variant="subtitle1" align="center" color="textSecondary" paragraph sx={{ mb: 4 }}>
-              Miles de restaurantes confían en MozoQR para transformar su negocio
+              Así encaja MozoQR en el día a día: del comensal al fogón y del fogón al panel del dueño.
             </Typography>
           </motion.div>
 
@@ -823,8 +800,8 @@ export default function Home() {
             viewport={{ once: true }}
           >
             <Grid container spacing={4}>
-              {testimonials.map((testimonial, index) => (
-                <Grid item xs={12} md={4} key={index}>
+              {flowPillars.map((pillar, index) => (
+                <Grid item xs={12} md={4} key={pillar.title}>
                   <motion.div
                     variants={itemVariants}
                     whileHover={{ y: -8 }}
@@ -837,37 +814,27 @@ export default function Home() {
                         display: 'flex',
                         flexDirection: 'column',
                         transition: 'all 0.3s',
+                        borderTop: 4,
+                        borderColor: index === 0 ? 'primary.main' : index === 1 ? 'secondary.main' : 'success.main',
                         '&:hover': {
                           boxShadow: 6,
                           transform: 'translateY(-8px)'
                         }
                       }}
                     >
-                      <Box sx={{ display: 'flex', gap: 0.5, mb: 2 }}>
-                        {[...Array(testimonial.rating)].map((_, i) => (
-                          <StarIcon key={i} sx={{ color: '#FFC107', fontSize: 20 }} />
-                        ))}
-                      </Box>
-                      <Typography
-                        variant="body1"
-                        color="textSecondary"
-                        paragraph
-                        sx={{
-                          fontStyle: 'italic',
-                          flex: 1,
-                          mb: 2
-                        }}
-                      >
-                        "{testimonial.content}"
+                      <Typography variant="overline" color="text.secondary" sx={{ letterSpacing: 1 }}>
+                        {pillar.subtitle}
                       </Typography>
-                      <Box>
-                        <Typography variant="subtitle2" fontWeight="bold">
-                          {testimonial.name}
-                        </Typography>
-                        <Typography variant="caption" color="text.secondary">
-                          {testimonial.role}
-                        </Typography>
-                      </Box>
+                      <Typography variant="h6" fontWeight="bold" gutterBottom>
+                        {pillar.title}
+                      </Typography>
+                      <Typography
+                        variant="body2"
+                        color="textSecondary"
+                        sx={{ flex: 1, lineHeight: 1.65 }}
+                      >
+                        {pillar.body}
+                      </Typography>
                     </Card>
                   </motion.div>
                 </Grid>
@@ -908,7 +875,7 @@ export default function Home() {
                     mb: 2
                   }}
                 >
-                  ¿Listo para transformar tu restaurante?
+                  ¿Querés ver MozoQR en acción?
                 </Typography>
               </motion.div>
 
@@ -926,8 +893,7 @@ export default function Home() {
                     mb: 4
                   }}
                 >
-                  Únete a cientos de restaurantes que ya están aumentando sus ventas y mejorando
-                  la experiencia de sus clientes con MozoQR.
+                  Entrá a la demo: probá pedidos, cocina y panel de dueño con datos de ejemplo, y elegí el plan cuando encaje con tu negocio.
                 </Typography>
               </motion.div>
 
@@ -1005,7 +971,7 @@ export default function Home() {
             MozoQR
           </Typography>
           <Typography variant="body2" align="center" sx={{ color: '#ccc', mb: 2 }}>
-            Transformando la experiencia gastronómica, una mesa a la vez.
+            Pedidos, cocina, cuenta y administración en un solo ecosistema.
           </Typography>
           <Box sx={{ display: 'flex', justifyContent: 'center', gap: 4, mb: 2, flexWrap: 'wrap' }}>
             <a href="#" style={{ color: '#ccc', textDecoration: 'none' }}>Términos</a>
