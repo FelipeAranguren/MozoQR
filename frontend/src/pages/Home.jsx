@@ -270,11 +270,7 @@ export default function Home() {
                     maxWidth: { md: 520, lg: 540 }
                   }}
                 >
-                  MozoQR conecta la mesa con la cocina y el panel del dueño:{' '}
-                  <Box component="span" sx={{ color: 'text.primary', fontWeight: 600 }}>
-                    pedidos claros
-                  </Box>
-                  , cuenta automática por mesa, pagos sin pedir la cuenta, y herramientas para ver picos, facturación y sugerencias con IA.
+                  MozoQR conecta la mesa con la cocina y el panel del dueño: pedidos claros, cuenta automática por mesa, pagos sin pedir la cuenta, y herramientas para ver picos, facturación y sugerencias con IA.
                 </Typography>
 
                 <Stack
