@@ -3,7 +3,7 @@ import { createTheme } from '@mui/material/styles'
 
 // Colores MarañaQR según el prompt
 const MARANA_COLORS = {
-  primary: '#0E7C7B',      // Teal principal
+  primary: '#2E7D32',      // Verde principal (confianza + restaurante)
   secondary: '#F4A259',   // Naranja/dorado
   accent: '#F25C54',       // Rojo/coral
   background: '#F8F9FA',  // Fondo claro
@@ -34,8 +34,8 @@ const theme = createTheme({
     },
     primary: {
       main: MARANA_COLORS.primary,
-      light: '#14A5A3',
-      dark: '#0A5F5E',
+      light: '#43A047',
+      dark: '#1B5E20',
       contrastText: MARANA_COLORS.white
     },
     secondary: {
@@ -87,12 +87,12 @@ const theme = createTheme({
           textTransform: 'none',
           boxShadow: 'none',
           '&:hover': {
-            boxShadow: '0px 2px 8px rgba(14, 124, 123, 0.15)'
+            boxShadow: '0px 2px 8px rgba(46, 125, 50, 0.15)'
           }
         },
         contained: {
           '&:hover': {
-            boxShadow: '0px 4px 12px rgba(14, 124, 123, 0.25)'
+            boxShadow: '0px 4px 12px rgba(46, 125, 50, 0.25)'
           }
         }
       }

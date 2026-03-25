@@ -205,9 +205,9 @@ export default function SalesByDayChart({ slug, start, end, periodKey = '30d', o
     textMuted: '#6B7280', 
     grid: '#E7E7E7', 
     axis: '#E7E7E7',
-    barTop: '#0E7C7B',      // Primary MarañaQR
-    barBottom: '#14A5A3',    // Primary light
-    barHover: '#0A5F5E',     // Primary dark
+    barTop: '#2E7D32',      // Primary MarañaQR
+    barBottom: '#43A047',    // Primary light
+    barHover: '#1B5E20',     // Primary dark
     panelBg: '#ffffff'
   };
   const LEFT_GUTTER = 70, BAR_AREA_H = 240;

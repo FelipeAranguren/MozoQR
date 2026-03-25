@@ -180,7 +180,7 @@ export default function Home() {
       title: 'Una cuenta',
       subtitle: 'Todo lo pedido en la mesa, en un solo lugar.',
       icon: <TableRestaurantIcon sx={{ fontSize: 26 }} />,
-      color: theme.palette.secondary?.main || '#00796B'
+      color: theme.palette.secondary?.main || theme.palette.primary.main
     },
     {
       title: 'Pagos digitales',
@@ -513,7 +513,7 @@ export default function Home() {
           >
             <Typography variant="h4" align="center" gutterBottom fontWeight="bold">
               De la mesa al dueño,{' '}
-              <span style={{ color: '#00796B' }}>sin saltos</span>
+                <span style={{ color: theme.palette.primary.main }}>sin saltos</span>
             </Typography>
             <Typography variant="subtitle1" align="center" color="textSecondary" paragraph sx={{ mb: 4 }}>
               Un mismo recorrido para quien come, quien cocina y quien administra: menos fricción operativa y más claridad financiera.
@@ -588,7 +588,7 @@ export default function Home() {
           >
             <Typography variant="h4" align="center" gutterBottom fontWeight="bold">
               Planes que se adaptan a tu{' '}
-              <span style={{ color: '#00796B' }}>negocio</span>
+                <span style={{ color: theme.palette.primary.main }}>negocio</span>
             </Typography>
             <Typography variant="subtitle1" align="center" color="textSecondary" paragraph sx={{ mb: 4 }}>
               Elige el nivel que mejor se ajuste a tu restaurante. Empieza gratis y escala cuando lo necesites.
@@ -658,7 +658,7 @@ export default function Home() {
                           {planData.features.map((feature, idx) => (
                             <ListItem key={idx} sx={{ py: 0.25, px: 0 }}>
                               <ListItemIcon sx={{ minWidth: 28 }}>
-                                <CheckIcon sx={{ color: '#00796B', fontSize: 18 }} />
+                                <CheckIcon sx={{ color: theme.palette.primary.main, fontSize: 18 }} />
                               </ListItemIcon>
                               <ListItemText
                                 primary={feature}
@@ -743,7 +743,7 @@ export default function Home() {
               >
                 <Typography variant="h4" gutterBottom fontWeight="bold">
                   Qué aporta{' '}
-                  <span style={{ color: '#00796B' }}>a tu operación</span>
+                <span style={{ color: theme.palette.primary.main }}>a tu operación</span>
                 </Typography>
                 <Typography variant="body1" color="textSecondary" paragraph sx={{ mb: 4 }}>
                   No prometemos porcentajes mágicos: MozoQR está pensado para ordenar procesos que hoy suelen repartirse entre papel, memoria y mensajes sueltos.
@@ -865,7 +865,7 @@ export default function Home() {
           >
             <Typography variant="h4" align="center" gutterBottom fontWeight="bold">
               Tres lugares,{' '}
-              <span style={{ color: '#00796B' }}>un mismo flujo</span>
+                <span style={{ color: theme.palette.primary.main }}>un mismo flujo</span>
             </Typography>
             <Typography variant="subtitle1" align="center" color="textSecondary" paragraph sx={{ mb: 4 }}>
               Así encaja MozoQR en el día a día: del comensal al fogón y del fogón al panel del dueño.
@@ -926,7 +926,7 @@ export default function Home() {
       {/* Final CTA Section */}
       <Box sx={{
         py: { xs: 8, md: 12 },
-        background: 'linear-gradient(to bottom right, #00796B, #004D40)',
+        background: `linear-gradient(to bottom right, ${theme.palette.primary.main}, ${theme.palette.primary.dark})`,
         position: 'relative',
         overflow: 'hidden'
       }}>
