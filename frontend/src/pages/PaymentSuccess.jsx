@@ -54,6 +54,13 @@ export default function PaymentSuccess() {
   };
 
   const slug = getReturnSlug();
+  const goToTableSelector = () => {
+    const target = slug ? `/${encodeURIComponent(slug)}/menu` : "/";
+    navigate(target, { replace: true });
+    window.setTimeout(() => {
+      window.location.assign(target);
+    }, 250);
+  };
   // MP también puede enviar payment_id, collection_id, preference_id, external_reference por query
 
   return (
@@ -80,7 +87,7 @@ export default function PaymentSuccess() {
               <Typography
                 component="button"
                 variant="body2"
-                onClick={() => navigate(`/${encodeURIComponent(slug)}/menu`, { replace: true })}
+                onClick={goToTableSelector}
                 sx={{ cursor: "pointer", color: "primary.main", textDecoration: "underline", border: "none", background: "none" }}
               >
                 Volver al menú
@@ -89,7 +96,7 @@ export default function PaymentSuccess() {
             <Typography
               component="button"
               variant="body2"
-              onClick={() => navigate(slug ? `/${encodeURIComponent(slug)}/menu` : "/", { replace: true })}
+              onClick={goToTableSelector}
               sx={{ cursor: "pointer", color: "primary.main", textDecoration: "underline", border: "none", background: "none" }}
             >
               Volver al inicio

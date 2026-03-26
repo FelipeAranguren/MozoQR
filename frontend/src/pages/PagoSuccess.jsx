@@ -79,15 +79,21 @@ export default function PagoSuccess() {
   };
 
   const handleSeguirOrdenando = () => {
-    // Forzamos selector de mesa para arrancar un nuevo ciclo.
-    if (slug) window.location.assign(`/${encodeURIComponent(slug)}/menu`);
-    else navigate("/", { replace: true });
+    const target = slug ? `/${encodeURIComponent(slug)}/menu` : "/";
+    // Doble navegación: SPA inmediata + fallback hard reload.
+    navigate(target, { replace: true });
+    window.setTimeout(() => {
+      window.location.assign(target);
+    }, 250);
   };
 
   const handleVolverInicio = () => {
-    // Mismo destino que "Seguir ordenando": selector de mesa del restaurante.
-    if (slug) window.location.assign(`/${encodeURIComponent(slug)}/menu`);
-    else window.location.assign("/");
+    const target = slug ? `/${encodeURIComponent(slug)}/menu` : "/";
+    // Doble navegación para evitar quedar en pantalla en blanco intermitente.
+    navigate(target, { replace: true });
+    window.setTimeout(() => {
+      window.location.assign(target);
+    }, 250);
   };
 
   return (
