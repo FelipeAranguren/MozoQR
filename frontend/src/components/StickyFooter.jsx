@@ -70,6 +70,28 @@ const clearOpenOrders = (slug, table) => {
   localStorage.removeItem(openOrdersKey(slug, table));
 };
 
+/** Estado del pedido en Strapi (a veces viene como string suelto) */
+function normalizeOrderStatus(raw) {
+  if (raw == null) return '';
+  const s = String(raw).toLowerCase().trim();
+  return s;
+}
+
+function computeOrderBarFlags(activeOrders, slug, table) {
+  let hasPending = activeOrders.some((o) => normalizeOrderStatus(o?.order_status) === 'pending');
+  let hasPreparing = activeOrders.some((o) => normalizeOrderStatus(o?.order_status) === 'preparing');
+  const localOpen = readOpenOrders(slug, table);
+  if (activeOrders.length === 0 && localOpen.length > 0) {
+    hasPending = true;
+    hasPreparing = false;
+  }
+  if (activeOrders.length > 0 && !hasPending && !hasPreparing) {
+    const missingStatus = activeOrders.some((o) => !normalizeOrderStatus(o?.order_status));
+    if (missingStatus) hasPending = true;
+  }
+  return { hasPending, hasPreparing };
+}
+
 export default function StickyFooter({ table, tableSessionId, restaurantName, sessionReady = true, hasMercadoPago = false }) {
   const { items, subtotal, addItem, removeItem, clearCart } = useCart();
   const { slug } = useParams();
@@ -133,8 +155,14 @@ export default function StickyFooter({ table, tableSessionId, restaurantName, se
       try {
         const orders = await fetchOrderDetails(slug, { table, tableSessionId });
         // CRÍTICO: Filtrar pedidos cancelados
-        const activeOrders = orders.filter(order => order.order_status !== 'cancelled');
-        
+        const activeOrders = orders.filter((order) => normalizeOrderStatus(order?.order_status) !== 'cancelled');
+
+        if (!cancelled) {
+          const flags = computeOrderBarFlags(activeOrders, slug, table);
+          setOrderBarFlags(flags);
+          if (flags.hasPending || flags.hasPreparing) setOrderBarOptimisticUntil(0);
+        }
+
         // Actualizar localStorage solo con pedidos activos
         const activeOrderIds = new Set(activeOrders.map(o => String(o.id)));
         const syncedOrders = localOrders.filter(lo => activeOrderIds.has(String(lo.id)));
@@ -197,28 +225,47 @@ export default function StickyFooter({ table, tableSessionId, restaurantName, se
     return roundMoney(Math.max(0, totalAfterDiscount + tipAmount));
   }, [accountTotal, tipAmount, orderDetails, couponDiscountAmount]);
 
-  // Polling para sincronizar pedidos cuando hay cuenta abierta (detectar cancelaciones)
+  // Barra de estado (pendiente / en preparación): NO depende de backendHasAccount.
   useEffect(() => {
     if (!slug || !table) {
       setOrderBarFlags({ hasPending: false, hasPreparing: false });
       return;
     }
 
-    if (!backendHasAccount) {
-      setOrderBarFlags({ hasPending: false, hasPreparing: false });
-      return;
-    }
+    let cancelled = false;
+    const refreshOrderBar = async () => {
+      try {
+        const orders = await fetchOrderDetails(slug, { table, tableSessionId });
+        if (cancelled) return;
+        const activeOrders = orders.filter((o) => normalizeOrderStatus(o?.order_status) !== 'cancelled');
+        const { hasPending, hasPreparing } = computeOrderBarFlags(activeOrders, slug, table);
+        setOrderBarFlags({ hasPending, hasPreparing });
+        if (hasPending || hasPreparing) setOrderBarOptimisticUntil(0);
+      } catch (e) {
+        console.warn('[StickyFooter] order bar refresh:', e);
+      }
+    };
+
+    refreshOrderBar();
+    const id = setInterval(refreshOrderBar, 8000);
+    const onOrdersUpdated = () => refreshOrderBar();
+    window.addEventListener('orders-updated', onOrdersUpdated);
+    return () => {
+      cancelled = true;
+      clearInterval(id);
+      window.removeEventListener('orders-updated', onOrdersUpdated);
+    };
+  }, [slug, table, tableSessionId]);
+
+  // Polling para sincronizar pedidos cuando hay cuenta abierta (detectar cancelaciones)
+  useEffect(() => {
+    if (!slug || !table || !backendHasAccount) return;
 
     const syncOrders = async () => {
       try {
         const orders = await fetchOrderDetails(slug, { table, tableSessionId });
-        const activeOrders = orders.filter(order => order.order_status !== 'cancelled');
+        const activeOrders = orders.filter((order) => normalizeOrderStatus(order?.order_status) !== 'cancelled');
 
-        const hasPending = activeOrders.some((o) => o.order_status === 'pending');
-        const hasPreparing = activeOrders.some((o) => o.order_status === 'preparing');
-        setOrderBarFlags({ hasPending, hasPreparing });
-        if (hasPending || hasPreparing) setOrderBarOptimisticUntil(0);
-        
         // Sincronizar openOrders con el backend
         const activeOrderIds = new Set(activeOrders.map(o => String(o.id)));
         const currentOrders = readOpenOrders(slug, table);
@@ -827,16 +874,56 @@ export default function StickyFooter({ table, tableSessionId, restaurantName, se
               <Box
                 sx={{
                   flex: 1,
-                  backgroundColor: effectiveHasPending ? '#d97706' : 'transparent',
+                  backgroundColor: effectiveHasPending
+                    ? '#8EDEE8'
+                    : effectiveHasPreparing
+                      ? '#E0E0E0'
+                      : 'transparent',
                 }}
               />
-              <Box sx={{ width: 1, backgroundColor: 'rgba(0,0,0,0.18)' }} />
+              <Box sx={{ width: 1, backgroundColor: 'rgba(255,255,255,0.95)' }} />
               <Box
                 sx={{
                   flex: 1,
-                  backgroundColor: effectiveHasPreparing ? '#0f7c79' : 'transparent',
+                  backgroundColor: effectiveHasPreparing ? '#8EDEE8' : '#E0E0E0',
                 }}
               />
+            </Box>
+            <Box
+              sx={{
+                display: 'flex',
+                width: '100%',
+                mt: 0.5,
+                justifyContent: 'space-between',
+                gap: 1,
+              }}
+            >
+              <Typography
+                variant="caption"
+                sx={{
+                  flex: 1,
+                  textAlign: 'center',
+                  fontWeight: effectiveHasPending ? 800 : 500,
+                  color: effectiveHasPending ? 'text.primary' : 'text.disabled',
+                  fontSize: '0.68rem',
+                  lineHeight: 1.2,
+                }}
+              >
+                En espera
+              </Typography>
+              <Typography
+                variant="caption"
+                sx={{
+                  flex: 1,
+                  textAlign: 'center',
+                  fontWeight: effectiveHasPreparing ? 800 : 500,
+                  color: effectiveHasPreparing ? 'text.primary' : 'text.disabled',
+                  fontSize: '0.68rem',
+                  lineHeight: 1.2,
+                }}
+              >
+                En preparación
+              </Typography>
             </Box>
           </Box>
         )}
