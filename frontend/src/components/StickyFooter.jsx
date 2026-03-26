@@ -818,42 +818,25 @@ export default function StickyFooter({ table, tableSessionId, restaurantName, se
               sx={{
                 display: 'flex',
                 width: '100%',
-                height: 26,
+                height: 7,
                 borderRadius: 999,
                 overflow: 'hidden',
-                border: '1px solid',
-                borderColor: 'divider',
+                backgroundColor: 'rgba(0,0,0,0.12)',
               }}
             >
               <Box
                 sx={{
                   flex: 1,
                   backgroundColor: effectiveHasPending ? '#d97706' : 'transparent',
-                  color: effectiveHasPending ? 'common.white' : 'text.secondary',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
                 }}
-              >
-                <Typography sx={{ fontWeight: 900, fontSize: '0.76rem', lineHeight: 1 }}>
-                  En espera
-                </Typography>
-              </Box>
-              <Box sx={{ width: 1, backgroundColor: 'divider' }} />
+              />
+              <Box sx={{ width: 1, backgroundColor: 'rgba(0,0,0,0.18)' }} />
               <Box
                 sx={{
                   flex: 1,
                   backgroundColor: effectiveHasPreparing ? '#0f7c79' : 'transparent',
-                  color: effectiveHasPreparing ? 'common.white' : 'text.secondary',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
                 }}
-              >
-                <Typography sx={{ fontWeight: 900, fontSize: '0.76rem', lineHeight: 1 }}>
-                  En preparación
-                </Typography>
-              </Box>
+              />
             </Box>
           </Box>
         )}
