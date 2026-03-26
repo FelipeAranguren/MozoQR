@@ -31,6 +31,7 @@ import ReceiptIcon from '@mui/icons-material/Receipt';
 import RefreshIcon from '@mui/icons-material/Refresh';
 import ContentCopyIcon from '@mui/icons-material/ContentCopy';
 import ReceiptDialog from '../components/ReceiptDialog';
+import PagosRealtimeBar from '../components/PagosRealtimeBar';
 
 const money = (n) =>
   new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS' })
@@ -2682,6 +2683,11 @@ export default function Mostrador() {
               Actualizado {lastUpdateAt.toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
             </Typography>
           )}
+        </Box>
+
+        {/* Barra de notificaciones de pagos (últimas 3 mesas pagadas por MP) */}
+        <Box sx={{ flexBasis: { xs: '100%', sm: 'auto' }, flexGrow: 0, display: 'flex', justifyContent: { xs: 'flex-start', sm: 'center' }, mr: { sm: 1 } }}>
+          <PagosRealtimeBar slug={slug} />
         </Box>
 
         <Tooltip title="Refrescar ahora">

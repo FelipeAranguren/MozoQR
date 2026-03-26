@@ -1,5 +1,6 @@
 import { factories } from '@strapi/strapi';
 import { MercadoPagoConfig, Payment } from 'mercadopago';
+import { emitPago, persistPagoNotification, type PagoNotificacion } from '../../notificaciones/services/pagosNotifier';
 
 /** UID del Content Type pedido en Strapi (api::pedido.pedido) */
 const ORDER_UID = 'api::pedido.pedido';
@@ -124,6 +125,8 @@ export default factories.createCoreController(ORDER_UID, ({ strapi }) => ({
       let accessToken: string | null = getMpAccessTokenEnv();
       let externalRef: string | null = null;
       let shouldMarkPaid = false;
+      let paidAmount: number | null = null;
+      let paidCurrency: string | null = null;
 
       if (type === 'payment') {
         const client = new MercadoPagoConfig({ accessToken: accessToken || '' });
@@ -141,6 +144,8 @@ export default factories.createCoreController(ORDER_UID, ({ strapi }) => ({
         }
         externalRef = mpPayment?.external_reference ?? null;
         shouldMarkPaid = true;
+        paidAmount = Number(mpPayment?.transaction_amount);
+        paidCurrency = (mpPayment?.currency_id ?? null) ? String(mpPayment.currency_id) : null;
       } else if (type === 'merchant_order') {
         // Notificación de tipo merchant_order: obtener orden y external_reference; si está cerrada/pagada, marcar
         const mo = await getMerchantOrder(accessToken, String(dataId));
@@ -155,6 +160,10 @@ export default factories.createCoreController(ORDER_UID, ({ strapi }) => ({
         );
         if (orderStatus === 'closed' || hasApprovedPayment) {
           shouldMarkPaid = true;
+          const approved = Array.isArray(mo.payments)
+            ? mo.payments.find((p: any) => (p.status ?? '').toLowerCase() === 'approved')
+            : null;
+          paidAmount = approved ? Number(approved?.transaction_amount ?? approved?.total_paid_amount) : null;
         } else {
           return ctx.send({ ok: true, message: 'merchant_order not paid', status: orderStatus }, 200);
         }
@@ -183,6 +192,41 @@ export default factories.createCoreController(ORDER_UID, ({ strapi }) => ({
       });
 
       strapi.log.info(`[orders.webhook] Pedido ${orderPk} (external_ref=${externalRef}) marcado como paid.`);
+
+      // ---- Realtime + persistencia de notificación (últimas 3 mesas pagadas) ----
+      try {
+        const order: any = await strapi.entityService.findOne(ORDER_UID, orderPk, {
+          fields: ['id', 'mesaNumber', 'total', 'updatedAt'],
+          populate: { restaurante: { fields: ['id', 'slug'] } },
+        });
+        const restauranteId = Number(order?.restaurante?.id ?? order?.restaurante);
+        const restauranteSlug = order?.restaurante?.slug ?? null;
+        const mesaNumber = Number(order?.mesaNumber);
+        const fallbackAmount = Number(order?.total);
+
+        if (Number.isFinite(restauranteId) && restauranteId > 0 && Number.isFinite(mesaNumber) && mesaNumber > 0) {
+          const paidAtIso = new Date().toISOString();
+          const amount =
+            Number.isFinite(paidAmount as any) && Number(paidAmount) > 0
+              ? Number(paidAmount)
+              : (Number.isFinite(fallbackAmount) && fallbackAmount > 0 ? fallbackAmount : null);
+
+          const payload: PagoNotificacion = {
+            restauranteId,
+            restauranteSlug,
+            mesaNumber,
+            amount,
+            currency: paidCurrency || 'ARS',
+            paidAt: paidAtIso,
+          };
+
+          await persistPagoNotification(strapi, payload);
+          emitPago(payload);
+        }
+      } catch (e: any) {
+        strapi.log.warn('[orders.webhook] notify/persist failed:', e?.message ?? e);
+      }
+
       return ctx.send({ ok: true, status: 'paid', orderId: orderPk }, 200);
     } catch (e: any) {
       strapi.log.error('[orders.webhook] Error:', e?.message, e?.stack);
