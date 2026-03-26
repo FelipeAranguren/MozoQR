@@ -5,6 +5,7 @@ import { useNavigate, useSearchParams } from "react-router-dom";
 import { Box, Container, CircularProgress, Typography } from "@mui/material";
 import CheckCircleOutlineIcon from "@mui/icons-material/CheckCircleOutline";
 import ScheduleIcon from "@mui/icons-material/Schedule";
+import { LAST_RECEIPT_KEY } from "../utils/receipt";
 
 export default function PaymentSuccess() {
   const navigate = useNavigate();
@@ -28,7 +29,31 @@ export default function PaymentSuccess() {
     return () => clearTimeout(t);
   }, [isPending]);
 
-  const slug = searchParams.get("slug");
+  const normalizeSlug = (value) => {
+    if (value == null) return "";
+    const raw = String(value).trim();
+    if (!raw) return "";
+    const noQuery = raw.split("?")[0].split("#")[0];
+    return noQuery.replace(/^\/+|\/+$/g, "");
+  };
+
+  const getReturnSlug = () => {
+    const fromQuery = normalizeSlug(searchParams.get("slug"));
+    if (fromQuery) return fromQuery;
+    try {
+      const saved = localStorage.getItem(LAST_RECEIPT_KEY);
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        const fromStorage = normalizeSlug(parsed?.slug);
+        if (fromStorage) return fromStorage;
+      }
+    } catch {
+      // noop
+    }
+    return "";
+  };
+
+  const slug = getReturnSlug();
   // MP también puede enviar payment_id, collection_id, preference_id, external_reference por query
 
   return (
@@ -55,7 +80,7 @@ export default function PaymentSuccess() {
               <Typography
                 component="button"
                 variant="body2"
-                onClick={() => navigate(`/${slug}/menu`)}
+                onClick={() => navigate(`/${encodeURIComponent(slug)}/menu`, { replace: true })}
                 sx={{ cursor: "pointer", color: "primary.main", textDecoration: "underline", border: "none", background: "none" }}
               >
                 Volver al menú
@@ -64,7 +89,7 @@ export default function PaymentSuccess() {
             <Typography
               component="button"
               variant="body2"
-              onClick={() => navigate(slug ? `/${slug}/menu` : "/")}
+              onClick={() => navigate(slug ? `/${encodeURIComponent(slug)}/menu` : "/", { replace: true })}
               sx={{ cursor: "pointer", color: "primary.main", textDecoration: "underline", border: "none", background: "none" }}
             >
               Volver al inicio

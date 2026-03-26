@@ -7,6 +7,7 @@ import CheckCircleIcon from "@mui/icons-material/CheckCircle";
 import ReceiptIcon from "@mui/icons-material/Receipt";
 import { loadLastReceiptFromStorage } from "../utils/receipt";
 import ReceiptDialog from "../components/ReceiptDialog";
+import { LAST_RECEIPT_KEY } from "../utils/receipt";
 
 const API_BASE = (import.meta.env?.VITE_API_URL || import.meta.env?.VITE_STRAPI_URL || "http://localhost:1337/api").replace(/\/api\/?$/, "");
 
@@ -18,13 +19,39 @@ export default function PagoSuccess() {
   const [receiptData, setReceiptData] = useState(null);
   const [receiptOpen, setReceiptOpen] = useState(false);
 
+  const normalizeSlug = (value) => {
+    if (value == null) return "";
+    const raw = String(value).trim();
+    if (!raw) return "";
+    const noQuery = raw.split("?")[0].split("#")[0];
+    return noQuery.replace(/^\/+|\/+$/g, "");
+  };
+
+  const getReturnSlug = () => {
+    const fromState = normalizeSlug(receiptData?.slug);
+    if (fromState) return fromState;
+    const fromQuery = normalizeSlug(searchParams.get("slug"));
+    if (fromQuery) return fromQuery;
+    try {
+      const saved = localStorage.getItem(LAST_RECEIPT_KEY);
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        const fromStorage = normalizeSlug(parsed?.slug);
+        if (fromStorage) return fromStorage;
+      }
+    } catch {
+      // noop
+    }
+    return "";
+  };
+
   useEffect(() => {
     const saved = loadLastReceiptFromStorage();
     if (saved && (saved?.items?.length > 0 || saved?.total != null || saved?.mesaNumber != null))
       setReceiptData(saved);
   }, []);
 
-  const slug = receiptData?.slug || searchParams.get("slug");
+  const slug = getReturnSlug();
 
   useEffect(() => {
     clearCart();
@@ -52,17 +79,15 @@ export default function PagoSuccess() {
   };
 
   const handleSeguirOrdenando = () => {
-    // El carrito ya se limpia en el efecto de confirmación de pago,
-    // aquí solo nos aseguramos de enviar al usuario a la raíz del restaurante.
-    if (slug) window.location.href = `/${slug}`;
-    else navigate("/");
+    // Forzamos selector de mesa para arrancar un nuevo ciclo.
+    if (slug) window.location.assign(`/${encodeURIComponent(slug)}/menu`);
+    else navigate("/", { replace: true });
   };
 
   const handleVolverInicio = () => {
-    // Siempre que tengamos slug, volvemos a la raíz del restaurante,
-    // sin parámetros de la orden anterior para forzar un nuevo ciclo de pedido.
-    if (slug) window.location.href = `/${slug}`;
-    else window.location.href = "/";
+    // Mismo destino que "Seguir ordenando": selector de mesa del restaurante.
+    if (slug) window.location.assign(`/${encodeURIComponent(slug)}/menu`);
+    else window.location.assign("/");
   };
 
   return (
