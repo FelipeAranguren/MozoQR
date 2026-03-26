@@ -47,6 +47,7 @@ export default function MenuProductCard({
   priceFormatted,
   onAdd,
   onSub,
+  orderStatusLabel = null,
 }) {
   const nombre = producto?.nombre ?? '';
   const descripcion = producto?.descripcion ?? '';
@@ -77,6 +78,18 @@ export default function MenuProductCard({
             POPULAR
           </div>
         )}
+
+        {orderStatusLabel ? (
+          <div
+            className="absolute top-3 right-3 rounded-full px-2.5 py-1 text-white text-[11px] font-extrabold tracking-wide shadow-sm max-w-[calc(100%-5rem)] truncate"
+            style={{
+              backgroundColor: orderStatusLabel === 'En preparación' ? teal : '#d97706',
+            }}
+            title={orderStatusLabel}
+          >
+            {orderStatusLabel}
+          </div>
+        ) : null}
 
         {imagen ? (
           <img src={imagen} alt={nombre} loading="lazy" className="w-full h-full object-cover block" />

@@ -19,6 +19,7 @@ import { useCart } from '../context/CartContext';
 import { createOrder, closeAccount, hasOpenAccount, fetchOrderDetails } from '../api/tenant';
 import { createMobbexCheckout, createMpPreference } from '../api/payments';
 import { saveLastReceiptToStorage } from '../utils/receipt';
+import { customerOrderListStatusLabel } from '../utils/orderStatusEs';
 
 // Redondear a 2 decimales para montos en pesos (evitar pérdida de centavos)
 const roundMoney = (n) => Math.round(Number(n) * 100) / 100;
@@ -31,27 +32,18 @@ const money = (n) =>
     maximumFractionDigits: 2,
   }).format(Number(n) ?? 0);
 
-// --- Helpers de estado
-const getStatusLabel = (status) => {
-  const map = {
-    pending: 'Pendiente',
-    preparing: 'En preparación',
-    ready: 'Listo para servir',
-    delivered: 'Entregado',
-    cancelled: 'Cancelado',
-    paid: 'Pagado'
-  };
-  return map[status] || status;
-};
+// --- Helpers de estado (etiquetas en español para el cliente)
+const getStatusLabel = (status) => customerOrderListStatusLabel(status);
 
 const getStatusColor = (status) => {
   const map = {
     pending: 'default',
     preparing: 'info',
+    served: 'success',
     ready: 'success',
     delivered: 'success',
     cancelled: 'error',
-    paid: 'success'
+    paid: 'success',
   };
   return map[status] || 'default';
 };
@@ -402,9 +394,15 @@ export default function StickyFooter({ table, tableSessionId, restaurantName, se
           }
 
           clearCart();
-          setSnack({ open: true, msg: 'Pedido enviado con éxito ✅', severity: 'success' });
           setConfirmOpen(false);
           setBackendHasAccount(true);
+          if (createdId != null && createdId !== '') {
+            navigate(
+              `/${slug}/pedido/${encodeURIComponent(createdId)}?t=${encodeURIComponent(table)}`
+            );
+          } else {
+            setSnack({ open: true, msg: 'Pedido enviado con éxito ✅', severity: 'success' });
+          }
           return;
         } catch (err) {
           lastErr = err;

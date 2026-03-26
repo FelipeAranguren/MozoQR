@@ -18,6 +18,7 @@ import PagoPending from './pages/PagoPending';
 import PaymentSuccess from './pages/PaymentSuccess';
 import PaymentFailure from './pages/PaymentFailure';
 import ThankYou from './pages/ThankYou';
+import OrderPlaced from './pages/OrderPlaced';
 import OnboardingRestaurante from './pages/OnboardingRestaurante';
 import OwnerDashboard from './pages/OwnerDashboard';
 import OwnerDashboardList from './pages/OwnerDashboardList';
@@ -78,6 +79,7 @@ export default function App() {
           <Route path="/" element={<Home />} />
           <Route path="/demo" element={<DemoLanding />} />
           <Route path="/checkout" element={<Checkout />} />
+          <Route path="/:slug/pedido/:orderId" element={<OrderPlaced />} />
           <Route path="/:slug" element={<RestaurantMenuEntry />} />
           <Route path="/:slug/menu" element={<RestaurantMenuEntry />} />
 

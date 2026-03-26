@@ -30,7 +30,7 @@ import { alpha } from '@mui/material/styles';
 import { motion, AnimatePresence } from 'framer-motion';
 
 import { useCart } from '../context/CartContext';
-import { fetchMenus, openSession, releaseTableIfNoOrders } from '../api/tenant_v1';
+import { fetchMenus, openSession, releaseTableIfNoOrders, fetchOrderDetails } from '../api/tenant_v1';
 import { fetchTables, fetchTable } from '../api/tables';
 import { fetchRestaurant } from '../api/restaurant';
 import { http } from '../api/tenant_v1';
@@ -40,6 +40,7 @@ import { devLog } from '../utils/devLog';
 import { withRetry } from '../utils/retry';
 import QtyStepper from '../components/QtyStepper';
 import TableSelector from '../components/TableSelector';
+import { buildProductOrderStatusMap, menuBadgeLabelForOrderStatus } from '../utils/orderStatusEs';
 
 const PLACEHOLDER = 'https://via.placeholder.com/600x400?text=No+Image';
 const money = (n) =>
@@ -98,6 +99,7 @@ export default function RestaurantMenu() {
   const [hasMercadoPago, setHasMercadoPago] = useState(false); // desde MetodosPago del restaurante
 
   const { items, addItem, removeItem } = useCart();
+  const [productOrderStatusByProductId, setProductOrderStatusByProductId] = useState({});
   const [changeTableDialog, setChangeTableDialog] = useState(false);
   const [showScrollTop, setShowScrollTop] = useState(false);
   const availablePollHitsRef = useRef(0);
@@ -342,6 +344,28 @@ export default function RestaurantMenu() {
       cancelled = true;
     };
   }, [slug, table, tableSessionId, navigate]);
+
+  useEffect(() => {
+    if (!slug || !table || !sessionReady) return;
+
+    let cancelled = false;
+    const refresh = async () => {
+      try {
+        const orders = await fetchOrderDetails(slug, { table, tableSessionId });
+        if (cancelled) return;
+        setProductOrderStatusByProductId(buildProductOrderStatusMap(orders));
+      } catch (e) {
+        console.warn('[RestaurantMenu_v1] order status refresh:', e);
+      }
+    };
+
+    refresh();
+    const id = setInterval(refresh, 12000);
+    return () => {
+      cancelled = true;
+      clearInterval(id);
+    };
+  }, [slug, table, tableSessionId, sessionReady]);
 
   // POLLING DE "KICK": Expulsar solo si el staff cerró la sesión desde el mostrador.
   // NO kickear en los primeros 6 segundos: da tiempo al claim y evita falsos positivos.
@@ -1103,6 +1127,9 @@ export default function RestaurantMenu() {
               >
                 {productosFiltrados.map((plato, index) => {
                   const qty = items.find((i) => i.id === plato.id)?.qty || 0;
+                  const orderBadge = menuBadgeLabelForOrderStatus(
+                    productOrderStatusByProductId[String(plato.id)]
+                  );
                   return (
                     <motion.div
                       key={plato.id}
@@ -1227,6 +1254,21 @@ export default function RestaurantMenu() {
                             >
                               {plato.nombre}
                             </Typography>
+                            {orderBadge ? (
+                              <Chip
+                                label={orderBadge}
+                                size="small"
+                                sx={{
+                                  height: 22,
+                                  fontSize: '0.7rem',
+                                  fontWeight: 700,
+                                  flexShrink: 0,
+                                  bgcolor:
+                                    orderBadge === 'En preparación' ? 'primary.main' : 'warning.main',
+                                  color: 'common.white',
+                                }}
+                              />
+                            ) : null}
                           </Box>
 
                           <Box
