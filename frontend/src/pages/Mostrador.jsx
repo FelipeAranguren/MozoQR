@@ -2435,6 +2435,10 @@ export default function Mostrador() {
     const { id, documentId, order_status, customerNotes, items = [], total, createdAt } = pedido;
     const mesaNumero = pedido.mesa_sesion?.mesa?.number || pedido.mesaNumber;
     const flashing = flashIds.has(documentId);
+    const isCompleteDialogForThisPedido =
+      completeOrderDialog.open &&
+      completeOrderDialog.pedido &&
+      keyOf(completeOrderDialog.pedido) === keyOf(pedido);
 
     return (
       <Card
@@ -2571,15 +2575,40 @@ export default function Mostrador() {
                     </IconButton>
                   </Tooltip>
                 )}
+                {order_status === 'preparing' && (
+                  <Tooltip title="Agregar observación al completar">
+                    <span>
+                      <IconButton
+                        size="small"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          if (servingIdsRef.current.has(pedido.id)) return;
+                          setCompleteOrderDialog({ open: true, pedido, staffNotes: '', loading: false });
+                        }}
+                        disabled={completeOrderDialog.open}
+                        sx={{ p: 0.5, color: 'text.secondary' }}
+                      >
+                        <EditIcon sx={{ fontSize: 18 }} />
+                      </IconButton>
+                    </span>
+                  </Tooltip>
+                )}
                 <Button
                   variant="contained"
                   color={order_status === 'pending' ? 'primary' : 'success'}
                   size="small"
-                  disabled={order_status === 'pending' && cocinandoInFlight.has(keyOf(pedido))}
+                  disabled={
+                    (order_status === 'pending' && cocinandoInFlight.has(keyOf(pedido))) ||
+                    (order_status === 'preparing' &&
+                      (servingIdsRef.current.has(pedido.id) || isCompleteDialogForThisPedido))
+                  }
                   onClick={(e) => {
                     e.stopPropagation();
                     if (order_status === 'pending') marcarComoRecibido(pedido);
-                    else if (order_status === 'preparing') setCompleteOrderDialog({ open: true, pedido, staffNotes: '', loading: false });
+                    else if (order_status === 'preparing') {
+                      if (servingIdsRef.current.has(pedido.id)) return;
+                      marcarComoServido(pedido);
+                    }
                   }}
                   sx={{
                     borderRadius: 1.25,
