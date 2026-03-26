@@ -865,23 +865,25 @@ export default function StickyFooter({ table, tableSessionId, restaurantName, se
               sx={{
                 display: 'flex',
                 width: '100%',
-                height: 7,
+                height: 9,
                 borderRadius: 999,
                 overflow: 'hidden',
-                backgroundColor: 'rgba(0,0,0,0.12)',
+                backgroundColor: '#E7EEF2',
+                border: '1px solid',
+                borderColor: 'rgba(0,0,0,0.06)',
               }}
             >
               <Box
                 sx={{
                   flex: 1,
-                  backgroundColor: effectiveHasPending ? '#8EDEE8' : '#E0E0E0',
+                  backgroundColor: effectiveHasPending ? '#2EC4CE' : '#DCE3E7',
                 }}
               />
               <Box sx={{ width: 1, backgroundColor: 'rgba(255,255,255,0.95)' }} />
               <Box
                 sx={{
                   flex: 1,
-                  backgroundColor: effectiveHasPreparing ? '#8EDEE8' : '#E0E0E0',
+                  backgroundColor: effectiveHasPreparing ? '#2EC4CE' : '#DCE3E7',
                 }}
               />
             </Box>
@@ -899,8 +901,8 @@ export default function StickyFooter({ table, tableSessionId, restaurantName, se
                 sx={{
                   flex: 1,
                   textAlign: 'center',
-                  fontWeight: effectiveHasPending ? 800 : 500,
-                  color: effectiveHasPending ? 'text.primary' : 'text.disabled',
+                  fontWeight: 700,
+                  color: 'text.secondary',
                   fontSize: '0.68rem',
                   lineHeight: 1.2,
                 }}
@@ -912,8 +914,8 @@ export default function StickyFooter({ table, tableSessionId, restaurantName, se
                 sx={{
                   flex: 1,
                   textAlign: 'center',
-                  fontWeight: effectiveHasPreparing ? 800 : 500,
-                  color: effectiveHasPreparing ? 'text.primary' : 'text.disabled',
+                  fontWeight: 700,
+                  color: 'text.secondary',
                   fontSize: '0.68rem',
                   lineHeight: 1.2,
                 }}
