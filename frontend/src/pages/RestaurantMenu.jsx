@@ -111,13 +111,6 @@ export default function RestaurantMenu() {
   const availablePollHitsRef = useRef(0);
   const [productOrderStatusByProductId, setProductOrderStatusByProductId] = useState({});
 
-  const orderBarStatus = useMemo(() => {
-    const values = Object.values(productOrderStatusByProductId || {});
-    const hasPending = values.includes('pending');
-    const hasPreparing = values.includes('preparing');
-    return { hasPending, hasPreparing, hasAny: hasPending || hasPreparing };
-  }, [productOrderStatusByProductId]);
-
   useEffect(() => {
     const onScroll = () => setShowScrollTop(window.scrollY > 300);
     window.addEventListener('scroll', onScroll, { passive: true });
@@ -962,49 +955,6 @@ export default function RestaurantMenu() {
             )}
           </Box>
         </Box>
-
-        {orderBarStatus.hasAny && (
-          <Box sx={{ mb: 2.25, mt: -0.25 }}>
-            <Box
-              sx={{
-                display: 'flex',
-                width: '100%',
-                borderRadius: 999,
-                overflow: 'hidden',
-                border: '1px solid',
-                borderColor: 'divider',
-              }}
-            >
-              <Box
-                sx={{
-                  flex: 1,
-                  py: 1.1,
-                  backgroundColor: orderBarStatus.hasPending ? '#d97706' : 'transparent',
-                  color: orderBarStatus.hasPending ? 'common.white' : 'text.secondary',
-                  textAlign: 'center',
-                }}
-              >
-                <Typography sx={{ fontWeight: 900, fontSize: '0.92rem', lineHeight: 1.1 }}>
-                  En espera
-                </Typography>
-              </Box>
-              <Box sx={{ width: 1, backgroundColor: 'divider' }} />
-              <Box
-                sx={{
-                  flex: 1,
-                  py: 1.1,
-                  backgroundColor: orderBarStatus.hasPreparing ? '#0f7c79' : 'transparent',
-                  color: orderBarStatus.hasPreparing ? 'common.white' : 'text.secondary',
-                  textAlign: 'center',
-                }}
-              >
-                <Typography sx={{ fontWeight: 900, fontSize: '0.92rem', lineHeight: 1.1 }}>
-                  En preparación
-                </Typography>
-              </Box>
-            </Box>
-          </Box>
-        )}
 
         {/* Barra de búsqueda */}
         <Box sx={{ mb: 2 }}>

@@ -96,6 +96,8 @@ export default function StickyFooter({ table, tableSessionId, restaurantName, se
   const [loadingOrders, setLoadingOrders] = useState(false);
   const [tipAmount, setTipAmount] = useState(0);
   const [tipPercentage, setTipPercentage] = useState(0);
+  const [orderBarFlags, setOrderBarFlags] = useState({ hasPending: false, hasPreparing: false });
+  const [orderBarOptimisticUntil, setOrderBarOptimisticUntil] = useState(0);
   const [couponCode, setCouponCode] = useState('');
   const [couponDiscount, setCouponDiscount] = useState(null); // { type: 'percent' | 'fixed', value: number, code: string }
   const [validatingCoupon, setValidatingCoupon] = useState(false);
@@ -197,12 +199,25 @@ export default function StickyFooter({ table, tableSessionId, restaurantName, se
 
   // Polling para sincronizar pedidos cuando hay cuenta abierta (detectar cancelaciones)
   useEffect(() => {
-    if (!slug || !table || !backendHasAccount) return;
+    if (!slug || !table) {
+      setOrderBarFlags({ hasPending: false, hasPreparing: false });
+      return;
+    }
+
+    if (!backendHasAccount) {
+      setOrderBarFlags({ hasPending: false, hasPreparing: false });
+      return;
+    }
 
     const syncOrders = async () => {
       try {
         const orders = await fetchOrderDetails(slug, { table, tableSessionId });
         const activeOrders = orders.filter(order => order.order_status !== 'cancelled');
+
+        const hasPending = activeOrders.some((o) => o.order_status === 'pending');
+        const hasPreparing = activeOrders.some((o) => o.order_status === 'preparing');
+        setOrderBarFlags({ hasPending, hasPreparing });
+        if (hasPending || hasPreparing) setOrderBarOptimisticUntil(0);
         
         // Sincronizar openOrders con el backend
         const activeOrderIds = new Set(activeOrders.map(o => String(o.id)));
@@ -396,6 +411,11 @@ export default function StickyFooter({ table, tableSessionId, restaurantName, se
           clearCart();
           setConfirmOpen(false);
           setBackendHasAccount(true);
+
+          // Optimismo: un pedido nuevo inicia como `pending` en el backend.
+          // Esto permite ver la barra "En espera" al instante si el usuario permanece en el menú.
+          setOrderBarFlags({ hasPending: true, hasPreparing: false });
+          setOrderBarOptimisticUntil(Date.now() + 15000);
 
           // Actualizar inmediatamente el menú si el usuario se queda en la pantalla.
           // El menú escucha este evento para refrescar badges/estado.
@@ -724,6 +744,10 @@ export default function StickyFooter({ table, tableSessionId, restaurantName, se
     }
   };
 
+  const optimisticPendingActive = Date.now() < orderBarOptimisticUntil;
+  const effectiveHasPreparing = orderBarFlags.hasPreparing;
+  const effectiveHasPending = orderBarFlags.hasPending || (optimisticPendingActive && !effectiveHasPreparing);
+
   return (
     <>
       <Paper
@@ -787,6 +811,52 @@ export default function StickyFooter({ table, tableSessionId, restaurantName, se
             </Typography>
           )}
         </Box>
+
+        {(effectiveHasPending || effectiveHasPreparing) && (
+          <Box sx={{ width: '100%', mt: -0.25, mb: 0.25 }}>
+            <Box
+              sx={{
+                display: 'flex',
+                width: '100%',
+                height: 26,
+                borderRadius: 999,
+                overflow: 'hidden',
+                border: '1px solid',
+                borderColor: 'divider',
+              }}
+            >
+              <Box
+                sx={{
+                  flex: 1,
+                  backgroundColor: effectiveHasPending ? '#d97706' : 'transparent',
+                  color: effectiveHasPending ? 'common.white' : 'text.secondary',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                }}
+              >
+                <Typography sx={{ fontWeight: 900, fontSize: '0.76rem', lineHeight: 1 }}>
+                  En espera
+                </Typography>
+              </Box>
+              <Box sx={{ width: 1, backgroundColor: 'divider' }} />
+              <Box
+                sx={{
+                  flex: 1,
+                  backgroundColor: effectiveHasPreparing ? '#0f7c79' : 'transparent',
+                  color: effectiveHasPreparing ? 'common.white' : 'text.secondary',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                }}
+              >
+                <Typography sx={{ fontWeight: 900, fontSize: '0.76rem', lineHeight: 1 }}>
+                  En preparación
+                </Typography>
+              </Box>
+            </Box>
+          </Box>
+        )}
 
         {/* Botones de acción: Enviar pedido / Mozo / Ver cuenta */}
         <Box
