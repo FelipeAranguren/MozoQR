@@ -15,7 +15,7 @@
       "type": "string"
     },
     "slug": {
-      "type": "uid"
+      "type": "string"
     },
     "productos": {
       "type": "relation",

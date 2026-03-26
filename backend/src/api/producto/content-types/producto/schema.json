@@ -45,7 +45,7 @@
       "mappedBy": "product"
     },
     "slug": {
-      "type": "uid"
+      "type": "string"
     },
     "available": {
       "type": "boolean",
