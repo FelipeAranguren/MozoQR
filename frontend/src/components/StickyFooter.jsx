@@ -792,8 +792,12 @@ export default function StickyFooter({ table, tableSessionId, restaurantName, se
   };
 
   const optimisticPendingActive = Date.now() < orderBarOptimisticUntil;
-  const effectiveHasPreparing = orderBarFlags.hasPreparing;
-  const effectiveHasPending = orderBarFlags.hasPending || (optimisticPendingActive && !effectiveHasPreparing);
+  const hasPreparing = Boolean(orderBarFlags.hasPreparing);
+  const hasPending = Boolean(orderBarFlags.hasPending) || optimisticPendingActive;
+  // Exclusivo: si hay "preparing", iluminamos solo la mitad derecha.
+  const activeStage = hasPreparing ? 'preparing' : hasPending ? 'pending' : null;
+  const effectiveHasPreparing = activeStage === 'preparing';
+  const effectiveHasPending = activeStage === 'pending';
 
   return (
     <>
@@ -868,9 +872,9 @@ export default function StickyFooter({ table, tableSessionId, restaurantName, se
                 height: 9,
                 borderRadius: 999,
                 overflow: 'hidden',
-                backgroundColor: '#E7EEF2',
+                backgroundColor: '#DCE3E7',
                 border: '1px solid',
-                borderColor: 'rgba(0,0,0,0.06)',
+                borderColor: 'rgba(0,0,0,0.08)',
               }}
             >
               <Box
@@ -879,7 +883,7 @@ export default function StickyFooter({ table, tableSessionId, restaurantName, se
                   backgroundColor: effectiveHasPending ? '#2EC4CE' : '#DCE3E7',
                 }}
               />
-              <Box sx={{ width: 1, backgroundColor: 'rgba(255,255,255,0.95)' }} />
+              <Box sx={{ width: 2, backgroundColor: '#FFFFFF' }} />
               <Box
                 sx={{
                   flex: 1,
