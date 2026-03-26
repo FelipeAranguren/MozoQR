@@ -1,5 +1,9 @@
 import React, { useEffect } from "react";
 import { useAuth } from "../context/AuthContext";
+import {
+  AUTH_RETURN_STORAGE_KEY,
+  consumePostAuthRedirectPath,
+} from "../utils/authRedirect";
 
 // En localhost usar siempre el backend local; en producción usar env
 function getApiUrl() {
@@ -12,6 +16,13 @@ function getApiUrl() {
   return `${base}/api`;
 }
 
+function loginErrorHref(code) {
+  const stored = typeof window !== "undefined" ? sessionStorage.getItem(AUTH_RETURN_STORAGE_KEY) : null;
+  const base = `/login?error=${encodeURIComponent(code)}`;
+  if (!stored) return base;
+  return `${base}&callbackUrl=${encodeURIComponent(stored)}`;
+}
+
 export default function GoogleRedirect() {
   const { login } = useAuth();
 
@@ -21,11 +32,12 @@ export default function GoogleRedirect() {
         const params = new URLSearchParams(window.location.search);
         const access_token = params.get("access_token");
         if (!access_token) {
+          const err = loginErrorHref("missing_token");
           if (window.opener) {
-            window.opener.location.href = "/login?error=missing_token";
+            window.opener.location.href = err;
             window.close();
           } else {
-            window.location.replace("/login?error=missing_token");
+            window.location.replace(err);
           }
           return;
         }
@@ -57,11 +69,12 @@ export default function GoogleRedirect() {
           }
           if (!res.ok || !data?.jwt || !data?.user) {
             console.error("Callback Google inválido:", raw);
+            const err = loginErrorHref("social");
             if (window.opener) {
-              window.opener.location.href = "/login?error=social";
+              window.opener.location.href = err;
               window.close();
             } else {
-              window.location.replace("/login?error=social");
+              window.location.replace(err);
             }
             return;
           }
@@ -87,19 +100,22 @@ export default function GoogleRedirect() {
         } catch {}
 
         // Si se abrió desde móvil en otra pestaña, redirigir la pestaña original y cerrar esta
+        const nextPath = consumePostAuthRedirectPath();
+        const nextUrl = `${window.location.origin}${nextPath}`;
         if (typeof window !== "undefined" && window.opener) {
-          window.opener.location.href = "/";
+          window.opener.location.href = nextUrl;
           window.close();
           return;
         }
-        window.location.replace("/");
+        window.location.replace(nextUrl);
       } catch (e) {
         console.error(e);
+        const err = loginErrorHref("social");
         if (window.opener) {
-          window.opener.location.href = "/login?error=social";
+          window.opener.location.href = err;
           window.close();
         } else {
-          window.location.replace("/login?error=social");
+          window.location.replace(err);
         }
       }
     })();

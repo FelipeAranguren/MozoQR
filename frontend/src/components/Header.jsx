@@ -2,6 +2,7 @@ import React from "react";
 import { AppBar, Toolbar, Typography, Button, Link } from "@mui/material";
 import { Link as RouterLink, useLocation, useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
+import { buildLoginPathWithCurrentUrl, buildRegisterPathWithCurrentUrl } from "../utils/authRedirect";
 
 export default function Header() {
   const { isAuthenticated, user, logout } = useAuth();
@@ -71,7 +72,7 @@ export default function Header() {
           <>
             <Button 
               color="inherit" 
-              onClick={() => navigate("/login")}
+              onClick={() => navigate(buildLoginPathWithCurrentUrl())}
               sx={{ mr: 1 }}
             >
               Iniciar sesión
@@ -79,7 +80,7 @@ export default function Header() {
             <Button 
               color="inherit" 
               variant="outlined"
-              onClick={() => navigate("/register")}
+              onClick={() => navigate(buildRegisterPathWithCurrentUrl())}
               sx={{
                 borderColor: "white",
                 color: "white",

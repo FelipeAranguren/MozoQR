@@ -1,5 +1,5 @@
-import React, { useState, useEffect } from "react";
-import { useNavigate } from "react-router-dom";
+import React, { useState, useEffect, useMemo } from "react";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import {
   Container,
   Paper,
@@ -14,10 +14,17 @@ import {
 import { motion } from "framer-motion";
 import GoogleButton from "../components/GoogleButton";
 import { useAuth } from "../context/AuthContext";
+import { getSafeCallbackUrl, syncAuthReturnStorageFromLoginPage } from "../utils/authRedirect";
 
 export default function Register() {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const { register, isAuthenticated } = useAuth();
+
+  const afterAuthPath = useMemo(
+    () => getSafeCallbackUrl(searchParams.get("callbackUrl"), "/"),
+    [searchParams]
+  );
 
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -26,11 +33,17 @@ export default function Register() {
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
-    // Si ya está autenticado, redirigir
+    syncAuthReturnStorageFromLoginPage({
+      callbackUrl: searchParams.get("callbackUrl"),
+      error: searchParams.get("error"),
+    });
+  }, [searchParams]);
+
+  useEffect(() => {
     if (isAuthenticated) {
-      navigate("/");
+      navigate(afterAuthPath, { replace: true });
     }
-  }, [isAuthenticated, navigate]);
+  }, [isAuthenticated, navigate, afterAuthPath]);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -64,7 +77,7 @@ export default function Register() {
     const result = await register(email, password);
 
     if (result.success) {
-      navigate("/");
+      navigate(afterAuthPath, { replace: true });
     } else {
       setError(result.error || "Error al registrarse. Por favor, intenta de nuevo.");
     }
@@ -191,7 +204,10 @@ export default function Register() {
                 <Link
                   component="button"
                   variant="body2"
-                  onClick={() => navigate("/login")}
+                  onClick={() => {
+                    const cb = searchParams.get("callbackUrl");
+                    navigate(cb ? `/login?callbackUrl=${encodeURIComponent(cb)}` : "/login");
+                  }}
                   sx={{ fontWeight: 600 }}
                 >
                   Inicia sesión aquí

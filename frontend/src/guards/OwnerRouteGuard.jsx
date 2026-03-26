@@ -1,6 +1,6 @@
 // frontend/src/guards/OwnerRouteGuard.jsx
 import { useEffect, useRef, useState } from "react";
-import { Navigate, useParams } from "react-router-dom";
+import { Navigate, useParams, useLocation } from "react-router-dom";
 import { DemoAccessProvider } from "../context/DemoAccessContext";
 
 // Misma base que el resto de la app para que el JWT sea válido en el mismo backend
@@ -16,6 +16,7 @@ function readToken() {
 
 export default function OwnerRouteGuard({ children }) {
   const { slug } = useParams();
+  const location = useLocation();
   const [allowed, setAllowed] = useState(null);
   const [token, setToken] = useState(() => readToken());
   const [error, setError] = useState(null);
@@ -142,7 +143,8 @@ export default function OwnerRouteGuard({ children }) {
   }
   
   if (!allowed) {
-    return <Navigate to="/no-access" replace state={{ error }} />;
+    const from = `${location.pathname}${location.search}`;
+    return <Navigate to="/no-access" replace state={{ error, from }} />;
   }
   
   if (isDemoAccess) {

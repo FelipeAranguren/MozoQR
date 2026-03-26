@@ -95,13 +95,13 @@ export function AuthProvider({ children }) {
   };
 
   const logout = () => {
-  localStorage.removeItem("strapi_jwt");
-  localStorage.removeItem("strapi_user");
-  localStorage.removeItem("jwt");            // 👈 clave legacy
-  setJwt(null);
-  setUser(null);
-  window.location.assign("/");               // o navigate("/", { replace: true })
-};
+    localStorage.removeItem("strapi_jwt");
+    localStorage.removeItem("strapi_user");
+    localStorage.removeItem("jwt"); // legacy
+    setJwt(null);
+    setUser(null);
+    // No redirigir: el usuario permanece en la misma URL (incl. ?t=mesa).
+  };
 
   const isAuthenticated = !!jwt;
 

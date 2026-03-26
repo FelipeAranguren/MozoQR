@@ -1,6 +1,7 @@
 import React from "react";
 import { Button } from "@mui/material";
 import { FcGoogle } from "react-icons/fc"; // icono de Google
+import { persistReturnUrlBeforeOAuth } from "../utils/authRedirect";
 
 // En localhost siempre usar el backend local; en producción usar env
 function getApiBase() {
@@ -29,6 +30,7 @@ export default function LoginWithGoogleButton() {
 
   const handleLogin = (e) => {
     e.preventDefault();
+    persistReturnUrlBeforeOAuth();
     // 🧹 Limpia cualquier sesión previa (DEV o social)
     localStorage.removeItem(LS_JWT_KEY);
     localStorage.removeItem(LS_USER_KEY);

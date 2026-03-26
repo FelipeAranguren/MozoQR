@@ -1,12 +1,13 @@
 // frontend/src/guards/AuthGuard.jsx
 import { useEffect, useState } from "react";
-import { Navigate } from "react-router-dom";
+import { Navigate, useLocation } from "react-router-dom";
 
 function readToken() {
   return localStorage.getItem("strapi_jwt") || localStorage.getItem("jwt") || null;
 }
 
 export default function AuthGuard({ children }) {
+  const location = useLocation();
   const [isAuthenticated, setIsAuthenticated] = useState(null);
 
   useEffect(() => {
@@ -19,7 +20,8 @@ export default function AuthGuard({ children }) {
   }
 
   if (!isAuthenticated) {
-    return <Navigate to="/no-access" replace />;
+    const from = `${location.pathname}${location.search}`;
+    return <Navigate to="/no-access" replace state={{ from }} />;
   }
 
   return children;

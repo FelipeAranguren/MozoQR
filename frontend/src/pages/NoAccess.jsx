@@ -4,6 +4,11 @@ import { Link, useLocation } from "react-router-dom";
 export default function NoAccess() {
   const location = useLocation();
   const errorMessage = location.state?.error || null;
+  const from = location.state?.from || null;
+  const loginTo =
+    from && typeof window !== "undefined"
+      ? `/login?callbackUrl=${encodeURIComponent(`${window.location.origin}${from}`)}`
+      : "/login";
 
   return (
     <div
@@ -27,7 +32,7 @@ export default function NoAccess() {
       )}
       <div style={{ display: "flex", gap: "1rem", justifyContent: "center", flexWrap: "wrap" }}>
         <Link 
-          to="/login" 
+          to={loginTo} 
           style={{ 
             color: "#007bff", 
             textDecoration: "none",

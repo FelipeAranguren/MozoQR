@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import {
   Container,
@@ -14,11 +14,17 @@ import {
 import { motion } from "framer-motion";
 import GoogleButton from "../components/GoogleButton";
 import { useAuth } from "../context/AuthContext";
+import { getSafeCallbackUrl, syncAuthReturnStorageFromLoginPage } from "../utils/authRedirect";
 
 export default function Login() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const { loginWithEmail, isAuthenticated } = useAuth();
+
+  const afterAuthPath = useMemo(
+    () => getSafeCallbackUrl(searchParams.get("callbackUrl"), "/"),
+    [searchParams]
+  );
 
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -26,9 +32,16 @@ export default function Login() {
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
-    // Si ya está autenticado, redirigir
+    syncAuthReturnStorageFromLoginPage({
+      callbackUrl: searchParams.get("callbackUrl"),
+      error: searchParams.get("error"),
+    });
+  }, [searchParams]);
+
+  useEffect(() => {
+    // Si ya está autenticado, volver a la página de origen (o home)
     if (isAuthenticated) {
-      navigate("/");
+      navigate(afterAuthPath, { replace: true });
       return;
     }
 
@@ -39,7 +52,7 @@ export default function Login() {
     } else if (urlError === "missing_token") {
       setError("Error en el proceso de autenticación. Por favor, intenta de nuevo.");
     }
-  }, [isAuthenticated, navigate, searchParams]);
+  }, [isAuthenticated, navigate, searchParams, afterAuthPath]);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -55,7 +68,7 @@ export default function Login() {
     const result = await loginWithEmail(email, password);
 
     if (result.success) {
-      navigate("/");
+      navigate(afterAuthPath, { replace: true });
     } else {
       setError(result.error || "Credenciales inválidas");
       // NO borramos los valores de email y contraseña
@@ -164,7 +177,10 @@ export default function Login() {
                 <Link
                   component="button"
                   variant="body2"
-                  onClick={() => navigate("/register")}
+                  onClick={() => {
+                    const cb = searchParams.get("callbackUrl");
+                    navigate(cb ? `/register?callbackUrl=${encodeURIComponent(cb)}` : "/register");
+                  }}
                   sx={{ fontWeight: 600 }}
                 >
                   Regístrate aquí
