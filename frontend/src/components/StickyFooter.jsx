@@ -875,19 +875,33 @@ export default function StickyFooter({ table, tableSessionId, restaurantName, se
                 backgroundColor: '#DCE3E7',
                 border: '1px solid',
                 borderColor: 'rgba(0,0,0,0.08)',
+                '@keyframes mozoqr-orderbar-scan': {
+                  '0%': { backgroundPosition: '0% 50%' },
+                  '100%': { backgroundPosition: '200% 50%' },
+                },
               }}
             >
               <Box
                 sx={{
                   flex: 1,
-                  backgroundColor: effectiveHasPending ? '#2EC4CE' : '#DCE3E7',
+                  backgroundColor: '#DCE3E7',
+                  backgroundImage: effectiveHasPending
+                    ? 'linear-gradient(90deg, #2EC4CE 0%, #8EDEE8 50%, #2EC4CE 100%)'
+                    : 'none',
+                  backgroundSize: effectiveHasPending ? '200% 100%' : undefined,
+                  animation: effectiveHasPending ? 'mozoqr-orderbar-scan 1.6s linear infinite' : 'none',
                 }}
               />
               <Box sx={{ width: 2, backgroundColor: '#FFFFFF' }} />
               <Box
                 sx={{
                   flex: 1,
-                  backgroundColor: effectiveHasPreparing ? '#2EC4CE' : '#DCE3E7',
+                  backgroundColor: '#DCE3E7',
+                  backgroundImage: effectiveHasPreparing
+                    ? 'linear-gradient(90deg, #2EC4CE 0%, #8EDEE8 50%, #2EC4CE 100%)'
+                    : 'none',
+                  backgroundSize: effectiveHasPreparing ? '200% 100%' : undefined,
+                  animation: effectiveHasPreparing ? 'mozoqr-orderbar-scan 1.6s linear infinite' : 'none',
                 }}
               />
             </Box>
