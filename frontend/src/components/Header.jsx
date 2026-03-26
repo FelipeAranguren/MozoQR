@@ -1,11 +1,17 @@
 import React from "react";
-import { AppBar, Toolbar, Typography, Button } from "@mui/material";
-import { useNavigate } from "react-router-dom";
+import { AppBar, Toolbar, Typography, Button, Link } from "@mui/material";
+import { Link as RouterLink, useLocation, useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 
 export default function Header() {
   const { isAuthenticated, user, logout } = useAuth();
   const navigate = useNavigate();
+  const location = useLocation();
+
+  // En el menú público del restaurante no queremos que el cliente salga a la landing.
+  // Rutas del flujo: "/:slug" y "/:slug/menu" (y subrutas bajo /menu si existieran).
+  const isRestaurantMenuFlow =
+    /^\/[^/]+\/menu(?:\/|$)/.test(location.pathname) || /^\/[^/]+\/?$/.test(location.pathname);
 
   const handleLogout = () => {
     logout();           // limpia strapi_jwt/strapi_user y resetea contexto
@@ -23,9 +29,23 @@ export default function Header() {
           px: { xs: 1.5, sm: 2 },
         }}
       >
-        <Typography variant="h6" noWrap sx={{ flexShrink: 0, mr: 'auto' }}>
-          MozoQR
-        </Typography>
+        {isRestaurantMenuFlow ? (
+          <Typography variant="h6" noWrap sx={{ flexShrink: 0, mr: 'auto' }}>
+            MozoQR
+          </Typography>
+        ) : (
+          <Link
+            component={RouterLink}
+            to="/"
+            color="inherit"
+            underline="none"
+            sx={{ flexShrink: 0, mr: 'auto' }}
+          >
+            <Typography variant="h6" noWrap>
+              MozoQR
+            </Typography>
+          </Link>
+        )}
 
         {isAuthenticated ? (
           <>
