@@ -874,11 +874,7 @@ export default function StickyFooter({ table, tableSessionId, restaurantName, se
               <Box
                 sx={{
                   flex: 1,
-                  backgroundColor: effectiveHasPending
-                    ? '#8EDEE8'
-                    : effectiveHasPreparing
-                      ? '#E0E0E0'
-                      : 'transparent',
+                  backgroundColor: effectiveHasPending ? '#8EDEE8' : '#E0E0E0',
                 }}
               />
               <Box sx={{ width: 1, backgroundColor: 'rgba(255,255,255,0.95)' }} />
