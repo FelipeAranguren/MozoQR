@@ -1,6 +1,6 @@
 import React from "react";
-import { AppBar, Toolbar, Typography, Button, Link } from "@mui/material";
-import { Link as RouterLink, useNavigate } from "react-router-dom";
+import { AppBar, Toolbar, Typography, Button } from "@mui/material";
+import { useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 
 export default function Header() {
@@ -23,15 +23,9 @@ export default function Header() {
           px: { xs: 1.5, sm: 2 },
         }}
       >
-        <Link
-          component={RouterLink}
-          to="/"
-          color="inherit"
-          underline="none"
-          sx={{ flexShrink: 0, mr: 'auto' }}
-        >
-          <Typography variant="h6" noWrap>MozoQR</Typography>
-        </Link>
+        <Typography variant="h6" noWrap sx={{ flexShrink: 0, mr: 'auto' }}>
+          MozoQR
+        </Typography>
 
         {isAuthenticated ? (
           <>
