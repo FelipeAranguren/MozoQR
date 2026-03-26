@@ -434,6 +434,21 @@ export default function StickyFooter({ table, tableSessionId, restaurantName, se
       const retryDelayMs = 500;
       let lastErr = null;
 
+      const isRetryableNetwork = (err) => {
+        const status = err?.response?.status;
+        const msg = String(err?.message || '').toLowerCase();
+        const code = String(err?.code || '').toLowerCase();
+        const looksLikeNetwork =
+          msg.includes('network error') ||
+          code.includes('err_network') ||
+          code.includes('ecconnreset') ||
+          code.includes('etimedout') ||
+          !err?.response;
+        const looksLike503 = status === 503;
+        const looksLike5xx = typeof status === 'number' && status >= 500 && status < 600;
+        return looksLike503 || looksLike5xx || looksLikeNetwork;
+      };
+
       for (let attempt = 1; attempt <= maxAttempts; attempt++) {
         try {
           const res = await createOrder(slug, payload);
@@ -487,7 +502,11 @@ export default function StickyFooter({ table, tableSessionId, restaurantName, se
             err?.response?.data?.error?.message ??
             err?.message ??
             '';
-          if (attempt < maxAttempts && isSessionMesaError(msg)) {
+          const status = err?.response?.status;
+          if (
+            attempt < maxAttempts &&
+            (isSessionMesaError(msg) || isRetryableNetwork(err) || status === 503)
+          ) {
             await new Promise((r) => setTimeout(r, retryDelayMs));
             continue;
           }
@@ -498,6 +517,14 @@ export default function StickyFooter({ table, tableSessionId, restaurantName, se
       throw lastErr;
     } catch (err) {
       console.error(err);
+      const status = err?.response?.status;
+      const msg = String(err?.message || '').toLowerCase();
+      const isNetwork =
+        msg.includes('network error') ||
+        String(err?.code || '').toLowerCase().includes('err_network') ||
+        !err?.response;
+      const is503 = status === 503;
+
       const apiMsg =
         err?.response?.data?.error?.message ||
         (Array.isArray(err?.response?.data?.message)
@@ -507,7 +534,9 @@ export default function StickyFooter({ table, tableSessionId, restaurantName, se
         'Error al enviar el pedido ❌';
       const friendlyMsg = isSessionMesaError(apiMsg)
         ? 'Sincronizando con la mesa… Por favor, esperá un segundo y volvé a intentar.'
-        : apiMsg;
+        : isNetwork || is503
+          ? 'Hubo un problema de conexión. Por favor, volvé a intentar en unos segundos.'
+          : apiMsg;
       setSnack({ open: true, msg: friendlyMsg, severity: 'error' });
     } finally {
       setSending(false);
@@ -546,9 +575,16 @@ export default function StickyFooter({ table, tableSessionId, restaurantName, se
       });
     } catch (err) {
       console.error('Error calling waiter:', err);
+      const status = err?.response?.status;
+      const msg = String(err?.message || '').toLowerCase();
+      const isNetwork = msg.includes('network error') || !err?.response;
+      const is503 = status === 503;
       setSnack({
         open: true,
-        msg: 'No se pudo notificar al mozo. Por favor intentá de nuevo.',
+        msg:
+          isNetwork || is503
+            ? 'Hubo un problema de conexión. Por favor, volvé a intentar en unos segundos.'
+            : 'No se pudo notificar al mozo. Por favor intentá de nuevo.',
         severity: 'error'
       });
     }
@@ -1263,7 +1299,18 @@ export default function StickyFooter({ table, tableSessionId, restaurantName, se
               },
             }}
           >
-            {sending ? 'Enviando…' : !sessionReady ? 'Preparando mesa…' : !tableSessionId ? 'Esperando sesión…' : 'Confirmar pedido'}
+            {sending ? (
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, justifyContent: 'center' }}>
+                <CircularProgress size={18} color="inherit" />
+                Enviando…
+              </Box>
+            ) : !sessionReady ? (
+              'Preparando mesa…'
+            ) : !tableSessionId ? (
+              'Esperando sesión…'
+            ) : (
+              'Confirmar pedido'
+            )}
           </Button>
         </DialogActions>
       </Dialog>
