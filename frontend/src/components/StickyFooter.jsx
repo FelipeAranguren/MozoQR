@@ -396,6 +396,16 @@ export default function StickyFooter({ table, tableSessionId, restaurantName, se
           clearCart();
           setConfirmOpen(false);
           setBackendHasAccount(true);
+
+          // Actualizar inmediatamente el menú si el usuario se queda en la pantalla.
+          // El menú escucha este evento para refrescar badges/estado.
+          try {
+            window.dispatchEvent(
+              new CustomEvent('orders-updated', { detail: { createdId } })
+            );
+          } catch {
+            // best-effort: si CustomEvent no está disponible, ignorar
+          }
           if (createdId != null && createdId !== '') {
             navigate(
               `/${slug}/pedido/${encodeURIComponent(createdId)}?t=${encodeURIComponent(table)}`
