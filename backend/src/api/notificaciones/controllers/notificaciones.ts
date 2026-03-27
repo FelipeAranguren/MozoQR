@@ -2,13 +2,31 @@ import { onPago } from '../services/pagosNotifier';
 
 const RESTAURANTE_UID = 'api::restaurante.restaurante';
 
+/** Tabla física Strapi (collectionName) — el slug en URL puede ser MCDONALDS y en BD mcdonalds. */
+const RESTAURANTE_TABLE = 'restaurantes';
+
 async function resolveRestauranteIdBySlug(strapi: any, slug: string): Promise<number | null> {
   if (!slug || typeof slug !== 'string' || !strapi?.db) return null;
+  const s = slug.trim();
+  if (!s) return null;
+
   const row = await strapi.db.query(RESTAURANTE_UID).findOne({
-    where: { slug: slug.trim() },
+    where: { slug: s },
     select: ['id'],
   });
-  return row?.id != null ? Number(row.id) : null;
+  if (row?.id != null) return Number(row.id);
+
+  const knex = strapi.db.connection;
+  if (!knex) return null;
+  try {
+    const byLower = await knex(RESTAURANTE_TABLE)
+      .whereRaw('LOWER(slug) = LOWER(?)', [s])
+      .select('id')
+      .first();
+    return byLower?.id != null ? Number(byLower.id) : null;
+  } catch {
+    return null;
+  }
 }
 
 function moneyFmt(amount: any, currency: string | null | undefined) {
@@ -70,6 +88,12 @@ export default {
       ctx.status = 404;
       ctx.body = 'restaurante_not_found';
       return;
+    }
+
+    const origin = ctx.get('Origin') || (ctx.request?.headers as any)?.origin;
+    if (origin) {
+      ctx.set('Access-Control-Allow-Origin', origin);
+      ctx.set('Vary', 'Origin');
     }
 
     ctx.req.setTimeout(0);

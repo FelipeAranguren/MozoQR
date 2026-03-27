@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Box, Chip, Skeleton, Typography } from '@mui/material';
 import CheckCircleIcon from '@mui/icons-material/CheckCircle';
 import { api } from '../api';
@@ -40,26 +40,44 @@ export default function PagosRealtimeBar({ slug }) {
     });
   };
 
-  useEffect(() => {
-    let alive = true;
-    (async () => {
-      setLoading(true);
+  const fetchNotifs = useCallback(
+    async (opts = { showSkeleton: false }) => {
+      if (opts.showSkeleton) setLoading(true);
       try {
         const res = await api.get(`/notificaciones/pagos?slug=${encodeURIComponent(slug || '')}`);
         const data = res?.data?.data ?? [];
-        if (!alive) return;
         setItems(Array.isArray(data) ? data.slice(0, 3) : []);
       } catch {
-        if (!alive) return;
-        setItems([]);
+        if (opts.showSkeleton) setItems([]);
       } finally {
-        if (alive) setLoading(false);
+        if (opts.showSkeleton) setLoading(false);
       }
-    })();
+    },
+    [slug],
+  );
+
+  useEffect(() => {
+    let alive = true;
+    fetchNotifs({ showSkeleton: true });
+
+    const poll = setInterval(() => {
+      if (!alive) return;
+      fetchNotifs({ showSkeleton: false });
+    }, 5000);
+
+    const onVis = () => {
+      if (document.visibilityState === 'visible' && alive) {
+        fetchNotifs({ showSkeleton: false });
+      }
+    };
+    document.addEventListener('visibilitychange', onVis);
+
     return () => {
       alive = false;
+      clearInterval(poll);
+      document.removeEventListener('visibilitychange', onVis);
     };
-  }, [slug]);
+  }, [slug, fetchNotifs]);
 
   useEffect(() => {
     if (!slug) return;
