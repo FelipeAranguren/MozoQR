@@ -79,9 +79,17 @@ export default function App() {
           <Route path="/" element={<Home />} />
           <Route path="/demo" element={<DemoLanding />} />
           <Route path="/checkout" element={<Checkout />} />
+          {/* Legacy global: sin slug en path; debe ir ANTES de /:slug o "pago-success" se toma como slug */}
+          <Route path="/pago-success" element={<PagoSuccess />} />
+          <Route path="/pago-failure" element={<PagoFailure />} />
+          <Route path="/pago-pending" element={<PagoPending />} />
+          {/* Pago MP: rutas por restaurante (canónicas) */}
+          <Route path="/:slug/pago-success" element={<PagoSuccess />} />
+          <Route path="/:slug/pago-failure" element={<PagoFailure />} />
+          <Route path="/:slug/pago-pending" element={<PagoPending />} />
           <Route path="/:slug/pedido/:orderId" element={<OrderPlaced />} />
-          <Route path="/:slug" element={<RestaurantMenuEntry />} />
           <Route path="/:slug/menu" element={<RestaurantMenuEntry />} />
+          <Route path="/:slug" element={<RestaurantMenuEntry />} />
 
           {/* Staff autenticado */}
           <Route path="/staff/:slug/orders" element={<OwnerRouteGuard><Mostrador /></OwnerRouteGuard>} />
@@ -118,9 +126,6 @@ export default function App() {
 
           {/* Páginas de pago (Mercado Pago back_urls) */}
           <Route path="/connect/google/redirect" element={<GoogleRedirect />} />
-          <Route path="/pago-success" element={<PagoSuccess />} />
-          <Route path="/pago-failure" element={<PagoFailure />} />
-          <Route path="/pago-pending" element={<PagoPending />} />
           <Route path="/onboarding-restaurante" element={<OnboardingRestaurante />} />
           {/* Legacy: redirigen a las rutas canónicas */}
           <Route path="/pago/success" element={<PagoSuccess />} />

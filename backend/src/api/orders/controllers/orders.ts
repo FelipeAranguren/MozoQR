@@ -1,42 +1,9 @@
 import { factories } from '@strapi/strapi';
-import { MercadoPagoConfig, Payment } from 'mercadopago';
-import { emitPago, persistPagoNotification, type PagoNotificacion } from '../../notificaciones/services/pagosNotifier';
+import { notifyPagoMercadoPagoForOrder } from '../../notificaciones/services/pagosNotifier';
+import { fetchMerchantOrderWithAnyToken, fetchMpPaymentWithAnyToken } from '../../../utils/mpPaymentFetch';
 
 /** UID del Content Type pedido en Strapi (api::pedido.pedido) */
 const ORDER_UID = 'api::pedido.pedido';
-const METODOS_PAGO_UID = 'api::metodos-pago.metodos-pago';
-
-/**
- * Obtiene el access_token de Mercado Pago del restaurante desde MetodosPago (provider=mercado_pago, active=true).
- * Solo uso server-side.
- */
-async function getMpAccessTokenForRestaurant(strapi: any, restauranteId: number): Promise<string | null> {
-  if (!restauranteId || !strapi?.db) return null;
-  try {
-    const rows = await strapi.db.query(METODOS_PAGO_UID).findMany({
-      where: {
-        restaurante: restauranteId,
-        provider: 'mercado_pago',
-        active: true,
-      },
-      limit: 1,
-    });
-    const first = Array.isArray(rows) ? rows[0] : null;
-    if (!first?.mp_access_token) return null;
-    const token = String(first.mp_access_token).trim();
-    return token.length > 0 ? token : null;
-  } catch (_e) {
-    return null;
-  }
-}
-
-/** Fallback legacy: token desde env. */
-function getMpAccessTokenEnv(): string | null {
-  const raw = process.env.MP_ACCESS_TOKEN || process.env.MERCADOPAGO_ACCESS_TOKEN || process.env.MERCADO_PAGO_ACCESS_TOKEN;
-  if (raw == null || typeof raw !== 'string') return null;
-  const trimmed = raw.trim();
-  return trimmed.length > 0 ? trimmed : null;
-}
 
 /**
  * Resuelve el PK numérico del pedido (api::pedido.pedido) a partir de external_reference.
@@ -89,19 +56,6 @@ async function resolveOrderPk(strapi: any, ref: string | number | null): Promise
   return null;
 }
 
-/** Obtiene merchant order desde la API de Mercado Pago (REST). */
-async function getMerchantOrder(accessToken: string, orderId: string): Promise<any> {
-  const res = await fetch(`https://api.mercadopago.com/merchant_orders/${orderId}`, {
-    method: 'GET',
-    headers: {
-      Authorization: `Bearer ${accessToken}`,
-      'Content-Type': 'application/json',
-    },
-  });
-  if (!res.ok) return null;
-  return res.json();
-}
-
 export default factories.createCoreController(ORDER_UID, ({ strapi }) => ({
   async webhook(ctx) {
     const body = ctx.request.body || {};
@@ -120,24 +74,19 @@ export default factories.createCoreController(ORDER_UID, ({ strapi }) => ({
         return ctx.send({ ok: true, message: 'ignored', reason: 'missing type or data.id' }, 200);
       }
 
-      // Para tipo 'payment' necesitamos el token para llamar a la API de MP. Lo obtenemos después de tener external_ref.
-      // Primero intentamos con un token genérico (legacy) para poder obtener el pago y su external_reference.
-      let accessToken: string | null = getMpAccessTokenEnv();
       let externalRef: string | null = null;
       let shouldMarkPaid = false;
       let paidAmount: number | null = null;
       let paidCurrency: string | null = null;
+      let mpPaymentIdNotify: string | null = null;
 
       if (type === 'payment') {
-        const client = new MercadoPagoConfig({ accessToken: accessToken || '' });
-        const paymentApi = new Payment(client);
-        let mpPayment: any;
-        try {
-          mpPayment = await paymentApi.get({ id: String(dataId) });
-        } catch (err: any) {
-          strapi.log.warn('[orders.webhook] payment fetch failed:', err?.message);
+        const fetched = await fetchMpPaymentWithAnyToken(strapi, String(dataId));
+        if (!fetched) {
+          strapi.log.warn('[orders.webhook] payment fetch failed (todos los tokens):', dataId);
           return ctx.send({ ok: true, message: 'payment fetch failed' }, 200);
         }
+        const mpPayment = fetched.payment;
         const status = (mpPayment?.status ?? '').toLowerCase();
         if (status !== 'approved') {
           return ctx.send({ ok: true, message: 'not approved', status }, 200);
@@ -146,13 +95,14 @@ export default factories.createCoreController(ORDER_UID, ({ strapi }) => ({
         shouldMarkPaid = true;
         paidAmount = Number(mpPayment?.transaction_amount);
         paidCurrency = (mpPayment?.currency_id ?? null) ? String(mpPayment.currency_id) : null;
+        mpPaymentIdNotify = mpPayment?.id != null ? String(mpPayment.id) : String(dataId);
       } else if (type === 'merchant_order') {
-        // Notificación de tipo merchant_order: obtener orden y external_reference; si está cerrada/pagada, marcar
-        const mo = await getMerchantOrder(accessToken, String(dataId));
-        if (!mo) {
+        const moFetched = await fetchMerchantOrderWithAnyToken(strapi, String(dataId));
+        if (!moFetched) {
           strapi.log.warn('[orders.webhook] merchant_order fetch failed for id:', dataId);
           return ctx.send({ ok: true, message: 'merchant_order fetch failed' }, 200);
         }
+        const mo = moFetched.merchantOrder;
         externalRef = mo.external_reference ?? null;
         const orderStatus = (mo.status ?? '').toLowerCase();
         const hasApprovedPayment = Array.isArray(mo.payments) && mo.payments.some(
@@ -164,6 +114,7 @@ export default factories.createCoreController(ORDER_UID, ({ strapi }) => ({
             ? mo.payments.find((p: any) => (p.status ?? '').toLowerCase() === 'approved')
             : null;
           paidAmount = approved ? Number(approved?.transaction_amount ?? approved?.total_paid_amount) : null;
+          mpPaymentIdNotify = approved?.id != null ? String(approved.id) : String(dataId);
         } else {
           return ctx.send({ ok: true, message: 'merchant_order not paid', status: orderStatus }, 200);
         }
@@ -193,38 +144,15 @@ export default factories.createCoreController(ORDER_UID, ({ strapi }) => ({
 
       strapi.log.info(`[orders.webhook] Pedido ${orderPk} (external_ref=${externalRef}) marcado como paid.`);
 
-      // ---- Realtime + persistencia de notificación (últimas 3 mesas pagadas) ----
       try {
-        const order: any = await strapi.entityService.findOne(ORDER_UID, orderPk, {
-          fields: ['id', 'mesaNumber', 'total', 'updatedAt'],
-          populate: { restaurante: { fields: ['id', 'slug'] } },
+        await notifyPagoMercadoPagoForOrder(strapi, orderPk, {
+          amount: paidAmount,
+          currency: paidCurrency,
+          paidAt: new Date().toISOString(),
+          mpPaymentId: mpPaymentIdNotify,
         });
-        const restauranteId = Number(order?.restaurante?.id ?? order?.restaurante);
-        const restauranteSlug = order?.restaurante?.slug ?? null;
-        const mesaNumber = Number(order?.mesaNumber);
-        const fallbackAmount = Number(order?.total);
-
-        if (Number.isFinite(restauranteId) && restauranteId > 0 && Number.isFinite(mesaNumber) && mesaNumber > 0) {
-          const paidAtIso = new Date().toISOString();
-          const amount =
-            Number.isFinite(paidAmount as any) && Number(paidAmount) > 0
-              ? Number(paidAmount)
-              : (Number.isFinite(fallbackAmount) && fallbackAmount > 0 ? fallbackAmount : null);
-
-          const payload: PagoNotificacion = {
-            restauranteId,
-            restauranteSlug,
-            mesaNumber,
-            amount,
-            currency: paidCurrency || 'ARS',
-            paidAt: paidAtIso,
-          };
-
-          await persistPagoNotification(strapi, payload);
-          emitPago(payload);
-        }
       } catch (e: any) {
-        strapi.log.warn('[orders.webhook] notify/persist failed:', e?.message ?? e);
+        strapi.log.warn('[orders.webhook] notify failed:', e?.message ?? e);
       }
 
       return ctx.send({ ok: true, status: 'paid', orderId: orderPk }, 200);

@@ -1,19 +1,19 @@
 //frontend/src/pages/PagoSuccess.jsx
 import React, { useEffect, useState } from "react";
-import { useNavigate, useSearchParams } from "react-router-dom";
+import { useNavigate, useSearchParams, useParams } from "react-router-dom";
 import { useCart } from "../context/CartContext";
 import { Button, Container, Paper, Typography } from "@mui/material";
 import CheckCircleIcon from "@mui/icons-material/CheckCircle";
 import ReceiptIcon from "@mui/icons-material/Receipt";
-import { loadLastReceiptFromStorage } from "../utils/receipt";
+import { loadLastReceiptFromStorage, LAST_RECEIPT_KEY } from "../utils/receipt";
 import ReceiptDialog from "../components/ReceiptDialog";
-import { LAST_RECEIPT_KEY } from "../utils/receipt";
 
 const API_BASE = (import.meta.env?.VITE_API_URL || import.meta.env?.VITE_STRAPI_URL || "http://localhost:1337/api").replace(/\/api\/?$/, "");
 
 export default function PagoSuccess() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
+  const { slug: slugFromRoute } = useParams();
   const { clearCart } = useCart();
   const [msg, setMsg] = useState("Confirmando pago…");
   const [receiptData, setReceiptData] = useState(null);
@@ -28,10 +28,16 @@ export default function PagoSuccess() {
   };
 
   const getReturnSlug = () => {
-    const fromState = normalizeSlug(receiptData?.slug);
-    if (fromState) return fromState;
+    // 1) Ruta canónica /:slug/pago-success (fuente de verdad tras volver de MP)
+    const fromPath = normalizeSlug(slugFromRoute);
+    if (fromPath) return fromPath;
+    // 2) Query legacy ?slug=
     const fromQuery = normalizeSlug(searchParams.get("slug"));
     if (fromQuery) return fromQuery;
+    // 3) Recibo de esta sesión (sin prioridad sobre URL)
+    const fromReceipt = normalizeSlug(receiptData?.slug);
+    if (fromReceipt) return fromReceipt;
+    // 4) Último recibo en storage (solo si no hay URL; evita mezclar restaurantes)
     try {
       const saved = localStorage.getItem(LAST_RECEIPT_KEY);
       if (saved) {
@@ -63,8 +69,12 @@ export default function PagoSuccess() {
         const url = new URL(`${API_BASE}/api/payments/confirm`);
         if (preference_id) url.searchParams.set("preference_id", preference_id);
         if (payment_id)    url.searchParams.set("payment_id", payment_id);
-        const res = await fetch(url.toString());
-        const data = await res.json();
+        url.searchParams.set("format", "json");
+        const res = await fetch(url.toString(), { redirect: "manual" });
+        const data = await res.json().catch(() => ({}));
+        if (res.status >= 300 && res.status < 400) {
+          throw new Error("El servidor respondió con redirección; probá de nuevo o avisá en mostrador.");
+        }
         if (!res.ok || !data?.ok) throw new Error(data?.error || "No se pudo confirmar el pago");
         setMsg(`¡Pago confirmado! Pedido #${data.orderId} (${data.status}).`);
       } catch (e) {

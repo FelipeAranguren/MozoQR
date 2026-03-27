@@ -1,14 +1,23 @@
 //frontend/src/pages/PagoPending.jsx
-import React, { useMemo, useEffect, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import React, { useEffect, useState } from "react";
+import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { Container, Paper, Typography, Button, Box } from "@mui/material";
 import ScheduleIcon from "@mui/icons-material/Schedule";
 import { loadLastReceiptFromStorage } from "../utils/receipt";
 
+function normalizeSlug(value) {
+  if (value == null) return "";
+  const raw = String(value).trim();
+  if (!raw) return "";
+  const noQuery = raw.split("?")[0].split("#")[0];
+  return noQuery.replace(/^\/+|\/+$/g, "");
+}
+
 export default function PagoPending() {
   const navigate = useNavigate();
-  const params = useMemo(() => new URLSearchParams(window.location.search), []);
-  const orderId = params.get("orderId");
+  const { slug: slugFromRoute } = useParams();
+  const [searchParams] = useSearchParams();
+  const orderId = searchParams.get("orderId");
   const [slugFromReceipt, setSlugFromReceipt] = useState(null);
 
   useEffect(() => {
@@ -16,7 +25,10 @@ export default function PagoPending() {
     if (saved?.slug) setSlugFromReceipt(saved.slug);
   }, []);
 
-  const slug = slugFromReceipt || params.get("slug");
+  const slug =
+    normalizeSlug(slugFromRoute) ||
+    normalizeSlug(searchParams.get("slug")) ||
+    normalizeSlug(slugFromReceipt);
 
   return (
     <Container maxWidth="sm" sx={{ py: 4, minHeight: "100vh", display: "flex", alignItems: "center" }}>

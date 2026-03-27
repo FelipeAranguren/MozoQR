@@ -1,15 +1,24 @@
 //frontend/src/pages/PagoFailure.jsx
-import React, { useMemo, useEffect, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import React, { useEffect, useState } from "react";
+import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { Container, Paper, Typography, Button, Box } from "@mui/material";
 import ErrorOutlineIcon from "@mui/icons-material/ErrorOutline";
 import { loadLastReceiptFromStorage } from "../utils/receipt";
 
+function normalizeSlug(value) {
+  if (value == null) return "";
+  const raw = String(value).trim();
+  if (!raw) return "";
+  const noQuery = raw.split("?")[0].split("#")[0];
+  return noQuery.replace(/^\/+|\/+$/g, "");
+}
+
 export default function PagoFailure() {
   const navigate = useNavigate();
-  const params = useMemo(() => new URLSearchParams(window.location.search), []);
-  const orderId = params.get("orderId");
-  const status = params.get("status"); // failure/rejected
+  const { slug: slugFromRoute } = useParams();
+  const [searchParams] = useSearchParams();
+  const orderId = searchParams.get("orderId");
+  const status = searchParams.get("status"); // failure/rejected
   const [slugFromReceipt, setSlugFromReceipt] = useState(null);
 
   useEffect(() => {
@@ -17,7 +26,10 @@ export default function PagoFailure() {
     if (saved?.slug) setSlugFromReceipt(saved.slug);
   }, []);
 
-  const slug = slugFromReceipt || params.get("slug");
+  const slug =
+    normalizeSlug(slugFromRoute) ||
+    normalizeSlug(searchParams.get("slug")) ||
+    normalizeSlug(slugFromReceipt);
 
   return (
     <Container maxWidth="sm" sx={{ py: 4, minHeight: "100vh", display: "flex", alignItems: "center" }}>

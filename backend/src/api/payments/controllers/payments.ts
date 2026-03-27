@@ -8,6 +8,8 @@ dotenv.config();
 
 import { MercadoPagoConfig, Preference, Payment } from 'mercadopago';
 import { ensureHttpUrl, getFrontendUrl, getBackendUrl, isHttps } from '../../../config/urls';
+import { fetchMpPaymentWithAnyToken, fetchMpPreferenceWithAnyToken } from '../../../utils/mpPaymentFetch';
+import { notifyPagoMercadoPagoForOrder } from '../../notificaciones/services/pagosNotifier';
 
 const PRODUCTO_UID = 'api::producto.producto';
 const RESTAURANTE_UID = 'api::restaurante.restaurante';
@@ -249,15 +251,22 @@ function buildSubscriptionBackUrls(): { success: string; failure: string; pendin
   };
 }
 
-/** back_urls al frontend: /pago-success, /pago-failure, /pago-pending (auto_return approved) */
+/** back_urls al frontend: una URL por restaurante /:slug/pago-* (evita mezclar slugs vía query o localStorage) */
 function buildPaymentStatusBackUrls(slug?: string | null): { success: string; failure: string; pending: string } {
   const base = getPaymentStatusBaseUrl();
   const frontBase = process.env.FRONTEND_URL ? ensureHttpUrl(process.env.FRONTEND_URL).replace(/\/*$/, '') : base;
-  const slugParam = slug ? `?slug=${encodeURIComponent(slug)}` : '';
+  const s = slug != null && String(slug).trim() ? encodeURIComponent(String(slug).trim()) : '';
+  if (s) {
+    return {
+      success: `${frontBase}/${s}/pago-success`,
+      failure: `${frontBase}/${s}/pago-failure`,
+      pending: `${frontBase}/${s}/pago-pending`,
+    };
+  }
   return {
-    success: `${frontBase}/pago-success${slugParam}`,
-    failure: `${frontBase}/pago-failure${slugParam}`,
-    pending: `${frontBase}/pago-pending${slugParam}`,
+    success: `${frontBase}/pago-success`,
+    failure: `${frontBase}/pago-failure`,
+    pending: `${frontBase}/pago-pending`,
   };
 }
 
@@ -345,11 +354,17 @@ function buildBackendBackUrls(
   const baseFront = getFrontendUrl().replace(/\/*$/, '');
   const baseBack = ensureHttpUrl(baseBackOverride || getBackendUrl(strapiConfig)).replace(/\/*$/, '');
   const encOrder = encodeURIComponent(orderId ?? '');
-  const slugParam = slug ? `&slug=${encodeURIComponent(slug)}` : '';
+  const encSlug = slug != null && String(slug).trim() ? encodeURIComponent(String(slug).trim()) : '';
 
-  const successFront = `${baseFront}/pago-success?orderId=${encOrder}${slugParam}`;
-  const failureFront = `${baseFront}/pago-failure?orderId=${encOrder}${slugParam}`;
-  const pendingFront = `${baseFront}/pago-pending?orderId=${encOrder}${slugParam}`;
+  const successFront = encSlug
+    ? `${baseFront}/${encSlug}/pago-success?orderId=${encOrder}`
+    : `${baseFront}/pago-success?orderId=${encOrder}`;
+  const failureFront = encSlug
+    ? `${baseFront}/${encSlug}/pago-failure?orderId=${encOrder}`
+    : `${baseFront}/pago-failure?orderId=${encOrder}`;
+  const pendingFront = encSlug
+    ? `${baseFront}/${encSlug}/pago-pending?orderId=${encOrder}`
+    : `${baseFront}/pago-pending?orderId=${encOrder}`;
 
   const wrap = (destFront: string) =>
     // Agrego orderRef para fallback si MP no me da external_reference
@@ -822,73 +837,122 @@ export default {
       const paymentIdQ = q.payment_id ?? q.collection_id;
       const preferenceIdQ = q.preference_id ?? q.preference_id;
       const statusQ = (q.status ?? q.collection_status ?? '').toString().toLowerCase() || null;
-      const orderRefQ = (q.orderRef ?? '').toString() || null; // <- fallback extra que nosotros pasamos
+      const orderRefQ = (q.orderRef ?? '').toString() || null;
+      const wantsJson =
+        String(q.format || '') === 'json' || String(ctx.request.header?.accept || '').includes('application/json');
 
-      // Token solo desde MetodosPago del restaurante del pedido (por orderRef)
-      const restauranteId = orderRefQ ? await getRestauranteIdFromOrder(strapi, orderRefQ) : null;
-      const accessToken = restauranteId ? await getMpAccessTokenForRestaurant(strapi, restauranteId) : null;
+      let accessToken: string | null = null;
+      let orderRef: string | number | null = orderRefQ || null;
+      let status: string | null = statusQ;
+      let rawPayment: any = null;
+
+      if (orderRefQ) {
+        const restauranteId = await getRestauranteIdFromOrder(strapi, orderRefQ);
+        accessToken = restauranteId ? await getMpAccessTokenForRestaurant(strapi, restauranteId) : null;
+      }
+
+      if (paymentIdQ && accessToken) {
+        try {
+          const client = new MercadoPagoConfig({ accessToken });
+          const mpPayment: any = await new Payment(client).get({ id: String(paymentIdQ) });
+          rawPayment = mpPayment;
+          orderRef = mpPayment?.external_reference ?? mpPayment?.metadata?.order_id ?? orderRef;
+          status = (mpPayment?.status ?? status)?.toLowerCase() || null;
+        } catch (err: any) {
+          strapi?.log?.warn?.(`[payments.confirm] payment get (token por orderRef) falló ${paymentIdQ}: ${err?.message}`);
+        }
+      }
+
+      if (paymentIdQ && !rawPayment) {
+        const fetched = await fetchMpPaymentWithAnyToken(strapi, String(paymentIdQ));
+        if (fetched?.payment) {
+          rawPayment = fetched.payment;
+          orderRef = fetched.payment.external_reference ?? fetched.payment.metadata?.order_id ?? orderRef;
+          status = (fetched.payment.status ?? status)?.toLowerCase() || null;
+          const rid = orderRef ? await getRestauranteIdFromOrder(strapi, orderRef) : null;
+          accessToken = rid ? await getMpAccessTokenForRestaurant(strapi, rid) : fetched.tokenUsed;
+        }
+      }
+
+      if (!orderRef && preferenceIdQ) {
+        const prefFetched = await fetchMpPreferenceWithAnyToken(strapi, String(preferenceIdQ));
+        if (prefFetched?.preference) {
+          orderRef = prefFetched.preference.external_reference ?? null;
+          status = status || 'approved';
+          if (!accessToken && orderRef) {
+            const rid = await getRestauranteIdFromOrder(strapi, orderRef);
+            accessToken = rid ? await getMpAccessTokenForRestaurant(strapi, rid) : prefFetched.tokenUsed;
+          }
+        }
+      }
+
       if (!accessToken) {
         logPaymentEnvDiagnostics(strapi);
+        if (wantsJson) {
+          ctx.status = 502;
+          ctx.body = { ok: false, error: 'Mercado Pago no configurado o no se pudo resolver el token del restaurante.' };
+          return;
+        }
         const baseFront = getPaymentStatusBaseUrl();
         ctx.status = 302;
         ctx.redirect(`${baseFront}/payment-failure?reason=config_error`);
         return;
       }
 
-      const client = new MercadoPagoConfig({ accessToken });
-      let orderRef: string | number | null = orderRefQ; // start with our own hint
-      let status: string | null = statusQ;
-      let rawPayment: any = null;
-
-      // 1) Si hay payment_id/collection_id, consulto Payment API
-      if (paymentIdQ) {
-        try {
-          const payment = new Payment(client);
-          const mpPayment: any = await payment.get({ id: String(paymentIdQ) });
-          rawPayment = mpPayment;
-          // si MP trae external_reference, pisa nuestro hint
-          orderRef = mpPayment?.external_reference ?? mpPayment?.metadata?.order_id ?? orderRef;
-          status = (mpPayment?.status ?? status)?.toLowerCase() || null;
-        } catch (err: any) {
-          strapi?.log?.warn?.(`[payments.confirm] No pude obtener payment ${paymentIdQ}: ${err?.message}`);
-        }
-      }
-
-      // 2) Fallback por preference_id si aún no tengo orderRef
-      if (!orderRef && preferenceIdQ) {
-        try {
-          const preference = new Preference(client);
-          const mpPref: any = await preference.get({ preferenceId: String(preferenceIdQ) });
-          orderRef = mpPref?.external_reference ?? null;
-          status = status || 'approved';
-        } catch (err: any) {
-          strapi?.log?.warn?.(`[payments.confirm] No pude obtener preference ${preferenceIdQ}: ${err?.message}`);
-        }
-      }
-
       if (!orderRef) {
-        strapi?.log?.warn?.('[payments.confirm] No se pudo determinar orderId (external_reference/orderRef). Redirigiendo a failure.');
+        strapi?.log?.warn?.('[payments.confirm] No se pudo determinar orderId (external_reference/orderRef).');
+        if (wantsJson) {
+          ctx.status = 400;
+          ctx.body = { ok: false, error: 'no_order_ref' };
+          return;
+        }
         const baseFront = getPaymentStatusBaseUrl();
         ctx.status = 302;
         ctx.redirect(`${baseFront}/payment-failure?reason=no_order_ref`);
         return;
       }
 
-      // 3) Resolver PK del pedido con múltiples estrategias
       const orderPk = await resolveOrderPk(strapi, orderRef);
       if (!orderPk) {
-        strapi?.log?.warn?.(`[payments.confirm] Pedido no encontrado para ref: ${orderRef}. Redirigiendo a failure.`);
+        strapi?.log?.warn?.(`[payments.confirm] Pedido no encontrado para ref: ${orderRef}.`);
+        if (wantsJson) {
+          ctx.status = 404;
+          ctx.body = { ok: false, error: 'order_not_found', orderRef: String(orderRef) };
+          return;
+        }
         const baseFront = getPaymentStatusBaseUrl();
         ctx.status = 302;
         ctx.redirect(`${baseFront}/payment-failure?reason=order_not_found&orderRef=${encodeURIComponent(String(orderRef))}`);
         return;
       }
 
-      // 4) Marcar como paid si corresponde
       const normalizedStatus = typeof status === 'string' ? status.toLowerCase() : null;
       const shouldMarkPaid = normalizedStatus === 'approved';
-      if (shouldMarkPaid) await markOrderPaid(strapi, orderPk);
-      else strapi?.log?.info?.(`[payments.confirm] Estado no aprobado (${normalizedStatus}). No marco paid.`);
+      if (shouldMarkPaid) {
+        await markOrderPaid(strapi, orderPk);
+        try {
+          await notifyPagoMercadoPagoForOrder(strapi, orderPk, {
+            amount: rawPayment != null ? Number(rawPayment.transaction_amount) : null,
+            currency: rawPayment?.currency_id ? String(rawPayment.currency_id) : 'ARS',
+            paidAt: new Date().toISOString(),
+            mpPaymentId: paymentIdQ ? String(paymentIdQ) : null,
+          });
+        } catch (e: any) {
+          strapi?.log?.warn?.('[payments.confirm] notify failed:', e?.message ?? e);
+        }
+      } else {
+        strapi?.log?.info?.(`[payments.confirm] Estado no aprobado (${normalizedStatus}). No marco paid.`);
+      }
+
+      if (wantsJson) {
+        ctx.status = 200;
+        ctx.body = {
+          ok: true,
+          orderId: orderPk,
+          status: normalizedStatus || 'approved',
+        };
+        return;
+      }
 
       // 5) Actualizar registro de payments si existe
       const paymentUID = resolvePaymentUID(strapi);
