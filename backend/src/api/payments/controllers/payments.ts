@@ -644,7 +644,12 @@ export default {
             },
           ];
 
-        backUrls = buildBackendBackUrls(orderId, strapi?.config, slug, effectiveBaseBack);
+        // Con slug del restaurante: volver directo al front /:slug/pago-* (MP agrega payment_id, etc.).
+        // El flujo vía /api/payments/confirm?redirect=... puede fallar (params perdidos, token) y mostrar /payment-failure aunque MP haya cobrado.
+        const slugTrimmed = slug != null && String(slug).trim() ? String(slug).trim() : '';
+        backUrls = slugTrimmed
+          ? buildPaymentStatusBackUrls(slugTrimmed)
+          : buildBackendBackUrls(orderId, strapi?.config, slug, effectiveBaseBack);
       }
 
       const totalAmount = saneItems.reduce(
