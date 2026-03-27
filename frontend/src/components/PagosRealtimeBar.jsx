@@ -27,7 +27,7 @@ function getApiBaseForEventSource() {
   return base;
 }
 
-export default function PagosRealtimeBar({ slug }) {
+export default function PagosRealtimeBar({ slug, localItems = [] }) {
   const [loading, setLoading] = useState(true);
   const [items, setItems] = useState([]);
   const esRef = useRef(null);
@@ -108,8 +108,27 @@ export default function PagosRealtimeBar({ slug }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [slug]);
 
+  const merged = useMemo(() => {
+    const out = [];
+    const seen = new Set();
+    for (const x of localItems || []) {
+      const m = Number(x?.mesaNumber);
+      if (!Number.isFinite(m) || seen.has(m)) continue;
+      seen.add(m);
+      out.push({ ...x, _fromLocal: true });
+    }
+    for (const x of items || []) {
+      if (out.length >= 3) break;
+      const m = Number(x?.mesaNumber);
+      if (!Number.isFinite(m) || seen.has(m)) continue;
+      seen.add(m);
+      out.push({ ...x, _fromLocal: false });
+    }
+    return out.slice(0, 3);
+  }, [localItems, items]);
+
   const content = useMemo(() => {
-    if (loading) {
+    if (loading && !merged.length) {
       return (
         <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap', alignItems: 'center' }}>
           <Skeleton variant="rounded" width={210} height={28} />
@@ -119,7 +138,7 @@ export default function PagosRealtimeBar({ slug }) {
       );
     }
 
-    if (!items?.length) {
+    if (!merged?.length) {
       return (
         <Typography variant="body2" sx={{ color: 'text.secondary' }}>
           Sin pagos recientes
@@ -129,13 +148,15 @@ export default function PagosRealtimeBar({ slug }) {
 
     return (
       <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap', alignItems: 'center' }}>
-        {items.slice(0, 3).map((n, idx) => {
+        {merged.map((n, idx) => {
           const money = fmtMoney(n.amount, n.currency || 'ARS');
           const hora = fmtHora(n.paidAt);
-          const label = `Mesa ${n.mesaNumber} — Pagado${money ? ` (${money})` : ''}${hora ? ` a las ${hora}` : ''}`;
+          const label = n._fromLocal
+            ? `La mesa ${n.mesaNumber} fue pagada${money ? ` (${money})` : ''}${hora ? ` · ${hora}` : ''}`
+            : `Mesa ${n.mesaNumber} — Pagado${money ? ` (${money})` : ''}${hora ? ` a las ${hora}` : ''}`;
           return (
             <Chip
-              key={`${n.mesaNumber}-${n.paidAt}-${idx}`}
+              key={n.key || `${n.mesaNumber}-${n.paidAt}-${idx}`}
               icon={<CheckCircleIcon />}
               label={label}
               variant="filled"
@@ -154,7 +175,7 @@ export default function PagosRealtimeBar({ slug }) {
         })}
       </Box>
     );
-  }, [items, loading]);
+  }, [merged, loading]);
 
   return (
     <Box

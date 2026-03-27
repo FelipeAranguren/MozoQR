@@ -94,6 +94,8 @@ export default function Mostrador() {
   const [lastUpdateAt, setLastUpdateAt] = useState(null);
   const [refreshing, setRefreshing] = useState(false);
   const [cocinandoInFlight, setCocinandoInFlight] = useState(() => new Set());
+  /** Pagos detectados en cliente (pedido pasó a paid y salió del listado activo) — complementa API/SSE */
+  const [pagosLocalesAlertas, setPagosLocalesAlertas] = useState([]);
 
   // ----- refs auxiliares (SOLO AQUÍ ARRIBA; no dentro de funciones) -----
   const pedidosRef = useRef([]);
@@ -108,6 +110,10 @@ export default function Mostrador() {
   /** documentIds confirmados como fantasma (404): no mostrarlos ni pitarlos nunca en esta sesión */
   const phantomBlocklistRef = useRef(new Set());
   const audioCtxRef = useRef(null);            // beep
+  /** documentId -> último estado conocido en listado activo (pending/preparing/served) */
+  const snapshotPedidosActivosRef = useRef(new Map());
+  const pagosDetectReadyRef = useRef(false);
+  const notifiedPagosDocIdsRef = useRef(new Set());
 
   const playBeep = () => {
     try {
@@ -647,6 +653,59 @@ export default function Mostrador() {
     });
   };
 
+  const isSystemOrder = (pedido) => {
+    const items = pedido.items || [];
+    const hasSystemItem = items.some((item) => {
+      const prodName = (item?.product?.name || item?.name || item?.notes || '').toUpperCase();
+      return prodName.includes('LLAMAR MOZO') || prodName.includes('SOLICITUD DE COBRO') || prodName.includes('💳');
+    });
+    if (hasSystemItem) return true;
+    const notes = (pedido.customerNotes || '').toUpperCase();
+    const systemNoteKeywords = [
+      'SOLICITA COBRAR',
+      'SOLICITUD DE COBRO',
+      'CUENTA',
+      'PAGAR',
+      'SOLICITUD DE ASISTENCIA',
+      'LLAMAR MOZO',
+      'MOZO',
+    ];
+    if (systemNoteKeywords.some((kw) => notes.includes(kw))) return true;
+    return false;
+  };
+
+  // Cuando MP marca paid, el pedido deja de aparecer en el listado (solo pending/preparing/served): detectamos por ausencia + GET.
+  const verificarPedidoPasadoAPagado = async (docId, meta) => {
+    if (!docId || notifiedPagosDocIdsRef.current.has(docId)) return;
+    try {
+      const res = await api.get(
+        `/pedidos/${docId}?publicationState=preview&fields[0]=order_status&fields[1]=total&fields[2]=mesaNumber&populate[mesa_sesion][populate][mesa]=true`);
+      const data = res?.data?.data;
+      if (!data) return;
+      const p = mapPedidoRow({ id: data.id, ...(data.attributes ? data : { attributes: data }) });
+      if (p.order_status !== 'paid') return;
+      notifiedPagosDocIdsRef.current.add(docId);
+      const mesaNumber = Number(p.mesaNumber ?? p.mesa_sesion?.mesa?.number ?? meta.mesaNumber);
+      if (!Number.isFinite(mesaNumber) || mesaNumber <= 0) return;
+      const amount = Number(p.total) || Number(meta.total) || 0;
+      setPagosLocalesAlertas((prev) => {
+        const next = [
+          {
+            mesaNumber,
+            amount,
+            currency: 'ARS',
+            paidAt: new Date().toISOString(),
+            key: `local-${docId}-${Date.now()}`,
+          },
+          ...prev.filter((x) => x.mesaNumber !== mesaNumber),
+        ].slice(0, 3);
+        return next;
+      });
+    } catch {
+      /* ignore */
+    }
+  };
+
   // =================== filtros dashboard + historial ===================
   const textIncludes = (value, q) => String(value || '').toLowerCase().includes(q);
   const historySearchNormalized = useMemo(
@@ -766,6 +825,29 @@ export default function Mostrador() {
       const docIds404 = new Set(revalidationResults.filter((r) => !r.valid && r.docId).map((r) => r.docId));
       const visiblesValidados = visibles.filter((p) => !docIds404.has(String(p?.documentId ?? '')));
       const conDocIdValidados = conDocId.filter((p) => !docIds404.has(String(p?.documentId ?? '')));
+
+      const newDocIds = new Set(conDocIdValidados.map((p) => p.documentId).filter(Boolean));
+      const prevSnap = snapshotPedidosActivosRef.current;
+      if (pagosDetectReadyRef.current) {
+        prevSnap.forEach((meta, docId) => {
+          if (!newDocIds.has(docId) && !['paid', 'cancelled'].includes(meta.order_status)) {
+            void verificarPedidoPasadoAPagado(docId, meta);
+          }
+        });
+      }
+      snapshotPedidosActivosRef.current = new Map(
+        conDocIdValidados
+          .filter((p) => p?.documentId && !isSystemOrder(p))
+          .map((p) => [
+            p.documentId,
+            {
+              order_status: p.order_status,
+              mesaNumber: Number(p.mesaNumber ?? p.mesa_sesion?.mesa?.number) || null,
+              total: Number(p.total) || 0,
+            },
+          ]),
+      );
+      pagosDetectReadyRef.current = true;
 
       if (pendingBeforeHistoryRef.current.size > 0) {
         pendingBeforeHistoryRef.current.forEach((id) => seenIdsRef.current.add(id));
@@ -895,6 +977,10 @@ export default function Mostrador() {
     seenIdsRef.current = new Set();
     cachedViewsRef.current = { active: { pedidos: [], cuentas: [] } };
     phantomBlocklistRef.current = new Set(); // nueva sesión de restaurante = lista de bloqueo limpia
+    snapshotPedidosActivosRef.current = new Map();
+    pagosDetectReadyRef.current = false;
+    notifiedPagosDocIdsRef.current = new Set();
+    setPagosLocalesAlertas([]);
   }, [slug]);
 
   useEffect(() => {
@@ -1995,37 +2081,6 @@ export default function Mostrador() {
     setPayDialog({ open: false, cuenta: null, loading: false, discount: 0, discountType: 'percent', closeWithoutPayment: false, staffNotes: '' });
   };
 
-  // Función para detectar si es un pedido del sistema (debe estar antes de los memos)
-  const isSystemOrder = (pedido) => {
-    // Check items
-    const items = pedido.items || [];
-    const hasSystemItem = items.some(item => {
-      // El nombre del producto del sistema puede estar en:
-      // 1. item.product.name (producto real)
-      // 2. item.name (campo directo)
-      // 3. item.notes (para productos del sistema, el nombre se guarda en notes)
-      const prodName = (item?.product?.name || item?.name || item?.notes || '').toUpperCase();
-      return prodName.includes('LLAMAR MOZO') || prodName.includes('SOLICITUD DE COBRO') || prodName.includes('💳');
-    });
-
-    if (hasSystemItem) return true;
-
-    // Check customer notes for payment requests
-    const notes = (pedido.customerNotes || '').toUpperCase();
-    const systemNoteKeywords = [
-      'SOLICITA COBRAR',
-      'SOLICITUD DE COBRO',
-      'CUENTA',
-      'PAGAR',
-      'SOLICITUD DE ASISTENCIA',
-      'LLAMAR MOZO',
-      'MOZO',
-    ];
-    if (systemNoteKeywords.some((kw) => notes.includes(kw))) return true;
-
-    return false;
-  };
-
   // Validación: no mostrar pedidos sin campos esenciales (evitar cards rotas). Permitir sin mesa (ej. recién creados).
   const isValidPedidoForDisplay = (p) =>
     (p?.documentId || p?.id != null) &&
@@ -2687,7 +2742,7 @@ export default function Mostrador() {
 
         {/* Barra de notificaciones de pagos (últimas 3 mesas pagadas por MP) */}
         <Box sx={{ flexBasis: { xs: '100%', sm: 'auto' }, flexGrow: 0, display: 'flex', justifyContent: { xs: 'flex-start', sm: 'center' }, mr: { sm: 1 } }}>
-          <PagosRealtimeBar slug={slug} />
+          <PagosRealtimeBar slug={slug} localItems={pagosLocalesAlertas} />
         </Box>
 
         <Tooltip title="Refrescar ahora">
