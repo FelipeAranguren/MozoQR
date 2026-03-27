@@ -826,12 +826,15 @@ export default function Mostrador() {
       const visiblesValidados = visibles.filter((p) => !docIds404.has(String(p?.documentId ?? '')));
       const conDocIdValidados = conDocId.filter((p) => !docIds404.has(String(p?.documentId ?? '')));
 
-      const newDocIds = new Set(conDocIdValidados.map((p) => p.documentId).filter(Boolean));
+      const newDocIds = new Set(
+        conDocIdValidados.map((p) => (p.documentId != null ? String(p.documentId) : '')).filter(Boolean),
+      );
       const prevSnap = snapshotPedidosActivosRef.current;
       if (pagosDetectReadyRef.current) {
         prevSnap.forEach((meta, docId) => {
-          if (!newDocIds.has(docId) && !['paid', 'cancelled'].includes(meta.order_status)) {
-            void verificarPedidoPasadoAPagado(docId, meta);
+          const idStr = String(docId);
+          if (!newDocIds.has(idStr) && !['paid', 'cancelled'].includes(meta.order_status)) {
+            void verificarPedidoPasadoAPagado(idStr, meta);
           }
         });
       }
@@ -839,7 +842,7 @@ export default function Mostrador() {
         conDocIdValidados
           .filter((p) => p?.documentId && !isSystemOrder(p))
           .map((p) => [
-            p.documentId,
+            String(p.documentId),
             {
               order_status: p.order_status,
               mesaNumber: Number(p.mesaNumber ?? p.mesa_sesion?.mesa?.number) || null,

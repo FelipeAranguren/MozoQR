@@ -1,7 +1,9 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { Box, Chip, Skeleton, Typography } from '@mui/material';
 import CheckCircleIcon from '@mui/icons-material/CheckCircle';
 import { api } from '../api';
+
+const PAID_LOOKBACK_MS = 45 * 60 * 1000;
 
 const fmtHora = (iso) => {
   try {
@@ -23,14 +25,48 @@ const fmtMoney = (amount, currency = 'ARS') => {
 
 function getApiBaseForEventSource() {
   const base = (import.meta.env?.VITE_API_URL || 'http://localhost:1337/api').replace(/\/+$/, '');
-  // EventSource needs the /api prefix included (we already have it in VITE_API_URL)
   return base;
+}
+
+/** Extrae mesa y datos desde respuesta Strapi (pedido paid) */
+function parsePedidoPaidRow(row) {
+  const a = row?.attributes || row;
+  if (!a) return null;
+  const st = String(a.order_status || '').toLowerCase();
+  if (st !== 'paid') return null;
+
+  const cn = (a.customerNotes || '').toUpperCase();
+  if (cn.includes('SOLICITUD DE COBRO') || cn.includes('LLAMAR MOZO') || cn.includes('SOLICITA COBRAR')) {
+    return null;
+  }
+
+  let mesaNumber = a.mesaNumber ?? null;
+  const ses = a.mesa_sesion?.data || a.mesa_sesion;
+  const sesAttrs = ses?.attributes || ses || {};
+  let mesa = sesAttrs?.mesa?.data || sesAttrs?.mesa;
+  const mesaAttrs = mesa?.attributes || mesa || {};
+  if (mesaNumber == null) {
+    mesaNumber = mesaAttrs.number ?? mesa?.number ?? mesaAttrs.numero ?? mesa?.numero ?? null;
+  }
+  const mn = Number(mesaNumber);
+  if (!Number.isFinite(mn) || mn <= 0) return null;
+
+  const updatedAt = a.updatedAt || a.publishedAt || new Date().toISOString();
+  const docId = a.documentId || row.documentId || row.id;
+  return {
+    mesaNumber: mn,
+    amount: Number(a.total) || 0,
+    currency: 'ARS',
+    paidAt: new Date(updatedAt).toISOString(),
+    key: `paid-api-${docId}`,
+    _fromPaidQuery: true,
+  };
 }
 
 export default function PagosRealtimeBar({ slug, localItems = [] }) {
   const [loading, setLoading] = useState(true);
   const [items, setItems] = useState([]);
-  const esRef = useRef(null);
+  const [paidRecent, setPaidRecent] = useState([]);
 
   const push = (notif) => {
     if (!notif?.mesaNumber) return;
@@ -56,18 +92,73 @@ export default function PagosRealtimeBar({ slug, localItems = [] }) {
     [slug],
   );
 
+  const fetchPaidRecent = useCallback(async () => {
+    if (!slug) return;
+    const baseQs = () => {
+      const since = new Date(Date.now() - PAID_LOOKBACK_MS).toISOString();
+      return (
+        `?filters[restaurante][slug][$eq]=${encodeURIComponent(slug)}` +
+        `&filters[order_status][$eq]=paid` +
+        `&filters[updatedAt][$gte]=${encodeURIComponent(since)}` +
+        `&publicationState=preview` +
+        `&fields[0]=id&fields[1]=documentId&fields[2]=order_status&fields[3]=total&fields[4]=updatedAt&fields[5]=mesaNumber&fields[6]=customerNotes` +
+        `&populate[mesa_sesion][populate][mesa]=true` +
+        `&sort[0]=updatedAt:desc` +
+        `&pagination[pageSize]=25`
+      );
+    };
+    const fallbackQs = () =>
+      `?filters[restaurante][slug][$eq]=${encodeURIComponent(slug)}` +
+      `&filters[order_status][$eq]=paid` +
+      `&publicationState=preview` +
+      `&fields[0]=id&fields[1]=documentId&fields[2]=order_status&fields[3]=total&fields[4]=updatedAt&fields[5]=mesaNumber&fields[6]=customerNotes` +
+      `&populate[mesa_sesion][populate][mesa]=true` +
+      `&sort[0]=updatedAt:desc` +
+      `&pagination[pageSize]=40`;
+
+    try {
+      let raw;
+      try {
+        const res = await api.get(`/pedidos${baseQs()}`);
+        raw = res?.data?.data ?? [];
+      } catch {
+        const res = await api.get(`/pedidos${fallbackQs()}`);
+        raw = res?.data?.data ?? [];
+      }
+      const cutoff = Date.now() - PAID_LOOKBACK_MS;
+      const parsed = raw
+        .map(parsePedidoPaidRow)
+        .filter(Boolean)
+        .filter((p) => new Date(p.paidAt).getTime() >= cutoff);
+      const byMesa = new Map();
+      parsed.forEach((p) => {
+        const prev = byMesa.get(p.mesaNumber);
+        if (!prev || new Date(p.paidAt) > new Date(prev.paidAt)) byMesa.set(p.mesaNumber, p);
+      });
+      setPaidRecent(Array.from(byMesa.values()).sort((a, b) => new Date(b.paidAt) - new Date(a.paidAt)).slice(0, 5));
+    } catch {
+      setPaidRecent([]);
+    }
+  }, [slug]);
+
   useEffect(() => {
     let alive = true;
-    fetchNotifs({ showSkeleton: true });
+    const run = async () => {
+      await Promise.all([fetchNotifs({ showSkeleton: true }), fetchPaidRecent()]);
+      if (!alive) return;
+    };
+    run();
 
     const poll = setInterval(() => {
       if (!alive) return;
       fetchNotifs({ showSkeleton: false });
-    }, 5000);
+      fetchPaidRecent();
+    }, 4000);
 
     const onVis = () => {
       if (document.visibilityState === 'visible' && alive) {
         fetchNotifs({ showSkeleton: false });
+        fetchPaidRecent();
       }
     };
     document.addEventListener('visibilitychange', onVis);
@@ -77,7 +168,7 @@ export default function PagosRealtimeBar({ slug, localItems = [] }) {
       clearInterval(poll);
       document.removeEventListener('visibilitychange', onVis);
     };
-  }, [slug, fetchNotifs]);
+  }, [slug, fetchNotifs, fetchPaidRecent]);
 
   useEffect(() => {
     if (!slug) return;
@@ -85,7 +176,6 @@ export default function PagosRealtimeBar({ slug, localItems = [] }) {
     const base = getApiBaseForEventSource();
     const url = `${base}/notificaciones/pagos/stream?slug=${encodeURIComponent(slug)}`;
     const es = new EventSource(url, { withCredentials: false });
-    esRef.current = es;
 
     const onPago = (ev) => {
       try {
@@ -109,23 +199,46 @@ export default function PagosRealtimeBar({ slug, localItems = [] }) {
   }, [slug]);
 
   const merged = useMemo(() => {
-    const out = [];
-    const seen = new Set();
+    const candidates = [];
     for (const x of localItems || []) {
       const m = Number(x?.mesaNumber);
-      if (!Number.isFinite(m) || seen.has(m)) continue;
-      seen.add(m);
-      out.push({ ...x, _fromLocal: true });
+      if (!Number.isFinite(m)) continue;
+      candidates.push({
+        ...x,
+        _fromLocal: true,
+        _t: new Date(x.paidAt || Date.now()).getTime(),
+      });
+    }
+    for (const x of paidRecent || []) {
+      const m = Number(x?.mesaNumber);
+      if (!Number.isFinite(m)) continue;
+      candidates.push({
+        ...x,
+        _fromPaidQuery: true,
+        _t: new Date(x.paidAt || Date.now()).getTime(),
+      });
     }
     for (const x of items || []) {
-      if (out.length >= 3) break;
       const m = Number(x?.mesaNumber);
-      if (!Number.isFinite(m) || seen.has(m)) continue;
-      seen.add(m);
-      out.push({ ...x, _fromLocal: false });
+      if (!Number.isFinite(m)) continue;
+      candidates.push({
+        ...x,
+        _fromApi: true,
+        _t: new Date(x.paidAt || Date.now()).getTime(),
+      });
     }
-    return out.slice(0, 3);
-  }, [localItems, items]);
+
+    const byMesa = new Map();
+    for (const c of candidates) {
+      const m = Number(c.mesaNumber);
+      const prev = byMesa.get(m);
+      if (!prev || c._t > prev._t) byMesa.set(m, c);
+    }
+    return Array.from(byMesa.values())
+      .sort((a, b) => b._t - a._t)
+      .slice(0, 3)
+      .map(({ _t, ...rest }) => rest);
+  }, [localItems, paidRecent, items]);
 
   const content = useMemo(() => {
     if (loading && !merged.length) {
@@ -151,7 +264,8 @@ export default function PagosRealtimeBar({ slug, localItems = [] }) {
         {merged.map((n, idx) => {
           const money = fmtMoney(n.amount, n.currency || 'ARS');
           const hora = fmtHora(n.paidAt);
-          const label = n._fromLocal
+          const friendly = n._fromLocal || n._fromPaidQuery;
+          const label = friendly
             ? `La mesa ${n.mesaNumber} fue pagada${money ? ` (${money})` : ''}${hora ? ` · ${hora}` : ''}`
             : `Mesa ${n.mesaNumber} — Pagado${money ? ` (${money})` : ''}${hora ? ` a las ${hora}` : ''}`;
           return (
@@ -211,4 +325,3 @@ export default function PagosRealtimeBar({ slug, localItems = [] }) {
     </Box>
   );
 }
-
