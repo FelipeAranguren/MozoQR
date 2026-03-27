@@ -5,24 +5,6 @@ import { api } from '../api';
 
 const PAID_LOOKBACK_MS = 45 * 60 * 1000;
 
-const fmtHora = (iso) => {
-  try {
-    return new Date(iso).toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' });
-  } catch {
-    return '';
-  }
-};
-
-const fmtMoney = (amount, currency = 'ARS') => {
-  const n = Number(amount);
-  if (!Number.isFinite(n)) return null;
-  try {
-    return new Intl.NumberFormat('es-AR', { style: 'currency', currency }).format(n);
-  } catch {
-    return `${n}`;
-  }
-};
-
 function getApiBaseForEventSource() {
   const base = (import.meta.env?.VITE_API_URL || 'http://localhost:1337/api').replace(/\/+$/, '');
   return base;
@@ -243,10 +225,10 @@ export default function PagosRealtimeBar({ slug, localItems = [] }) {
   const content = useMemo(() => {
     if (loading && !merged.length) {
       return (
-        <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap', alignItems: 'center' }}>
-          <Skeleton variant="rounded" width={210} height={28} />
-          <Skeleton variant="rounded" width={210} height={28} />
-          <Skeleton variant="rounded" width={210} height={28} />
+        <Box sx={{ display: 'flex', gap: 0.5, flexWrap: 'wrap', alignItems: 'center' }}>
+          <Skeleton variant="rounded" width={56} height={10} />
+          <Skeleton variant="rounded" width={56} height={10} />
+          <Skeleton variant="rounded" width={56} height={10} />
         </Box>
       );
     }
@@ -260,29 +242,36 @@ export default function PagosRealtimeBar({ slug, localItems = [] }) {
     }
 
     return (
-      <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap', alignItems: 'center' }}>
+      <Box sx={{ display: 'flex', gap: 0.5, flexWrap: 'wrap', alignItems: 'center' }}>
         {merged.map((n, idx) => {
-          const money = fmtMoney(n.amount, n.currency || 'ARS');
-          const hora = fmtHora(n.paidAt);
-          const friendly = n._fromLocal || n._fromPaidQuery;
-          const label = friendly
-            ? `La mesa ${n.mesaNumber} fue pagada${money ? ` (${money})` : ''}${hora ? ` · ${hora}` : ''}`
-            : `Mesa ${n.mesaNumber} — Pagado${money ? ` (${money})` : ''}${hora ? ` a las ${hora}` : ''}`;
+          const label = `Mesa ${n.mesaNumber}`;
           return (
             <Chip
               key={n.key || `${n.mesaNumber}-${n.paidAt}-${idx}`}
-              icon={<CheckCircleIcon />}
+              icon={<CheckCircleIcon sx={{ fontSize: 10 }} />}
               label={label}
+              size="small"
               variant="filled"
               sx={{
-                height: 30,
+                height: 20,
+                maxHeight: 20,
                 borderRadius: 999,
                 fontWeight: 600,
+                fontSize: '0.65rem',
+                lineHeight: 1,
                 bgcolor: 'rgba(46, 125, 50, 0.10)',
                 color: 'success.dark',
-                border: '1px solid rgba(46, 125, 50, 0.20)',
+                border: '1px solid rgba(46, 125, 50, 0.35)',
                 backdropFilter: 'blur(6px)',
-                '& .MuiChip-icon': { color: 'success.main' },
+                '& .MuiChip-icon': {
+                  color: 'success.main',
+                  marginLeft: '4px',
+                  marginRight: '-2px',
+                },
+                '& .MuiChip-label': {
+                  px: 0.5,
+                  py: 0,
+                },
               }}
             />
           );
@@ -294,8 +283,8 @@ export default function PagosRealtimeBar({ slug, localItems = [] }) {
   return (
     <Box
       sx={{
-        px: 1.25,
-        py: 1,
+        px: 1,
+        py: 0.75,
         borderRadius: 2,
         border: '1px solid',
         borderColor: 'divider',
@@ -303,20 +292,21 @@ export default function PagosRealtimeBar({ slug, localItems = [] }) {
         backdropFilter: 'blur(8px)',
         display: 'flex',
         alignItems: 'center',
-        gap: 1.25,
-        minHeight: 46,
+        gap: 1,
+        minHeight: 36,
         width: '100%',
         maxWidth: { xs: '100%', sm: 640, md: 760 },
         boxShadow: '0 6px 22px rgba(0,0,0,0.06)',
       }}
     >
       <Typography
-        variant="body2"
+        variant="caption"
         sx={{
           fontWeight: 800,
           letterSpacing: 0.2,
           color: 'text.primary',
           whiteSpace: 'nowrap',
+          fontSize: '0.7rem',
         }}
       >
         Pagos:
