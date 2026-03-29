@@ -77,14 +77,12 @@ function normalizeOrderStatus(raw) {
   return s;
 }
 
-function computeOrderBarFlags(activeOrders, slug, table) {
+function computeOrderBarFlags(activeOrders) {
   let hasPending = activeOrders.some((o) => normalizeOrderStatus(o?.order_status) === 'pending');
   let hasPreparing = activeOrders.some((o) => normalizeOrderStatus(o?.order_status) === 'preparing');
-  const localOpen = readOpenOrders(slug, table);
-  if (activeOrders.length === 0 && localOpen.length > 0) {
-    hasPending = true;
-    hasPreparing = false;
-  }
+  // No usar OPEN_ORDERS en localStorage para la barra: datos viejos de otra sesión
+  // hacían titilar "En espera" al entrar a la mesa hasta que la API respondía vacío.
+  // Tras enviar un pedido, el optimismo va por setOrderBarFlags + orderBarOptimisticUntil.
   if (activeOrders.length > 0 && !hasPending && !hasPreparing) {
     const missingStatus = activeOrders.some((o) => !normalizeOrderStatus(o?.order_status));
     if (missingStatus) hasPending = true;
@@ -158,7 +156,7 @@ export default function StickyFooter({ table, tableSessionId, restaurantName, se
         const activeOrders = orders.filter((order) => normalizeOrderStatus(order?.order_status) !== 'cancelled');
 
         if (!cancelled) {
-          const flags = computeOrderBarFlags(activeOrders, slug, table);
+          const flags = computeOrderBarFlags(activeOrders);
           setOrderBarFlags(flags);
           if (flags.hasPending || flags.hasPreparing) setOrderBarOptimisticUntil(0);
         }
@@ -238,7 +236,7 @@ export default function StickyFooter({ table, tableSessionId, restaurantName, se
         const orders = await fetchOrderDetails(slug, { table, tableSessionId });
         if (cancelled) return;
         const activeOrders = orders.filter((o) => normalizeOrderStatus(o?.order_status) !== 'cancelled');
-        const { hasPending, hasPreparing } = computeOrderBarFlags(activeOrders, slug, table);
+        const { hasPending, hasPreparing } = computeOrderBarFlags(activeOrders);
         setOrderBarFlags({ hasPending, hasPreparing });
         if (hasPending || hasPreparing) setOrderBarOptimisticUntil(0);
       } catch (e) {
