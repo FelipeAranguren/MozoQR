@@ -81,7 +81,10 @@ export default {
      */
     async find(ctx: any) {
         const strapi: any = ctx.strapi;
-        const restauranteId = ctx.state.restauranteId;
+        const restauranteId = ctx.state.restaurantId ?? ctx.state.restauranteId;
+        if (restauranteId == null) {
+            return ctx.forbidden('No autorizado');
+        }
         const { status, table, since } = ctx.request.query || {};
 
         const filters: any = { restaurante: restauranteId };
@@ -207,7 +210,10 @@ export default {
      */
     async updateStatus(ctx: any) {
         const strapi: any = ctx.strapi;
-        const restauranteId = ctx.state.restauranteId;
+        const restauranteId = ctx.state.restaurantId ?? ctx.state.restauranteId;
+        if (restauranteId == null) {
+            return ctx.forbidden('No autorizado');
+        }
         const id = ctx.params.id;
         const { status } = (ctx.request.body && ctx.request.body.data) || ctx.request.body || {};
 

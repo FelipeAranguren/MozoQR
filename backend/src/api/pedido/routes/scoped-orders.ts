@@ -8,7 +8,7 @@ export default {
             handler: 'scoped-orders.find',
             config: {
                 auth: {},
-                policies: ['global::by-restaurant'],
+                policies: ['global::is-restaurant-staff'],
             },
         },
         // Staff status change
@@ -18,7 +18,7 @@ export default {
             handler: 'scoped-orders.updateStatus',
             config: {
                 auth: {},
-                policies: ['global::by-restaurant'],
+                policies: ['global::is-restaurant-staff'],
             },
         },
     ],

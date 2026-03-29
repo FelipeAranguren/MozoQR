@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo, useRef } from 'react';
+import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import {
   Paper, Typography, Button, Dialog, DialogTitle, DialogContent,
   DialogActions, List, ListItem, ListItemText, Box, Snackbar, Alert,
@@ -20,6 +20,9 @@ import { createOrder, closeAccount, hasOpenAccount, fetchOrderDetails } from '..
 import { createMobbexCheckout, createMpPreference } from '../api/payments';
 import { saveLastReceiptToStorage } from '../utils/receipt';
 import { customerOrderListStatusLabel } from '../utils/orderStatusEs';
+import { useNetworkStatus } from '../hooks/useNetworkStatus';
+import { isAxiosOrNetworkError } from '../utils/networkError';
+import { withRetry } from '../utils/retry';
 
 // Redondear a 2 decimales para montos en pesos (evitar pérdida de centavos)
 const roundMoney = (n) => Math.round(Number(n) * 100) / 100;
@@ -90,12 +93,29 @@ function computeOrderBarFlags(activeOrders) {
   return { hasPending, hasPreparing };
 }
 
+/** Huella del carrito para invalidar reenvío automático si el usuario cambió ítems */
+function fingerprintCartItemsForOrder(items) {
+  return JSON.stringify(
+    (items || []).map((i) => ({
+      id: i.id,
+      qty: i.qty,
+      notes: i.notes || '',
+      precio: i.precio,
+    }))
+  );
+}
+
 export default function StickyFooter({ table, tableSessionId, restaurantName, sessionReady = true, hasMercadoPago = false }) {
   const { items, subtotal, addItem, removeItem, clearCart } = useCart();
   const { slug } = useParams();
   const navigate = useNavigate();
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
+  const online = useNetworkStatus();
+  const pendingOrderAutoRetryRef = useRef(null);
+  const prevOnlineRef = useRef(online);
+  const finalizeSuccessfulOrderRef = useRef(null);
+  const [isAutoRetrying, setIsAutoRetrying] = useState(false);
 
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [clearCartConfirmOpen, setClearCartConfirmOpen] = useState(false);
@@ -126,7 +146,12 @@ export default function StickyFooter({ table, tableSessionId, restaurantName, se
 
   const cardOptionsRef = useRef(null);
 
-  const [snack, setSnack] = useState({ open: false, msg: '', severity: 'success' });
+  const [snack, setSnack] = useState({
+    open: false,
+    msg: '',
+    severity: 'success',
+    autoHideDuration: 3000,
+  });
 
   // Estado "oficial" de si hay cuenta abierta (desde backend)
   const [backendHasAccount, setBackendHasAccount] = useState(false);
@@ -401,6 +426,58 @@ export default function StickyFooter({ table, tableSessionId, restaurantName, se
   const isSessionMesaError = (msg) =>
     typeof msg === 'string' && (msg.includes('mesa asociada') || msg.includes('sesión no tiene mesa'));
 
+  const finalizeSuccessfulOrder = useCallback(
+    (res) => {
+      pendingOrderAutoRetryRef.current = null;
+      const createdId =
+        res?.id ?? res?.data?.id ?? res?.data?.data?.id ?? res?.orderId ?? null;
+      const totalFromRes =
+        res?.total ??
+        res?.data?.total ??
+        res?.attributes?.total ??
+        res?.data?.attributes?.total ??
+        null;
+
+      const recordedTotal = Number(totalFromRes ?? subtotal) || 0;
+
+      if (slug && table) {
+        const next = [...readOpenOrders(slug, table), { id: createdId, total: recordedTotal }];
+        setOpenOrders(next);
+        writeOpenOrders(slug, table, next);
+      }
+
+      clearCart();
+      setConfirmOpen(false);
+      setBackendHasAccount(true);
+
+      setOrderBarFlags({ hasPending: true, hasPreparing: false });
+      setOrderBarOptimisticUntil(Date.now() + 15000);
+
+      try {
+        window.dispatchEvent(
+          new CustomEvent('orders-updated', { detail: { createdId } })
+        );
+      } catch {
+        /* ignore */
+      }
+      if (createdId != null && createdId !== '') {
+        navigate(
+          `/${slug}/pedido/${encodeURIComponent(createdId)}?t=${encodeURIComponent(table)}`
+        );
+      } else {
+        setSnack({
+          open: true,
+          msg: 'Pedido enviado con éxito ✅',
+          severity: 'success',
+          autoHideDuration: 3000,
+        });
+      }
+    },
+    [slug, table, subtotal, navigate, clearCart]
+  );
+
+  finalizeSuccessfulOrderRef.current = finalizeSuccessfulOrder;
+
   const handleSendOrder = async () => {
     if (!table) {
       setSnack({ open: true, msg: 'Falta el número de mesa (parámetro t).', severity: 'error' });
@@ -414,115 +491,51 @@ export default function StickyFooter({ table, tableSessionId, restaurantName, se
       });
       return;
     }
+    if (!online) {
+      setSnack({
+        open: true,
+        msg: 'Sin conexión. Cuando vuelva la red podrás enviar el pedido o lo reintentaremos automáticamente.',
+        severity: 'warning',
+      });
+      return;
+    }
     try {
       setSending(true);
 
-      const payloadItems = items.map(i => ({
+      const payloadItems = items.map((i) => ({
         productId: i.id,
         qty: i.qty,
         price: i.precio,
-        notes: i.notes || ''
+        notes: i.notes || '',
       }));
 
       const namePart = customerName.trim() ? `Cliente: ${customerName.trim()}\n` : '';
       const trimmedNotes = namePart + orderNotes.trim();
       const payload = { table, tableSessionId, items: payloadItems, notes: trimmedNotes };
 
-      const maxAttempts = 3;
-      const retryDelayMs = 500;
-      let lastErr = null;
-
-      const isRetryableNetwork = (err) => {
-        const status = err?.response?.status;
-        const msg = String(err?.message || '').toLowerCase();
-        const code = String(err?.code || '').toLowerCase();
-        const looksLikeNetwork =
-          msg.includes('network error') ||
-          code.includes('err_network') ||
-          code.includes('ecconnreset') ||
-          code.includes('etimedout') ||
-          !err?.response;
-        const looksLike503 = status === 503;
-        const looksLike5xx = typeof status === 'number' && status >= 500 && status < 600;
-        return looksLike503 || looksLike5xx || looksLikeNetwork;
+      const shouldRetryOrder = (err) => {
+        const apiMsg =
+          err?.response?.data?.error?.message ??
+          err?.message ??
+          '';
+        const status = err?.response?.status ?? err?.originalError?.response?.status;
+        if (isSessionMesaError(String(apiMsg))) return true;
+        if (err?.isNetworkError || isAxiosOrNetworkError(err)) return true;
+        return status === 503 || (typeof status === 'number' && status >= 500 && status < 600);
       };
 
-      for (let attempt = 1; attempt <= maxAttempts; attempt++) {
-        try {
-          const res = await createOrder(slug, payload);
+      const res = await withRetry(() => createOrder(slug, payload), {
+        maxRetries: 4,
+        delayMs: 500,
+        exponential: true,
+        maxDelayMs: 16000,
+        shouldRetry: shouldRetryOrder,
+      });
 
-          const createdId =
-            res?.id ?? res?.data?.id ?? res?.data?.data?.id ?? res?.orderId ?? null;
-          const totalFromRes =
-            res?.total ??
-            res?.data?.total ??
-            res?.attributes?.total ??
-            res?.data?.attributes?.total ??
-            null;
-
-          const recordedTotal = Number(totalFromRes ?? subtotal) || 0;
-
-          if (slug && table) {
-            const next = [...readOpenOrders(slug, table), { id: createdId, total: recordedTotal }];
-            setOpenOrders(next);
-            writeOpenOrders(slug, table, next);
-          }
-
-          clearCart();
-          setConfirmOpen(false);
-          setBackendHasAccount(true);
-
-          // Optimismo: un pedido nuevo inicia como `pending` en el backend.
-          // Esto permite ver la barra "En espera" al instante si el usuario permanece en el menú.
-          setOrderBarFlags({ hasPending: true, hasPreparing: false });
-          setOrderBarOptimisticUntil(Date.now() + 15000);
-
-          // Actualizar inmediatamente el menú si el usuario se queda en la pantalla.
-          // El menú escucha este evento para refrescar badges/estado.
-          try {
-            window.dispatchEvent(
-              new CustomEvent('orders-updated', { detail: { createdId } })
-            );
-          } catch {
-            // best-effort: si CustomEvent no está disponible, ignorar
-          }
-          if (createdId != null && createdId !== '') {
-            navigate(
-              `/${slug}/pedido/${encodeURIComponent(createdId)}?t=${encodeURIComponent(table)}`
-            );
-          } else {
-            setSnack({ open: true, msg: 'Pedido enviado con éxito ✅', severity: 'success' });
-          }
-          return;
-        } catch (err) {
-          lastErr = err;
-          const msg =
-            err?.response?.data?.error?.message ??
-            err?.message ??
-            '';
-          const status = err?.response?.status;
-          if (
-            attempt < maxAttempts &&
-            (isSessionMesaError(msg) || isRetryableNetwork(err) || status === 503)
-          ) {
-            await new Promise((r) => setTimeout(r, retryDelayMs));
-            continue;
-          }
-          throw err;
-        }
-      }
-
-      throw lastErr;
+      finalizeSuccessfulOrder(res);
     } catch (err) {
-      console.error(err);
-      const status = err?.response?.status;
-      const msg = String(err?.message || '').toLowerCase();
-      const isNetwork =
-        msg.includes('network error') ||
-        String(err?.code || '').toLowerCase().includes('err_network') ||
-        !err?.response;
-      const is503 = status === 503;
-
+      if (import.meta.env.DEV) console.error(err);
+      const status = err?.response?.status ?? err?.originalError?.response?.status;
       const apiMsg =
         err?.response?.data?.error?.message ||
         (Array.isArray(err?.response?.data?.message)
@@ -530,16 +543,90 @@ export default function StickyFooter({ table, tableSessionId, restaurantName, se
           : err?.response?.data?.message) ||
         err?.message ||
         'Error al enviar el pedido ❌';
-      const friendlyMsg = isSessionMesaError(apiMsg)
-        ? 'Sincronizando con la mesa… Por favor, esperá un segundo y volvé a intentar.'
-        : isNetwork || is503
-          ? 'Hubo un problema de conexión. Por favor, volvé a intentar en unos segundos.'
+      const netFail = err?.isNetworkError || isAxiosOrNetworkError(err);
+      const is503 = status === 503;
+
+      if (netFail || is503) {
+        const payloadItems = items.map((i) => ({
+          productId: i.id,
+          qty: i.qty,
+          price: i.precio,
+          notes: i.notes || '',
+        }));
+        const namePart = customerName.trim() ? `Cliente: ${customerName.trim()}\n` : '';
+        const trimmedNotes = namePart + orderNotes.trim();
+        pendingOrderAutoRetryRef.current = {
+          slug,
+          payload: { table, tableSessionId, items: payloadItems, notes: trimmedNotes },
+          fp: fingerprintCartItemsForOrder(items),
+        };
+        setSnack({
+          open: true,
+          msg: 'Sin conexión o servidor no disponible. Tu pedido sigue en el carrito; lo reenviaremos al recuperar la red.',
+          severity: 'warning',
+          autoHideDuration: 8000,
+        });
+      } else {
+        const friendlyMsg = isSessionMesaError(apiMsg)
+          ? 'Sincronizando con la mesa… Por favor, esperá un segundo y volvé a intentar.'
           : apiMsg;
-      setSnack({ open: true, msg: friendlyMsg, severity: 'error' });
+        setSnack({ open: true, msg: friendlyMsg, severity: 'error' });
+      }
     } finally {
       setSending(false);
     }
   };
+
+  // Reintento automático al volver online (backoff exponencial vía withRetry)
+  useEffect(() => {
+    const wasOffline = prevOnlineRef.current === false;
+    prevOnlineRef.current = online;
+    if (!online || !wasOffline) return;
+
+    const pending = pendingOrderAutoRetryRef.current;
+    if (!pending || pending.slug !== slug) return;
+    if (fingerprintCartItemsForOrder(items) !== pending.fp) {
+      pendingOrderAutoRetryRef.current = null;
+      return;
+    }
+
+    let cancelled = false;
+    (async () => {
+      setIsAutoRetrying(true);
+      try {
+        const res = await withRetry(() => createOrder(pending.slug, pending.payload), {
+          maxRetries: 5,
+          delayMs: 1000,
+          exponential: true,
+          maxDelayMs: 32000,
+          shouldRetry: (e) => e?.isNetworkError || isAxiosOrNetworkError(e),
+        });
+        if (cancelled) return;
+        finalizeSuccessfulOrderRef.current?.(res);
+        setSnack({
+          open: true,
+          msg: 'Conexión restablecida: pedido enviado ✅',
+          severity: 'success',
+          autoHideDuration: 4000,
+        });
+      } catch (e) {
+        if (!cancelled && import.meta.env.DEV) console.error(e);
+        if (!cancelled) {
+          setSnack({
+            open: true,
+            msg: 'Aún no se pudo enviar. Revisá la conexión y tocá «Confirmar pedido» de nuevo.',
+            severity: 'error',
+          });
+        }
+      } finally {
+        if (!cancelled) setIsAutoRetrying(false);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [online, slug, items]);
 
   useEffect(() => {
     if (!confirmOpen) {
@@ -550,6 +637,15 @@ export default function StickyFooter({ table, tableSessionId, restaurantName, se
 
   // ---------- Llamar Mozo ----------
   const handleCallWaiter = async () => {
+    if (!online) {
+      setSnack({
+        open: true,
+        msg: 'Sin conexión. No podemos avisar al mozo hasta que vuelva la red.',
+        severity: 'warning',
+        autoHideDuration: 6000,
+      });
+      return;
+    }
     try {
       setCallWaiterOpen(false);
 
@@ -572,10 +668,9 @@ export default function StickyFooter({ table, tableSessionId, restaurantName, se
         severity: 'success'
       });
     } catch (err) {
-      console.error('Error calling waiter:', err);
+      if (import.meta.env.DEV) console.error('Error calling waiter:', err);
       const status = err?.response?.status;
-      const msg = String(err?.message || '').toLowerCase();
-      const isNetwork = msg.includes('network error') || !err?.response;
+      const isNetwork = err?.isNetworkError || isAxiosOrNetworkError(err);
       const is503 = status === 503;
       setSnack({
         open: true,
@@ -589,6 +684,15 @@ export default function StickyFooter({ table, tableSessionId, restaurantName, se
   };
 
   const handlePayWithMercadoPago = async () => {
+    if (!online) {
+      setSnack({
+        open: true,
+        msg: 'Sin conexión. Necesitás internet para pagar con Mercado Pago.',
+        severity: 'warning',
+        autoHideDuration: 6000,
+      });
+      return;
+    }
     try {
       setPayLoading(true);
 
@@ -735,6 +839,15 @@ export default function StickyFooter({ table, tableSessionId, restaurantName, se
 
   // ---------- Pagar cuenta ----------
   const handlePay = async () => {
+    if (!online) {
+      setSnack({
+        open: true,
+        msg: 'Sin conexión. No podés solicitar el pago hasta recuperar la red.',
+        severity: 'warning',
+        autoHideDuration: 6000,
+      });
+      return;
+    }
     if (!payMethod) {
       setSnack({
         open: true,
@@ -990,9 +1103,15 @@ export default function StickyFooter({ table, tableSessionId, restaurantName, se
             <Button
               fullWidth
               variant="contained"
-              disabled={!sessionReady || !table || !tableSessionId}
+              disabled={!sessionReady || !table || !tableSessionId || !online}
               onClick={() => setConfirmOpen(true)}
-              title={!sessionReady ? 'Preparando mesa…' : undefined}
+              title={
+                !online
+                  ? 'Sin conexión'
+                  : !sessionReady
+                    ? 'Preparando mesa…'
+                    : undefined
+              }
               sx={{
                 borderRadius: 2,
                 textTransform: 'none',
@@ -1001,7 +1120,11 @@ export default function StickyFooter({ table, tableSessionId, restaurantName, se
                 px: 1,
               }}
             >
-              {!sessionReady ? 'Preparando mesa…' : 'Enviar pedido'}
+              {!online
+                ? 'Esperando conexión…'
+                : !sessionReady
+                  ? 'Preparando mesa…'
+                  : 'Enviar pedido'}
             </Button>
           )}
 
@@ -1067,8 +1190,13 @@ export default function StickyFooter({ table, tableSessionId, restaurantName, se
           <Button onClick={() => setCallWaiterOpen(false)} color="inherit">
             Cancelar
           </Button>
-          <Button onClick={handleCallWaiter} variant="contained" color="warning">
-            Llamar
+          <Button
+            onClick={handleCallWaiter}
+            variant="contained"
+            color="warning"
+            disabled={!online}
+          >
+            {!online ? 'Esperando conexión…' : 'Llamar'}
           </Button>
         </DialogActions>
       </Dialog>
@@ -1076,7 +1204,7 @@ export default function StickyFooter({ table, tableSessionId, restaurantName, se
       {/* Confirmación de pedido */}
       <Dialog
         open={confirmOpen}
-        onClose={() => !sending && setConfirmOpen(false)}
+        onClose={() => !sending && !isAutoRetrying && setConfirmOpen(false)}
         fullWidth
         maxWidth="sm"
         aria-labelledby="confirm-order-title"
@@ -1249,7 +1377,7 @@ export default function StickyFooter({ table, tableSessionId, restaurantName, se
         >
           <Button
             onClick={() => setConfirmOpen(false)}
-            disabled={sending}
+            disabled={sending || isAutoRetrying}
             sx={{
               borderRadius: 2,
               textTransform: 'none',
@@ -1264,7 +1392,7 @@ export default function StickyFooter({ table, tableSessionId, restaurantName, se
             onClick={() => {
               setClearCartConfirmOpen(true);
             }}
-            disabled={sending}
+            disabled={sending || isAutoRetrying}
             sx={{
               borderRadius: 2,
               textTransform: 'none',
@@ -1280,8 +1408,24 @@ export default function StickyFooter({ table, tableSessionId, restaurantName, se
           <Button
             variant="contained"
             onClick={handleSendOrder}
-            disabled={sending || items.length === 0 || !table || !tableSessionId || !sessionReady}
-            title={!sessionReady ? 'Preparando mesa…' : !tableSessionId ? 'Esperando sesión de mesa…' : undefined}
+            disabled={
+              sending ||
+              isAutoRetrying ||
+              items.length === 0 ||
+              !table ||
+              !tableSessionId ||
+              !sessionReady ||
+              !online
+            }
+            title={
+              !online
+                ? 'Sin conexión'
+                : !sessionReady
+                  ? 'Preparando mesa…'
+                  : !tableSessionId
+                    ? 'Esperando sesión de mesa…'
+                    : undefined
+            }
             sx={{
               borderRadius: 2,
               textTransform: 'none',
@@ -1297,11 +1441,13 @@ export default function StickyFooter({ table, tableSessionId, restaurantName, se
               },
             }}
           >
-            {sending ? (
+            {sending || isAutoRetrying ? (
               <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, justifyContent: 'center' }}>
                 <CircularProgress size={18} color="inherit" />
-                Enviando…
+                {isAutoRetrying ? 'Reintentando envío…' : 'Enviando…'}
               </Box>
+            ) : !online ? (
+              'Esperando conexión…'
             ) : !sessionReady ? (
               'Preparando mesa…'
             ) : !tableSessionId ? (
@@ -1316,7 +1462,7 @@ export default function StickyFooter({ table, tableSessionId, restaurantName, se
       {/* Confirmación para vaciar carrito */}
       <Dialog
         open={clearCartConfirmOpen}
-        onClose={() => !sending && setClearCartConfirmOpen(false)}
+        onClose={() => !sending && !isAutoRetrying && setClearCartConfirmOpen(false)}
         maxWidth="xs"
         fullWidth
       >
@@ -1329,7 +1475,7 @@ export default function StickyFooter({ table, tableSessionId, restaurantName, se
         <DialogActions sx={{ p: 2, gap: 1 }}>
           <Button
             onClick={() => setClearCartConfirmOpen(false)}
-            disabled={sending}
+            disabled={sending || isAutoRetrying}
             sx={{ textTransform: 'none' }}
           >
             Cancelar
@@ -1337,9 +1483,10 @@ export default function StickyFooter({ table, tableSessionId, restaurantName, se
           <Button
             variant="contained"
             color="error"
-            disabled={sending}
+            disabled={sending || isAutoRetrying}
             onClick={() => {
               clearCart();
+              pendingOrderAutoRetryRef.current = null;
               setConfirmOpen(false);
               setClearCartConfirmOpen(false);
               setSnack({ open: true, msg: 'Carrito vaciado', severity: 'info' });
@@ -1354,8 +1501,8 @@ export default function StickyFooter({ table, tableSessionId, restaurantName, se
       {/* Snackbar */}
       <Snackbar
         open={snack.open}
-        autoHideDuration={3000}
-        onClose={() => setSnack(s => ({ ...s, open: false }))}
+        autoHideDuration={snack.autoHideDuration ?? 3000}
+        onClose={() => setSnack((s) => ({ ...s, open: false }))}
       >
         <Alert
           onClose={() => setSnack(s => ({ ...s, open: false }))}
@@ -1526,11 +1673,15 @@ export default function StickyFooter({ table, tableSessionId, restaurantName, se
                         size="small"
                         variant="outlined"
                         onClick={handlePayWithMercadoPago}
-                        disabled={payLoading}
+                        disabled={payLoading || !online}
                         sx={{ textTransform: 'none' }}
                         startIcon={payLoading ? <CircularProgress size={16} color="inherit" /> : null}
                       >
-                        {payLoading ? 'Redirigiendo…' : 'Mercado Pago'}
+                        {!online
+                          ? 'Esperando conexión…'
+                          : payLoading
+                            ? 'Redirigiendo…'
+                            : 'Mercado Pago'}
                       </Button>
                     )}
                     <Button
@@ -1925,7 +2076,7 @@ export default function StickyFooter({ table, tableSessionId, restaurantName, se
                   variant="outlined"
                   startIcon={payLoading ? <CircularProgress size={20} sx={{ color: '#2196F3' }} /> : <AttachMoneyIcon />}
                   onClick={handlePayWithMercadoPago}
-                  disabled={payLoading}
+                  disabled={payLoading || !online}
                   sx={{
                     borderRadius: 2,
                     textTransform: 'none',
@@ -1938,7 +2089,11 @@ export default function StickyFooter({ table, tableSessionId, restaurantName, se
                     },
                   }}
                 >
-                  {payLoading ? 'Redirigiendo…' : 'Mercado Pago'}
+                  {!online
+                    ? 'Esperando conexión…'
+                    : payLoading
+                      ? 'Redirigiendo…'
+                      : 'Mercado Pago'}
                 </Button>
               )}
               <Button
@@ -2043,7 +2198,8 @@ export default function StickyFooter({ table, tableSessionId, restaurantName, se
                 payLoading ||
                 payRequestSent ||
                 (orderDetails.length === 0 && accountTotal === 0) ||
-                !payMethod
+                !payMethod ||
+                !online
               }
               sx={{
                 borderRadius: 2,
@@ -2056,13 +2212,15 @@ export default function StickyFooter({ table, tableSessionId, restaurantName, se
                 },
               }}
             >
-              {payLoading
-                ? 'Procesando…'
-                : payRequestSent
-                  ? 'Solicitud enviada'
-                  : (payMethod === 'cash' || payMethod === 'card')
-                    ? 'Solicitar pago'
-                    : `Pagar ${money(totalWithTip)}`
+              {!online
+                ? 'Esperando conexión…'
+                : payLoading
+                  ? 'Procesando…'
+                  : payRequestSent
+                    ? 'Solicitud enviada'
+                    : (payMethod === 'cash' || payMethod === 'card')
+                      ? 'Solicitar pago'
+                      : `Pagar ${money(totalWithTip)}`
               }
             </Button>
           </DialogActions>

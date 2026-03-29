@@ -2,6 +2,7 @@
 import React, { useState } from "react";
 import { Box, Button, CircularProgress } from "@mui/material";
 import { createMpPreference } from "../api/payments";
+import { useNetworkStatus } from "../hooks/useNetworkStatus";
 
 /**
  * Props:
@@ -32,14 +33,19 @@ export default function PayWithMercadoPago({
 }) {
   const [loading, setLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState(null);
+  const online = useNetworkStatus();
 
   const hasOrderId = orderId != null && orderId !== '';
   const hasAmount = amount != null && Number(amount) > 0;
   const hasItems = Array.isArray(items) && items.length > 0;
   const canPay = hasOrderId || hasAmount || hasItems;
-  const isDisabled = disabled || loading || !canPay;
+  const isDisabled = disabled || loading || !canPay || !online;
 
   async function handlePay() {
+    if (!online) {
+      setErrorMsg("Sin conexión. Necesitás internet para pagar.");
+      return;
+    }
     if (!canPay) {
       alert("Falta orderId o monto para iniciar el pago.");
       return;
@@ -120,7 +126,7 @@ export default function PayWithMercadoPago({
         aria-label={label}
         startIcon={loading ? <CircularProgress size={20} color="inherit" /> : null}
       >
-        {loading ? "Redirigiendo…" : label}
+        {!online ? "Esperando conexión…" : loading ? "Redirigiendo…" : label}
       </Button>
     </>
   );

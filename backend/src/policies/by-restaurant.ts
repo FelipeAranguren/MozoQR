@@ -8,22 +8,26 @@
 /* eslint-disable no-console */
 // @ts-ignore - console está disponible en runtime de Node.js/Strapi
 
+const isProd = process.env.NODE_ENV === 'production';
+
 export default async (policyContext: any, _config: any, { strapi }: any) => {
-  console.log('🚀 [by-restaurant] POLICY FUNCIÓN EJECUTADA - INICIO');
+  if (!isProd) console.log('🚀 [by-restaurant] POLICY FUNCIÓN EJECUTADA - INICIO');
   try {
     const ctx = policyContext;
     const slug = ctx.params?.slug;
 
-    console.log('🔍 [by-restaurant] Policy ejecutándose:', {
-      slug: slug,
-      params: ctx.params,
-      url: ctx.request?.url,
-      method: ctx.request?.method,
-      hasStrapi: !!strapi
-    });
+    if (!isProd) {
+      console.log('🔍 [by-restaurant] Policy ejecutándose:', {
+        slug: slug,
+        params: ctx.params,
+        url: ctx.request?.url,
+        method: ctx.request?.method,
+        hasStrapi: !!strapi
+      });
+    }
 
     if (!slug) {
-      console.error('❌ [by-restaurant] Missing restaurant slug');
+      if (!isProd) console.error('❌ [by-restaurant] Missing restaurant slug');
       ctx.unauthorized('Missing restaurant slug');
       return false;
     }
@@ -36,7 +40,7 @@ export default async (policyContext: any, _config: any, { strapi }: any) => {
     });
 
     if (!restaurante?.id) {
-      console.error('❌ [by-restaurant] Restaurante no encontrado para slug:', slug);
+      if (!isProd) console.error('❌ [by-restaurant] Restaurante no encontrado para slug:', slug);
       ctx.notFound('Restaurante no encontrado');
       return false;
     }
@@ -46,12 +50,14 @@ export default async (policyContext: any, _config: any, { strapi }: any) => {
     const name = restaurante?.attributes?.name || restaurante?.name;
     const suscripcion = restaurante?.Suscripcion || restaurante?.attributes?.Suscripcion;
 
-    console.log('✅ [by-restaurant] Restaurante encontrado y publicado:', {
-      id: restauranteId,
-      slug: restaurante?.slug || restaurante?.attributes?.slug,
-      name: name,
-      suscripcion: suscripcion
-    });
+    if (!isProd) {
+      console.log('✅ [by-restaurant] Restaurante encontrado y publicado:', {
+        id: restauranteId,
+        slug: restaurante?.slug || restaurante?.attributes?.slug,
+        name: name,
+        suscripcion: suscripcion
+      });
+    }
 
     // Attach to ctx.state so controllers can reuse
     ctx.state.restauranteId = restauranteId;
@@ -59,10 +65,10 @@ export default async (policyContext: any, _config: any, { strapi }: any) => {
     const suscripcionNormalizada = suscripcion || 'basic';
     ctx.state.restaurantePlan = suscripcionNormalizada.toUpperCase();
 
-    console.log('✅ [by-restaurant] Policy completada exitosamente');
+    if (!isProd) console.log('✅ [by-restaurant] Policy completada exitosamente');
     return true;
   } catch (error) {
-    console.error('❌ [by-restaurant] Error en policy:', error);
+    if (!isProd) console.error('❌ [by-restaurant] Error en policy:', error);
     return false;
   }
 };

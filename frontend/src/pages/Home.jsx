@@ -19,10 +19,12 @@ import { alpha } from '@mui/material/styles'
 import { MARANA_COLORS } from '../theme'
 import { useDolarBlue } from '../hooks/useDolarBlue'
 import { formatPriceARS, formatPriceUSD } from '../constants/planPricing'
+import { isPublicDemoUiEnabled } from '../utils/envPublic'
 
 export default function Home() {
   const navigate = useNavigate()
   const theme = useTheme()
+  const showDemoUi = isPublicDemoUiEnabled()
   const { blueVenta, loading: dolarLoading } = useDolarBlue()
 
   const features = [
@@ -58,7 +60,9 @@ export default function Home() {
     'Visibilidad para el dueño: qué se vende, cuándo se concentra la demanda y cómo cerrar la caja.',
     'Pagos integrados al recorrido del cliente, sin depender de que alguien traiga la cuenta.',
     'Escalable por plan: desde lo esencial hasta análisis avanzados e IA según tu suscripción.',
-    'Probá el recorrido completo en el entorno de demostración antes de comprometerte.'
+    ...(showDemoUi
+      ? ['Probá el recorrido completo en el entorno de demostración antes de comprometerte.']
+      : [])
   ]
 
   const flowPillars = [
@@ -290,7 +294,11 @@ export default function Home() {
                       variant="contained"
                       size="large"
                       fullWidth
-                      onClick={() => navigate('/demo')}
+                      onClick={() =>
+                        showDemoUi
+                          ? navigate('/demo')
+                          : document.getElementById('planes')?.scrollIntoView({ behavior: 'smooth' })
+                      }
                       endIcon={<ArrowForwardIcon />}
                       sx={{
                         py: 1.5,
@@ -302,7 +310,7 @@ export default function Home() {
                         '&:hover': { boxShadow: 6 }
                       }}
                     >
-                      Probar gratis ahora
+                      {showDemoUi ? 'Probar gratis ahora' : 'Ver planes'}
                     </Button>
                   </motion.div>
 
@@ -803,7 +811,9 @@ export default function Home() {
                     Comienza hoy mismo
                   </Typography>
                   <Typography variant="body2" color="textSecondary" paragraph sx={{ mb: 3 }}>
-                    Recorré la demo con rol de comensal, cocina y dueño. Sin tarjeta para explorar el flujo.
+                    {showDemoUi
+                      ? 'Recorré la demo con rol de comensal, cocina y dueño. Sin tarjeta para explorar el flujo.'
+                      : 'Elegí un plan que encaje con tu negocio y activá MozoQR cuando estés listo.'}
                   </Typography>
 
                   <motion.div
@@ -815,7 +825,11 @@ export default function Home() {
                       size="large"
                       fullWidth
                       endIcon={<ArrowForwardIcon />}
-                      onClick={() => navigate('/demo')}
+                      onClick={() =>
+                        showDemoUi
+                          ? navigate('/demo')
+                          : document.getElementById('planes')?.scrollIntoView({ behavior: 'smooth' })
+                      }
                       sx={{
                         mb: 3,
                         py: 1.5,
@@ -825,7 +839,7 @@ export default function Home() {
                         }
                       }}
                     >
-                      Empezar demostración
+                      {showDemoUi ? 'Empezar demostración' : 'Ver planes'}
                     </Button>
                   </motion.div>
 
@@ -968,7 +982,9 @@ export default function Home() {
                     mb: 4
                   }}
                 >
-                  Entrá a la demo: probá pedidos, cocina y panel de dueño con datos de ejemplo, y elegí el plan cuando encaje con tu negocio.
+                  {showDemoUi
+                    ? 'Entrá a la demo: probá pedidos, cocina y panel de dueño con datos de ejemplo, y elegí el plan cuando encaje con tu negocio.'
+                    : 'Conectá mesa, cocina y caja con un solo flujo. Elegí el plan y empezá cuando quieras.'}
                 </Typography>
               </motion.div>
 
@@ -987,7 +1003,11 @@ export default function Home() {
                       variant="contained"
                       size="large"
                       endIcon={<ArrowForwardIcon />}
-                      onClick={() => navigate('/demo')}
+                      onClick={() =>
+                        showDemoUi
+                          ? navigate('/demo')
+                          : document.getElementById('planes')?.scrollIntoView({ behavior: 'smooth' })
+                      }
                       sx={{
                         bgcolor: 'white',
                         color: 'primary.main',
@@ -1002,7 +1022,7 @@ export default function Home() {
                         }
                       }}
                     >
-                      Comenzar gratis ahora
+                      {showDemoUi ? 'Comenzar gratis ahora' : 'Ver planes'}
                     </Button>
                   </motion.div>
 

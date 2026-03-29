@@ -1796,8 +1796,14 @@ export default {
     ctx.body = { data: { success: true } };
   },
 
-  // DEBUGGING TOOL
+  // DEBUGGING TOOL (solo si ALLOW_DEBUG=true)
   async debugSession(ctx: Ctx) {
+    if (process.env.ALLOW_DEBUG !== 'true') {
+      ctx.status = 404;
+      ctx.body = { error: { message: 'Not found' } };
+      return;
+    }
+
     const { id } = ctx.params || {};
     const tableNumber = Number(id);
 

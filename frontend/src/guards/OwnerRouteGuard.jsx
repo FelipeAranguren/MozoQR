@@ -2,6 +2,7 @@
 import { useEffect, useRef, useState } from "react";
 import { Navigate, useParams, useLocation } from "react-router-dom";
 import { DemoAccessProvider } from "../context/DemoAccessContext";
+import { isDemoStaffBypassEnabled } from "../utils/envPublic";
 
 // Misma base que el resto de la app para que el JWT sea válido en el mismo backend
 function getBaseUrl() {
@@ -46,7 +47,7 @@ export default function OwnerRouteGuard({ children }) {
     let cancelled = false;
 
     if (!slug) {
-      console.warn('[OwnerRouteGuard] No slug found');
+      if (import.meta.env.DEV) console.warn('[OwnerRouteGuard] No slug found');
       setAllowed(false);
       setError('No se especificó el restaurante.');
       setIsDemoAccess(false);
@@ -70,22 +71,29 @@ export default function OwnerRouteGuard({ children }) {
           const restaurant = demoJson?.data?.[0];
           const attrs = restaurant?.attributes || restaurant || {};
           const isDemo = attrs?.is_demo === true;
+          const allowDemoBypass = isDemo && isDemoStaffBypassEnabled();
 
-          if (!cancelled && isDemo) {
-            console.info('[OwnerRouteGuard] Demo restaurant detected, allowing public access for slug:', slug);
+          if (!cancelled && allowDemoBypass) {
+            if (import.meta.env.DEV) {
+              console.info('[OwnerRouteGuard] Demo bypass (non-production build or VITE_ENABLE_DEMO_STAFF_BYPASS)');
+            }
             setIsDemoAccess(true);
             setAllowed(true);
             setError(null);
             return; // No seguir con validación de token / roles
           }
         } catch (demoErr) {
-          console.warn('[OwnerRouteGuard] Error checking is_demo, falling back to auth guard:', demoErr);
+          if (import.meta.env.DEV) {
+            console.warn('[OwnerRouteGuard] Error checking is_demo, falling back to auth guard:', demoErr);
+          }
         }
 
         // 2) Si no es demo, requerir autenticación como antes
         if (!token) {
           if (!cancelled) {
-            console.warn('[OwnerRouteGuard] No token found (non-demo restaurant)');
+            if (import.meta.env.DEV) {
+              console.warn('[OwnerRouteGuard] No token found');
+            }
             setAllowed(false);
             setError('No hay token de autenticación. Por favor, inicia sesión.');
           }
@@ -120,7 +128,7 @@ export default function OwnerRouteGuard({ children }) {
           }
         }
       } catch (err) {
-        console.error('[OwnerRouteGuard] Error:', err);
+        if (import.meta.env.DEV) console.error('[OwnerRouteGuard] Error:', err);
         if (!cancelled) {
           setAllowed(false);
           setIsDemoAccess(false);

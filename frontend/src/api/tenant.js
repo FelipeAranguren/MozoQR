@@ -1,5 +1,6 @@
 import { client } from './client';
 import axios from 'axios';
+import { isAxiosOrNetworkError } from '../utils/networkError';
 
 const baseURL = import.meta.env?.VITE_API_URL || 'http://localhost:1337/api';
 const IDEM_ON = String(import.meta.env?.VITE_IDEMPOTENCY || '').toLowerCase() === 'on';
@@ -261,7 +262,12 @@ export async function createOrder(slug, payload) {
       (typeof data?.error === 'string' && data.error) ||
       err?.message ||
       'Error al crear el pedido. Intentá de nuevo.';
-    throw new Error(msg);
+    const network = isAxiosOrNetworkError(err);
+    const wrapped = new Error(msg);
+    wrapped.isNetworkError = network;
+    wrapped.originalError = err;
+    if (err?.response) wrapped.response = err.response;
+    throw wrapped;
   }
 
   if (!res?.data) {

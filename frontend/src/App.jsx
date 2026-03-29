@@ -37,6 +37,8 @@ import ImpersonateCallback from './pages/ImpersonateCallback';
 import DemoLanding from './pages/DemoLanding';
 import Checkout from './pages/Checkout';
 import ScrollToTop from './components/ScrollToTop';
+import { isPublicDemoUiEnabled } from './utils/envPublic';
+import OfflineBanner from './components/OfflineBanner';
 
 // Si Grant/Strapi redirige a "/" (o otra ruta) con access_token, llevamos al usuario a la página que lo procesa
 function GoogleTokenRedirect({ children }) {
@@ -73,11 +75,17 @@ export default function App() {
         <GoogleTokenRedirect>
           <ScrollToTop />
           <CssBaseline />
+          <OfflineBanner />
           <ConditionalHeader />
           <Routes>
           {/* Cliente público - rutas simplificadas */}
           <Route path="/" element={<Home />} />
-          <Route path="/demo" element={<DemoLanding />} />
+          <Route
+            path="/demo"
+            element={
+              isPublicDemoUiEnabled() ? <DemoLanding /> : <Navigate to="/" replace />
+            }
+          />
           <Route path="/checkout" element={<Checkout />} />
           {/* Legacy global: sin slug en path; debe ir ANTES de /:slug o "pago-success" se toma como slug */}
           <Route path="/pago-success" element={<PagoSuccess />} />
