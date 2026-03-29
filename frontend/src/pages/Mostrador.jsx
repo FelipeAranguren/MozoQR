@@ -692,12 +692,13 @@ export default function Mostrador() {
         const next = [
           {
             mesaNumber,
+            documentId: String(docId),
             amount,
             currency: 'ARS',
             paidAt: new Date().toISOString(),
             key: `local-${docId}-${Date.now()}`,
           },
-          ...prev.filter((x) => x.mesaNumber !== mesaNumber),
+          ...prev,
         ].slice(0, 3);
         return next;
       });

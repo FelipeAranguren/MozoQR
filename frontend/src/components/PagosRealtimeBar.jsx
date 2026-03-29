@@ -40,6 +40,7 @@ function parsePedidoPaidRow(row) {
     amount: Number(a.total) || 0,
     currency: 'ARS',
     paidAt: new Date(updatedAt).toISOString(),
+    documentId: docId != null ? String(docId) : undefined,
     key: `paid-api-${docId}`,
     _fromPaidQuery: true,
   };
@@ -111,13 +112,16 @@ export default function PagosRealtimeBar({ slug, localItems = [] }) {
       const parsed = raw
         .map(parsePedidoPaidRow)
         .filter(Boolean)
-        .filter((p) => new Date(p.paidAt).getTime() >= cutoff);
-      const byMesa = new Map();
-      parsed.forEach((p) => {
-        const prev = byMesa.get(p.mesaNumber);
-        if (!prev || new Date(p.paidAt) > new Date(prev.paidAt)) byMesa.set(p.mesaNumber, p);
-      });
-      setPaidRecent(Array.from(byMesa.values()).sort((a, b) => new Date(b.paidAt) - new Date(a.paidAt)).slice(0, 5));
+        .filter((p) => new Date(p.paidAt).getTime() >= cutoff)
+        .sort((a, b) => new Date(b.paidAt) - new Date(a.paidAt));
+      const seenKey = new Set();
+      const uniqueByPedido = [];
+      for (const p of parsed) {
+        if (seenKey.has(p.key)) continue;
+        seenKey.add(p.key);
+        uniqueByPedido.push(p);
+      }
+      setPaidRecent(uniqueByPedido.slice(0, 15));
     } catch {
       setPaidRecent([]);
     }
@@ -210,16 +214,22 @@ export default function PagosRealtimeBar({ slug, localItems = [] }) {
       });
     }
 
-    const byMesa = new Map();
-    for (const c of candidates) {
-      const m = Number(c.mesaNumber);
-      const prev = byMesa.get(m);
-      if (!prev || c._t > prev._t) byMesa.set(m, c);
+    const eventKey = (c) => {
+      const d = c.documentId ?? c.document_id;
+      if (d != null && String(d) !== '') return `doc:${String(d)}`;
+      return String(c.key || `${c.mesaNumber}|${c.paidAt || c._t}`);
+    };
+    const sorted = [...candidates].sort((a, b) => b._t - a._t);
+    const seen = new Set();
+    const out = [];
+    for (const c of sorted) {
+      const k = eventKey(c);
+      if (seen.has(k)) continue;
+      seen.add(k);
+      out.push(c);
+      if (out.length >= 3) break;
     }
-    return Array.from(byMesa.values())
-      .sort((a, b) => b._t - a._t)
-      .slice(0, 3)
-      .map(({ _t, ...rest }) => rest);
+    return out.map(({ _t, ...rest }) => rest);
   }, [localItems, paidRecent, items]);
 
   const content = useMemo(() => {
