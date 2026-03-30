@@ -196,11 +196,11 @@ function AmbientStars({ progress, count = 900 }) {
 
   useFrame(() => {
     const t = progress.get()
-    const u = THREE.MathUtils.smoothstep(t, 0, 0.48)
-    const burst = u * 1.35
+    const u = THREE.MathUtils.smoothstep(t, 0.15, 0.68)
+    const burst = u * 2.15
     const pos = geom.attributes.position.array
     const col = geom.attributes.color.array
-    const fade = THREE.MathUtils.smoothstep(t, 0.03, 0.28) * (1 - THREE.MathUtils.smoothstep(t, 0.88, 1) * 0.35)
+    const fade = THREE.MathUtils.smoothstep(t, 0.22, 0.48) * (1 - THREE.MathUtils.smoothstep(t, 0.9, 1) * 0.3)
     for (let i = 0; i < count; i++) {
       const dn = distN[i]
       const bx = base[i * 3]
@@ -209,8 +209,8 @@ function AmbientStars({ progress, count = 900 }) {
       const k = burst * (0.35 + dn * 0.65)
       pos[i * 3] = bx + radial[i * 3] * k
       pos[i * 3 + 1] = by + radial[i * 3 + 1] * k
-      pos[i * 3 + 2] = bz + radial[i * 3 + 2] * k * 0.75
-      const cm = THREE.MathUtils.smoothstep(t, 0.06, 0.38)
+      pos[i * 3 + 2] = bz + radial[i * 3 + 2] * k * 0.82
+      const cm = THREE.MathUtils.smoothstep(t, 0.28, 0.58)
       col[i * 3] = THREE.MathUtils.lerp(colA[i * 3], colB[i * 3], cm) * fade
       col[i * 3 + 1] = THREE.MathUtils.lerp(colA[i * 3 + 1], colB[i * 3 + 1], cm) * fade
       col[i * 3 + 2] = THREE.MathUtils.lerp(colA[i * 3 + 2], colB[i * 3 + 2], cm) * fade
@@ -251,20 +251,20 @@ function QrParticleField({ progress, buffers }) {
     const pos = geom.attributes.position.array
     const col = geom.attributes.color.array
     const { n, basePos, radial, distNorm, startCol, endCol } = buffers
-    // Expansión suave y corta: casi todo el movimiento radial termina ~t=0.45 (siguen en encuadre)
-    const expand = THREE.MathUtils.smoothstep(t, 0, 0.44)
-    const radialCap = 0.36 * expand * (1 - 0.06 * THREE.MathUtils.smoothstep(t, 0.6, 1))
-    // Color → estrella antes de que el scroll llegue al final
-    const colorMix = THREE.MathUtils.smoothstep(t, 0.04, 0.36)
-    const twinkle = THREE.MathUtils.smoothstep(t, 0.22, 0.5)
-    const shrink = 1 - THREE.MathUtils.smoothstep(t, 0.42, 0.9) * 0.2
+    // Desarmado más largo (~hasta t≈0.7); amplitud intermedia (no se van de pantalla como antes)
+    const expand = THREE.MathUtils.smoothstep(t, 0.02, 0.7)
+    const radialCap = 0.46 * expand * (1 - 0.05 * THREE.MathUtils.smoothstep(t, 0.78, 1))
+    // Estrella: el color cambia después de buena parte del movimiento radial
+    const colorMix = THREE.MathUtils.smoothstep(t, 0.26, 0.68)
+    const twinkle = THREE.MathUtils.smoothstep(t, 0.42, 0.78)
+    const shrink = 1 - THREE.MathUtils.smoothstep(t, 0.58, 0.94) * 0.22
 
     for (let i = 0; i < n; i++) {
       const dn = distNorm[i]
       const mag = radialCap * (0.28 + dn * 0.72)
       pos[i * 3] = basePos[i * 3] + radial[i * 3] * mag
       pos[i * 3 + 1] = basePos[i * 3 + 1] + radial[i * 3 + 1] * mag
-      pos[i * 3 + 2] = basePos[i * 3 + 2] + radial[i * 3 + 2] * mag * 0.7
+      pos[i * 3 + 2] = basePos[i * 3 + 2] + radial[i * 3 + 2] * mag * 0.78
 
       col[i * 3] = THREE.MathUtils.lerp(startCol[i * 3], endCol[i * 3], colorMix) * shrink
       col[i * 3 + 1] = THREE.MathUtils.lerp(startCol[i * 3 + 1], endCol[i * 3 + 1], colorMix) * shrink
@@ -273,7 +273,7 @@ function QrParticleField({ progress, buffers }) {
     geom.attributes.position.needsUpdate = true
     geom.attributes.color.needsUpdate = true
     if (ref.current) {
-      ref.current.material.size = 0.026 * (0.88 + 0.55 * twinkle + 0.12 * THREE.MathUtils.smoothstep(t, 0.5, 0.95))
+      ref.current.material.size = 0.026 * (0.88 + 0.5 * twinkle + 0.1 * THREE.MathUtils.smoothstep(t, 0.65, 0.98))
     }
   })
 
@@ -306,7 +306,7 @@ function StarfieldBackdrop({ progress }) {
   useFrame(() => {
     const t = progress.get()
     if (!meshRef.current) return
-    meshRef.current.material.opacity = THREE.MathUtils.smoothstep(t, 0.1, 0.48) * 0.5
+    meshRef.current.material.opacity = THREE.MathUtils.smoothstep(t, 0.44, 0.88) * 0.48
   })
   if (!map) return null
   const w = viewport.width * 2.2
