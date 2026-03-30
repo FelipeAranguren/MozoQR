@@ -1,124 +1,93 @@
 import React, { useMemo, useRef, useState, useEffect, Suspense } from 'react'
 import { Canvas, useFrame, useThree } from '@react-three/fiber'
 import * as THREE from 'three'
-const QR_IMAGE = '/hero-qr.png'
+
 const STARS_BG = '/hero-stars-bg.png'
 
 const COL_STAR_A = new THREE.Color('#4CC9F0')
 const COL_STAR_B = new THREE.Color('#F72585')
 const COL_WHITE = new THREE.Color('#ffffff')
 
+/** Matriz QR simplificada 20×21 (módulos “negros” = 1): finder patterns + datos en cuadrícula. */
+const QR_MATRIX = [
+  [1,1,1,1,1,1,1,0,1,0,1,0,1,0,1,1,1,1,1,1,1],
+  [1,0,0,0,0,0,1,0,0,1,0,1,0,0,1,0,0,0,0,0,1],
+  [1,0,1,1,1,0,1,0,1,0,1,0,1,0,1,0,1,1,1,0,1],
+  [1,0,1,1,1,0,1,0,0,0,1,1,0,0,1,0,1,1,1,0,1],
+  [1,0,1,1,1,0,1,0,1,1,0,0,1,0,1,0,1,1,1,0,1],
+  [1,0,0,0,0,0,1,0,0,1,1,0,0,0,1,0,0,0,0,0,1],
+  [1,1,1,1,1,1,1,0,1,0,1,0,1,0,1,1,1,1,1,1,1],
+  [0,0,0,0,0,0,0,0,0,1,0,0,1,0,0,0,0,0,0,0,0],
+  [1,0,1,1,0,0,1,0,0,0,1,0,0,0,1,1,0,1,0,1,0],
+  [0,1,0,0,1,0,0,0,1,0,0,1,0,0,0,1,1,0,0,1,1],
+  [1,0,1,0,1,1,1,0,0,1,1,0,1,0,1,0,0,1,1,0,1],
+  [0,0,0,1,0,0,0,0,1,0,0,0,1,0,0,1,0,1,0,0,0],
+  [1,1,1,0,1,0,1,0,0,1,0,1,0,0,1,1,1,0,1,1,1],
+  [0,0,0,0,0,0,0,0,1,1,1,0,1,0,0,0,0,0,0,0,0],
+  [1,1,1,1,1,1,1,0,0,0,1,0,0,0,1,1,1,1,1,1,1],
+  [1,0,0,0,0,0,1,0,1,0,0,1,1,0,1,0,0,0,0,0,1],
+  [1,0,1,1,1,0,1,0,0,1,1,0,0,0,1,0,1,1,1,0,1],
+  [1,0,1,1,1,0,1,0,1,0,1,1,0,0,1,0,1,1,1,0,1],
+  [1,0,0,0,0,0,1,0,0,0,0,1,1,0,1,0,0,0,0,0,1],
+  [1,1,1,1,1,1,1,0,1,1,1,0,1,0,1,1,1,1,1,1,1],
+]
+
+const QR_ROWS = QR_MATRIX.length
+const QR_COLS = QR_MATRIX[0].length
+
 function detRand(i, salt = 0) {
   const x = Math.sin(i * 12.9898 + salt * 78.233) * 43758.5453
   return x - Math.floor(x)
 }
 
-/** Píxel pertenece a un cubito luminoso del QR (no al fondo oscuro ni reflejos grises). */
-function isGlowingQrModule(r, g, b) {
-  const rn = r / 255
-  const gn = g / 255
-  const bn = b / 255
-  const lum = 0.299 * rn + 0.587 * gn + 0.114 * bn
-  const mx = Math.max(rn, gn, bn)
-  const mn = Math.min(rn, gn, bn)
-  const sat = mx - mn
-  return lum > 0.16 && (sat > 0.07 || lum > 0.32)
+/** Blanco puro ↔ cian suave (misma línea visual que el hero actual). */
+function neonQrDotColor(pid) {
+  const cyan = { r: 0.38, g: 0.88, b: 1 }
+  const white = { r: 1, g: 1, b: 1 }
+  const u = detRand(pid, 7)
+  const v = detRand(pid, 8)
+  const t = 0.2 + u * 0.78
+  return {
+    r: THREE.MathUtils.clamp(cyan.r + (white.r - cyan.r) * t + (v - 0.5) * 0.06, 0, 1),
+    g: THREE.MathUtils.clamp(cyan.g + (white.g - cyan.g) * t + (v - 0.5) * 0.04, 0, 1),
+    b: THREE.MathUtils.clamp(cyan.b + (white.b - cyan.b) * t, 0, 1),
+  }
 }
 
 /**
- * Muestrea el QR luminoso de la imagen: recorte automático al patrón (no todo el rectángulo).
- * Fase 1: bounding box de píxeles “módulo”. Fase 2: grilla solo dentro del QR → silueta real.
+ * Puntos iniciales en forma de QR cuadrado: grilla de módulos + subpuntos por celda.
  */
-function sampleQrFromImage(src) {
-  return new Promise((resolve, reject) => {
-    const img = new Image()
-    img.crossOrigin = 'anonymous'
-    img.onload = () => {
-      const cw = 220
-      const ch = Math.max(8, Math.round((img.height / img.width) * cw))
-      const canvas = document.createElement('canvas')
-      canvas.width = cw
-      canvas.height = ch
-      const ctx = canvas.getContext('2d')
-      if (!ctx) {
-        reject(new Error('canvas'))
-        return
-      }
-      ctx.drawImage(img, 0, 0, cw, ch)
-      const { data } = ctx.getImageData(0, 0, cw, ch)
-
-      let minX = cw
-      let maxX = 0
-      let minY = ch
-      let maxY = 0
-      let any = false
-      for (let yi = 0; yi < ch; yi++) {
-        for (let xi = 0; xi < cw; xi++) {
-          const j = (yi * cw + xi) * 4
-          const r = data[j]
-          const g = data[j + 1]
-          const b = data[j + 2]
-          if (isGlowingQrModule(r, g, b)) {
-            any = true
-            if (xi < minX) minX = xi
-            if (xi > maxX) maxX = xi
-            if (yi < minY) minY = yi
-            if (yi > maxY) maxY = yi
-          }
-        }
-      }
-
-      if (!any) {
-        resolve([])
-        return
-      }
-
-      const padX = Math.max(2, Math.round((maxX - minX) * 0.02))
-      const padY = Math.max(2, Math.round((maxY - minY) * 0.02))
-      minX = Math.max(0, minX - padX)
-      maxX = Math.min(cw - 1, maxX + padX)
-      minY = Math.max(0, minY - padY)
-      maxY = Math.min(ch - 1, maxY + padY)
-
-      const bw = maxX - minX + 1
-      const bh = maxY - minY + 1
-      const cx = (minX + maxX) / 2
-      const cy = (minY + maxY) / 2
-      const norm = Math.max(bw, bh) / 2
-      const world = 2.15
-
-      const step = 2
-      const raw = []
-      for (let yi = minY; yi <= maxY; yi += step) {
-        for (let xi = minX; xi <= maxX; xi += step) {
-          const j = (yi * cw + xi) * 4
-          const r = data[j]
-          const g = data[j + 1]
-          const b = data[j + 2]
-          if (!isGlowingQrModule(r, g, b)) continue
-          const nx = ((xi - cx) / norm) * world
-          const ny = -((yi - cy) / norm) * world
+function buildProceduralQrPoints() {
+  const pitch = 2.06 / QR_COLS
+  const sub = 3
+  const raw = []
+  let pid = 0
+  for (let r = 0; r < QR_ROWS; r++) {
+    for (let c = 0; c < QR_COLS; c++) {
+      if (QR_MATRIX[r][c] !== 1) continue
+      const cx = (c - (QR_COLS - 1) / 2) * pitch
+      const cy = -((r - (QR_ROWS - 1) / 2) * pitch)
+      for (let si = 0; si < sub; si++) {
+        for (let sj = 0; sj < sub; sj++) {
+          const ox = ((si + 0.5) / sub - 0.5) * pitch * 0.9
+          const oy = ((sj + 0.5) / sub - 0.5) * pitch * 0.9
+          const col = neonQrDotColor(pid)
           raw.push({
-            nx,
-            ny,
-            r: r / 255,
-            g: g / 255,
-            b: b / 255,
+            nx: cx + ox,
+            ny: cy + oy,
+            r: col.r,
+            g: col.g,
+            b: col.b,
           })
+          pid += 1
         }
       }
-
-      const maxParticles = 3200
-      let list = raw
-      if (raw.length > maxParticles) {
-        const k = Math.ceil(raw.length / maxParticles)
-        list = raw.filter((_, idx) => idx % k === 0)
-      }
-      resolve(list)
     }
-    img.onerror = () => reject(new Error('img'))
-    img.src = src
-  })
+  }
+  const maxParticles = 3400
+  if (raw.length <= maxParticles) return raw
+  const k = Math.ceil(raw.length / maxParticles)
+  return raw.filter((_, idx) => idx % k === 0)
 }
 
 function buildBuffers(list) {
@@ -372,41 +341,20 @@ function CanvasFallback() {
 }
 
 /**
- * Hero 100vh: QR 3D desde imagen → explosión radial scroll → campo estelar.
+ * Hero 100vh: QR procedural (grilla real + finders) → explosión radial scroll → campo estelar.
  * @param {Object} props
  * @param {MotionValue<number>} props.progress — 0 inicio QR, 1 fin vuelo
  */
 export default function QrStarfieldHero({ progress }) {
   const [buffers, setBuffers] = useState(null)
-  const [err, setErr] = useState(false)
 
   useEffect(() => {
-    let cancelled = false
-    sampleQrFromImage(QR_IMAGE)
-      .then((list) => {
-        if (cancelled) return
-        if (!list.length) {
-          setErr(true)
-          return
-        }
-        setBuffers(buildBuffers(list))
-      })
-      .catch(() => {
-        if (!cancelled) setErr(true)
-      })
-    return () => { cancelled = true }
+    const list = buildProceduralQrPoints()
+    setBuffers(buildBuffers(list))
   }, [])
 
   return (
     <div style={{ position: 'absolute', inset: 0, background: '#000' }}>
-      {err && (
-        <div style={{
-          position: 'absolute', inset: 0, zIndex: 0, background: '#000',
-          display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#666', fontSize: 14, padding: 24, textAlign: 'center',
-        }}>
-          No se pudo cargar el QR. Colocá hero-qr.png en /public.
-        </div>
-      )}
       <Suspense fallback={<CanvasFallback />}>
         <Canvas
           gl={{ antialias: true, alpha: false, powerPreference: 'high-performance' }}
