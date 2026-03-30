@@ -4,7 +4,7 @@ import React, { useRef, useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import {
   motion,
-  useScroll,
+  useMotionValue,
   useTransform,
   useSpring,
   useInView,
@@ -68,14 +68,80 @@ export default function Home() {
   const theme = useTheme()
   const { blueVenta, loading: dolarLoading } = useDolarBlue()
 
-  const heroScrollRef = useRef(null)
-  const { scrollYProgress } = useScroll({
-    target: heroScrollRef,
-    offset: ['start start', 'end start'],
-  })
-  // La animación completa en el primer ~38% del scroll del hero (empieza al deslizar, no al irte)
-  const animationDriver = useTransform(scrollYProgress, [0, 0.38], [0, 1], { clamp: true })
-  const explosionProgress = useSpring(animationDriver, { stiffness: 160, damping: 24 })
+  /** Fase del hero 0→1: la rueda/touch la mueve; la página no scrollea hasta terminar. */
+  const heroPhase = useMotionValue(0)
+  const explosionProgress = useSpring(heroPhase, { stiffness: 160, damping: 24 })
+  const [heroScrollUnlocked, setHeroScrollUnlocked] = useState(false)
+  const heroScrollUnlockedRef = useRef(false)
+  heroScrollUnlockedRef.current = heroScrollUnlocked
+
+  useEffect(() => {
+    if (heroScrollUnlocked) return
+    const tryUnlock = () => {
+      if (heroPhase.get() >= 0.998 && explosionProgress.get() >= 0.94) {
+        setHeroScrollUnlocked(true)
+      }
+    }
+    const u1 = heroPhase.on('change', tryUnlock)
+    const u2 = explosionProgress.on('change', tryUnlock)
+    tryUnlock()
+    return () => {
+      u1()
+      u2()
+    }
+  }, [heroScrollUnlocked, heroPhase, explosionProgress])
+
+  useEffect(() => {
+    if (heroScrollUnlocked) {
+      document.documentElement.style.overflow = ''
+      return
+    }
+    const prev = document.documentElement.style.overflow
+    document.documentElement.style.overflow = 'hidden'
+    return () => {
+      document.documentElement.style.overflow = prev
+    }
+  }, [heroScrollUnlocked])
+
+  useEffect(() => {
+    const WHEEL_SENS = 0.00075
+    const onWheel = (e) => {
+      if (heroScrollUnlockedRef.current) return
+      e.preventDefault()
+      e.stopPropagation()
+      const delta = e.deltaY + e.deltaX * 0.35
+      const p = heroPhase.get()
+      heroPhase.set(Math.min(1, Math.max(0, p + delta * WHEEL_SENS)))
+    }
+    window.addEventListener('wheel', onWheel, { passive: false })
+    return () => window.removeEventListener('wheel', onWheel)
+  }, [])
+
+  useEffect(() => {
+    let touchY = null
+    const onTouchStart = (e) => {
+      if (heroScrollUnlockedRef.current) return
+      touchY = e.touches[0].clientY
+    }
+    const onTouchMove = (e) => {
+      if (heroScrollUnlockedRef.current || touchY == null) return
+      e.preventDefault()
+      const y = e.touches[0].clientY
+      const dy = touchY - y
+      touchY = y
+      const p = heroPhase.get()
+      heroPhase.set(Math.min(1, Math.max(0, p + dy * 0.0045)))
+    }
+    const onTouchEnd = () => { touchY = null }
+    window.addEventListener('touchstart', onTouchStart, { passive: true })
+    window.addEventListener('touchmove', onTouchMove, { passive: false })
+    window.addEventListener('touchend', onTouchEnd)
+    return () => {
+      window.removeEventListener('touchstart', onTouchStart)
+      window.removeEventListener('touchmove', onTouchMove)
+      window.removeEventListener('touchend', onTouchEnd)
+    }
+  }, [])
 
   const ctaOpacity = useTransform(explosionProgress, [0.32, 0.76], [0, 1])
   const ctaScale = useTransform(explosionProgress, [0.28, 0.78], [0.5, 1])
@@ -150,25 +216,16 @@ export default function Home() {
   return (
     <Box component="main" sx={{ overflowX:'hidden', width:'100%', maxWidth:'100%', minWidth:0 }}>
 
-      {/* ─── HERO: Three.js QR → estrellas (scroll) + CTA blanco ─────────────── */}
+      {/* ─── HERO: transición con rueda/touch; scroll de página recién al terminar ─ */}
       <Box
-        ref={heroScrollRef}
         sx={{
           position: 'relative',
-          minHeight: { xs: '170vh', md: '155vh' },
+          minHeight: '100vh',
+          height: '100vh',
+          overflow: 'hidden',
+          bgcolor: '#000000',
         }}
       >
-        <Box
-          sx={{
-            position: 'sticky',
-            top: 0,
-            height: '100vh',
-            minHeight: '100vh',
-            maxHeight: '100vh',
-            overflow: 'hidden',
-            bgcolor: '#000000',
-          }}
-        >
           <QrStarfieldHero progress={explosionProgress} />
 
           <Box
@@ -243,19 +300,6 @@ export default function Home() {
               </Button>
             </motion.div>
 
-            <Typography
-              variant="caption"
-              sx={{
-                mt: 3,
-                color: 'rgba(255,255,255,0.38)',
-                textAlign: 'center',
-                maxWidth: 320,
-                lineHeight: 1.65,
-              }}
-            >
-              Deslizá hacia abajo: el QR explota en estrellas y aparece la demostración.
-            </Typography>
-
             <Box sx={{ flex: 1, minHeight: { xs: 100, sm: 120 } }} />
           </Box>
 
@@ -277,7 +321,6 @@ export default function Home() {
               </motion.div>
             </Box>
           </motion.div>
-        </Box>
       </Box>
 
       {/* ─── Intro + acciones (debajo del hero) ───────────────────────── */}
