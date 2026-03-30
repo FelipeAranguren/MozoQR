@@ -196,21 +196,21 @@ function AmbientStars({ progress, count = 900 }) {
 
   useFrame(() => {
     const t = progress.get()
-    const u = Math.max(0, (t - 0.08) / 0.92)
-    const burst = u * u * 9
+    const u = THREE.MathUtils.smoothstep(t, 0, 0.48)
+    const burst = u * 1.35
     const pos = geom.attributes.position.array
     const col = geom.attributes.color.array
-    const fade = THREE.MathUtils.smoothstep(t, 0.06, 0.38) * (1 - THREE.MathUtils.smoothstep(t, 0.9, 1))
+    const fade = THREE.MathUtils.smoothstep(t, 0.03, 0.28) * (1 - THREE.MathUtils.smoothstep(t, 0.88, 1) * 0.35)
     for (let i = 0; i < count; i++) {
       const dn = distN[i]
       const bx = base[i * 3]
       const by = base[i * 3 + 1]
       const bz = base[i * 3 + 2]
-      const k = burst * (0.4 + dn * 1.4)
+      const k = burst * (0.35 + dn * 0.65)
       pos[i * 3] = bx + radial[i * 3] * k
       pos[i * 3 + 1] = by + radial[i * 3 + 1] * k
-      pos[i * 3 + 2] = bz + radial[i * 3 + 2] * k * 1.4
-      const cm = THREE.MathUtils.smoothstep(t, 0.1, 0.55)
+      pos[i * 3 + 2] = bz + radial[i * 3 + 2] * k * 0.75
+      const cm = THREE.MathUtils.smoothstep(t, 0.06, 0.38)
       col[i * 3] = THREE.MathUtils.lerp(colA[i * 3], colB[i * 3], cm) * fade
       col[i * 3 + 1] = THREE.MathUtils.lerp(colA[i * 3 + 1], colB[i * 3 + 1], cm) * fade
       col[i * 3 + 2] = THREE.MathUtils.lerp(colA[i * 3 + 2], colB[i * 3 + 2], cm) * fade
@@ -248,21 +248,23 @@ function QrParticleField({ progress, buffers }) {
 
   useFrame(() => {
     const t = progress.get()
-    const spread = 2.8 + t * 7.2
-    // Más respuesta al inicio del scroll (menos “espera” al principio)
-    const burst = t * (0.55 + 0.45 * t) * (1 + t * 0.2)
     const pos = geom.attributes.position.array
     const col = geom.attributes.color.array
     const { n, basePos, radial, distNorm, startCol, endCol } = buffers
-    const colorMix = THREE.MathUtils.smoothstep(t, 0.08, 0.72)
-    const shrink = 1 - THREE.MathUtils.smoothstep(t, 0.35, 0.95) * 0.55
+    // Expansión suave y corta: casi todo el movimiento radial termina ~t=0.45 (siguen en encuadre)
+    const expand = THREE.MathUtils.smoothstep(t, 0, 0.44)
+    const radialCap = 0.36 * expand * (1 - 0.06 * THREE.MathUtils.smoothstep(t, 0.6, 1))
+    // Color → estrella antes de que el scroll llegue al final
+    const colorMix = THREE.MathUtils.smoothstep(t, 0.04, 0.36)
+    const twinkle = THREE.MathUtils.smoothstep(t, 0.22, 0.5)
+    const shrink = 1 - THREE.MathUtils.smoothstep(t, 0.42, 0.9) * 0.2
 
     for (let i = 0; i < n; i++) {
       const dn = distNorm[i]
-      const mag = burst * spread * (0.35 + dn * 1.15)
+      const mag = radialCap * (0.28 + dn * 0.72)
       pos[i * 3] = basePos[i * 3] + radial[i * 3] * mag
       pos[i * 3 + 1] = basePos[i * 3 + 1] + radial[i * 3 + 1] * mag
-      pos[i * 3 + 2] = basePos[i * 3 + 2] + radial[i * 3 + 2] * mag * 1.65
+      pos[i * 3 + 2] = basePos[i * 3 + 2] + radial[i * 3 + 2] * mag * 0.7
 
       col[i * 3] = THREE.MathUtils.lerp(startCol[i * 3], endCol[i * 3], colorMix) * shrink
       col[i * 3 + 1] = THREE.MathUtils.lerp(startCol[i * 3 + 1], endCol[i * 3 + 1], colorMix) * shrink
@@ -271,8 +273,7 @@ function QrParticleField({ progress, buffers }) {
     geom.attributes.position.needsUpdate = true
     geom.attributes.color.needsUpdate = true
     if (ref.current) {
-      const s = 0.85 + t * 0.45
-      ref.current.material.size = 0.028 * s
+      ref.current.material.size = 0.026 * (0.88 + 0.55 * twinkle + 0.12 * THREE.MathUtils.smoothstep(t, 0.5, 0.95))
     }
   })
 
@@ -305,7 +306,7 @@ function StarfieldBackdrop({ progress }) {
   useFrame(() => {
     const t = progress.get()
     if (!meshRef.current) return
-    meshRef.current.material.opacity = THREE.MathUtils.smoothstep(t, 0.22, 0.82) * 0.42
+    meshRef.current.material.opacity = THREE.MathUtils.smoothstep(t, 0.1, 0.48) * 0.5
   })
   if (!map) return null
   const w = viewport.width * 2.2
