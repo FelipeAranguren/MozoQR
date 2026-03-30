@@ -13,13 +13,28 @@ function detRand(i, salt = 0) {
   return x - Math.floor(x)
 }
 
-/** Muestrea píxeles oscuros del QR → posiciones y colores iniciales. */
+/** Píxel pertenece a un cubito luminoso del QR (no al fondo oscuro ni reflejos grises). */
+function isGlowingQrModule(r, g, b) {
+  const rn = r / 255
+  const gn = g / 255
+  const bn = b / 255
+  const lum = 0.299 * rn + 0.587 * gn + 0.114 * bn
+  const mx = Math.max(rn, gn, bn)
+  const mn = Math.min(rn, gn, bn)
+  const sat = mx - mn
+  return lum > 0.16 && (sat > 0.07 || lum > 0.32)
+}
+
+/**
+ * Muestrea el QR luminoso de la imagen: recorte automático al patrón (no todo el rectángulo).
+ * Fase 1: bounding box de píxeles “módulo”. Fase 2: grilla solo dentro del QR → silueta real.
+ */
 function sampleQrFromImage(src) {
   return new Promise((resolve, reject) => {
     const img = new Image()
     img.crossOrigin = 'anonymous'
     img.onload = () => {
-      const cw = 168
+      const cw = 220
       const ch = Math.max(8, Math.round((img.height / img.width) * cw))
       const canvas = document.createElement('canvas')
       canvas.width = cw
@@ -31,25 +46,68 @@ function sampleQrFromImage(src) {
       }
       ctx.drawImage(img, 0, 0, cw, ch)
       const { data } = ctx.getImageData(0, 0, cw, ch)
-      const step = 2
-      const lumThreshold = 0.62
-      const raw = []
-      for (let y = 0; y < ch; y += step) {
-        for (let x = 0; x < cw; x += step) {
-          const yi = Math.min(ch - 1, Math.floor(y))
-          const xi = Math.min(cw - 1, Math.floor(x))
+
+      let minX = cw
+      let maxX = 0
+      let minY = ch
+      let maxY = 0
+      let any = false
+      for (let yi = 0; yi < ch; yi++) {
+        for (let xi = 0; xi < cw; xi++) {
           const j = (yi * cw + xi) * 4
-          const r = data[j] / 255
-          const g = data[j + 1] / 255
-          const b = data[j + 2] / 255
-          const lum = 0.299 * r + 0.587 * g + 0.114 * b
-          if (lum < lumThreshold) {
-            const nx = (xi / cw - 0.5) * 2.35
-            const ny = -(yi / ch - 0.5) * 2.35
-            raw.push({ nx, ny, r, g, b })
+          const r = data[j]
+          const g = data[j + 1]
+          const b = data[j + 2]
+          if (isGlowingQrModule(r, g, b)) {
+            any = true
+            if (xi < minX) minX = xi
+            if (xi > maxX) maxX = xi
+            if (yi < minY) minY = yi
+            if (yi > maxY) maxY = yi
           }
         }
       }
+
+      if (!any) {
+        resolve([])
+        return
+      }
+
+      const padX = Math.max(2, Math.round((maxX - minX) * 0.02))
+      const padY = Math.max(2, Math.round((maxY - minY) * 0.02))
+      minX = Math.max(0, minX - padX)
+      maxX = Math.min(cw - 1, maxX + padX)
+      minY = Math.max(0, minY - padY)
+      maxY = Math.min(ch - 1, maxY + padY)
+
+      const bw = maxX - minX + 1
+      const bh = maxY - minY + 1
+      const cx = (minX + maxX) / 2
+      const cy = (minY + maxY) / 2
+      const norm = Math.max(bw, bh) / 2
+      const world = 2.15
+
+      const step = 2
+      const raw = []
+      for (let yi = minY; yi <= maxY; yi += step) {
+        for (let xi = minX; xi <= maxX; xi += step) {
+          const j = (yi * cw + xi) * 4
+          const r = data[j]
+          const g = data[j + 1]
+          const b = data[j + 2]
+          if (!isGlowingQrModule(r, g, b)) continue
+          const nx = ((xi - cx) / norm) * world
+          const ny = -((yi - cy) / norm) * world
+          raw.push({
+            nx,
+            ny,
+            r: r / 255,
+            g: g / 255,
+            b: b / 255,
+          })
+        }
+      }
+
       const maxParticles = 3200
       let list = raw
       if (raw.length > maxParticles) {
@@ -169,11 +227,11 @@ function AmbientStars({ progress, count = 900 }) {
 
   useFrame(() => {
     const t = progress.get()
-    const u = Math.max(0, (t - 0.18) / 0.82)
+    const u = Math.max(0, (t - 0.08) / 0.92)
     const burst = u * u * 9
     const pos = geom.attributes.position.array
     const col = geom.attributes.color.array
-    const fade = THREE.MathUtils.smoothstep(t, 0.12, 0.45) * (1 - THREE.MathUtils.smoothstep(t, 0.88, 1))
+    const fade = THREE.MathUtils.smoothstep(t, 0.06, 0.38) * (1 - THREE.MathUtils.smoothstep(t, 0.9, 1))
     for (let i = 0; i < count; i++) {
       const dn = distN[i]
       const bx = base[i * 3]
@@ -222,7 +280,8 @@ function QrParticleField({ progress, buffers }) {
   useFrame(() => {
     const t = progress.get()
     const spread = 2.8 + t * 7.2
-    const burst = t * t * (1 + t * 0.35)
+    // Más respuesta al inicio del scroll (menos “espera” al principio)
+    const burst = t * (0.55 + 0.45 * t) * (1 + t * 0.2)
     const pos = geom.attributes.position.array
     const col = geom.attributes.color.array
     const { n, basePos, radial, distNorm, startCol, endCol } = buffers
@@ -277,7 +336,7 @@ function StarfieldBackdrop({ progress }) {
   useFrame(() => {
     const t = progress.get()
     if (!meshRef.current) return
-    meshRef.current.material.opacity = THREE.MathUtils.smoothstep(t, 0.35, 0.92) * 0.42
+    meshRef.current.material.opacity = THREE.MathUtils.smoothstep(t, 0.22, 0.82) * 0.42
   })
   if (!map) return null
   const w = viewport.width * 2.2

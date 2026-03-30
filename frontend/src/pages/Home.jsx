@@ -73,13 +73,15 @@ export default function Home() {
     target: heroScrollRef,
     offset: ['start start', 'end start'],
   })
-  const explosionProgress = useSpring(scrollYProgress, { stiffness: 88, damping: 26 })
+  // La animación completa en el primer ~38% del scroll del hero (empieza al deslizar, no al irte)
+  const animationDriver = useTransform(scrollYProgress, [0, 0.38], [0, 1], { clamp: true })
+  const explosionProgress = useSpring(animationDriver, { stiffness: 160, damping: 24 })
 
-  const ctaOpacity = useTransform(explosionProgress, [0.52, 0.92], [0, 1])
-  const ctaScale = useTransform(explosionProgress, [0.48, 0.9], [0.5, 1])
-  const brandOpacity = useTransform(explosionProgress, [0, 0.28], [1, 0])
-  const brandY = useTransform(explosionProgress, [0, 0.35], [0, -20])
-  const scrollHintOpacity = useTransform(explosionProgress, [0, 0.1], [1, 0])
+  const ctaOpacity = useTransform(explosionProgress, [0.32, 0.76], [0, 1])
+  const ctaScale = useTransform(explosionProgress, [0.28, 0.78], [0.5, 1])
+  const brandOpacity = useTransform(explosionProgress, [0, 0.2], [1, 0])
+  const brandY = useTransform(explosionProgress, [0, 0.26], [0, -18])
+  const scrollHintOpacity = useTransform(explosionProgress, [0, 0.07], [1, 0])
 
   // ── Shared variants
   const stagger = { hidden:{}, visible:{ transition:{ staggerChildren:0.09 } } }
@@ -153,7 +155,7 @@ export default function Home() {
         ref={heroScrollRef}
         sx={{
           position: 'relative',
-          minHeight: { xs: '240vh', md: '220vh' },
+          minHeight: { xs: '170vh', md: '155vh' },
         }}
       >
         <Box
