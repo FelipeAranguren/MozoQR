@@ -104,7 +104,7 @@ export default function Home() {
   }, [heroScrollUnlocked])
 
   useEffect(() => {
-    const WHEEL_SENS = 0.00075
+    const WHEEL_SENS = 0.00042
     const onWheel = (e) => {
       if (heroScrollUnlockedRef.current) return
       e.preventDefault()
@@ -130,7 +130,7 @@ export default function Home() {
       const dy = touchY - y
       touchY = y
       const p = heroPhase.get()
-      heroPhase.set(Math.min(1, Math.max(0, p + dy * 0.0045)))
+      heroPhase.set(Math.min(1, Math.max(0, p + dy * 0.0026)))
     }
     const onTouchEnd = () => { touchY = null }
     window.addEventListener('touchstart', onTouchStart, { passive: true })
