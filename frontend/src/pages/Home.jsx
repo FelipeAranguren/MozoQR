@@ -1,6 +1,6 @@
 //src/pages/Home.jsx — REDESIGNED
 // All logic, routes, data imports preserved. Only UI/animations changed.
-import React, { useRef, useEffect, useState, useMemo, memo } from 'react'
+import React, { useRef, useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import {
   motion,
@@ -12,7 +12,6 @@ import {
 import {
   Container, Typography, Button, Grid, Card, Box, List, ListItem,
   ListItemIcon, ListItemText, CircularProgress, Stack, Paper, useTheme, Chip,
-  useMediaQuery,
 } from '@mui/material'
 import QrCodeIcon from '@mui/icons-material/QrCode'
 import KitchenIcon from '@mui/icons-material/Kitchen'
@@ -31,115 +30,7 @@ import { alpha } from '@mui/material/styles'
 import { MARANA_COLORS } from '../theme'
 import { useDolarBlue } from '../hooks/useDolarBlue'
 import { formatPriceARS, formatPriceUSD } from '../constants/planPricing'
-
-// ─── QR fuente 20×21 → grid 15×15 (rendimiento + aspecto QR) ─────────────────
-const QR_SOURCE = [
-  [1,1,1,1,1,1,1,0,1,0,1,0,1,0,1,1,1,1,1,1,1],
-  [1,0,0,0,0,0,1,0,0,1,0,1,0,0,1,0,0,0,0,0,1],
-  [1,0,1,1,1,0,1,0,1,0,1,0,1,0,1,0,1,1,1,0,1],
-  [1,0,1,1,1,0,1,0,0,0,1,1,0,0,1,0,1,1,1,0,1],
-  [1,0,1,1,1,0,1,0,1,1,0,0,1,0,1,0,1,1,1,0,1],
-  [1,0,0,0,0,0,1,0,0,1,1,0,0,0,1,0,0,0,0,0,1],
-  [1,1,1,1,1,1,1,0,1,0,1,0,1,0,1,1,1,1,1,1,1],
-  [0,0,0,0,0,0,0,0,0,1,0,0,1,0,0,0,0,0,0,0,0],
-  [1,0,1,1,0,0,1,0,0,0,1,0,0,0,1,1,0,1,0,1,0],
-  [0,1,0,0,1,0,0,0,1,0,0,1,0,0,0,1,1,0,0,1,1],
-  [1,0,1,0,1,1,1,0,0,1,1,0,1,0,1,0,0,1,1,0,1],
-  [0,0,0,1,0,0,0,0,1,0,0,0,1,0,0,1,0,1,0,0,0],
-  [1,1,1,0,1,0,1,0,0,1,0,1,0,0,1,1,1,0,1,1,1],
-  [0,0,0,0,0,0,0,0,1,1,1,0,1,0,0,0,0,0,0,0,0],
-  [1,1,1,1,1,1,1,0,0,0,1,0,0,0,1,1,1,1,1,1,1],
-  [1,0,0,0,0,0,1,0,1,0,0,1,1,0,1,0,0,0,0,0,1],
-  [1,0,1,1,1,0,1,0,0,1,1,0,0,0,1,0,1,1,1,0,1],
-  [1,0,1,1,1,0,1,0,1,0,1,1,0,0,1,0,1,1,1,0,1],
-  [1,0,0,0,0,0,1,0,0,0,0,1,1,0,1,0,0,0,0,0,1],
-  [1,1,1,1,1,1,1,0,1,1,1,0,1,0,1,1,1,1,1,1,1],
-]
-const QR_GRID = 15
-const SRC_ROWS = QR_SOURCE.length
-const SRC_COLS = QR_SOURCE[0].length
-
-const QR_MATRIX = (() => {
-  const m = []
-  for (let r = 0; r < QR_GRID; r++) {
-    const row = []
-    for (let c = 0; c < QR_GRID; c++) {
-      const sr = Math.min(SRC_ROWS - 1, Math.floor((r + 0.5) * SRC_ROWS / QR_GRID))
-      const sc = Math.min(SRC_COLS - 1, Math.floor((c + 0.5) * SRC_COLS / QR_GRID))
-      row.push(QR_SOURCE[sr][sc])
-    }
-    m.push(row)
-  }
-  return m
-})()
-
-const QR_CELLS = []
-QR_MATRIX.forEach((row, r) => row.forEach((val, c) => {
-  if (val === 1) QR_CELLS.push({ r, c, id: r * QR_GRID + c })
-}))
-
-/** Dirección radial unitaria y peso por distancia al centro del grid (coord. celdas). */
-function buildRadialParticles(cells, gridSize) {
-  const centerR = (gridSize - 1) / 2
-  const centerC = (gridSize - 1) / 2
-  let maxDist = 0
-  const staged = cells.map((cell) => {
-    const dx = cell.c - centerC
-    const dy = cell.r - centerR
-    const dist = Math.hypot(dx, dy)
-    maxDist = Math.max(maxDist, dist)
-    return { ...cell, dx, dy, dist }
-  })
-  return staged.map((cell) => {
-    let ux
-    let uy
-    if (cell.dist < 1e-6) {
-      ux = 0
-      uy = -1
-    } else {
-      ux = cell.dx / cell.dist
-      uy = cell.dy / cell.dist
-    }
-    const distNorm = maxDist > 1e-6 ? cell.dist / maxDist : 0
-    return {
-      ...cell,
-      ux,
-      uy,
-      distNorm,
-    }
-  })
-}
-
-const MotionBox = motion(Box)
-
-// ─── Partícula QR: explosión radial (scroll) + escala + opacidad ─────────────
-const ExplodingCell = memo(function ExplodingCell({
-  cell, sz, gap, color, progress, maxTravel,
-}) {
-  const tx = cell.ux * cell.distNorm * maxTravel
-  const ty = cell.uy * cell.distNorm * maxTravel
-  const x = useTransform(progress, [0, 1], [0, tx])
-  const y = useTransform(progress, [0, 1], [0, ty])
-  const scale = useTransform(progress, [0, 0.2, 1], [1, 0.92, 0.12])
-  const opacity = useTransform(progress, [0, 0.35, 1], [1, 0.55, 0])
-  return (
-    <MotionBox
-      sx={{
-        position: 'absolute',
-        left: cell.c * (sz + gap),
-        top: cell.r * (sz + gap),
-        width: sz,
-        height: sz,
-        borderRadius: 0.5,
-        bgcolor: color,
-        transformOrigin: 'center center',
-        willChange: 'transform, opacity',
-        pointerEvents: 'none',
-      }}
-      style={{ x, y, scale, opacity }}
-    />
-  )
-})
+import QrStarfieldHero from '../components/QrStarfieldHero'
 
 // ─── Scroll-triggered fade wrapper ───────────────────────────────────────────
 function FadeSection({ children, delay=0, direction='up' }) {
@@ -175,7 +66,6 @@ function PillBadge({ children, color }) {
 export default function Home() {
   const navigate = useNavigate()
   const theme = useTheme()
-  const isSmDown = useMediaQuery(theme.breakpoints.down('sm'))
   const { blueVenta, loading: dolarLoading } = useDolarBlue()
 
   const heroScrollRef = useRef(null)
@@ -183,32 +73,13 @@ export default function Home() {
     target: heroScrollRef,
     offset: ['start start', 'end start'],
   })
-  const explosionProgress = useSpring(scrollYProgress, { stiffness: 90, damping: 28 })
+  const explosionProgress = useSpring(scrollYProgress, { stiffness: 88, damping: 26 })
 
-  const cellSize = isSmDown ? 7 : 11
-  const cellGap = isSmDown ? 1 : 1.5
-  /** Distancia máxima radial (px) al completar el scroll; escala con distNorm por celda. */
-  const maxTravel = isSmDown ? 260 : 420
-
-  const radialCells = useMemo(
-    () => buildRadialParticles(QR_CELLS, QR_GRID),
-    [],
-  )
-
-  const gridW = QR_GRID * (cellSize + cellGap) - cellGap
-  const gridH = QR_GRID * (cellSize + cellGap) - cellGap
-
-  const ctaOpacity = useTransform(explosionProgress, [0.38, 0.82], [0, 1])
-  const ctaScale = useTransform(explosionProgress, [0.38, 0.88], [0.5, 1])
-  const brandOpacity = useTransform(explosionProgress, [0, 0.35], [1, 0])
-  const brandY = useTransform(explosionProgress, [0, 0.4], [0, -28])
-  const scrollHintOpacity = useTransform(explosionProgress, [0, 0.12], [1, 0])
-
-  const [qrIntro, setQrIntro] = useState(false)
-  useEffect(() => {
-    const t = requestAnimationFrame(() => setQrIntro(true))
-    return () => cancelAnimationFrame(t)
-  }, [])
+  const ctaOpacity = useTransform(explosionProgress, [0.52, 0.92], [0, 1])
+  const ctaScale = useTransform(explosionProgress, [0.48, 0.9], [0.5, 1])
+  const brandOpacity = useTransform(explosionProgress, [0, 0.28], [1, 0])
+  const brandY = useTransform(explosionProgress, [0, 0.35], [0, -20])
+  const scrollHintOpacity = useTransform(explosionProgress, [0, 0.1], [1, 0])
 
   // ── Shared variants
   const stagger = { hidden:{}, visible:{ transition:{ staggerChildren:0.09 } } }
@@ -274,17 +145,15 @@ export default function Home() {
     { title:'Pagos digitales', subtitle:'Cerrar sin pedir la cuenta en voz alta.', icon:<PaymentsIcon sx={{fontSize:24}}/>, color:'#2E7D32' },
   ]
 
-  const qrColor = theme.palette.primary.main
-
   return (
     <Box component="main" sx={{ overflowX:'hidden', width:'100%', maxWidth:'100%', minWidth:0 }}>
 
-      {/* ─── HERO: scroll-linked QR explosion (sticky 100vh inside tall track) ─ */}
+      {/* ─── HERO: Three.js QR → estrellas (scroll) + CTA blanco ─────────────── */}
       <Box
         ref={heroScrollRef}
         sx={{
           position: 'relative',
-          minHeight: { xs: '220vh', md: '200vh' },
+          minHeight: { xs: '240vh', md: '220vh' },
         }}
       >
         <Box
@@ -293,43 +162,37 @@ export default function Home() {
             top: 0,
             height: '100vh',
             minHeight: '100vh',
+            maxHeight: '100vh',
             overflow: 'hidden',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            background: `linear-gradient(135deg, #f0faf9 0%, #ffffff 55%, #e8f5e9 100%)`,
+            bgcolor: '#000000',
           }}
         >
-          <Box sx={{ position: 'absolute', inset: 0, pointerEvents: 'none', zIndex: 0 }}>
-            <Box sx={{ position: 'absolute', top: '-10%', right: '-5%', width: 560, height: 560, borderRadius: '50%', background: `radial-gradient(circle, ${alpha(theme.palette.primary.main, 0.1)} 0%, transparent 65%)` }} />
-            <Box sx={{ position: 'absolute', bottom: '5%', left: '-8%', width: 420, height: 420, borderRadius: '50%', background: `radial-gradient(circle, ${alpha('#009688', 0.07)} 0%, transparent 65%)` }} />
-            <Box sx={{ position: 'absolute', inset: 0, backgroundImage: `linear-gradient(${alpha(theme.palette.primary.main, 0.04)} 1px, transparent 1px), linear-gradient(90deg, ${alpha(theme.palette.primary.main, 0.04)} 1px, transparent 1px)`, backgroundSize: '52px 52px' }} />
-          </Box>
+          <QrStarfieldHero progress={explosionProgress} />
 
-          {/* Brand + QR + CTA stack */}
           <Box
             sx={{
-              position: 'relative',
-              zIndex: 1,
+              position: 'absolute',
+              inset: 0,
+              zIndex: 2,
               display: 'flex',
               flexDirection: 'column',
               alignItems: 'center',
               justifyContent: 'center',
+              pointerEvents: 'none',
               px: 2,
-              width: '100%',
-              maxWidth: 'min(96vw, 720px)',
             }}
           >
-            <motion.div style={{ opacity: brandOpacity, y: brandY, textAlign: 'center', marginBottom: isSmDown ? 2 : 3, width: '100%' }}>
+            <motion.div style={{ opacity: brandOpacity, y: brandY, textAlign: 'center', marginBottom: 2, width: '100%', maxWidth: 560 }}>
               <Typography
                 component="h1"
                 sx={{
                   fontFamily: '"Georgia", "Times New Roman", serif',
                   fontWeight: 700,
-                  fontSize: { xs: 'clamp(2rem, 8vw, 2.75rem)', md: 'clamp(2.75rem, 4vw, 3.75rem)' },
+                  fontSize: { xs: 'clamp(2rem, 8vw, 2.85rem)', md: 'clamp(2.85rem, 4vw, 3.85rem)' },
                   letterSpacing: '-0.03em',
                   lineHeight: 1.05,
-                  color: theme.palette.primary.dark,
+                  color: '#ffffff',
+                  textShadow: '0 0 40px rgba(76, 201, 240, 0.35)',
                   mb: 0.5,
                 }}
               >
@@ -338,10 +201,10 @@ export default function Home() {
               <Typography
                 variant="subtitle1"
                 sx={{
-                  color: 'text.secondary',
+                  color: 'rgba(255,255,255,0.55)',
                   fontWeight: 500,
-                  fontSize: { xs: '0.95rem', md: '1.05rem' },
-                  letterSpacing: '0.06em',
+                  fontSize: { xs: '0.9rem', md: '1rem' },
+                  letterSpacing: '0.12em',
                   textTransform: 'uppercase',
                 }}
               >
@@ -349,85 +212,49 @@ export default function Home() {
               </Typography>
             </motion.div>
 
-            <Box
-              sx={{
-                position: 'relative',
-                width: gridW,
-                height: gridH,
-                mx: 'auto',
-                mb: { xs: 2, md: 3 },
-              }}
-            >
-              {/* CTA detrás del QR: emerge al dispersarse las piezas */}
-              <Box
-                sx={{
-                  position: 'absolute',
-                  inset: 0,
-                  zIndex: 1,
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  pointerEvents: 'none',
-                }}
-              >
-                <motion.div style={{ opacity: ctaOpacity, scale: ctaScale, pointerEvents: 'auto' }}>
-                  <Button
-                    variant="contained"
-                    size="large"
-                    onClick={() => navigate('/demo')}
-                    endIcon={<ArrowForwardIcon />}
-                    sx={{
-                      py: 1.75,
-                      px: 3.5,
-                      fontSize: '1.05rem',
-                      fontWeight: 700,
-                      borderRadius: 2.5,
-                      whiteSpace: 'nowrap',
-                      boxShadow: `0 12px 40px ${alpha(theme.palette.primary.main, 0.42)}`,
-                      '&:hover': {
-                        boxShadow: `0 16px 48px ${alpha(theme.palette.primary.main, 0.5)}`,
-                      },
-                    }}
-                  >
-                    Iniciar demostración
-                  </Button>
-                </motion.div>
-              </Box>
+            <Box sx={{ flex: 1, minHeight: { xs: 120, sm: 160 } }} />
 
-              {/* Capa de partículas (MUI Box) por encima; pointer-events none para clic al CTA */}
-              <motion.div
-                initial={false}
-                animate={{ opacity: qrIntro ? 1 : 0, scale: qrIntro ? 1 : 0.92 }}
-                transition={{ duration: 0.7, ease: [0.22, 1, 0.36, 1] }}
-                style={{
-                  position: 'absolute',
-                  inset: 0,
-                  zIndex: 2,
-                  width: '100%',
-                  height: '100%',
-                  pointerEvents: 'none',
+            <motion.div style={{ opacity: ctaOpacity, scale: ctaScale, pointerEvents: 'auto' }}>
+              <Button
+                variant="contained"
+                size="large"
+                onClick={() => navigate('/demo')}
+                endIcon={<ArrowForwardIcon sx={{ color: '#0a0a0a' }} />}
+                sx={{
+                  py: 1.85,
+                  px: 4,
+                  fontSize: '1.05rem',
+                  fontWeight: 800,
+                  borderRadius: 3,
+                  whiteSpace: 'nowrap',
+                  bgcolor: '#ffffff',
+                  color: '#0a0a0a',
+                  boxShadow: '0 0 32px rgba(255,255,255,0.45), 0 8px 32px rgba(76, 201, 240, 0.25)',
+                  transition: 'box-shadow 0.25s, transform 0.2s',
+                  '&:hover': {
+                    bgcolor: '#f5f5f5',
+                    boxShadow: '0 0 48px rgba(255,255,255,0.55), 0 12px 40px rgba(247, 37, 133, 0.2)',
+                  },
                 }}
               >
-                {radialCells.map((cell) => (
-                  <ExplodingCell
-                    key={cell.id}
-                    cell={cell}
-                    sz={cellSize}
-                    gap={cellGap}
-                    color={qrColor}
-                    progress={explosionProgress}
-                    maxTravel={maxTravel}
-                  />
-                ))}
-              </motion.div>
-            </Box>
+                Iniciar demostración
+              </Button>
+            </motion.div>
 
             <Typography
               variant="caption"
-              sx={{ color: 'text.secondary', textAlign: 'center', maxWidth: 360, lineHeight: 1.6 }}
+              sx={{
+                mt: 3,
+                color: 'rgba(255,255,255,0.38)',
+                textAlign: 'center',
+                maxWidth: 320,
+                lineHeight: 1.65,
+              }}
             >
-              Deslizá hacia abajo: el código se desarma y el siguiente contenido aparece debajo.
+              Deslizá hacia abajo: el QR explota en estrellas y aparece la demostración.
             </Typography>
+
+            <Box sx={{ flex: 1, minHeight: { xs: 100, sm: 120 } }} />
           </Box>
 
           <motion.div style={{ opacity: scrollHintOpacity }}>
@@ -437,12 +264,13 @@ export default function Home() {
                 bottom: 28,
                 left: '50%',
                 transform: 'translateX(-50%)',
-                zIndex: 2,
+                zIndex: 3,
+                pointerEvents: 'none',
               }}
             >
               <motion.div animate={{ y: [0, 8, 0] }} transition={{ repeat: Infinity, duration: 1.8, ease: 'easeInOut' }}>
-                <Box sx={{ width: 28, height: 46, borderRadius: 14, border: `2px solid ${alpha(theme.palette.primary.main, 0.35)}`, display: 'flex', justifyContent: 'center', pt: 1 }}>
-                  <Box sx={{ width: 4, height: 10, borderRadius: 2, bgcolor: alpha(theme.palette.primary.main, 0.5) }} />
+                <Box sx={{ width: 28, height: 46, borderRadius: 14, border: '2px solid rgba(255,255,255,0.28)', display: 'flex', justifyContent: 'center', pt: 1 }}>
+                  <Box sx={{ width: 4, height: 10, borderRadius: 2, bgcolor: 'rgba(255,255,255,0.45)' }} />
                 </Box>
               </motion.div>
             </Box>
