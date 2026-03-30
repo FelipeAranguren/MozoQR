@@ -1,8 +1,6 @@
 import React, { useMemo, useRef, useState, useEffect, Suspense } from 'react'
-import { Canvas, useFrame, useThree } from '@react-three/fiber'
+import { Canvas, useFrame } from '@react-three/fiber'
 import * as THREE from 'three'
-
-const STARS_BG = '/hero-stars-bg.png'
 
 const COL_STAR_A = new THREE.Color('#4CC9F0')
 const COL_STAR_B = new THREE.Color('#F72585')
@@ -291,39 +289,11 @@ function QrParticleField({ progress, buffers }) {
   )
 }
 
-function StarfieldBackdrop({ progress }) {
-  const { viewport } = useThree()
-  const [map, setMap] = useState(null)
-  useEffect(() => {
-    const loader = new THREE.TextureLoader()
-    loader.load(STARS_BG, (tex) => {
-      tex.colorSpace = THREE.SRGBColorSpace
-      setMap(tex)
-    })
-  }, [])
-  const meshRef = useRef()
-  useFrame(() => {
-    const t = progress.get()
-    if (!meshRef.current) return
-    meshRef.current.material.opacity = THREE.MathUtils.smoothstep(t, 0.28, 0.88) * 0.54
-  })
-  if (!map) return null
-  const w = viewport.width * 2.2
-  const h = viewport.height * 2.2
-  return (
-    <mesh ref={meshRef} position={[0, 0, -14]}>
-      <planeGeometry args={[w, h]} />
-      <meshBasicMaterial map={map} transparent opacity={0} depthWrite={false} />
-    </mesh>
-  )
-}
-
 function Scene({ progress, buffers }) {
   return (
     <>
       <color attach="background" args={['#000000']} />
       <ambientLight intensity={0.08} />
-      <StarfieldBackdrop progress={progress} />
       {buffers && <QrParticleField progress={progress} buffers={buffers} />}
       <AmbientStars progress={progress} />
     </>
