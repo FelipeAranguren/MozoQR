@@ -32,8 +32,8 @@ import { MARANA_COLORS } from '../theme'
 import { useDolarBlue } from '../hooks/useDolarBlue'
 import { formatPriceARS, formatPriceUSD } from '../constants/planPricing'
 
-// ─── QR Matrix 20x21 (simplified real QR pattern) ────────────────────────────
-const QR_MATRIX = [
+// ─── QR fuente 20×21 → grid 15×15 (rendimiento + aspecto QR) ─────────────────
+const QR_SOURCE = [
   [1,1,1,1,1,1,1,0,1,0,1,0,1,0,1,1,1,1,1,1,1],
   [1,0,0,0,0,0,1,0,0,1,0,1,0,0,1,0,0,0,0,0,1],
   [1,0,1,1,1,0,1,0,1,0,1,0,1,0,1,0,1,1,1,0,1],
@@ -55,52 +55,88 @@ const QR_MATRIX = [
   [1,0,0,0,0,0,1,0,0,0,0,1,1,0,1,0,0,0,0,0,1],
   [1,1,1,1,1,1,1,0,1,1,1,0,1,0,1,1,1,1,1,1,1],
 ]
+const QR_GRID = 15
+const SRC_ROWS = QR_SOURCE.length
+const SRC_COLS = QR_SOURCE[0].length
+
+const QR_MATRIX = (() => {
+  const m = []
+  for (let r = 0; r < QR_GRID; r++) {
+    const row = []
+    for (let c = 0; c < QR_GRID; c++) {
+      const sr = Math.min(SRC_ROWS - 1, Math.floor((r + 0.5) * SRC_ROWS / QR_GRID))
+      const sc = Math.min(SRC_COLS - 1, Math.floor((c + 0.5) * SRC_COLS / QR_GRID))
+      row.push(QR_SOURCE[sr][sc])
+    }
+    m.push(row)
+  }
+  return m
+})()
+
 const QR_CELLS = []
 QR_MATRIX.forEach((row, r) => row.forEach((val, c) => {
-  if (val === 1) QR_CELLS.push({ r, c, id: r * 21 + c })
+  if (val === 1) QR_CELLS.push({ r, c, id: r * QR_GRID + c })
 }))
 
-function seed01(n) {
-  const x = Math.sin(n * 12.9898 + n * 78.233) * 43758.5453
-  return x - Math.floor(x)
-}
-
-function buildExplosionVectors(cells, spread) {
-  return cells.map((cell) => {
-    const base = cell.r * 131 + cell.c * 197
-    const angle = seed01(base) * Math.PI * 2
-    const distMul = 0.45 + seed01(base + 1) * 0.55
-    const vx = Math.cos(angle) * spread * distMul
-    const vy = Math.sin(angle) * spread * distMul
-    const rot = (seed01(base + 2) - 0.5) * 1080
-    return { ...cell, vx, vy, rot }
+/** Dirección radial unitaria y peso por distancia al centro del grid (coord. celdas). */
+function buildRadialParticles(cells, gridSize) {
+  const centerR = (gridSize - 1) / 2
+  const centerC = (gridSize - 1) / 2
+  let maxDist = 0
+  const staged = cells.map((cell) => {
+    const dx = cell.c - centerC
+    const dy = cell.r - centerR
+    const dist = Math.hypot(dx, dy)
+    maxDist = Math.max(maxDist, dist)
+    return { ...cell, dx, dy, dist }
+  })
+  return staged.map((cell) => {
+    let ux
+    let uy
+    if (cell.dist < 1e-6) {
+      ux = 0
+      uy = -1
+    } else {
+      ux = cell.dx / cell.dist
+      uy = cell.dy / cell.dist
+    }
+    const distNorm = maxDist > 1e-6 ? cell.dist / maxDist : 0
+    return {
+      ...cell,
+      ux,
+      uy,
+      distNorm,
+    }
   })
 }
 
-// ─── Single QR particle (scroll-linked) ───────────────────────────────────────
+const MotionBox = motion(Box)
+
+// ─── Partícula QR: explosión radial (scroll) + escala + opacidad ─────────────
 const ExplodingCell = memo(function ExplodingCell({
-  cell, sz, gap, color, progress,
+  cell, sz, gap, color, progress, maxTravel,
 }) {
-  const x = useTransform(progress, [0, 1], [0, cell.vx])
-  const y = useTransform(progress, [0, 1], [0, cell.vy])
-  const rotate = useTransform(progress, [0, 1], [0, cell.rot])
-  const opacity = useTransform(progress, [0, 0.15, 1], [1, 0.85, 0])
+  const tx = cell.ux * cell.distNorm * maxTravel
+  const ty = cell.uy * cell.distNorm * maxTravel
+  const x = useTransform(progress, [0, 1], [0, tx])
+  const y = useTransform(progress, [0, 1], [0, ty])
+  const scale = useTransform(progress, [0, 0.2, 1], [1, 0.92, 0.12])
+  const opacity = useTransform(progress, [0, 0.35, 1], [1, 0.55, 0])
   return (
-    <motion.div
-      style={{
+    <MotionBox
+      sx={{
         position: 'absolute',
         left: cell.c * (sz + gap),
         top: cell.r * (sz + gap),
         width: sz,
         height: sz,
-        borderRadius: 2,
-        background: color,
-        x,
-        y,
-        rotate,
-        opacity,
+        borderRadius: 0.5,
+        bgcolor: color,
+        transformOrigin: 'center center',
         willChange: 'transform, opacity',
+        pointerEvents: 'none',
       }}
+      style={{ x, y, scale, opacity }}
     />
   )
 })
@@ -149,20 +185,21 @@ export default function Home() {
   })
   const explosionProgress = useSpring(scrollYProgress, { stiffness: 90, damping: 28 })
 
-  const cellSize = isSmDown ? 6.5 : 11
+  const cellSize = isSmDown ? 7 : 11
   const cellGap = isSmDown ? 1 : 1.5
-  const spread = isSmDown ? 280 : 460
+  /** Distancia máxima radial (px) al completar el scroll; escala con distNorm por celda. */
+  const maxTravel = isSmDown ? 260 : 420
 
-  const cellsWithVectors = useMemo(
-    () => buildExplosionVectors(QR_CELLS, spread),
-    [spread],
+  const radialCells = useMemo(
+    () => buildRadialParticles(QR_CELLS, QR_GRID),
+    [],
   )
 
-  const gridW = 21 * (cellSize + cellGap) - cellGap
-  const gridH = 20 * (cellSize + cellGap) - cellGap
+  const gridW = QR_GRID * (cellSize + cellGap) - cellGap
+  const gridH = QR_GRID * (cellSize + cellGap) - cellGap
 
-  const ctaOpacity = useTransform(explosionProgress, [0.45, 0.78], [0, 1])
-  const ctaScale = useTransform(explosionProgress, [0.45, 0.82], [0.88, 1])
+  const ctaOpacity = useTransform(explosionProgress, [0.38, 0.82], [0, 1])
+  const ctaScale = useTransform(explosionProgress, [0.38, 0.88], [0.5, 1])
   const brandOpacity = useTransform(explosionProgress, [0, 0.35], [1, 0])
   const brandY = useTransform(explosionProgress, [0, 0.4], [0, -28])
   const scrollHintOpacity = useTransform(explosionProgress, [0, 0.12], [1, 0])
@@ -321,36 +358,16 @@ export default function Home() {
                 mb: { xs: 2, md: 3 },
               }}
             >
-              <motion.div
-                initial={false}
-                animate={{ opacity: qrIntro ? 1 : 0, scale: qrIntro ? 1 : 0.92 }}
-                transition={{ duration: 0.7, ease: [0.22, 1, 0.36, 1] }}
-                style={{ width: '100%', height: '100%', position: 'relative' }}
-              >
-                {cellsWithVectors.map((cell) => (
-                  <ExplodingCell
-                    key={cell.id}
-                    cell={cell}
-                    sz={cellSize}
-                    gap={cellGap}
-                    color={qrColor}
-                    progress={explosionProgress}
-                  />
-                ))}
-              </motion.div>
-
-              {/* CTA exact center over QR */}
+              {/* CTA detrás del QR: emerge al dispersarse las piezas */}
               <Box
                 sx={{
                   position: 'absolute',
-                  left: '50%',
-                  top: '50%',
-                  transform: 'translate(-50%, -50%)',
-                  zIndex: 2,
-                  pointerEvents: 'none',
+                  inset: 0,
+                  zIndex: 1,
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'center',
+                  pointerEvents: 'none',
                 }}
               >
                 <motion.div style={{ opacity: ctaOpacity, scale: ctaScale, pointerEvents: 'auto' }}>
@@ -376,6 +393,33 @@ export default function Home() {
                   </Button>
                 </motion.div>
               </Box>
+
+              {/* Capa de partículas (MUI Box) por encima; pointer-events none para clic al CTA */}
+              <motion.div
+                initial={false}
+                animate={{ opacity: qrIntro ? 1 : 0, scale: qrIntro ? 1 : 0.92 }}
+                transition={{ duration: 0.7, ease: [0.22, 1, 0.36, 1] }}
+                style={{
+                  position: 'absolute',
+                  inset: 0,
+                  zIndex: 2,
+                  width: '100%',
+                  height: '100%',
+                  pointerEvents: 'none',
+                }}
+              >
+                {radialCells.map((cell) => (
+                  <ExplodingCell
+                    key={cell.id}
+                    cell={cell}
+                    sz={cellSize}
+                    gap={cellGap}
+                    color={qrColor}
+                    progress={explosionProgress}
+                    maxTravel={maxTravel}
+                  />
+                ))}
+              </motion.div>
             </Box>
 
             <Typography
