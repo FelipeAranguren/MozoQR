@@ -75,6 +75,19 @@ export default function Home() {
   const heroScrollUnlockedRef = useRef(false)
   heroScrollUnlockedRef.current = heroScrollUnlocked
 
+  const WHEEL_SENS = 0.0011
+  const TOUCH_SENS = 0.0068
+  const RELOCK_PHASE = 0.9
+  const AT_TOP_PX = 6
+
+  useEffect(() => {
+    return heroPhase.on('change', () => {
+      if (heroScrollUnlockedRef.current && heroPhase.get() < RELOCK_PHASE) {
+        setHeroScrollUnlocked(false)
+      }
+    })
+  }, [heroPhase])
+
   useEffect(() => {
     if (heroScrollUnlocked) return
     const tryUnlock = () => {
@@ -104,33 +117,59 @@ export default function Home() {
   }, [heroScrollUnlocked])
 
   useEffect(() => {
-    const WHEEL_SENS = 0.0011
     const onWheel = (e) => {
-      if (heroScrollUnlockedRef.current) return
+      const p = heroPhase.get()
+      const atTop = Math.max(0, window.scrollY) <= AT_TOP_PX
+
+      if (heroScrollUnlockedRef.current) {
+        if (atTop && p > 0.008) {
+          e.preventDefault()
+          e.stopPropagation()
+          const delta = e.deltaY + e.deltaX * 0.35
+          const next = Math.min(1, Math.max(0, p + delta * WHEEL_SENS))
+          heroPhase.set(next)
+          if (next < RELOCK_PHASE) setHeroScrollUnlocked(false)
+        }
+        return
+      }
+
       e.preventDefault()
       e.stopPropagation()
       const delta = e.deltaY + e.deltaX * 0.35
-      const p = heroPhase.get()
       heroPhase.set(Math.min(1, Math.max(0, p + delta * WHEEL_SENS)))
     }
     window.addEventListener('wheel', onWheel, { passive: false })
     return () => window.removeEventListener('wheel', onWheel)
-  }, [])
+  }, [WHEEL_SENS])
 
   useEffect(() => {
     let touchY = null
     const onTouchStart = (e) => {
-      if (heroScrollUnlockedRef.current) return
       touchY = e.touches[0].clientY
     }
     const onTouchMove = (e) => {
-      if (heroScrollUnlockedRef.current || touchY == null) return
-      e.preventDefault()
       const y = e.touches[0].clientY
+      if (touchY == null) {
+        touchY = y
+        return
+      }
       const dy = touchY - y
       touchY = y
       const p = heroPhase.get()
-      heroPhase.set(Math.min(1, Math.max(0, p + dy * 0.0068)))
+      const atTop = Math.max(0, window.scrollY) <= AT_TOP_PX
+
+      if (heroScrollUnlockedRef.current) {
+        if (atTop && p > 0.008) {
+          e.preventDefault()
+          const next = Math.min(1, Math.max(0, p + dy * TOUCH_SENS))
+          heroPhase.set(next)
+          if (next < RELOCK_PHASE) setHeroScrollUnlocked(false)
+        }
+        return
+      }
+
+      e.preventDefault()
+      heroPhase.set(Math.min(1, Math.max(0, p + dy * TOUCH_SENS)))
     }
     const onTouchEnd = () => { touchY = null }
     window.addEventListener('touchstart', onTouchStart, { passive: true })
@@ -141,7 +180,7 @@ export default function Home() {
       window.removeEventListener('touchmove', onTouchMove)
       window.removeEventListener('touchend', onTouchEnd)
     }
-  }, [])
+  }, [TOUCH_SENS])
 
   const ctaOpacity = useTransform(explosionProgress, [0.22, 0.88], [0, 1])
   const ctaScale = useTransform(explosionProgress, [0.18, 0.88], [0.5, 1])
