@@ -70,7 +70,7 @@ export default function Home() {
 
   /** Fase del hero 0→1: la rueda/touch la mueve; la página no scrollea hasta terminar. */
   const heroPhase = useMotionValue(0)
-  const explosionProgress = useSpring(heroPhase, { stiffness: 160, damping: 24 })
+  const explosionProgress = useSpring(heroPhase, { stiffness: 220, damping: 22 })
   const [heroScrollUnlocked, setHeroScrollUnlocked] = useState(false)
   const heroScrollUnlockedRef = useRef(false)
   heroScrollUnlockedRef.current = heroScrollUnlocked
@@ -78,7 +78,7 @@ export default function Home() {
   useEffect(() => {
     if (heroScrollUnlocked) return
     const tryUnlock = () => {
-      if (heroPhase.get() >= 0.998 && explosionProgress.get() >= 0.94) {
+      if (heroPhase.get() >= 0.998 && explosionProgress.get() >= 0.91) {
         setHeroScrollUnlocked(true)
       }
     }
@@ -104,7 +104,7 @@ export default function Home() {
   }, [heroScrollUnlocked])
 
   useEffect(() => {
-    const WHEEL_SENS = 0.00042
+    const WHEEL_SENS = 0.0011
     const onWheel = (e) => {
       if (heroScrollUnlockedRef.current) return
       e.preventDefault()
@@ -130,7 +130,7 @@ export default function Home() {
       const dy = touchY - y
       touchY = y
       const p = heroPhase.get()
-      heroPhase.set(Math.min(1, Math.max(0, p + dy * 0.0026)))
+      heroPhase.set(Math.min(1, Math.max(0, p + dy * 0.0068)))
     }
     const onTouchEnd = () => { touchY = null }
     window.addEventListener('touchstart', onTouchStart, { passive: true })
