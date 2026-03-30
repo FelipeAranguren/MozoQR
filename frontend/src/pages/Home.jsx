@@ -1,6 +1,6 @@
 //src/pages/Home.jsx — REDESIGNED
 // All logic, routes, data imports preserved. Only UI/animations changed.
-import React, { useRef, useEffect, useState } from 'react'
+import React, { useRef, useEffect, useState, useMemo, memo } from 'react'
 import { useNavigate } from 'react-router-dom'
 import {
   motion,
@@ -11,7 +11,8 @@ import {
 } from 'framer-motion'
 import {
   Container, Typography, Button, Grid, Card, Box, List, ListItem,
-  ListItemIcon, ListItemText, CircularProgress, Stack, Paper, useTheme, Chip
+  ListItemIcon, ListItemText, CircularProgress, Stack, Paper, useTheme, Chip,
+  useMediaQuery,
 } from '@mui/material'
 import QrCodeIcon from '@mui/icons-material/QrCode'
 import KitchenIcon from '@mui/icons-material/Kitchen'
@@ -59,29 +60,50 @@ QR_MATRIX.forEach((row, r) => row.forEach((val, c) => {
   if (val === 1) QR_CELLS.push({ r, c, id: r * 21 + c })
 }))
 
-// ─── Animated QR ─────────────────────────────────────────────────────────────
-function AnimatedQR() {
-  const theme = useTheme()
-  const sz = 13, gap = 1, total = QR_CELLS.length
-  return (
-    <Box sx={{ position: 'relative', width: 21*(sz+gap), height: 20*(sz+gap), mx: 'auto' }}>
-      {QR_CELLS.map((cell, idx) => (
-        <motion.div
-          key={cell.id}
-          initial={{ opacity: 0, scale: 0, x: (Math.random()-0.5)*110, y: (Math.random()-0.5)*110 }}
-          animate={{ opacity: 1, scale: 1, x: 0, y: 0 }}
-          transition={{ duration: 0.5, delay: (idx/total)*0.85, ease: [0.22,1,0.36,1] }}
-          style={{
-            position: 'absolute',
-            left: cell.c*(sz+gap), top: cell.r*(sz+gap),
-            width: sz, height: sz, borderRadius: 2,
-            background: theme.palette.primary.main
-          }}
-        />
-      ))}
-    </Box>
-  )
+function seed01(n) {
+  const x = Math.sin(n * 12.9898 + n * 78.233) * 43758.5453
+  return x - Math.floor(x)
 }
+
+function buildExplosionVectors(cells, spread) {
+  return cells.map((cell) => {
+    const base = cell.r * 131 + cell.c * 197
+    const angle = seed01(base) * Math.PI * 2
+    const distMul = 0.45 + seed01(base + 1) * 0.55
+    const vx = Math.cos(angle) * spread * distMul
+    const vy = Math.sin(angle) * spread * distMul
+    const rot = (seed01(base + 2) - 0.5) * 1080
+    return { ...cell, vx, vy, rot }
+  })
+}
+
+// ─── Single QR particle (scroll-linked) ───────────────────────────────────────
+const ExplodingCell = memo(function ExplodingCell({
+  cell, sz, gap, color, progress,
+}) {
+  const x = useTransform(progress, [0, 1], [0, cell.vx])
+  const y = useTransform(progress, [0, 1], [0, cell.vy])
+  const rotate = useTransform(progress, [0, 1], [0, cell.rot])
+  const opacity = useTransform(progress, [0, 0.15, 1], [1, 0.85, 0])
+  return (
+    <motion.div
+      style={{
+        position: 'absolute',
+        left: cell.c * (sz + gap),
+        top: cell.r * (sz + gap),
+        width: sz,
+        height: sz,
+        borderRadius: 2,
+        background: color,
+        x,
+        y,
+        rotate,
+        opacity,
+        willChange: 'transform, opacity',
+      }}
+    />
+  )
+})
 
 // ─── Scroll-triggered fade wrapper ───────────────────────────────────────────
 function FadeSection({ children, delay=0, direction='up' }) {
@@ -117,17 +139,39 @@ function PillBadge({ children, color }) {
 export default function Home() {
   const navigate = useNavigate()
   const theme = useTheme()
+  const isSmDown = useMediaQuery(theme.breakpoints.down('sm'))
   const { blueVenta, loading: dolarLoading } = useDolarBlue()
 
-  const heroRef = useRef(null)
-  const { scrollYProgress } = useScroll({ target: heroRef, offset: ['start start','end start'] })
-  const smooth = useSpring(scrollYProgress, { stiffness:80, damping:20 })
-  const heroY = useTransform(smooth, [0,1], [0,-80])
-  const heroOpacity = useTransform(smooth, [0,0.6], [1,0])
-  const qrScale = useTransform(smooth, [0,0.4], [1,0.85])
+  const heroScrollRef = useRef(null)
+  const { scrollYProgress } = useScroll({
+    target: heroScrollRef,
+    offset: ['start start', 'end start'],
+  })
+  const explosionProgress = useSpring(scrollYProgress, { stiffness: 90, damping: 28 })
 
-  const [qrReady, setQrReady] = useState(false)
-  useEffect(() => { const t = setTimeout(() => setQrReady(true), 350); return () => clearTimeout(t) }, [])
+  const cellSize = isSmDown ? 6.5 : 11
+  const cellGap = isSmDown ? 1 : 1.5
+  const spread = isSmDown ? 280 : 460
+
+  const cellsWithVectors = useMemo(
+    () => buildExplosionVectors(QR_CELLS, spread),
+    [spread],
+  )
+
+  const gridW = 21 * (cellSize + cellGap) - cellGap
+  const gridH = 20 * (cellSize + cellGap) - cellGap
+
+  const ctaOpacity = useTransform(explosionProgress, [0.45, 0.78], [0, 1])
+  const ctaScale = useTransform(explosionProgress, [0.45, 0.82], [0.88, 1])
+  const brandOpacity = useTransform(explosionProgress, [0, 0.35], [1, 0])
+  const brandY = useTransform(explosionProgress, [0, 0.4], [0, -28])
+  const scrollHintOpacity = useTransform(explosionProgress, [0, 0.12], [1, 0])
+
+  const [qrIntro, setQrIntro] = useState(false)
+  useEffect(() => {
+    const t = requestAnimationFrame(() => setQrIntro(true))
+    return () => cancelAnimationFrame(t)
+  }, [])
 
   // ── Shared variants
   const stagger = { hidden:{}, visible:{ transition:{ staggerChildren:0.09 } } }
@@ -193,166 +237,285 @@ export default function Home() {
     { title:'Pagos digitales', subtitle:'Cerrar sin pedir la cuenta en voz alta.', icon:<PaymentsIcon sx={{fontSize:24}}/>, color:'#2E7D32' },
   ]
 
+  const qrColor = theme.palette.primary.main
+
   return (
     <Box component="main" sx={{ overflowX:'hidden', width:'100%', maxWidth:'100%', minWidth:0 }}>
 
-      {/* ─── HERO ──────────────────────────────────────────────────────── */}
-      <Box ref={heroRef} sx={{
-        minHeight:'100vh', position:'relative', overflow:'hidden',
-        display:'flex', alignItems:'center',
-        background:`linear-gradient(135deg, #f0faf9 0%, #ffffff 55%, #e8f5e9 100%)`
-      }}>
-        {/* BG blobs + grid */}
-        <Box sx={{ position:'absolute', inset:0, pointerEvents:'none', zIndex:0 }}>
-          <Box sx={{ position:'absolute', top:'-10%', right:'-5%', width:560, height:560, borderRadius:'50%', background:`radial-gradient(circle, ${alpha(theme.palette.primary.main,0.1)} 0%, transparent 65%)` }}/>
-          <Box sx={{ position:'absolute', bottom:'5%', left:'-8%', width:420, height:420, borderRadius:'50%', background:`radial-gradient(circle, ${alpha('#009688',0.07)} 0%, transparent 65%)` }}/>
-          <Box sx={{ position:'absolute', inset:0, backgroundImage:`linear-gradient(${alpha(theme.palette.primary.main,0.04)} 1px, transparent 1px), linear-gradient(90deg, ${alpha(theme.palette.primary.main,0.04)} 1px, transparent 1px)`, backgroundSize:'52px 52px' }}/>
-        </Box>
+      {/* ─── HERO: scroll-linked QR explosion (sticky 100vh inside tall track) ─ */}
+      <Box
+        ref={heroScrollRef}
+        sx={{
+          position: 'relative',
+          minHeight: { xs: '220vh', md: '200vh' },
+        }}
+      >
+        <Box
+          sx={{
+            position: 'sticky',
+            top: 0,
+            height: '100vh',
+            minHeight: '100vh',
+            overflow: 'hidden',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            background: `linear-gradient(135deg, #f0faf9 0%, #ffffff 55%, #e8f5e9 100%)`,
+          }}
+        >
+          <Box sx={{ position: 'absolute', inset: 0, pointerEvents: 'none', zIndex: 0 }}>
+            <Box sx={{ position: 'absolute', top: '-10%', right: '-5%', width: 560, height: 560, borderRadius: '50%', background: `radial-gradient(circle, ${alpha(theme.palette.primary.main, 0.1)} 0%, transparent 65%)` }} />
+            <Box sx={{ position: 'absolute', bottom: '5%', left: '-8%', width: 420, height: 420, borderRadius: '50%', background: `radial-gradient(circle, ${alpha('#009688', 0.07)} 0%, transparent 65%)` }} />
+            <Box sx={{ position: 'absolute', inset: 0, backgroundImage: `linear-gradient(${alpha(theme.palette.primary.main, 0.04)} 1px, transparent 1px), linear-gradient(90deg, ${alpha(theme.palette.primary.main, 0.04)} 1px, transparent 1px)`, backgroundSize: '52px 52px' }} />
+          </Box>
 
-        <motion.div style={{ y:heroY, opacity:heroOpacity, width:'100%', zIndex:1, position:'relative' }}>
-          <Container sx={{ py:{ xs:8, md:6 } }}>
-            <Grid container spacing={{ xs:6, md:8 }} alignItems="center">
+          {/* Brand + QR + CTA stack */}
+          <Box
+            sx={{
+              position: 'relative',
+              zIndex: 1,
+              display: 'flex',
+              flexDirection: 'column',
+              alignItems: 'center',
+              justifyContent: 'center',
+              px: 2,
+              width: '100%',
+              maxWidth: 'min(96vw, 720px)',
+            }}
+          >
+            <motion.div style={{ opacity: brandOpacity, y: brandY, textAlign: 'center', marginBottom: isSmDown ? 2 : 3, width: '100%' }}>
+              <Typography
+                component="h1"
+                sx={{
+                  fontFamily: '"Georgia", "Times New Roman", serif',
+                  fontWeight: 700,
+                  fontSize: { xs: 'clamp(2rem, 8vw, 2.75rem)', md: 'clamp(2.75rem, 4vw, 3.75rem)' },
+                  letterSpacing: '-0.03em',
+                  lineHeight: 1.05,
+                  color: theme.palette.primary.dark,
+                  mb: 0.5,
+                }}
+              >
+                MozoQR
+              </Typography>
+              <Typography
+                variant="subtitle1"
+                sx={{
+                  color: 'text.secondary',
+                  fontWeight: 500,
+                  fontSize: { xs: '0.95rem', md: '1.05rem' },
+                  letterSpacing: '0.06em',
+                  textTransform: 'uppercase',
+                }}
+              >
+                Mesa · cocina · control
+              </Typography>
+            </motion.div>
 
-              {/* Text col */}
-              <Grid item xs={12} md={6} sx={{ order:{ xs:2, md:1 } }}>
-                <motion.div initial="hidden" animate="visible" variants={stagger}>
-                  <motion.div variants={fadeUp}>
-                    <Box sx={{ mb:2 }}>
-                      <PillBadge color={theme.palette.primary.main}>
-                        <BoltIcon sx={{ fontSize:11, mr:0.4 }}/> Nuevo · Versión 2025
-                      </PillBadge>
-                    </Box>
-                  </motion.div>
+            <Box
+              sx={{
+                position: 'relative',
+                width: gridW,
+                height: gridH,
+                mx: 'auto',
+                mb: { xs: 2, md: 3 },
+              }}
+            >
+              <motion.div
+                initial={false}
+                animate={{ opacity: qrIntro ? 1 : 0, scale: qrIntro ? 1 : 0.92 }}
+                transition={{ duration: 0.7, ease: [0.22, 1, 0.36, 1] }}
+                style={{ width: '100%', height: '100%', position: 'relative' }}
+              >
+                {cellsWithVectors.map((cell) => (
+                  <ExplodingCell
+                    key={cell.id}
+                    cell={cell}
+                    sz={cellSize}
+                    gap={cellGap}
+                    color={qrColor}
+                    progress={explosionProgress}
+                  />
+                ))}
+              </motion.div>
 
-                  <motion.div variants={fadeUp}>
-                    <Typography variant="h1" fontWeight={800} sx={{ fontSize:{ xs:'2.1rem', sm:'2.6rem', md:'3.4rem', lg:'4rem' }, lineHeight:1.15, letterSpacing:'-0.02em', mb:2.5 }}>
-                      Un solo sistema para{' '}
-                      <Box component="span" sx={{ position:'relative', color:'primary.main',
-                        '&::after':{ content:'""', position:'absolute', bottom:2, left:0, right:0, height:3, borderRadius:2, background:`linear-gradient(90deg, ${theme.palette.primary.main}, ${alpha(theme.palette.primary.main,0.3)})` }
-                      }}>
-                        mesa, cocina y finanzas
-                      </Box>
-                    </Typography>
-                  </motion.div>
-
-                  <motion.div variants={fadeUp}>
-                    <Typography color="textSecondary" sx={{ fontSize:{ xs:'1rem', md:'1.15rem' }, lineHeight:1.75, mb:4, maxWidth:500 }}>
-                      MozoQR conecta la mesa con la cocina y el panel del dueño: pedidos desde la mesa, cuenta automática, pagos sin pedir la cuenta, y herramientas con IA.
-                    </Typography>
-                  </motion.div>
-
-                  <motion.div variants={fadeUp}>
-                    <Stack direction={{ xs:'column', sm:'row' }} spacing={2} sx={{ mb:5 }}>
-                      <motion.div whileHover={{ scale:1.03 }} whileTap={{ scale:0.97 }}>
-                        <Button variant="contained" size="large" onClick={() => navigate('/demo')} endIcon={<ArrowForwardIcon/>}
-                          sx={{ py:1.6, px:3.5, fontSize:'1rem', fontWeight:700, borderRadius:2.5,
-                            boxShadow:`0 8px 28px ${alpha(theme.palette.primary.main,0.35)}`,
-                            '&:hover':{ boxShadow:`0 12px 36px ${alpha(theme.palette.primary.main,0.45)}` } }}>
-                          Probar gratis ahora
-                        </Button>
-                      </motion.div>
-                      <motion.div whileHover={{ scale:1.03 }} whileTap={{ scale:0.97 }}>
-                        <Button variant="outlined" size="large"
-                          onClick={() => document.getElementById('planes')?.scrollIntoView({ behavior:'smooth' })}
-                          sx={{ py:1.6, px:3, fontSize:'1rem', fontWeight:600, borderRadius:2.5, borderWidth:2, '&:hover':{ borderWidth:2 } }}>
-                          Ver planes
-                        </Button>
-                      </motion.div>
-                      <motion.div whileHover={{ scale:1.03 }} whileTap={{ scale:0.97 }}>
-                        <Button variant="text" size="large" href="mailto:ventas@mozoqr.com"
-                          sx={{ py:1.6, px:2, fontSize:'1rem', fontWeight:600, borderRadius:2.5 }}>
-                          Contactar ventas
-                        </Button>
-                      </motion.div>
-                    </Stack>
-                  </motion.div>
-
-                  <motion.div variants={fadeUp}>
-                    <Stack direction="row" spacing={3} flexWrap="wrap" sx={{ rowGap:1 }}>
-                      {['Sin tarjeta de crédito','Cancelación libre','Demo instantánea'].map(t => (
-                        <Box key={t} sx={{ display:'flex', alignItems:'center', gap:0.6 }}>
-                          <CheckCircleIcon sx={{ fontSize:16, color:'success.main' }}/>
-                          <Typography variant="caption" color="textSecondary" fontWeight={500}>{t}</Typography>
-                        </Box>
-                      ))}
-                    </Stack>
-                  </motion.div>
+              {/* CTA exact center over QR */}
+              <Box
+                sx={{
+                  position: 'absolute',
+                  left: '50%',
+                  top: '50%',
+                  transform: 'translate(-50%, -50%)',
+                  zIndex: 2,
+                  pointerEvents: 'none',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                }}
+              >
+                <motion.div style={{ opacity: ctaOpacity, scale: ctaScale, pointerEvents: 'auto' }}>
+                  <Button
+                    variant="contained"
+                    size="large"
+                    onClick={() => navigate('/demo')}
+                    endIcon={<ArrowForwardIcon />}
+                    sx={{
+                      py: 1.75,
+                      px: 3.5,
+                      fontSize: '1.05rem',
+                      fontWeight: 700,
+                      borderRadius: 2.5,
+                      whiteSpace: 'nowrap',
+                      boxShadow: `0 12px 40px ${alpha(theme.palette.primary.main, 0.42)}`,
+                      '&:hover': {
+                        boxShadow: `0 16px 48px ${alpha(theme.palette.primary.main, 0.5)}`,
+                      },
+                    }}
+                  >
+                    Iniciar demostración
+                  </Button>
                 </motion.div>
-              </Grid>
+              </Box>
+            </Box>
 
-              {/* QR col */}
-              <Grid item xs={12} md={6} sx={{ order:{ xs:1, md:2 }, display:'flex', justifyContent:'center' }}>
-                <motion.div style={{ scale:qrScale }}>
-                  <Box sx={{ position:'relative', display:'inline-block' }}>
-                    <Box sx={{ position:'absolute', inset:-32, borderRadius:'50%',
-                      background:`radial-gradient(circle, ${alpha(theme.palette.primary.main,0.13)} 0%, transparent 70%)`,
-                      animation:'pulse 3s ease-in-out infinite',
-                      '@keyframes pulse':{ '0%,100%':{ transform:'scale(1)', opacity:0.9 }, '50%':{ transform:'scale(1.08)', opacity:0.5 } }
-                    }}/>
-                    <Paper elevation={0} sx={{
-                      p:{ xs:3, md:4 }, borderRadius:4,
-                      border:`1px solid ${alpha(theme.palette.primary.main,0.15)}`,
-                      bgcolor:'rgba(255,255,255,0.92)', backdropFilter:'blur(16px)',
-                      boxShadow:`0 24px 64px ${alpha(theme.palette.primary.main,0.12)}, 0 4px 16px rgba(0,0,0,0.06)`,
-                      position:'relative', zIndex:1
-                    }}>
-                      <Typography variant="overline" sx={{ display:'block', textAlign:'center', mb:2, color:'primary.main', fontWeight:700, letterSpacing:2 }}>
-                        Escaneá para pedir
-                      </Typography>
-                      {qrReady && <AnimatedQR/>}
-                      <Box sx={{ mt:3, p:1.5, borderRadius:2, bgcolor:alpha(theme.palette.success.main,0.07), border:`1px solid ${alpha(theme.palette.success.main,0.2)}`, display:'flex', alignItems:'center', gap:1.5 }}>
-                        <Box sx={{ width:34, height:34, borderRadius:'50%', bgcolor:alpha(theme.palette.success.main,0.15), display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0 }}>
-                          <CheckCircleIcon sx={{ color:'success.main', fontSize:20 }}/>
-                        </Box>
-                        <Box>
-                          <Typography variant="caption" fontWeight={700} display="block">Pedido confirmado</Typography>
-                          <Typography variant="caption" color="textSecondary">Visible en cocina al instante</Typography>
-                        </Box>
-                      </Box>
-                    </Paper>
-                  </Box>
-                </motion.div>
-              </Grid>
-            </Grid>
+            <Typography
+              variant="caption"
+              sx={{ color: 'text.secondary', textAlign: 'center', maxWidth: 360, lineHeight: 1.6 }}
+            >
+              Deslizá hacia abajo: el código se desarma y el siguiente contenido aparece debajo.
+            </Typography>
+          </Box>
 
-            {/* Highlight cards */}
-            <Box sx={{ mt:{ xs:6, md:8 } }}>
-              <motion.div initial="hidden" animate="visible" variants={{ hidden:{}, visible:{ transition:{ staggerChildren:0.1, delayChildren:0.5 } } }}>
-                <Grid container spacing={2.5}>
-                  {heroHighlights.map(h => (
-                    <Grid item xs={12} sm={4} key={h.title}>
-                      <motion.div variants={scaleIn} whileHover={{ y:-6, transition:{ duration:0.25 } }}>
-                        <Paper elevation={0} sx={{
-                          p:2.5, borderRadius:3, border:'1px solid', borderColor:'divider',
-                          bgcolor:'rgba(255,255,255,0.8)', backdropFilter:'blur(12px)',
-                          display:'flex', gap:2, alignItems:'flex-start',
-                          transition:'box-shadow 0.25s, border-color 0.25s',
-                          '&:hover':{ boxShadow:`0 12px 32px ${alpha(h.color,0.15)}`, borderColor:alpha(h.color,0.4) }
-                        }}>
-                          <Box sx={{ width:46, height:46, borderRadius:2, flexShrink:0, display:'flex', alignItems:'center', justifyContent:'center', color:h.color, bgcolor:alpha(h.color,0.1) }}>
-                            {h.icon}
-                          </Box>
-                          <Box>
-                            <Typography variant="subtitle2" fontWeight={700} gutterBottom sx={{ mb:0.3 }}>{h.title}</Typography>
-                            <Typography variant="body2" color="textSecondary" sx={{ lineHeight:1.55 }}>{h.subtitle}</Typography>
-                          </Box>
-                        </Paper>
-                      </motion.div>
-                    </Grid>
-                  ))}
-                </Grid>
+          <motion.div style={{ opacity: scrollHintOpacity }}>
+            <Box
+              sx={{
+                position: 'absolute',
+                bottom: 28,
+                left: '50%',
+                transform: 'translateX(-50%)',
+                zIndex: 2,
+              }}
+            >
+              <motion.div animate={{ y: [0, 8, 0] }} transition={{ repeat: Infinity, duration: 1.8, ease: 'easeInOut' }}>
+                <Box sx={{ width: 28, height: 46, borderRadius: 14, border: `2px solid ${alpha(theme.palette.primary.main, 0.35)}`, display: 'flex', justifyContent: 'center', pt: 1 }}>
+                  <Box sx={{ width: 4, height: 10, borderRadius: 2, bgcolor: alpha(theme.palette.primary.main, 0.5) }} />
+                </Box>
               </motion.div>
             </Box>
-          </Container>
-        </motion.div>
+          </motion.div>
+        </Box>
+      </Box>
 
-        {/* Scroll indicator */}
-        <motion.div animate={{ y:[0,8,0] }} transition={{ repeat:Infinity, duration:1.8, ease:'easeInOut' }}
-          style={{ position:'absolute', bottom:32, left:'50%', transform:'translateX(-50%)', zIndex:2 }}>
-          <Box sx={{ width:28, height:46, borderRadius:14, border:`2px solid ${alpha(theme.palette.primary.main,0.35)}`, display:'flex', justifyContent:'center', pt:1 }}>
-            <Box sx={{ width:4, height:10, borderRadius:2, bgcolor:alpha(theme.palette.primary.main,0.5) }}/>
+      {/* ─── Intro + acciones (debajo del hero) ───────────────────────── */}
+      <Box sx={{ py: { xs: 8, md: 10 }, bgcolor: '#fff', borderTop: `1px solid ${alpha(theme.palette.divider, 0.6)}` }}>
+        <Container>
+          <Grid container spacing={{ xs: 5, md: 7 }} alignItems="center">
+            <Grid item xs={12} md={7}>
+              <motion.div initial="hidden" animate="visible" variants={stagger}>
+                <motion.div variants={fadeUp}>
+                  <Box sx={{ mb: 2 }}>
+                    <PillBadge color={theme.palette.primary.main}>
+                      <BoltIcon sx={{ fontSize: 11, mr: 0.4 }} /> Nuevo · Versión 2025
+                    </PillBadge>
+                  </Box>
+                </motion.div>
+
+                <motion.div variants={fadeUp}>
+                  <Typography variant="h2" fontWeight={800} sx={{ fontSize: { xs: '1.85rem', sm: '2.2rem', md: '2.75rem' }, lineHeight: 1.15, letterSpacing: '-0.02em', mb: 2.5 }}>
+                    Un solo sistema para{' '}
+                    <Box component="span" sx={{ position: 'relative', color: 'primary.main',
+                      '&::after': { content: '""', position: 'absolute', bottom: 2, left: 0, right: 0, height: 3, borderRadius: 2, background: `linear-gradient(90deg, ${theme.palette.primary.main}, ${alpha(theme.palette.primary.main, 0.3)})` },
+                    }}>
+                      mesa, cocina y finanzas
+                    </Box>
+                  </Typography>
+                </motion.div>
+
+                <motion.div variants={fadeUp}>
+                  <Typography color="textSecondary" sx={{ fontSize: { xs: '1rem', md: '1.1rem' }, lineHeight: 1.75, mb: 4, maxWidth: 540 }}>
+                    MozoQR conecta la mesa con la cocina y el panel del dueño: pedidos desde la mesa, cuenta automática, pagos sin pedir la cuenta, y herramientas con IA.
+                  </Typography>
+                </motion.div>
+
+                <motion.div variants={fadeUp}>
+                  <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2} flexWrap="wrap" sx={{ mb: 3 }}>
+                    <motion.div whileHover={{ scale: 1.03 }} whileTap={{ scale: 0.97 }}>
+                      <Button variant="outlined" size="large"
+                        onClick={() => document.getElementById('planes')?.scrollIntoView({ behavior: 'smooth' })}
+                        sx={{ py: 1.5, px: 3, fontSize: '1rem', fontWeight: 600, borderRadius: 2.5, borderWidth: 2, '&:hover': { borderWidth: 2 } }}>
+                        Ver planes
+                      </Button>
+                    </motion.div>
+                    <motion.div whileHover={{ scale: 1.03 }} whileTap={{ scale: 0.97 }}>
+                      <Button variant="text" size="large" href="mailto:ventas@mozoqr.com"
+                        sx={{ py: 1.5, px: 2, fontSize: '1rem', fontWeight: 600, borderRadius: 2.5 }}>
+                        Contactar ventas
+                      </Button>
+                    </motion.div>
+                  </Stack>
+                </motion.div>
+
+                <motion.div variants={fadeUp}>
+                  <Stack direction="row" spacing={3} flexWrap="wrap" sx={{ rowGap: 1 }}>
+                    {['Sin tarjeta de crédito', 'Cancelación libre', 'Demo instantánea'].map(t => (
+                      <Box key={t} sx={{ display: 'flex', alignItems: 'center', gap: 0.6 }}>
+                        <CheckCircleIcon sx={{ fontSize: 16, color: 'success.main' }} />
+                        <Typography variant="caption" color="textSecondary" fontWeight={500}>{t}</Typography>
+                      </Box>
+                    ))}
+                  </Stack>
+                </motion.div>
+              </motion.div>
+            </Grid>
+
+            <Grid item xs={12} md={5}>
+              <Paper elevation={0} sx={{
+                p: { xs: 2.5, md: 3 },
+                borderRadius: 4,
+                border: `1px solid ${alpha(theme.palette.primary.main, 0.12)}`,
+                bgcolor: alpha(theme.palette.primary.main, 0.03),
+              }}>
+                <Typography variant="overline" sx={{ color: 'primary.main', fontWeight: 700, letterSpacing: 1.5, display: 'block', mb: 1 }}>
+                  Después de la demo
+                </Typography>
+                <Typography variant="body2" color="text.secondary" sx={{ lineHeight: 1.7, mb: 2 }}>
+                  Elegí un plan cuando quieras escalar. Cotización en pesos con dólar blue actualizado.
+                </Typography>
+                <Button fullWidth variant="contained" size="medium" onClick={() => navigate('/demo')} endIcon={<ArrowForwardIcon />}>
+                  Volver a la demostración
+                </Button>
+              </Paper>
+            </Grid>
+          </Grid>
+
+          <Box sx={{ mt: { xs: 6, md: 8 } }}>
+            <motion.div initial="hidden" animate="visible" variants={{ hidden: {}, visible: { transition: { staggerChildren: 0.1, delayChildren: 0.15 } } }}>
+              <Grid container spacing={2.5}>
+                {heroHighlights.map(h => (
+                  <Grid item xs={12} sm={4} key={h.title}>
+                    <motion.div variants={scaleIn} whileHover={{ y: -6, transition: { duration: 0.25 } }}>
+                      <Paper elevation={0} sx={{
+                        p: 2.5, borderRadius: 3, border: '1px solid', borderColor: 'divider',
+                        bgcolor: 'rgba(255,255,255,0.95)', backdropFilter: 'blur(12px)',
+                        display: 'flex', gap: 2, alignItems: 'flex-start',
+                        transition: 'box-shadow 0.25s, border-color 0.25s',
+                        '&:hover': { boxShadow: `0 12px 32px ${alpha(h.color, 0.15)}`, borderColor: alpha(h.color, 0.4) },
+                      }}>
+                        <Box sx={{ width: 46, height: 46, borderRadius: 2, flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', color: h.color, bgcolor: alpha(h.color, 0.1) }}>
+                          {h.icon}
+                        </Box>
+                        <Box>
+                          <Typography variant="subtitle2" fontWeight={700} gutterBottom sx={{ mb: 0.3 }}>{h.title}</Typography>
+                          <Typography variant="body2" color="textSecondary" sx={{ lineHeight: 1.55 }}>{h.subtitle}</Typography>
+                        </Box>
+                      </Paper>
+                    </motion.div>
+                  </Grid>
+                ))}
+              </Grid>
+            </motion.div>
           </Box>
-        </motion.div>
+        </Container>
       </Box>
 
       {/* ─── FEATURES ──────────────────────────────────────────────────── */}
