@@ -143,10 +143,10 @@ export default function Home() {
     }
   }, [])
 
-  const ctaOpacity = useTransform(explosionProgress, [0.32, 0.76], [0, 1])
-  const ctaScale = useTransform(explosionProgress, [0.28, 0.78], [0.5, 1])
-  const brandOpacity = useTransform(explosionProgress, [0, 0.2], [1, 0])
-  const brandY = useTransform(explosionProgress, [0, 0.26], [0, -18])
+  const ctaOpacity = useTransform(explosionProgress, [0.22, 0.88], [0, 1])
+  const ctaScale = useTransform(explosionProgress, [0.18, 0.88], [0.5, 1])
+  const brandOpacity = useTransform(explosionProgress, [0, 0.22], [1, 0])
+  const brandY = useTransform(explosionProgress, [0, 0.28], [0, -18])
   const scrollHintOpacity = useTransform(explosionProgress, [0, 0.07], [1, 0])
 
   // ── Shared variants
