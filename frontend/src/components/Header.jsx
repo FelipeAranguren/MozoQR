@@ -21,7 +21,20 @@ export default function Header() {
   };
 
   return (
-    <AppBar position="static" sx={{ width: '100%', maxWidth: '100%', overflow: 'hidden' }}>
+    <>
+      <AppBar
+        position="fixed"
+        elevation={2}
+        sx={{
+          top: 0,
+          left: 0,
+          right: 0,
+          width: '100%',
+          maxWidth: '100%',
+          overflow: 'hidden',
+          zIndex: (theme) => theme.zIndex.appBar,
+        }}
+      >
       <Toolbar
         sx={{
           flexWrap: 'nowrap',
@@ -95,6 +108,9 @@ export default function Header() {
           </>
         )}
       </Toolbar>
-    </AppBar>
+      </AppBar>
+      {/* Reserva la altura del AppBar: sin esto el contenido queda debajo del fixed y sticky fallaba con #root { height:100% }. */}
+      <Toolbar />
+    </>
   );
 }

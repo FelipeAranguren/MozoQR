@@ -32,6 +32,12 @@ import { useDolarBlue } from '../hooks/useDolarBlue'
 import { formatPriceARS, formatPriceUSD } from '../constants/planPricing'
 import QrStarfieldHero from '../components/QrStarfieldHero'
 
+/** 0→1: cuánto del gesto va a fase vs scroll de página (último tramo). */
+function smoothstep01(t) {
+  const x = Math.min(1, Math.max(0, t))
+  return x * x * (3 - 2 * x)
+}
+
 // ─── Scroll-triggered fade wrapper ───────────────────────────────────────────
 function FadeSection({ children, delay=0, direction='up' }) {
   const ref = useRef(null)
@@ -70,28 +76,38 @@ export default function Home() {
 
   /** Fase del hero 0→1: la rueda/touch la mueve; la página no scrollea hasta terminar. */
   const heroPhase = useMotionValue(0)
-  const explosionProgress = useSpring(heroPhase, { stiffness: 220, damping: 22 })
+  const explosionProgress = useSpring(heroPhase, { stiffness: 200, damping: 24 })
   const [heroScrollUnlocked, setHeroScrollUnlocked] = useState(false)
   const heroScrollUnlockedRef = useRef(false)
   heroScrollUnlockedRef.current = heroScrollUnlocked
+  const ctaRef = useRef(null)
+  const hasCenteredCtaRef = useRef(false)
 
-  const WHEEL_SENS = 0.0011
-  const TOUCH_SENS = 0.0068
+  const WHEEL_SENS = 0.00125
+  const TOUCH_SENS = 0.0078
   const RELOCK_PHASE = 0.9
   const AT_TOP_PX = 6
+  /** Misma zona que `tryUnlock`: con la transición terminada, el scroll hacia abajo debe mover la página. */
+  const HERO_END_PHASE = 0.998
+  /** A partir de aquí el overflow se libera y el gesto mezcla fase + scroll (se ve el contenido debajo). */
+  const SCROLL_BLEND_START = 0.72
+  /** Desbloqueo antes para que no haga falta tanto scroll después. */
+  const UNLOCK_HERO_PHASE = 0.982
+  const UNLOCK_SPRING = 0.86
 
   useEffect(() => {
     return heroPhase.on('change', () => {
       if (heroScrollUnlockedRef.current && heroPhase.get() < RELOCK_PHASE) {
         setHeroScrollUnlocked(false)
       }
+      if (heroPhase.get() < 0.4) hasCenteredCtaRef.current = false
     })
   }, [heroPhase])
 
   useEffect(() => {
     if (heroScrollUnlocked) return
     const tryUnlock = () => {
-      if (heroPhase.get() >= 0.998 && explosionProgress.get() >= 0.91) {
+      if (heroPhase.get() >= UNLOCK_HERO_PHASE && explosionProgress.get() >= UNLOCK_SPRING) {
         setHeroScrollUnlocked(true)
       }
     }
@@ -109,12 +125,41 @@ export default function Home() {
       document.documentElement.style.overflow = ''
       return
     }
-    const prev = document.documentElement.style.overflow
-    document.documentElement.style.overflow = 'hidden'
-    return () => {
-      document.documentElement.style.overflow = prev
+    const syncOverflow = () => {
+      document.documentElement.style.overflow =
+        heroPhase.get() >= SCROLL_BLEND_START ? '' : 'hidden'
     }
-  }, [heroScrollUnlocked])
+    syncOverflow()
+    const unsub = heroPhase.on('change', syncOverflow)
+    return () => {
+      unsub()
+      document.documentElement.style.overflow = ''
+    }
+  }, [heroScrollUnlocked, heroPhase])
+
+  /** Al cerrar la transición (fase + spring), un scroll suave alinea el CTA al centro del viewport si aún no quedó ahí (sin mover el botón en el layout). */
+  useEffect(() => {
+    const centerCta = () => {
+      if (hasCenteredCtaRef.current) return
+      if (heroPhase.get() < 0.996 || explosionProgress.get() < 0.88) return
+      const el = ctaRef.current
+      if (!el) return
+      hasCenteredCtaRef.current = true
+      requestAnimationFrame(() => {
+        const r = el.getBoundingClientRect()
+        const target = window.scrollY + r.top + r.height / 2 - window.innerHeight / 2
+        const off = Math.abs(window.scrollY - target)
+        if (off < 40) return
+        window.scrollTo({ top: Math.max(0, target), behavior: 'smooth' })
+      })
+    }
+    const u1 = heroPhase.on('change', centerCta)
+    const u2 = explosionProgress.on('change', centerCta)
+    return () => {
+      u1()
+      u2()
+    }
+  }, [heroPhase, explosionProgress])
 
   useEffect(() => {
     const onWheel = (e) => {
@@ -123,9 +168,11 @@ export default function Home() {
 
       if (heroScrollUnlockedRef.current) {
         if (atTop && p > 0.008) {
+          const delta = e.deltaY + e.deltaX * 0.35
+          // Transición ya completa y gesto hacia abajo → scroll natural de la página
+          if (p >= HERO_END_PHASE && delta > 0) return
           e.preventDefault()
           e.stopPropagation()
-          const delta = e.deltaY + e.deltaX * 0.35
           const next = Math.min(1, Math.max(0, p + delta * WHEEL_SENS))
           heroPhase.set(next)
           if (next < RELOCK_PHASE) setHeroScrollUnlocked(false)
@@ -136,7 +183,12 @@ export default function Home() {
       e.preventDefault()
       e.stopPropagation()
       const delta = e.deltaY + e.deltaX * 0.35
-      heroPhase.set(Math.min(1, Math.max(0, p + delta * WHEEL_SENS)))
+      const blendT = (p - SCROLL_BLEND_START) / (1 - SCROLL_BLEND_START)
+      const blend = smoothstep01(blendT)
+      const phaseFactor = 1 - blend * 0.9
+      const next = Math.min(1, Math.max(0, p + delta * WHEEL_SENS * phaseFactor))
+      heroPhase.set(next)
+      if (blend > 0.02) window.scrollBy({ top: delta * blend, left: 0, behavior: 'auto' })
     }
     window.addEventListener('wheel', onWheel, { passive: false })
     return () => window.removeEventListener('wheel', onWheel)
@@ -160,6 +212,7 @@ export default function Home() {
 
       if (heroScrollUnlockedRef.current) {
         if (atTop && p > 0.008) {
+          if (p >= HERO_END_PHASE && dy > 0) return
           e.preventDefault()
           const next = Math.min(1, Math.max(0, p + dy * TOUCH_SENS))
           heroPhase.set(next)
@@ -169,7 +222,12 @@ export default function Home() {
       }
 
       e.preventDefault()
-      heroPhase.set(Math.min(1, Math.max(0, p + dy * TOUCH_SENS)))
+      const blendT = (p - SCROLL_BLEND_START) / (1 - SCROLL_BLEND_START)
+      const blend = smoothstep01(blendT)
+      const phaseFactor = 1 - blend * 0.9
+      const next = Math.min(1, Math.max(0, p + dy * TOUCH_SENS * phaseFactor))
+      heroPhase.set(next)
+      if (blend > 0.02) window.scrollBy({ top: dy * blend, left: 0, behavior: 'auto' })
     }
     const onTouchEnd = () => { touchY = null }
     window.addEventListener('touchstart', onTouchStart, { passive: true })
@@ -259,8 +317,9 @@ export default function Home() {
       <Box
         sx={{
           position: 'relative',
-          minHeight: '100vh',
-          height: '100vh',
+          // Resta la altura del AppBar+Toolbar espaciador; si no, 100vh + spacer desborda y el hint “abajo” queda fuera de vista
+          minHeight: (theme) => `calc(100dvh - ${theme.mixins.toolbar.minHeight}px)`,
+          height: (theme) => `calc(100dvh - ${theme.mixins.toolbar.minHeight}px)`,
           overflow: 'hidden',
           bgcolor: '#000000',
         }}
@@ -312,7 +371,7 @@ export default function Home() {
 
             <Box sx={{ flex: 1, minHeight: { xs: 120, sm: 160 } }} />
 
-            <motion.div style={{ opacity: ctaOpacity, scale: ctaScale, pointerEvents: 'auto' }}>
+            <motion.div ref={ctaRef} style={{ opacity: ctaOpacity, scale: ctaScale, pointerEvents: 'auto' }}>
               <Button
                 variant="contained"
                 size="large"
@@ -346,9 +405,9 @@ export default function Home() {
             <Box
               sx={{
                 position: 'absolute',
-                bottom: 28,
                 left: '50%',
                 transform: 'translateX(-50%)',
+                bottom: (theme) => `max(20px, env(safe-area-inset-bottom, 0px) + ${theme.spacing(2)})`,
                 zIndex: 3,
                 pointerEvents: 'none',
               }}

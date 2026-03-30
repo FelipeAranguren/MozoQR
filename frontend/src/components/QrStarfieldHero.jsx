@@ -1,5 +1,5 @@
 import React, { useMemo, useRef, useState, useEffect, Suspense } from 'react'
-import { Canvas, useFrame } from '@react-three/fiber'
+import { Canvas, useFrame, useThree } from '@react-three/fiber'
 import * as THREE from 'three'
 
 const COL_STAR_A = new THREE.Color('#4CC9F0')
@@ -32,6 +32,14 @@ const QR_MATRIX = [
 
 const QR_ROWS = QR_MATRIX.length
 const QR_COLS = QR_MATRIX[0].length
+
+/** Escala del patrón QR en unidades de mundo (más grande = QR inicial más “zoom in”). */
+const QR_WORLD_SCALE = 1.58
+/** Zoom out de cámara durante la transición (z menor = más cerca = QR más grande al inicio). */
+const CAMERA_Z_START = 6.65
+const CAMERA_Z_END = 10.45
+/** Distancia radial máxima al completar (t≈1); calibrado con escala + zoom de cámara para borde a borde. */
+const QR_EXPLODE_RADIAL_MAX = 6.15
 
 function detRand(i, salt = 0) {
   const x = Math.sin(i * 12.9898 + salt * 78.233) * 43758.5453
@@ -71,8 +79,8 @@ function buildProceduralQrPoints() {
           const oy = ((sj + 0.5) / sub - 0.5) * pitch * 0.9
           const col = neonQrDotColor(pid)
           raw.push({
-            nx: cx + ox,
-            ny: cy + oy,
+            nx: (cx + ox) * QR_WORLD_SCALE,
+            ny: (cy + oy) * QR_WORLD_SCALE,
             r: col.r,
             g: col.g,
             b: col.b,
@@ -139,6 +147,16 @@ function buildBuffers(list) {
   return { n, basePos, radial, distNorm, startCol, endCol }
 }
 
+function ZoomCamera({ progress }) {
+  const { camera } = useThree()
+  useFrame(() => {
+    const t = progress.get()
+    const travel = THREE.MathUtils.smoothstep(t, 0, 0.98)
+    camera.position.z = THREE.MathUtils.lerp(CAMERA_Z_START, CAMERA_Z_END, travel)
+  })
+  return null
+}
+
 function AmbientStars({ progress, count = 900 }) {
   const ref = useRef()
   const { base, radial, distN, colA, colB } = useMemo(() => {
@@ -195,7 +213,7 @@ function AmbientStars({ progress, count = 900 }) {
   useFrame(() => {
     const t = progress.get()
     const travel = THREE.MathUtils.smoothstep(t, 0, 0.98)
-    const burst = travel * 4.6
+    const burst = travel * 5.2
     const pos = geom.attributes.position.array
     const col = geom.attributes.color.array
     const fade = THREE.MathUtils.smoothstep(t, 0.06, 0.32) * (1 - THREE.MathUtils.smoothstep(t, 0.96, 1) * 0.22)
@@ -251,7 +269,7 @@ function QrParticleField({ progress, buffers }) {
     const { n, basePos, radial, distNorm, startCol, endCol } = buffers
     // Recorrido 0→1: el QR sigue abriéndose todo el scroll (no frena a mitad)
     const travel = THREE.MathUtils.smoothstep(t, 0, 0.98)
-    const radialCap = 1.18 * travel
+    const radialCap = QR_EXPLODE_RADIAL_MAX * travel
     const colorMix = THREE.MathUtils.smoothstep(t, 0.05, 0.78)
     const twinkle = THREE.MathUtils.smoothstep(t, 0.08, 0.82)
     const shrink = 1 - THREE.MathUtils.smoothstep(t, 0.62, 0.98) * 0.16
@@ -270,14 +288,15 @@ function QrParticleField({ progress, buffers }) {
     geom.attributes.position.needsUpdate = true
     geom.attributes.color.needsUpdate = true
     if (ref.current) {
-      ref.current.material.size = 0.026 * (0.88 + 0.48 * twinkle + 0.12 * THREE.MathUtils.smoothstep(t, 0.35, 0.98))
+      const zoomFactor = 1.05 + 0.12 * THREE.MathUtils.smoothstep(t, 0.2, 0.95)
+      ref.current.material.size = 0.03 * zoomFactor * (0.88 + 0.48 * twinkle + 0.12 * THREE.MathUtils.smoothstep(t, 0.35, 0.98))
     }
   })
 
   return (
     <points ref={ref} geometry={geom}>
       <pointsMaterial
-        size={0.028}
+        size={0.032}
         vertexColors
         transparent
         opacity={1}
@@ -292,6 +311,7 @@ function QrParticleField({ progress, buffers }) {
 function Scene({ progress, buffers }) {
   return (
     <>
+      <ZoomCamera progress={progress} />
       <color attach="background" args={['#000000']} />
       <ambientLight intensity={0.08} />
       {buffers && <QrParticleField progress={progress} buffers={buffers} />}
@@ -329,7 +349,7 @@ export default function QrStarfieldHero({ progress }) {
         <Canvas
           gl={{ antialias: true, alpha: false, powerPreference: 'high-performance' }}
           dpr={[1, Math.min(2, typeof window !== 'undefined' ? window.devicePixelRatio : 1)]}
-          camera={{ position: [0, 0, 9.2], fov: 42, near: 0.05, far: 80 }}
+          camera={{ position: [0, 0, CAMERA_Z_START], fov: 42, near: 0.05, far: 80 }}
           style={{ width: '100%', height: '100%', display: 'block', touchAction: 'none' }}
         >
           <Scene progress={progress} buffers={buffers} />
