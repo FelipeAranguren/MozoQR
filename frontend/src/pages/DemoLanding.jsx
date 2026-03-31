@@ -144,9 +144,9 @@ export default function DemoLanding() {
                     initial="hidden"
                     animate="visible"
                 >
-                    <Grid container spacing={{ xs: 2, md: 4 }}>
+                    <Grid container spacing={{ xs: 2, md: 3 }}>
                         {roles.map((role) => (
-                            <Grid item xs={12} md={6} key={role.id}>
+                            <Grid item xs={12} md={4} key={role.id}>
                                 <motion.div
                                     variants={itemVariants}
                                     whileHover={{ y: -8 }}

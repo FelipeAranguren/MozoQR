@@ -1,6 +1,6 @@
-import React, { useRef } from 'react'
+import React, { useRef, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { motion, useInView } from 'framer-motion'
+import { motion, useInView, useMotionValue, useSpring } from 'framer-motion'
 import {
   Container, Typography, Button, Grid, Box, List, ListItem,
   ListItemIcon, ListItemText, CircularProgress, Stack, Chip,
@@ -16,8 +16,9 @@ import { alpha } from '@mui/material/styles'
 import { COLORS } from '../theme'
 import { useDolarBlue } from '../hooks/useDolarBlue'
 import { formatPriceARS, formatPriceUSD } from '../constants/planPricing'
+import QrStarfieldHero from '../components/QrStarfieldHero'
 
-function FadeIn({ children, delay = 0 }) {
+function FadeIn({ children, delay = 0, style }) {
   const ref = useRef(null)
   const inView = useInView(ref, { once: true, margin: '-60px' })
   return (
@@ -26,6 +27,7 @@ function FadeIn({ children, delay = 0 }) {
       initial={{ opacity: 0, y: 24 }}
       animate={inView ? { opacity: 1, y: 0 } : {}}
       transition={{ duration: 0.5, delay, ease: [0.22, 1, 0.36, 1] }}
+      style={style}
     >
       {children}
     </motion.div>
@@ -35,6 +37,14 @@ function FadeIn({ children, delay = 0 }) {
 export default function Home() {
   const navigate = useNavigate()
   const { blueVenta, loading: dolarLoading } = useDolarBlue()
+
+  const heroTarget = useMotionValue(0)
+  const heroProgress = useSpring(heroTarget, { stiffness: 30, damping: 18 })
+
+  useEffect(() => {
+    const timer = setTimeout(() => heroTarget.set(1), 400)
+    return () => clearTimeout(timer)
+  }, [heroTarget])
 
   const steps = [
     {
@@ -122,42 +132,36 @@ export default function Home() {
   return (
     <Box component="main" sx={{ overflowX: 'hidden', width: '100%' }}>
 
-      {/* ─── HERO ─────────────────────────────────────── */}
+      {/* ─── HERO con QR Starfield ─────────────────── */}
       <Box
         sx={{
-          minHeight: { xs: '80vh', md: '88vh' },
+          position: 'relative',
+          minHeight: { xs: '92vh', md: '100vh' },
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',
-          position: 'relative',
-          bgcolor: COLORS.primaryDark,
           overflow: 'hidden',
+          bgcolor: '#000',
         }}
       >
-        <Box
-          sx={{
-            position: 'absolute',
-            inset: 0,
-            pointerEvents: 'none',
-            background: `radial-gradient(ellipse 80% 60% at 50% 40%, ${alpha(COLORS.secondary, 0.08)} 0%, transparent 70%)`,
-          }}
-        />
+        <QrStarfieldHero progress={heroProgress} />
 
-        <Container sx={{ position: 'relative', zIndex: 1, textAlign: 'center', py: { xs: 10, md: 14 } }}>
+        <Container sx={{ position: 'relative', zIndex: 2, textAlign: 'center', py: { xs: 10, md: 14 } }}>
           <motion.div
-            initial={{ opacity: 0, y: 30 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.7, ease: [0.22, 1, 0.36, 1] }}
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            transition={{ duration: 1.2, delay: 0.3 }}
           >
             <Typography
               component="h1"
               sx={{
                 fontWeight: 800,
-                fontSize: { xs: '2.75rem', sm: '3.5rem', md: '4.5rem' },
-                letterSpacing: '-0.03em',
-                lineHeight: 1.05,
+                fontSize: { xs: '3rem', sm: '4rem', md: '5rem' },
+                letterSpacing: '-0.04em',
+                lineHeight: 1,
                 color: '#fff',
-                mb: 3,
+                mb: 2.5,
+                textShadow: '0 4px 40px rgba(0,0,0,0.5)',
               }}
             >
               MozoQR
@@ -165,16 +169,16 @@ export default function Home() {
 
             <Typography
               sx={{
-                color: 'rgba(255,255,255,0.6)',
-                fontSize: { xs: '1.05rem', md: '1.25rem' },
+                color: 'rgba(255,255,255,0.55)',
+                fontSize: { xs: '1rem', md: '1.2rem' },
                 lineHeight: 1.7,
-                maxWidth: 520,
+                maxWidth: 480,
                 mx: 'auto',
                 mb: 5,
                 fontWeight: 400,
               }}
             >
-              Pedidos desde la mesa, cocina en tiempo real y control total para el dueño. Un solo sistema para todo tu restaurante.
+              Pedidos desde la mesa, cocina en tiempo real y control total para el dueño.
             </Typography>
 
             <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2} justifyContent="center" alignItems="center">
@@ -185,12 +189,13 @@ export default function Home() {
                 endIcon={<ArrowForwardIcon />}
                 sx={{
                   bgcolor: '#fff',
-                  color: COLORS.primaryDark,
+                  color: '#000',
                   px: 4,
                   py: 1.75,
                   fontSize: '1rem',
                   fontWeight: 700,
                   borderRadius: 2,
+                  boxShadow: '0 8px 32px rgba(0,0,0,0.3)',
                   '&:hover': { bgcolor: '#f0f0f0' },
                 }}
               >
@@ -201,14 +206,14 @@ export default function Home() {
                 size="large"
                 onClick={() => document.getElementById('planes')?.scrollIntoView({ behavior: 'smooth' })}
                 sx={{
-                  borderColor: 'rgba(255,255,255,0.3)',
+                  borderColor: 'rgba(255,255,255,0.25)',
                   color: '#fff',
                   px: 4,
                   py: 1.75,
                   fontSize: '1rem',
                   fontWeight: 600,
                   borderRadius: 2,
-                  '&:hover': { borderColor: 'rgba(255,255,255,0.6)', bgcolor: 'rgba(255,255,255,0.05)' },
+                  '&:hover': { borderColor: 'rgba(255,255,255,0.5)', bgcolor: 'rgba(255,255,255,0.05)' },
                 }}
               >
                 Ver planes
@@ -333,7 +338,7 @@ export default function Home() {
               const isUltra = plan.highlight
               return (
                 <Grid item xs={12} sm={6} md={4} key={key}>
-                  <FadeIn delay={i * 0.08}>
+                  <FadeIn delay={i * 0.08} style={{ height: '100%' }}>
                     <Box
                       sx={{
                         height: '100%',
