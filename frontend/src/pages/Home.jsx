@@ -39,10 +39,10 @@ export default function Home() {
   const { blueVenta, loading: dolarLoading } = useDolarBlue()
 
   const heroTarget = useMotionValue(0)
-  const heroProgress = useSpring(heroTarget, { stiffness: 30, damping: 18 })
+  const heroProgress = useSpring(heroTarget, { stiffness: 28, damping: 16 })
 
   useEffect(() => {
-    const timer = setTimeout(() => heroTarget.set(1), 400)
+    const timer = setTimeout(() => heroTarget.set(1), 300)
     return () => clearTimeout(timer)
   }, [heroTarget])
 
@@ -63,17 +63,14 @@ export default function Home() {
       num: '03',
       icon: <BarChartIcon sx={{ fontSize: 28, color: COLORS.secondary }} />,
       title: 'El dueño controla todo',
-      desc: 'Ventas, mesas, cuentas y reportes en un solo panel. Con herramientas de IA en planes avanzados.',
+      desc: 'Ventas, mesas, cuentas y reportes en un solo panel. Con IA en planes avanzados.',
     },
   ]
 
   const plans = {
     BASIC: {
-      name: 'Básico',
-      priceUsd: 0.0007,
-      description: 'Control operacional esencial',
-      highlight: false,
-      badge: null,
+      name: 'Básico', priceUsd: 0.0007, description: 'Control operacional esencial',
+      highlight: false, badge: null,
       features: [
         'KPIs básicos (ventas, pedidos, ticket promedio)',
         'Estado de mesas en tiempo real',
@@ -81,19 +78,12 @@ export default function Home() {
         'Logo y colores personalizados',
         'Actividad reciente e insights simples',
       ],
-      limitations: [
-        'Sin análisis avanzados ni predicciones',
-        'Sin exportaciones ni múltiples sucursales',
-      ],
-      cta: 'Elegir plan',
-      ctaAction: () => navigate('/checkout?plan=basic'),
+      limitations: ['Sin análisis avanzados ni predicciones', 'Sin exportaciones ni múltiples sucursales'],
+      cta: 'Elegir plan', ctaAction: () => navigate('/checkout?plan=basic'),
     },
     PRO: {
-      name: 'Pro',
-      priceUsd: 80,
-      description: 'Datos y análisis avanzados',
-      highlight: false,
-      badge: 'Popular',
+      name: 'Pro', priceUsd: 80, description: 'Datos y análisis avanzados',
+      highlight: false, badge: 'Popular',
       features: [
         'Todo lo de Básico',
         'Analytics avanzados y comparativas',
@@ -102,18 +92,12 @@ export default function Home() {
         'Roles de personal y reporte de caja',
         'Historial de transacciones completo',
       ],
-      limitations: [
-        'Sin IA integrada ni múltiples sucursales',
-      ],
-      cta: 'Elegir plan',
-      ctaAction: () => navigate('/checkout?plan=pro'),
+      limitations: ['Sin IA integrada ni múltiples sucursales'],
+      cta: 'Elegir plan', ctaAction: () => navigate('/checkout?plan=pro'),
     },
     ULTRA: {
-      name: 'Ultra',
-      priceUsd: 100,
-      description: 'Inteligencia y automatización total',
-      highlight: true,
-      badge: 'Mejor valor',
+      name: 'Ultra', priceUsd: 100, description: 'Inteligencia y automatización total',
+      highlight: true, badge: 'Mejor valor',
       features: [
         'Todo lo de Pro',
         'IA integrada: sugerencias de menú, combos, detección',
@@ -124,19 +108,18 @@ export default function Home() {
         'Pagos online integrados',
       ],
       limitations: [],
-      cta: 'Comenzar con Ultra',
-      ctaAction: () => navigate('/checkout?plan=ultra'),
+      cta: 'Comenzar con Ultra', ctaAction: () => navigate('/checkout?plan=ultra'),
     },
   }
 
   return (
     <Box component="main" sx={{ overflowX: 'hidden', width: '100%' }}>
 
-      {/* ─── HERO con QR Starfield ─────────────────── */}
+      {/* ─── HERO ─────────────────────────────────────── */}
       <Box
         sx={{
           position: 'relative',
-          minHeight: { xs: '92vh', md: '100vh' },
+          minHeight: { xs: '100vh', md: '100vh' },
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',
@@ -146,22 +129,33 @@ export default function Home() {
       >
         <QrStarfieldHero progress={heroProgress} />
 
+        {/* Dark vignette for text readability */}
+        <Box
+          sx={{
+            position: 'absolute',
+            inset: 0,
+            zIndex: 1,
+            pointerEvents: 'none',
+            background: 'radial-gradient(ellipse 70% 50% at 50% 50%, rgba(0,0,0,0.3) 0%, rgba(0,0,0,0.7) 100%)',
+          }}
+        />
+
         <Container sx={{ position: 'relative', zIndex: 2, textAlign: 'center', py: { xs: 10, md: 14 } }}>
           <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            transition={{ duration: 1.2, delay: 0.3 }}
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 1, delay: 0.5, ease: [0.22, 1, 0.36, 1] }}
           >
             <Typography
               component="h1"
               sx={{
                 fontWeight: 800,
-                fontSize: { xs: '3rem', sm: '4rem', md: '5rem' },
+                fontSize: { xs: '3.5rem', sm: '4.5rem', md: '6rem' },
                 letterSpacing: '-0.04em',
-                lineHeight: 1,
+                lineHeight: 0.95,
                 color: '#fff',
-                mb: 2.5,
-                textShadow: '0 4px 40px rgba(0,0,0,0.5)',
+                mb: 3,
+                textShadow: '0 2px 40px rgba(0,0,0,0.6), 0 8px 80px rgba(0,0,0,0.4)',
               }}
             >
               MozoQR
@@ -169,13 +163,14 @@ export default function Home() {
 
             <Typography
               sx={{
-                color: 'rgba(255,255,255,0.55)',
-                fontSize: { xs: '1rem', md: '1.2rem' },
-                lineHeight: 1.7,
-                maxWidth: 480,
+                color: 'rgba(255,255,255,0.75)',
+                fontSize: { xs: '1.05rem', md: '1.3rem' },
+                lineHeight: 1.65,
+                maxWidth: 500,
                 mx: 'auto',
                 mb: 5,
                 fontWeight: 400,
+                textShadow: '0 2px 20px rgba(0,0,0,0.5)',
               }}
             >
               Pedidos desde la mesa, cocina en tiempo real y control total para el dueño.
@@ -190,30 +185,30 @@ export default function Home() {
                 sx={{
                   bgcolor: '#fff',
                   color: '#000',
-                  px: 4,
+                  px: 4.5,
                   py: 1.75,
-                  fontSize: '1rem',
+                  fontSize: '1.05rem',
                   fontWeight: 700,
-                  borderRadius: 2,
-                  boxShadow: '0 8px 32px rgba(0,0,0,0.3)',
+                  borderRadius: 2.5,
+                  boxShadow: '0 8px 32px rgba(0,0,0,0.4)',
                   '&:hover': { bgcolor: '#f0f0f0' },
                 }}
               >
                 Probar demo gratis
               </Button>
               <Button
-                variant="outlined"
                 size="large"
                 onClick={() => document.getElementById('planes')?.scrollIntoView({ behavior: 'smooth' })}
                 sx={{
-                  borderColor: 'rgba(255,255,255,0.25)',
+                  bgcolor: 'transparent',
+                  border: '1.5px solid rgba(255,255,255,0.35)',
                   color: '#fff',
-                  px: 4,
+                  px: 4.5,
                   py: 1.75,
-                  fontSize: '1rem',
+                  fontSize: '1.05rem',
                   fontWeight: 600,
-                  borderRadius: 2,
-                  '&:hover': { borderColor: 'rgba(255,255,255,0.5)', bgcolor: 'rgba(255,255,255,0.05)' },
+                  borderRadius: 2.5,
+                  '&:hover': { borderColor: 'rgba(255,255,255,0.7)', bgcolor: 'rgba(255,255,255,0.08)' },
                 }}
               >
                 Ver planes
@@ -224,7 +219,7 @@ export default function Home() {
       </Box>
 
       {/* ─── CÓMO FUNCIONA ────────────────────────────── */}
-      <Box sx={{ py: { xs: 10, md: 14 }, bgcolor: COLORS.bg }}>
+      <Box sx={{ py: { xs: 7, md: 10 }, bgcolor: COLORS.bg }}>
         <Container>
           <FadeIn>
             <Typography
@@ -239,7 +234,7 @@ export default function Home() {
               variant="h3"
               align="center"
               fontWeight={800}
-              sx={{ fontSize: { xs: '1.75rem', md: '2.5rem' }, mb: 2, letterSpacing: '-0.02em' }}
+              sx={{ fontSize: { xs: '1.75rem', md: '2.5rem' }, mb: 1.5, letterSpacing: '-0.02em' }}
             >
               Tres pasos, un solo flujo
             </Typography>
@@ -247,19 +242,19 @@ export default function Home() {
               variant="body1"
               align="center"
               color="textSecondary"
-              sx={{ maxWidth: 480, mx: 'auto', mb: { xs: 6, md: 8 }, lineHeight: 1.7 }}
+              sx={{ maxWidth: 480, mx: 'auto', mb: { xs: 5, md: 6 }, lineHeight: 1.7 }}
             >
               Del comensal a la cocina y del reporte al dueño, sin fricción.
             </Typography>
           </FadeIn>
 
-          <Grid container spacing={{ xs: 3, md: 4 }}>
+          <Grid container spacing={{ xs: 2, md: 3 }}>
             {steps.map((step, i) => (
               <Grid item xs={12} md={4} key={step.num}>
-                <FadeIn delay={i * 0.1}>
+                <FadeIn delay={i * 0.1} style={{ height: '100%' }}>
                   <Box
                     sx={{
-                      p: { xs: 3, md: 4 },
+                      p: { xs: 3, md: 3.5 },
                       borderRadius: 3,
                       border: '1px solid',
                       borderColor: COLORS.border,
@@ -304,7 +299,7 @@ export default function Home() {
       </Box>
 
       {/* ─── PLANES ───────────────────────────────────── */}
-      <Box id="planes" sx={{ py: { xs: 10, md: 14 }, bgcolor: COLORS.surface }}>
+      <Box id="planes" sx={{ py: { xs: 7, md: 10 }, bgcolor: COLORS.surface }}>
         <Container>
           <FadeIn>
             <Typography
@@ -319,7 +314,7 @@ export default function Home() {
               variant="h3"
               align="center"
               fontWeight={800}
-              sx={{ fontSize: { xs: '1.75rem', md: '2.5rem' }, mb: 2, letterSpacing: '-0.02em' }}
+              sx={{ fontSize: { xs: '1.75rem', md: '2.5rem' }, mb: 1.5, letterSpacing: '-0.02em' }}
             >
               Planes para cada restaurante
             </Typography>
@@ -327,7 +322,7 @@ export default function Home() {
               variant="body1"
               align="center"
               color="textSecondary"
-              sx={{ maxWidth: 460, mx: 'auto', mb: { xs: 6, md: 8 }, lineHeight: 1.7 }}
+              sx={{ maxWidth: 460, mx: 'auto', mb: { xs: 5, md: 6 }, lineHeight: 1.7 }}
             >
               Empezá gratis y escalá cuando lo necesités. Sin compromisos.
             </Typography>
@@ -362,7 +357,6 @@ export default function Home() {
                       }}
                     >
                       <Box sx={{ p: { xs: 3, md: 3.5 }, flexGrow: 1, display: 'flex', flexDirection: 'column' }}>
-                        {/* Header */}
                         <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 0.5 }}>
                           <Typography variant="h5" fontWeight={800} sx={{ color: isUltra ? '#fff' : COLORS.text }}>
                             {plan.name}
@@ -373,9 +367,7 @@ export default function Home() {
                               size="small"
                               icon={isUltra ? <StarIcon sx={{ fontSize: '14px !important', color: 'inherit !important' }} /> : undefined}
                               sx={{
-                                fontWeight: 700,
-                                fontSize: '0.7rem',
-                                height: 26,
+                                fontWeight: 700, fontSize: '0.7rem', height: 26,
                                 ...(isUltra
                                   ? { bgcolor: 'rgba(255,255,255,0.15)', color: '#fff', border: '1px solid rgba(255,255,255,0.25)' }
                                   : { bgcolor: alpha(COLORS.secondary, 0.1), color: COLORS.secondary }),
@@ -387,8 +379,7 @@ export default function Home() {
                           {plan.description}
                         </Typography>
 
-                        {/* Price */}
-                        <Box sx={{ mb: 3 }}>
+                        <Box sx={{ mb: 2.5 }}>
                           {dolarLoading ? (
                             <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
                               <CircularProgress size={20} sx={{ color: isUltra ? '#fff' : COLORS.textMuted }} />
@@ -398,18 +389,9 @@ export default function Home() {
                             </Box>
                           ) : (
                             <>
-                              <Typography
-                                variant="h3"
-                                fontWeight={800}
-                                sx={{ color: isUltra ? '#fff' : COLORS.text, lineHeight: 1 }}
-                              >
+                              <Typography variant="h3" fontWeight={800} sx={{ color: isUltra ? '#fff' : COLORS.text, lineHeight: 1 }}>
                                 {formatPriceARS(plan.priceUsd * blueVenta)}
-                                <Typography
-                                  component="span"
-                                  variant="body2"
-                                  fontWeight={500}
-                                  sx={{ ml: 0.5, color: isUltra ? 'rgba(255,255,255,0.5)' : COLORS.textMuted }}
-                                >
+                                <Typography component="span" variant="body2" fontWeight={500} sx={{ ml: 0.5, color: isUltra ? 'rgba(255,255,255,0.5)' : COLORS.textMuted }}>
                                   /mes
                                 </Typography>
                               </Typography>
@@ -420,12 +402,11 @@ export default function Home() {
                           )}
                         </Box>
 
-                        <Box sx={{ mb: 2.5, height: 1, bgcolor: isUltra ? 'rgba(255,255,255,0.12)' : COLORS.border }} />
+                        <Box sx={{ mb: 2, height: 1, bgcolor: isUltra ? 'rgba(255,255,255,0.12)' : COLORS.border }} />
 
-                        {/* Features */}
-                        <List dense disablePadding sx={{ mb: plan.limitations?.length ? 2 : 'auto', flex: plan.limitations?.length ? 'none' : 1 }}>
+                        <List dense disablePadding sx={{ mb: plan.limitations?.length ? 1.5 : 'auto', flex: plan.limitations?.length ? 'none' : 1 }}>
                           {plan.features.map((f, idx) => (
-                            <ListItem key={idx} disableGutters sx={{ py: 0.3, alignItems: 'flex-start' }}>
+                            <ListItem key={idx} disableGutters sx={{ py: 0.25, alignItems: 'flex-start' }}>
                               <ListItemIcon sx={{ minWidth: 24, mt: 0.3 }}>
                                 <CheckIcon sx={{ fontSize: 15, color: isUltra ? COLORS.secondaryLight : COLORS.secondary }} />
                               </ListItemIcon>
@@ -441,9 +422,9 @@ export default function Home() {
                         </List>
 
                         {plan.limitations?.length > 0 && (
-                          <List dense disablePadding sx={{ mb: 3, flex: 1 }}>
+                          <List dense disablePadding sx={{ mb: 2.5, flex: 1 }}>
                             {plan.limitations.map((l, idx) => (
-                              <ListItem key={idx} disableGutters sx={{ py: 0.3, alignItems: 'flex-start' }}>
+                              <ListItem key={idx} disableGutters sx={{ py: 0.25, alignItems: 'flex-start' }}>
                                 <ListItemIcon sx={{ minWidth: 24, mt: 0.3 }}>
                                   <CloseIcon sx={{ fontSize: 14, color: isUltra ? 'rgba(255,255,255,0.3)' : COLORS.textMuted }} />
                                 </ListItemIcon>
@@ -459,7 +440,6 @@ export default function Home() {
                           </List>
                         )}
 
-                        {/* CTA */}
                         <Box sx={{ mt: 'auto' }}>
                           <Button
                             variant="contained"
@@ -467,21 +447,10 @@ export default function Home() {
                             size="large"
                             onClick={plan.ctaAction}
                             sx={{
-                              py: 1.5,
-                              fontWeight: 700,
-                              borderRadius: 2,
-                              fontSize: '0.9375rem',
+                              py: 1.5, fontWeight: 700, borderRadius: 2, fontSize: '0.9375rem',
                               ...(isUltra
-                                ? {
-                                    bgcolor: '#fff',
-                                    color: COLORS.primaryDark,
-                                    '&:hover': { bgcolor: '#f0f0f0' },
-                                  }
-                                : {
-                                    bgcolor: COLORS.primary,
-                                    color: '#fff',
-                                    '&:hover': { bgcolor: COLORS.primaryLight },
-                                  }),
+                                ? { bgcolor: '#fff', color: COLORS.primaryDark, '&:hover': { bgcolor: '#f0f0f0' } }
+                                : { bgcolor: COLORS.primary, color: '#fff', '&:hover': { bgcolor: COLORS.primaryLight } }),
                             }}
                           >
                             {plan.cta}
@@ -504,59 +473,43 @@ export default function Home() {
       </Box>
 
       {/* ─── CTA FINAL + FOOTER ───────────────────────── */}
-      <Box
-        sx={{
-          bgcolor: COLORS.primaryDark,
-          color: '#fff',
-          py: { xs: 8, md: 10 },
-        }}
-      >
+      <Box sx={{ bgcolor: COLORS.primaryDark, color: '#fff', py: { xs: 6, md: 8 } }}>
         <Container>
           <Box sx={{ maxWidth: 560, mx: 'auto', textAlign: 'center' }}>
             <FadeIn>
               <Typography
                 variant="h4"
                 fontWeight={800}
-                sx={{ fontSize: { xs: '1.5rem', md: '2rem' }, mb: 2, letterSpacing: '-0.02em' }}
+                sx={{ fontSize: { xs: '1.5rem', md: '2rem' }, mb: 1.5, letterSpacing: '-0.02em' }}
               >
                 Probalo con datos de ejemplo
               </Typography>
-              <Typography
-                sx={{ color: 'rgba(255,255,255,0.55)', mb: 4, lineHeight: 1.7 }}
-              >
+              <Typography sx={{ color: 'rgba(255,255,255,0.55)', mb: 4, lineHeight: 1.7 }}>
                 Recorré la demo como comensal, cocina o dueño. Sin tarjeta, sin compromiso.
               </Typography>
 
-              <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2} justifyContent="center" sx={{ mb: 6 }}>
+              <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2} justifyContent="center" sx={{ mb: 5 }}>
                 <Button
                   variant="contained"
                   size="large"
                   onClick={() => navigate('/demo')}
                   endIcon={<ArrowForwardIcon />}
                   sx={{
-                    bgcolor: '#fff',
-                    color: COLORS.primaryDark,
-                    px: 4,
-                    py: 1.5,
-                    fontWeight: 700,
-                    borderRadius: 2,
-                    '&:hover': { bgcolor: '#f0f0f0' },
+                    bgcolor: '#fff', color: COLORS.primaryDark, px: 4, py: 1.5,
+                    fontWeight: 700, borderRadius: 2, '&:hover': { bgcolor: '#f0f0f0' },
                   }}
                 >
                   Empezar demo
                 </Button>
                 <Button
-                  variant="outlined"
                   size="large"
                   href="mailto:ventas@mozoqr.com"
                   sx={{
-                    borderColor: 'rgba(255,255,255,0.25)',
+                    bgcolor: 'transparent',
+                    border: '1.5px solid rgba(255,255,255,0.3)',
                     color: '#fff',
-                    px: 4,
-                    py: 1.5,
-                    fontWeight: 600,
-                    borderRadius: 2,
-                    '&:hover': { borderColor: 'rgba(255,255,255,0.5)', bgcolor: 'rgba(255,255,255,0.05)' },
+                    px: 4, py: 1.5, fontWeight: 600, borderRadius: 2,
+                    '&:hover': { borderColor: 'rgba(255,255,255,0.6)', bgcolor: 'rgba(255,255,255,0.06)' },
                   }}
                 >
                   Contactar ventas
@@ -564,27 +517,14 @@ export default function Home() {
               </Stack>
             </FadeIn>
 
-            {/* Footer */}
-            <Box sx={{ pt: 4, borderTop: '1px solid rgba(255,255,255,0.08)' }}>
-              <Typography variant="body2" fontWeight={700} sx={{ mb: 1, letterSpacing: '-0.01em' }}>
-                MozoQR
-              </Typography>
-              <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.35)', display: 'block', mb: 2 }}>
+            <Box sx={{ pt: 3, borderTop: '1px solid rgba(255,255,255,0.08)' }}>
+              <Typography variant="body2" fontWeight={700} sx={{ mb: 0.5 }}>MozoQR</Typography>
+              <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.35)', display: 'block', mb: 1.5 }}>
                 Pedidos, cocina y administración en un solo sistema.
               </Typography>
-              <Stack direction="row" spacing={3} justifyContent="center" sx={{ mb: 2 }}>
+              <Stack direction="row" spacing={3} justifyContent="center" sx={{ mb: 1.5 }}>
                 {['Términos', 'Privacidad', 'Contacto'].map((link) => (
-                  <Box
-                    key={link}
-                    component="a"
-                    href="#"
-                    sx={{
-                      color: 'rgba(255,255,255,0.35)',
-                      textDecoration: 'none',
-                      fontSize: '0.8125rem',
-                      '&:hover': { color: 'rgba(255,255,255,0.7)' },
-                    }}
-                  >
+                  <Box key={link} component="a" href="#" sx={{ color: 'rgba(255,255,255,0.35)', textDecoration: 'none', fontSize: '0.8125rem', '&:hover': { color: 'rgba(255,255,255,0.7)' } }}>
                     {link}
                   </Box>
                 ))}
