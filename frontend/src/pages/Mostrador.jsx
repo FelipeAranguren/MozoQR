@@ -3643,7 +3643,7 @@ export default function Mostrador() {
                         size="small"
                         startIcon={<ReceiptIcon />}
                         onClick={() => setReceiptDialog({ open: true, data: cuentaToReceiptData(tableDetailDialog.mesa.cuenta) })}
-                        sx={{ mt: 2, borderColor: 'rgba(255,255,255,0.8)', color: 'inherit' }}
+                        sx={{ mt: 2, borderColor: 'rgba(255,255,255,0.8)', color: '#fff', bgcolor: 'transparent', '&:hover': { bgcolor: 'rgba(255,255,255,0.1)', borderColor: '#fff' } }}
                       >
                         Ver recibo
                       </Button>

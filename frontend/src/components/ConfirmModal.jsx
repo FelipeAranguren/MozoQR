@@ -86,6 +86,7 @@ export default function ConfirmModal({
           disabled={loading}
           sx={{
             bgcolor: confirmColor,
+            color: '#fff',
             textTransform: 'none',
             fontWeight: 600,
             '&:hover': { bgcolor: confirmColor, filter: 'brightness(0.95)' }

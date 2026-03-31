@@ -236,6 +236,7 @@ export default function OwnerDashboardList() {
                       onClick={() => handleSelectRestaurant(restaurant.slug)}
         sx={{
                         bgcolor: MARANA_COLORS.primary,
+                        color: '#fff',
                         '&:hover': {
                           bgcolor: MARANA_COLORS.primary,
                           opacity: 0.9,

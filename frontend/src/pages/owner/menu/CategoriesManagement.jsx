@@ -187,6 +187,7 @@ export default function CategoriesManagement({ slug }) {
           onClick={() => handleOpenDialog()}
           sx={{
             bgcolor: MARANA_COLORS.primary,
+            color: '#fff',
             '&:hover': { bgcolor: MARANA_COLORS.primary }
           }}
         >
@@ -329,6 +330,7 @@ export default function CategoriesManagement({ slug }) {
             variant="contained"
             sx={{
               bgcolor: MARANA_COLORS.primary,
+              color: '#fff',
               '&:hover': { bgcolor: MARANA_COLORS.primary }
             }}
             disabled={isDemoAccess}

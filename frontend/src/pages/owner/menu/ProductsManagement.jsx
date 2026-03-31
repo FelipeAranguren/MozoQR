@@ -302,6 +302,7 @@ export default function ProductsManagement({ slug }) {
           onClick={() => handleOpenDialog()}
           sx={{
             bgcolor: MARANA_COLORS.primary,
+            color: '#fff',
             '&:hover': { bgcolor: MARANA_COLORS.primary }
           }}
         >
@@ -510,6 +511,7 @@ export default function ProductsManagement({ slug }) {
             disabled={uploading || isDemoAccess}
             sx={{
               bgcolor: MARANA_COLORS.primary,
+              color: '#fff',
               '&:hover': { bgcolor: MARANA_COLORS.primary }
             }}
           >

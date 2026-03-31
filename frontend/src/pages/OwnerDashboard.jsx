@@ -771,6 +771,7 @@ export default function OwnerDashboard() {
                   textTransform: 'none',
                   ...(p.key === periodKey && {
                     bgcolor: COLORS.primary,
+                    color: '#fff',
                     '&:hover': { bgcolor: COLORS.primaryLight }
                   })
                 }}
@@ -789,6 +790,7 @@ export default function OwnerDashboard() {
                 textTransform: 'none',
                 ...(periodKey === 'custom' && {
                   bgcolor: COLORS.primary,
+                  color: '#fff',
                   '&:hover': { bgcolor: COLORS.primaryLight }
                 })
               }}

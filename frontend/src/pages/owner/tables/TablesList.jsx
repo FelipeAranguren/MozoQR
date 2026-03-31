@@ -223,6 +223,7 @@ export default function TablesList() {
             onClick={() => handleOpenDialog()}
             sx={{
               bgcolor: MARANA_COLORS.primary,
+              color: '#fff',
               '&:hover': { bgcolor: MARANA_COLORS.primary }
             }}
           >
@@ -400,6 +401,7 @@ export default function TablesList() {
             variant="contained"
             sx={{
               bgcolor: MARANA_COLORS.primary,
+              color: '#fff',
               '&:hover': { bgcolor: MARANA_COLORS.primary }
             }}
           >
