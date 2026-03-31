@@ -2831,7 +2831,7 @@ export default function Mostrador() {
 
         {/* PEDIDOS tab */}
         {activeTab === 0 && (
-          <Grid container spacing={2}>
+          <Grid container spacing={2} sx={{ minHeight: '100%' }}>
             {/* Pendientes */}
             <Grid item xs={12} md={6}>
               <Box sx={{ mb: 1.5, display: 'flex', alignItems: 'center', gap: 1 }}>
