@@ -1,865 +1,593 @@
-//src/pages/Home.jsx — REDESIGNED
-// All logic, routes, data imports preserved. Only UI/animations changed.
-import React, { useRef, useEffect, useState } from 'react'
+import React, { useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
+import { motion, useInView } from 'framer-motion'
 import {
-  motion,
-  useMotionValue,
-  useTransform,
-  useSpring,
-  useInView,
-} from 'framer-motion'
-import {
-  Container, Typography, Button, Grid, Card, Box, List, ListItem,
-  ListItemIcon, ListItemText, CircularProgress, Stack, Paper, useTheme, Chip,
+  Container, Typography, Button, Grid, Box, List, ListItem,
+  ListItemIcon, ListItemText, CircularProgress, Stack, Chip,
 } from '@mui/material'
-import QrCodeIcon from '@mui/icons-material/QrCode'
-import KitchenIcon from '@mui/icons-material/Kitchen'
-import ReceiptLongIcon from '@mui/icons-material/ReceiptLong'
-import InsightsIcon from '@mui/icons-material/Insights'
-import CheckCircleIcon from '@mui/icons-material/CheckCircle'
+import QrCodeScannerIcon from '@mui/icons-material/QrCodeScanner'
+import RestaurantMenuIcon from '@mui/icons-material/RestaurantMenu'
+import BarChartIcon from '@mui/icons-material/BarChart'
 import CheckIcon from '@mui/icons-material/Check'
 import CloseIcon from '@mui/icons-material/Close'
 import ArrowForwardIcon from '@mui/icons-material/ArrowForward'
-import SyncAltIcon from '@mui/icons-material/SyncAlt'
-import TableRestaurantIcon from '@mui/icons-material/TableRestaurant'
-import PaymentsIcon from '@mui/icons-material/Payments'
-import BoltIcon from '@mui/icons-material/Bolt'
 import StarIcon from '@mui/icons-material/Star'
 import { alpha } from '@mui/material/styles'
 import { COLORS } from '../theme'
 import { useDolarBlue } from '../hooks/useDolarBlue'
 import { formatPriceARS, formatPriceUSD } from '../constants/planPricing'
-import QrStarfieldHero from '../components/QrStarfieldHero'
 
-/** 0→1: cuánto del gesto va a fase vs scroll de página (último tramo). */
-function smoothstep01(t) {
-  const x = Math.min(1, Math.max(0, t))
-  return x * x * (3 - 2 * x)
-}
-
-// ─── Scroll-triggered fade wrapper ───────────────────────────────────────────
-function FadeSection({ children, delay=0, direction='up' }) {
+function FadeIn({ children, delay = 0 }) {
   const ref = useRef(null)
-  const inView = useInView(ref, { once: true, margin: '-80px' })
-  const yMap={up:40,down:-40,left:0,right:0}, xMap={left:-40,right:40,up:0,down:0}
+  const inView = useInView(ref, { once: true, margin: '-60px' })
   return (
     <motion.div
       ref={ref}
-      initial={{ opacity:0, y:yMap[direction], x:xMap[direction] }}
-      animate={inView ? { opacity:1, y:0, x:0 } : {}}
-      transition={{ duration:0.65, delay, ease:[0.22,1,0.36,1] }}
+      initial={{ opacity: 0, y: 24 }}
+      animate={inView ? { opacity: 1, y: 0 } : {}}
+      transition={{ duration: 0.5, delay, ease: [0.22, 1, 0.36, 1] }}
     >
       {children}
     </motion.div>
   )
 }
 
-// ─── Pill badge ───────────────────────────────────────────────────────────────
-function PillBadge({ children, color }) {
-  return (
-    <Box component="span" sx={{
-      display:'inline-flex', alignItems:'center', px:1.5, py:0.4,
-      borderRadius:10, fontSize:'0.72rem', fontWeight:700, letterSpacing:0.8, textTransform:'uppercase',
-      bgcolor: alpha(color, 0.12), color, border:`1px solid ${alpha(color, 0.25)}`
-    }}>
-      {children}
-    </Box>
-  )
-}
-
-// ─── Main ─────────────────────────────────────────────────────────────────────
 export default function Home() {
   const navigate = useNavigate()
-  const theme = useTheme()
   const { blueVenta, loading: dolarLoading } = useDolarBlue()
 
-  /** Fase del hero 0→1: la rueda/touch la mueve; la página no scrollea hasta terminar. */
-  const heroPhase = useMotionValue(0)
-  const explosionProgress = useSpring(heroPhase, { stiffness: 200, damping: 24 })
-  const [heroScrollUnlocked, setHeroScrollUnlocked] = useState(false)
-  const heroScrollUnlockedRef = useRef(false)
-  heroScrollUnlockedRef.current = heroScrollUnlocked
-  const ctaRef = useRef(null)
-  const hasCenteredCtaRef = useRef(false)
-
-  const WHEEL_SENS = 0.00125
-  const TOUCH_SENS = 0.0078
-  const RELOCK_PHASE = 0.9
-  const AT_TOP_PX = 6
-  /** Misma zona que `tryUnlock`: con la transición terminada, el scroll hacia abajo debe mover la página. */
-  const HERO_END_PHASE = 0.998
-  /** A partir de aquí el overflow se libera y el gesto mezcla fase + scroll (se ve el contenido debajo). */
-  const SCROLL_BLEND_START = 0.72
-  /** Desbloqueo antes para que no haga falta tanto scroll después. */
-  const UNLOCK_HERO_PHASE = 0.982
-  const UNLOCK_SPRING = 0.86
-
-  useEffect(() => {
-    return heroPhase.on('change', () => {
-      if (heroScrollUnlockedRef.current && heroPhase.get() < RELOCK_PHASE) {
-        setHeroScrollUnlocked(false)
-      }
-      if (heroPhase.get() < 0.4) hasCenteredCtaRef.current = false
-    })
-  }, [heroPhase])
-
-  useEffect(() => {
-    if (heroScrollUnlocked) return
-    const tryUnlock = () => {
-      if (heroPhase.get() >= UNLOCK_HERO_PHASE && explosionProgress.get() >= UNLOCK_SPRING) {
-        setHeroScrollUnlocked(true)
-      }
-    }
-    const u1 = heroPhase.on('change', tryUnlock)
-    const u2 = explosionProgress.on('change', tryUnlock)
-    tryUnlock()
-    return () => {
-      u1()
-      u2()
-    }
-  }, [heroScrollUnlocked, heroPhase, explosionProgress])
-
-  useEffect(() => {
-    if (heroScrollUnlocked) {
-      document.documentElement.style.overflow = ''
-      return
-    }
-    const syncOverflow = () => {
-      document.documentElement.style.overflow =
-        heroPhase.get() >= SCROLL_BLEND_START ? '' : 'hidden'
-    }
-    syncOverflow()
-    const unsub = heroPhase.on('change', syncOverflow)
-    return () => {
-      unsub()
-      document.documentElement.style.overflow = ''
-    }
-  }, [heroScrollUnlocked, heroPhase])
-
-  /** Al cerrar la transición (fase + spring), un scroll suave alinea el CTA al centro del viewport si aún no quedó ahí (sin mover el botón en el layout). */
-  useEffect(() => {
-    const centerCta = () => {
-      if (hasCenteredCtaRef.current) return
-      if (heroPhase.get() < 0.996 || explosionProgress.get() < 0.88) return
-      const el = ctaRef.current
-      if (!el) return
-      hasCenteredCtaRef.current = true
-      requestAnimationFrame(() => {
-        const r = el.getBoundingClientRect()
-        const target = window.scrollY + r.top + r.height / 2 - window.innerHeight / 2
-        const off = Math.abs(window.scrollY - target)
-        if (off < 40) return
-        window.scrollTo({ top: Math.max(0, target), behavior: 'smooth' })
-      })
-    }
-    const u1 = heroPhase.on('change', centerCta)
-    const u2 = explosionProgress.on('change', centerCta)
-    return () => {
-      u1()
-      u2()
-    }
-  }, [heroPhase, explosionProgress])
-
-  useEffect(() => {
-    const onWheel = (e) => {
-      const p = heroPhase.get()
-      const atTop = Math.max(0, window.scrollY) <= AT_TOP_PX
-
-      if (heroScrollUnlockedRef.current) {
-        if (atTop && p > 0.008) {
-          const delta = e.deltaY + e.deltaX * 0.35
-          // Transición ya completa y gesto hacia abajo → scroll natural de la página
-          if (p >= HERO_END_PHASE && delta > 0) return
-          e.preventDefault()
-          e.stopPropagation()
-          const next = Math.min(1, Math.max(0, p + delta * WHEEL_SENS))
-          heroPhase.set(next)
-          if (next < RELOCK_PHASE) setHeroScrollUnlocked(false)
-        }
-        return
-      }
-
-      e.preventDefault()
-      e.stopPropagation()
-      const delta = e.deltaY + e.deltaX * 0.35
-      const blendT = (p - SCROLL_BLEND_START) / (1 - SCROLL_BLEND_START)
-      const blend = smoothstep01(blendT)
-      const phaseFactor = 1 - blend * 0.9
-      const next = Math.min(1, Math.max(0, p + delta * WHEEL_SENS * phaseFactor))
-      heroPhase.set(next)
-      if (blend > 0.02) window.scrollBy({ top: delta * blend, left: 0, behavior: 'auto' })
-    }
-    window.addEventListener('wheel', onWheel, { passive: false })
-    return () => window.removeEventListener('wheel', onWheel)
-  }, [WHEEL_SENS])
-
-  useEffect(() => {
-    let touchY = null
-    const onTouchStart = (e) => {
-      touchY = e.touches[0].clientY
-    }
-    const onTouchMove = (e) => {
-      const y = e.touches[0].clientY
-      if (touchY == null) {
-        touchY = y
-        return
-      }
-      const dy = touchY - y
-      touchY = y
-      const p = heroPhase.get()
-      const atTop = Math.max(0, window.scrollY) <= AT_TOP_PX
-
-      if (heroScrollUnlockedRef.current) {
-        if (atTop && p > 0.008) {
-          if (p >= HERO_END_PHASE && dy > 0) return
-          e.preventDefault()
-          const next = Math.min(1, Math.max(0, p + dy * TOUCH_SENS))
-          heroPhase.set(next)
-          if (next < RELOCK_PHASE) setHeroScrollUnlocked(false)
-        }
-        return
-      }
-
-      e.preventDefault()
-      const blendT = (p - SCROLL_BLEND_START) / (1 - SCROLL_BLEND_START)
-      const blend = smoothstep01(blendT)
-      const phaseFactor = 1 - blend * 0.9
-      const next = Math.min(1, Math.max(0, p + dy * TOUCH_SENS * phaseFactor))
-      heroPhase.set(next)
-      if (blend > 0.02) window.scrollBy({ top: dy * blend, left: 0, behavior: 'auto' })
-    }
-    const onTouchEnd = () => { touchY = null }
-    window.addEventListener('touchstart', onTouchStart, { passive: true })
-    window.addEventListener('touchmove', onTouchMove, { passive: false })
-    window.addEventListener('touchend', onTouchEnd)
-    return () => {
-      window.removeEventListener('touchstart', onTouchStart)
-      window.removeEventListener('touchmove', onTouchMove)
-      window.removeEventListener('touchend', onTouchEnd)
-    }
-  }, [TOUCH_SENS])
-
-  const ctaOpacity = useTransform(explosionProgress, [0.22, 0.88], [0, 1])
-  const ctaScale = useTransform(explosionProgress, [0.18, 0.88], [0.5, 1])
-  const brandOpacity = useTransform(explosionProgress, [0, 0.22], [1, 0])
-  const brandY = useTransform(explosionProgress, [0, 0.28], [0, -18])
-  const scrollHintOpacity = useTransform(explosionProgress, [0, 0.07], [1, 0])
-
-  // ── Shared variants
-  const stagger = { hidden:{}, visible:{ transition:{ staggerChildren:0.09 } } }
-  const fadeUp = {
-    hidden:{ opacity:0, y:28 },
-    visible:{ opacity:1, y:0, transition:{ duration:0.55, ease:[0.22,1,0.36,1] } }
-  }
-  const scaleIn = {
-    hidden:{ opacity:0, scale:0.88 },
-    visible:{ opacity:1, scale:1, transition:{ duration:0.5, ease:[0.22,1,0.36,1] } }
-  }
-
-  // ── Data (unchanged logic, same structure) ────────────────────────────────
-  const features = [
-    { icon:<QrCodeIcon sx={{fontSize:36}}/>, title:'Pedidos desde la mesa', desc:'El comensal abre el menú con QR, inicia una cuenta y envía pedidos al instante a cocina y sala.', color:COLORS.secondary },
-    { icon:<KitchenIcon sx={{fontSize:36}}/>, title:'Cocina y mozos alineados', desc:'Pedidos en tiempo real: menos idas y vueltas, más claridad entre mesa, barra y cocina.', color:COLORS.primary },
-    { icon:<ReceiptLongIcon sx={{fontSize:36}}/>, title:'Cuenta de mesa automática', desc:'Todo lo pedido en una sola cuenta digital: cierre sin confusiones y pago sin pedir la cuenta.', color:COLORS.success },
-    { icon:<InsightsIcon sx={{fontSize:36}}/>, title:'Dueño: operación y finanzas', desc:'Estadísticas, facturación, historial y una IA que sugiere ajustes para ordenar tu negocio.', color:COLORS.accent },
-  ]
-
-  const benefits = [
-    'Un solo flujo digital para comensales, cocina y caja.',
-    'Menos traslado de pedidos a mano: lo que pide el cliente queda registrado en el sistema.',
-    'Visibilidad para el dueño: qué se vende, cuándo se concentra la demanda y cómo cerrar la caja.',
-    'Pagos integrados al recorrido del cliente, sin depender de que alguien traiga la cuenta.',
-    'Escalable por plan: desde lo esencial hasta análisis avanzados e IA según tu suscripción.',
-    'Probá el recorrido completo en el entorno de demostración antes de comprometerte.'
-  ]
-
-  const flowPillars = [
-    { title:'En el salón', subtitle:'Experiencia del comensal', body:'Escanea, arma su pedido en una cuenta vinculada a la mesa y puede pagar cuando quiera, sin fricción extra al cerrar.', num:'01', color:COLORS.primary },
-    { title:'En cocina y piso', subtitle:'Operación del día a día', body:'Los pedidos entran en tiempo real; el equipo ve qué cocinar y qué servir sin depender de papelitos sueltos o mensajes cruzados.', num:'02', color:COLORS.secondary },
-    { title:'En la oficina', subtitle:'Control del dueño', body:'Facturas, picos de demanda y reportes en un panel pensado para decidir con información, más recomendaciones de IA cuando tu plan lo incluye.', num:'03', color:COLORS.success },
+  const steps = [
+    {
+      num: '01',
+      icon: <QrCodeScannerIcon sx={{ fontSize: 28, color: COLORS.secondary }} />,
+      title: 'El cliente escanea el QR',
+      desc: 'Abre el menú desde su celular, arma el pedido y lo envía. Sin esperar al mozo.',
+    },
+    {
+      num: '02',
+      icon: <RestaurantMenuIcon sx={{ fontSize: 28, color: COLORS.secondary }} />,
+      title: 'Cocina y sala reciben al instante',
+      desc: 'Los pedidos llegan en tiempo real. El equipo sabe qué preparar y qué servir sin papeles.',
+    },
+    {
+      num: '03',
+      icon: <BarChartIcon sx={{ fontSize: 28, color: COLORS.secondary }} />,
+      title: 'El dueño controla todo',
+      desc: 'Ventas, mesas, cuentas y reportes en un solo panel. Con herramientas de IA en planes avanzados.',
+    },
   ]
 
   const plans = {
     BASIC: {
-      name:'Básico', priceUsd:0.0007, description:'Control operacional esencial',
-      color:COLORS.textSecondary, highlight:false, badge:null,
-      features:['KPIs básicos (ventas diarias, pedidos, ticket promedio)','Vista rápida de mesas (estado, pedidos activos)','Gestión básica (CRUD productos, categorías, mesas)','Disponibilidad de productos','Editar logo y colores','Actividad reciente (últimos pedidos, cuentas pagadas)','Insights simples (top productos, horas pico)'],
-      limitations:['Sin análisis avanzados','Sin predicciones','Sin comparativas semanales','Sin exportaciones','Sin múltiples sucursales'],
-      cta:'Elegir plan', ctaAction:() => navigate('/checkout?plan=basic')
+      name: 'Básico',
+      priceUsd: 0.0007,
+      description: 'Control operacional esencial',
+      highlight: false,
+      badge: null,
+      features: [
+        'KPIs básicos (ventas, pedidos, ticket promedio)',
+        'Estado de mesas en tiempo real',
+        'Gestión de productos, categorías y mesas',
+        'Logo y colores personalizados',
+        'Actividad reciente e insights simples',
+      ],
+      limitations: [
+        'Sin análisis avanzados ni predicciones',
+        'Sin exportaciones ni múltiples sucursales',
+      ],
+      cta: 'Elegir plan',
+      ctaAction: () => navigate('/checkout?plan=basic'),
     },
     PRO: {
-      name:'Pro', priceUsd:80, description:'Optimización con datos y análisis avanzados',
-      color:COLORS.secondary, highlight:false, badge:'Popular',
-      features:['Todo lo de Básico','Analytics avanzados (ventas semanales, tendencias)','Top 5 productos del mes','Comparativa HOY vs AYER','Horas pico del negocio','Productos frecuentemente sin stock','Predicciones simples (ventas diarias, demanda)','Health Check completo','Roles de personal','Reporte diario de caja','Historial de transacciones','Notificaciones de stock bajo','Análisis de rentabilidad básico','Comparativas semanales/mensuales'],
-      limitations:['Sin IA integrada','Sin múltiples sucursales','Sin exportaciones avanzadas','Sin análisis de estacionalidad'],
-      cta:'Elegir plan', ctaAction:() => navigate('/checkout?plan=pro')
+      name: 'Pro',
+      priceUsd: 80,
+      description: 'Datos y análisis avanzados',
+      highlight: false,
+      badge: 'Popular',
+      features: [
+        'Todo lo de Básico',
+        'Analytics avanzados y comparativas',
+        'Top productos, horas pico, tendencias',
+        'Predicciones de ventas y demanda',
+        'Roles de personal y reporte de caja',
+        'Historial de transacciones completo',
+      ],
+      limitations: [
+        'Sin IA integrada ni múltiples sucursales',
+      ],
+      cta: 'Elegir plan',
+      ctaAction: () => navigate('/checkout?plan=pro'),
     },
     ULTRA: {
-      name:'Ultra', priceUsd:100, description:'Inteligencia y automatización total',
-      color:COLORS.primary, highlight:true, badge:'Mejor valor',
-      features:['Todo lo de Pro','Análisis de rentabilidad completo (márgenes, productos más/menos rentables)','Ranking de mesas más rentables','Tiempos promedio de preparación','Tiempo promedio de ocupación de mesas','Heatmap de horas pico','Comparación entre sucursales','Funnel de clientes','Panel Profit Optimizer','IA integrada (sugerencias de menú, combos, detección de productos)','Análisis de estacionalidad','Múltiples sucursales','Panel consolidado','Exportaciones CSV/PDF','Auditorías completas','Logs de usuario','Sistema de tareas','Integración de pagos online','Suscripciones y facturación','Vista Operativa vs Ejecutiva'],
-      limitations:[],
-      cta:'Comenzar con Ultra', ctaAction:() => navigate('/checkout?plan=ultra')
-    }
+      name: 'Ultra',
+      priceUsd: 100,
+      description: 'Inteligencia y automatización total',
+      highlight: true,
+      badge: 'Mejor valor',
+      features: [
+        'Todo lo de Pro',
+        'IA integrada: sugerencias de menú, combos, detección',
+        'Análisis de rentabilidad completo',
+        'Heatmap de horas pico y ranking de mesas',
+        'Múltiples sucursales con panel consolidado',
+        'Exportaciones CSV/PDF y auditorías',
+        'Pagos online integrados',
+      ],
+      limitations: [],
+      cta: 'Comenzar con Ultra',
+      ctaAction: () => navigate('/checkout?plan=ultra'),
+    },
   }
 
-  const heroHighlights = [
-    { title:'Tiempo real', subtitle:'Pedidos visibles en cocina y sala al momento.', icon:<SyncAltIcon sx={{fontSize:24}}/>, color:COLORS.primary },
-    { title:'Una cuenta', subtitle:'Todo lo pedido en la mesa, en un solo lugar.', icon:<TableRestaurantIcon sx={{fontSize:24}}/>, color:COLORS.secondary },
-    { title:'Pagos digitales', subtitle:'Cerrar sin pedir la cuenta en voz alta.', icon:<PaymentsIcon sx={{fontSize:24}}/>, color:COLORS.success },
-  ]
-
   return (
-    <Box component="main" sx={{ overflowX:'hidden', width:'100%', maxWidth:'100%', minWidth:0 }}>
+    <Box component="main" sx={{ overflowX: 'hidden', width: '100%' }}>
 
-      {/* ─── HERO: transición con rueda/touch; scroll de página recién al terminar ─ */}
+      {/* ─── HERO ─────────────────────────────────────── */}
       <Box
         sx={{
+          minHeight: { xs: '80vh', md: '88vh' },
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
           position: 'relative',
-          minHeight: (theme) => `calc(100dvh - ${theme.mixins.toolbar.minHeight}px)`,
-          height: (theme) => `calc(100dvh - ${theme.mixins.toolbar.minHeight}px)`,
+          bgcolor: COLORS.primaryDark,
           overflow: 'hidden',
-          bgcolor: '#10241d',
         }}
       >
-          <QrStarfieldHero progress={explosionProgress} />
+        <Box
+          sx={{
+            position: 'absolute',
+            inset: 0,
+            pointerEvents: 'none',
+            background: `radial-gradient(ellipse 80% 60% at 50% 40%, ${alpha(COLORS.secondary, 0.08)} 0%, transparent 70%)`,
+          }}
+        />
 
-          <Box
-            sx={{
-              position: 'absolute',
-              inset: 0,
-              zIndex: 2,
-              display: 'flex',
-              flexDirection: 'column',
-              alignItems: 'center',
-              justifyContent: 'center',
-              pointerEvents: 'none',
-              px: 2,
-            }}
+        <Container sx={{ position: 'relative', zIndex: 1, textAlign: 'center', py: { xs: 10, md: 14 } }}>
+          <motion.div
+            initial={{ opacity: 0, y: 30 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.7, ease: [0.22, 1, 0.36, 1] }}
           >
-            <motion.div style={{ opacity: brandOpacity, y: brandY, textAlign: 'center', marginBottom: 2, width: '100%', maxWidth: 560 }}>
-              <Typography
-                component="h1"
-                sx={{
-                  fontWeight: 800,
-                  fontSize: { xs: 'clamp(2rem, 8vw, 2.85rem)', md: 'clamp(2.85rem, 4vw, 3.85rem)' },
-                  letterSpacing: '-0.03em',
-                  lineHeight: 1.05,
-                  color: '#ffffff',
-                  textShadow: '0 2px 32px rgba(255,255,255,0.1)',
-                  mb: 0.5,
-                }}
-              >
-                MozoQR
-              </Typography>
-              <Typography
-                variant="subtitle1"
-                sx={{
-                  color: 'rgba(255,255,255,0.68)',
-                  fontWeight: 700,
-                  fontSize: { xs: '0.9rem', md: '1rem' },
-                  letterSpacing: '0.12em',
-                  textTransform: 'uppercase',
-                }}
-              >
-                Mesa · cocina · control
-              </Typography>
-            </motion.div>
+            <Typography
+              component="h1"
+              sx={{
+                fontWeight: 800,
+                fontSize: { xs: '2.75rem', sm: '3.5rem', md: '4.5rem' },
+                letterSpacing: '-0.03em',
+                lineHeight: 1.05,
+                color: '#fff',
+                mb: 3,
+              }}
+            >
+              MozoQR
+            </Typography>
 
-            <Box sx={{ flex: 1, minHeight: { xs: 120, sm: 160 } }} />
+            <Typography
+              sx={{
+                color: 'rgba(255,255,255,0.6)',
+                fontSize: { xs: '1.05rem', md: '1.25rem' },
+                lineHeight: 1.7,
+                maxWidth: 520,
+                mx: 'auto',
+                mb: 5,
+                fontWeight: 400,
+              }}
+            >
+              Pedidos desde la mesa, cocina en tiempo real y control total para el dueño. Un solo sistema para todo tu restaurante.
+            </Typography>
 
-            <motion.div ref={ctaRef} style={{ opacity: ctaOpacity, scale: ctaScale, pointerEvents: 'auto' }}>
+            <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2} justifyContent="center" alignItems="center">
               <Button
                 variant="contained"
                 size="large"
                 onClick={() => navigate('/demo')}
-                endIcon={<ArrowForwardIcon sx={{ color: '#fff' }} />}
+                endIcon={<ArrowForwardIcon />}
                 sx={{
-                  py: 1.85,
+                  bgcolor: '#fff',
+                  color: COLORS.primaryDark,
                   px: 4,
-                  fontSize: '1.05rem',
-                  fontWeight: 800,
-                  borderRadius: 3,
-                  whiteSpace: 'nowrap',
-                  bgcolor: COLORS.primary,
-                  color: '#fff',
-                  boxShadow: '0 12px 32px rgba(9,9,11,0.18)',
-                  transition: 'box-shadow 0.25s, transform 0.2s',
-                  '&:hover': {
-                    bgcolor: COLORS.primaryLight,
-                    boxShadow: '0 16px 40px rgba(9,9,11,0.22)',
-                  },
+                  py: 1.75,
+                  fontSize: '1rem',
+                  fontWeight: 700,
+                  borderRadius: 2,
+                  '&:hover': { bgcolor: '#f0f0f0' },
                 }}
               >
-                Iniciar demostración
+                Probar demo gratis
               </Button>
-            </motion.div>
+              <Button
+                variant="outlined"
+                size="large"
+                onClick={() => document.getElementById('planes')?.scrollIntoView({ behavior: 'smooth' })}
+                sx={{
+                  borderColor: 'rgba(255,255,255,0.3)',
+                  color: '#fff',
+                  px: 4,
+                  py: 1.75,
+                  fontSize: '1rem',
+                  fontWeight: 600,
+                  borderRadius: 2,
+                  '&:hover': { borderColor: 'rgba(255,255,255,0.6)', bgcolor: 'rgba(255,255,255,0.05)' },
+                }}
+              >
+                Ver planes
+              </Button>
+            </Stack>
+          </motion.div>
+        </Container>
+      </Box>
 
-            <Box sx={{ flex: 1, minHeight: { xs: 100, sm: 120 } }} />
-          </Box>
-
-          <motion.div style={{ opacity: scrollHintOpacity }}>
-            <Box
-              sx={{
-                position: 'absolute',
-                left: '50%',
-                transform: 'translateX(-50%)',
-                bottom: (theme) => `max(20px, env(safe-area-inset-bottom, 0px) + ${theme.spacing(2)})`,
-                zIndex: 3,
-                pointerEvents: 'none',
-              }}
+      {/* ─── CÓMO FUNCIONA ────────────────────────────── */}
+      <Box sx={{ py: { xs: 10, md: 14 }, bgcolor: COLORS.bg }}>
+        <Container>
+          <FadeIn>
+            <Typography
+              variant="overline"
+              display="block"
+              align="center"
+              sx={{ color: COLORS.secondary, fontWeight: 700, letterSpacing: 2, mb: 1 }}
             >
-              <motion.div animate={{ y: [0, 8, 0] }} transition={{ repeat: Infinity, duration: 1.8, ease: 'easeInOut' }}>
-                <Box sx={{ width: 28, height: 46, borderRadius: 14, border: '2px solid rgba(255,255,255,0.28)', display: 'flex', justifyContent: 'center', pt: 1 }}>
-                  <Box sx={{ width: 4, height: 10, borderRadius: 2, bgcolor: 'rgba(255,255,255,0.45)' }} />
-                </Box>
-              </motion.div>
-            </Box>
-          </motion.div>
-      </Box>
+              Cómo funciona
+            </Typography>
+            <Typography
+              variant="h3"
+              align="center"
+              fontWeight={800}
+              sx={{ fontSize: { xs: '1.75rem', md: '2.5rem' }, mb: 2, letterSpacing: '-0.02em' }}
+            >
+              Tres pasos, un solo flujo
+            </Typography>
+            <Typography
+              variant="body1"
+              align="center"
+              color="textSecondary"
+              sx={{ maxWidth: 480, mx: 'auto', mb: { xs: 6, md: 8 }, lineHeight: 1.7 }}
+            >
+              Del comensal a la cocina y del reporte al dueño, sin fricción.
+            </Typography>
+          </FadeIn>
 
-      {/* ─── Intro + acciones (debajo del hero) ───────────────────────── */}
-      <Box sx={{ py: { xs: 8, md: 10 }, bgcolor: COLORS.surface, borderTop: `1px solid ${COLORS.border}` }}>
-        <Container>
-          <Grid container spacing={{ xs: 5, md: 7 }} alignItems="center">
-            <Grid item xs={12} md={7}>
-              <motion.div initial="hidden" animate="visible" variants={stagger}>
-                <motion.div variants={fadeUp}>
-                  <Box sx={{ mb: 2 }}>
-                    <PillBadge color={COLORS.primary}>
-                      <BoltIcon sx={{ fontSize: 11, mr: 0.4 }} /> Nuevo · Versión 2025
-                    </PillBadge>
-                  </Box>
-                </motion.div>
-
-                <motion.div variants={fadeUp}>
-                  <Typography variant="h2" fontWeight={800} sx={{ fontSize: { xs: '1.85rem', sm: '2.2rem', md: '2.75rem' }, lineHeight: 1.15, letterSpacing: '-0.02em', mb: 2.5 }}>
-                    Un solo sistema para{' '}
-                    <Box component="span" sx={{ position: 'relative', color: COLORS.primary,
-                      '&::after': { content: '""', position: 'absolute', bottom: 2, left: 0, right: 0, height: 3, borderRadius: 2, background: `linear-gradient(90deg, ${COLORS.primary}, ${alpha(COLORS.primary, 0.3)})` },
-                    }}>
-                      mesa, cocina y finanzas
+          <Grid container spacing={{ xs: 3, md: 4 }}>
+            {steps.map((step, i) => (
+              <Grid item xs={12} md={4} key={step.num}>
+                <FadeIn delay={i * 0.1}>
+                  <Box
+                    sx={{
+                      p: { xs: 3, md: 4 },
+                      borderRadius: 3,
+                      border: '1px solid',
+                      borderColor: COLORS.border,
+                      bgcolor: COLORS.surface,
+                      height: '100%',
+                      transition: 'border-color 0.2s, box-shadow 0.2s',
+                      '&:hover': { borderColor: COLORS.secondary, boxShadow: `0 8px 24px ${alpha(COLORS.secondary, 0.08)}` },
+                    }}
+                  >
+                    <Box
+                      sx={{
+                        width: 48,
+                        height: 48,
+                        borderRadius: 2,
+                        bgcolor: alpha(COLORS.secondary, 0.08),
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        mb: 2.5,
+                      }}
+                    >
+                      {step.icon}
                     </Box>
-                  </Typography>
-                </motion.div>
-
-                <motion.div variants={fadeUp}>
-                  <Typography color="textSecondary" sx={{ fontSize: { xs: '1rem', md: '1.1rem' }, lineHeight: 1.75, mb: 4, maxWidth: 540 }}>
-                    MozoQR conecta la mesa con la cocina y el panel del dueño: pedidos desde la mesa, cuenta automática, pagos sin pedir la cuenta, y herramientas con IA.
-                  </Typography>
-                </motion.div>
-
-                <motion.div variants={fadeUp}>
-                  <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2} flexWrap="wrap" sx={{ mb: 3 }}>
-                    <motion.div whileHover={{ scale: 1.03 }} whileTap={{ scale: 0.97 }}>
-                      <Button variant="outlined" size="large"
-                        onClick={() => document.getElementById('planes')?.scrollIntoView({ behavior: 'smooth' })}
-                        sx={{ py: 1.5, px: 3, fontSize: '1rem', fontWeight: 600, borderRadius: 2.5, borderWidth: 2, '&:hover': { borderWidth: 2 } }}>
-                        Ver planes
-                      </Button>
-                    </motion.div>
-                    <motion.div whileHover={{ scale: 1.03 }} whileTap={{ scale: 0.97 }}>
-                      <Button variant="text" size="large" href="mailto:ventas@mozoqr.com"
-                        sx={{ py: 1.5, px: 2, fontSize: '1rem', fontWeight: 600, borderRadius: 2.5 }}>
-                        Contactar ventas
-                      </Button>
-                    </motion.div>
-                  </Stack>
-                </motion.div>
-
-                <motion.div variants={fadeUp}>
-                  <Stack direction="row" spacing={3} flexWrap="wrap" sx={{ rowGap: 1 }}>
-                    {['Sin tarjeta de crédito', 'Cancelación libre', 'Demo instantánea'].map(t => (
-                      <Box key={t} sx={{ display: 'flex', alignItems: 'center', gap: 0.6 }}>
-                        <CheckCircleIcon sx={{ fontSize: 16, color: COLORS.success }} />
-                        <Typography variant="caption" color="textSecondary" fontWeight={500}>{t}</Typography>
-                      </Box>
-                    ))}
-                  </Stack>
-                </motion.div>
-              </motion.div>
-            </Grid>
-
-            <Grid item xs={12} md={5}>
-              <Paper elevation={0} sx={{
-                p: { xs: 2.5, md: 3 },
-                borderRadius: 4,
-                border: `1px solid ${alpha(COLORS.primary, 0.12)}`,
-                bgcolor: alpha(COLORS.primary, 0.03),
-              }}>
-                <Typography variant="overline" sx={{ color: COLORS.primary, fontWeight: 700, letterSpacing: 1.5, display: 'block', mb: 1 }}>
-                  Después de la demo
-                </Typography>
-                <Typography variant="body2" color="text.secondary" sx={{ lineHeight: 1.7, mb: 2 }}>
-                  Elegí un plan cuando quieras escalar. Cotización en pesos con dólar blue actualizado.
-                </Typography>
-                <Button fullWidth variant="contained" size="medium" onClick={() => navigate('/demo')} endIcon={<ArrowForwardIcon />}>
-                  Volver a la demostración
-                </Button>
-              </Paper>
-            </Grid>
-          </Grid>
-
-          <Box sx={{ mt: { xs: 6, md: 8 } }}>
-            <motion.div initial="hidden" animate="visible" variants={{ hidden: {}, visible: { transition: { staggerChildren: 0.1, delayChildren: 0.15 } } }}>
-              <Grid container spacing={2.5}>
-                {heroHighlights.map(h => (
-                  <Grid item xs={12} sm={4} key={h.title}>
-                    <motion.div variants={scaleIn} whileHover={{ y: -6, transition: { duration: 0.25 } }}>
-                      <Paper elevation={0} sx={{
-                        p: 2.5, borderRadius: 3, border: '1px solid', borderColor: COLORS.border,
-                        bgcolor: COLORS.surface, backdropFilter: 'blur(12px)',
-                        display: 'flex', gap: 2, alignItems: 'flex-start',
-                        transition: 'box-shadow 0.25s, border-color 0.25s',
-                        '&:hover': { boxShadow: `0 12px 32px ${alpha(h.color, 0.15)}`, borderColor: alpha(h.color, 0.4) },
-                      }}>
-                        <Box sx={{ width: 46, height: 46, borderRadius: 2, flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', color: h.color, bgcolor: alpha(h.color, 0.1) }}>
-                          {h.icon}
-                        </Box>
-                        <Box>
-                          <Typography variant="subtitle2" fontWeight={700} gutterBottom sx={{ mb: 0.3 }}>{h.title}</Typography>
-                          <Typography variant="body2" color="textSecondary" sx={{ lineHeight: 1.55 }}>{h.subtitle}</Typography>
-                        </Box>
-                      </Paper>
-                    </motion.div>
-                  </Grid>
-                ))}
+                    <Typography
+                      variant="overline"
+                      sx={{ color: COLORS.textMuted, fontWeight: 700, letterSpacing: 1.5 }}
+                    >
+                      Paso {step.num}
+                    </Typography>
+                    <Typography variant="h6" fontWeight={700} sx={{ mt: 0.5, mb: 1 }}>
+                      {step.title}
+                    </Typography>
+                    <Typography variant="body2" color="textSecondary" sx={{ lineHeight: 1.7 }}>
+                      {step.desc}
+                    </Typography>
+                  </Box>
+                </FadeIn>
               </Grid>
-            </motion.div>
-          </Box>
+            ))}
+          </Grid>
         </Container>
       </Box>
 
-      {/* ─── FEATURES ──────────────────────────────────────────────────── */}
-      <Box sx={{ py:{ xs:10, md:14 }, bgcolor:COLORS.bgAlt }}>
+      {/* ─── PLANES ───────────────────────────────────── */}
+      <Box id="planes" sx={{ py: { xs: 10, md: 14 }, bgcolor: COLORS.surface }}>
         <Container>
-          <FadeSection>
-            <Typography variant="overline" display="block" align="center" sx={{ color:COLORS.primary, fontWeight:700, letterSpacing:2, mb:1.5 }}>Funcionalidades</Typography>
-            <Typography variant="h3" align="center" fontWeight={800} sx={{ fontSize:{ xs:'1.85rem', md:'2.6rem' }, mb:1.5 }}>
-              De la mesa al dueño, <Box component="span" sx={{ color:COLORS.primary }}>sin saltos</Box>
+          <FadeIn>
+            <Typography
+              variant="overline"
+              display="block"
+              align="center"
+              sx={{ color: COLORS.secondary, fontWeight: 700, letterSpacing: 2, mb: 1 }}
+            >
+              Precios
             </Typography>
-            <Typography variant="body1" align="center" color="textSecondary" sx={{ maxWidth:560, mx:'auto', mb:7, lineHeight:1.75 }}>
-              Un mismo recorrido para quien come, quien cocina y quien administra: menos fricción operativa y más claridad financiera.
+            <Typography
+              variant="h3"
+              align="center"
+              fontWeight={800}
+              sx={{ fontSize: { xs: '1.75rem', md: '2.5rem' }, mb: 2, letterSpacing: '-0.02em' }}
+            >
+              Planes para cada restaurante
             </Typography>
-          </FadeSection>
-          <motion.div initial="hidden" whileInView="visible" viewport={{ once:true, margin:'-60px' }} variants={{ hidden:{}, visible:{ transition:{ staggerChildren:0.1 } } }}>
-            <Grid container spacing={3}>
-              {features.map((f,i) => (
-                <Grid item xs={12} sm={6} md={3} key={i}>
-                  <motion.div variants={scaleIn} whileHover={{ y:-10, transition:{ duration:0.28 } }} style={{ height:'100%' }}>
-                    <Card elevation={0} sx={{
-                      p:3.5, height:'100%', display:'flex', flexDirection:'column', borderRadius:3.5,
-                      border:'1px solid', borderColor:COLORS.border, bgcolor:COLORS.surface,
-                      transition:'box-shadow 0.3s, border-color 0.3s',
-                      '&:hover':{ boxShadow:`0 20px 48px ${alpha(f.color,0.18)}`, borderColor:alpha(f.color,0.35) }
-                    }}>
-                      <Box sx={{ width:60, height:60, borderRadius:2.5, mb:2.5, display:'flex', alignItems:'center', justifyContent:'center', color:f.color, bgcolor:alpha(f.color,0.1) }}>
-                        {f.icon}
-                      </Box>
-                      <Typography variant="h6" fontWeight={700} gutterBottom>{f.title}</Typography>
-                      <Typography variant="body2" color="textSecondary" sx={{ lineHeight:1.7 }}>{f.desc}</Typography>
-                    </Card>
-                  </motion.div>
-                </Grid>
-              ))}
-            </Grid>
-          </motion.div>
-        </Container>
-      </Box>
+            <Typography
+              variant="body1"
+              align="center"
+              color="textSecondary"
+              sx={{ maxWidth: 460, mx: 'auto', mb: { xs: 6, md: 8 }, lineHeight: 1.7 }}
+            >
+              Empezá gratis y escalá cuando lo necesités. Sin compromisos.
+            </Typography>
+          </FadeIn>
 
-      {/* ─── PLANS ─────────────────────────────────────────────────────── */}
-      <Box id="planes" sx={{ py:{ xs:10, md:14 }, bgcolor:COLORS.surface, position:'relative', overflow:'hidden' }}>
-        <Box sx={{ position:'absolute', top:'50%', left:'50%', transform:'translate(-50%,-50%)', width:800, height:800, borderRadius:'50%', pointerEvents:'none', background:`radial-gradient(circle, ${alpha(COLORS.primary,0.04)} 0%, transparent 65%)` }}/>
-        <Container sx={{ position:'relative', zIndex:1 }}>
-          <FadeSection>
-            <Typography variant="overline" display="block" align="center" sx={{ color:COLORS.primary, fontWeight:700, letterSpacing:2, mb:1.5 }}>Precios</Typography>
-            <Typography variant="h3" align="center" fontWeight={800} sx={{ fontSize:{ xs:'1.85rem', md:'2.6rem' }, mb:1.5 }}>
-              Planes para cada <Box component="span" sx={{ color:COLORS.primary }}>restaurante</Box>
-            </Typography>
-            <Typography variant="body1" align="center" color="textSecondary" sx={{ maxWidth:520, mx:'auto', mb:7, lineHeight:1.75 }}>
-              Empieza gratis y escalá cuando lo necesités. Sin compromisos, cancelación en cualquier momento.
-            </Typography>
-          </FadeSection>
-          <motion.div initial="hidden" whileInView="visible" viewport={{ once:true, margin:'-60px' }} variants={{ hidden:{}, visible:{ transition:{ staggerChildren:0.12 } } }}>
-            <Grid container spacing={3} alignItems="stretch">
-              {Object.entries(plans).map(([planKey, planData]) => {
-                const isUltra = planData.highlight
-                return (
-                  <Grid item xs={12} sm={6} md={4} key={planKey}>
-                    <motion.div variants={scaleIn} whileHover={{ y:isUltra ? -14 : -8, transition:{ duration:0.28 } }} style={{ height:'100%' }}>
-                      <Card elevation={0} sx={{
-                        height:'100%', display:'flex', flexDirection:'column', borderRadius:4,
-                        position:'relative', overflow:'hidden',
-                        border: isUltra ? 'none' : `1.5px solid ${alpha(planData.color,0.25)}`,
-                        ...(isUltra && {
-                          background:`linear-gradient(145deg, ${COLORS.primaryDark} 0%, ${COLORS.primary} 60%, ${COLORS.secondary} 130%)`,
-                          boxShadow:`0 32px 80px ${alpha(COLORS.primary,0.4)}, 0 8px 24px rgba(9,9,11,0.12)`
-                        }),
-                        ...(!isUltra && { bgcolor:COLORS.surface, transition:'box-shadow 0.3s', '&:hover':{ boxShadow:`0 20px 50px ${alpha(planData.color,0.18)}` } })
-                      }}>
-                        {isUltra && (
-                          <Box sx={{ position:'absolute', top:0, left:0, right:0, height:3,
-                            background:'linear-gradient(90deg, #fff 0%, rgba(255,255,255,0.4) 50%, #fff 100%)',
-                            animation:'shimmer 2.5s linear infinite', backgroundSize:'200% 100%',
-                            '@keyframes shimmer':{ '0%':{ backgroundPosition:'-200% 0' }, '100%':{ backgroundPosition:'200% 0' } }
-                          }}/>
-                        )}
-                        <Box sx={{ p:{ xs:3, md:3.5 }, flexGrow:1, display:'flex', flexDirection:'column' }}>
-                          <Box sx={{ mb:2.5 }}>
-                            <Box sx={{ display:'flex', alignItems:'center', justifyContent:'space-between', mb:0.75 }}>
-                              <Typography variant="h5" fontWeight={800} sx={{ color:isUltra ? '#fff' : planData.color }}>{planData.name}</Typography>
-                              {planData.badge && (
-                                <Chip label={planData.badge} size="small"
-                                  icon={isUltra ? <StarIcon sx={{ fontSize:'14px !important', color:'inherit !important' }}/> : undefined}
-                                  sx={{ fontWeight:700, fontSize:'0.7rem', height:26,
-                                    ...(isUltra ? { bgcolor:'rgba(255,255,255,0.2)', color:'#fff', border:'1px solid rgba(255,255,255,0.35)' }
-                                      : { bgcolor:alpha(planData.color,0.1), color:planData.color })
+          <Grid container spacing={3} alignItems="stretch">
+            {Object.entries(plans).map(([key, plan], i) => {
+              const isUltra = plan.highlight
+              return (
+                <Grid item xs={12} sm={6} md={4} key={key}>
+                  <FadeIn delay={i * 0.08}>
+                    <Box
+                      sx={{
+                        height: '100%',
+                        display: 'flex',
+                        flexDirection: 'column',
+                        borderRadius: 3,
+                        overflow: 'hidden',
+                        position: 'relative',
+                        ...(isUltra
+                          ? {
+                              background: `linear-gradient(155deg, ${COLORS.primaryDark} 0%, ${COLORS.primary} 60%, ${alpha(COLORS.secondary, 0.7)} 140%)`,
+                              boxShadow: `0 24px 64px ${alpha(COLORS.primary, 0.3)}`,
+                            }
+                          : {
+                              border: '1px solid',
+                              borderColor: COLORS.border,
+                              bgcolor: COLORS.surface,
+                              transition: 'border-color 0.2s, box-shadow 0.2s',
+                              '&:hover': { borderColor: COLORS.borderStrong, boxShadow: COLORS.shadow3 },
+                            }),
+                      }}
+                    >
+                      <Box sx={{ p: { xs: 3, md: 3.5 }, flexGrow: 1, display: 'flex', flexDirection: 'column' }}>
+                        {/* Header */}
+                        <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 0.5 }}>
+                          <Typography variant="h5" fontWeight={800} sx={{ color: isUltra ? '#fff' : COLORS.text }}>
+                            {plan.name}
+                          </Typography>
+                          {plan.badge && (
+                            <Chip
+                              label={plan.badge}
+                              size="small"
+                              icon={isUltra ? <StarIcon sx={{ fontSize: '14px !important', color: 'inherit !important' }} /> : undefined}
+                              sx={{
+                                fontWeight: 700,
+                                fontSize: '0.7rem',
+                                height: 26,
+                                ...(isUltra
+                                  ? { bgcolor: 'rgba(255,255,255,0.15)', color: '#fff', border: '1px solid rgba(255,255,255,0.25)' }
+                                  : { bgcolor: alpha(COLORS.secondary, 0.1), color: COLORS.secondary }),
+                              }}
+                            />
+                          )}
+                        </Box>
+                        <Typography variant="body2" sx={{ color: isUltra ? 'rgba(255,255,255,0.65)' : COLORS.textSecondary, mb: 2.5 }}>
+                          {plan.description}
+                        </Typography>
+
+                        {/* Price */}
+                        <Box sx={{ mb: 3 }}>
+                          {dolarLoading ? (
+                            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                              <CircularProgress size={20} sx={{ color: isUltra ? '#fff' : COLORS.textMuted }} />
+                              <Typography variant="body2" sx={{ color: isUltra ? 'rgba(255,255,255,0.6)' : COLORS.textSecondary }}>
+                                Cargando...
+                              </Typography>
+                            </Box>
+                          ) : (
+                            <>
+                              <Typography
+                                variant="h3"
+                                fontWeight={800}
+                                sx={{ color: isUltra ? '#fff' : COLORS.text, lineHeight: 1 }}
+                              >
+                                {formatPriceARS(plan.priceUsd * blueVenta)}
+                                <Typography
+                                  component="span"
+                                  variant="body2"
+                                  fontWeight={500}
+                                  sx={{ ml: 0.5, color: isUltra ? 'rgba(255,255,255,0.5)' : COLORS.textMuted }}
+                                >
+                                  /mes
+                                </Typography>
+                              </Typography>
+                              <Typography variant="caption" sx={{ color: isUltra ? 'rgba(255,255,255,0.4)' : COLORS.textMuted, mt: 0.5, display: 'block' }}>
+                                ({formatPriceUSD(plan.priceUsd)})
+                              </Typography>
+                            </>
+                          )}
+                        </Box>
+
+                        <Box sx={{ mb: 2.5, height: 1, bgcolor: isUltra ? 'rgba(255,255,255,0.12)' : COLORS.border }} />
+
+                        {/* Features */}
+                        <List dense disablePadding sx={{ mb: plan.limitations?.length ? 2 : 'auto', flex: plan.limitations?.length ? 'none' : 1 }}>
+                          {plan.features.map((f, idx) => (
+                            <ListItem key={idx} disableGutters sx={{ py: 0.3, alignItems: 'flex-start' }}>
+                              <ListItemIcon sx={{ minWidth: 24, mt: 0.3 }}>
+                                <CheckIcon sx={{ fontSize: 15, color: isUltra ? COLORS.secondaryLight : COLORS.secondary }} />
+                              </ListItemIcon>
+                              <ListItemText
+                                primary={f}
+                                primaryTypographyProps={{
+                                  variant: 'body2',
+                                  sx: { fontSize: '0.8125rem', lineHeight: 1.5, color: isUltra ? 'rgba(255,255,255,0.85)' : COLORS.text },
+                                }}
+                              />
+                            </ListItem>
+                          ))}
+                        </List>
+
+                        {plan.limitations?.length > 0 && (
+                          <List dense disablePadding sx={{ mb: 3, flex: 1 }}>
+                            {plan.limitations.map((l, idx) => (
+                              <ListItem key={idx} disableGutters sx={{ py: 0.3, alignItems: 'flex-start' }}>
+                                <ListItemIcon sx={{ minWidth: 24, mt: 0.3 }}>
+                                  <CloseIcon sx={{ fontSize: 14, color: isUltra ? 'rgba(255,255,255,0.3)' : COLORS.textMuted }} />
+                                </ListItemIcon>
+                                <ListItemText
+                                  primary={l}
+                                  primaryTypographyProps={{
+                                    variant: 'body2',
+                                    sx: { fontSize: '0.8125rem', color: isUltra ? 'rgba(255,255,255,0.5)' : COLORS.textMuted },
                                   }}
                                 />
-                              )}
-                            </Box>
-                            <Typography variant="body2" sx={{ color:isUltra ? 'rgba(255,255,255,0.75)' : 'text.secondary' }}>{planData.description}</Typography>
-                          </Box>
-
-                          <Box sx={{ mb:3 }}>
-                            {dolarLoading ? (
-                              <Box sx={{ display:'flex', alignItems:'center', gap:1 }}>
-                                <CircularProgress size={22} sx={{ color:isUltra ? '#fff' : planData.color }}/>
-                                <Typography variant="body2" sx={{ color:isUltra ? 'rgba(255,255,255,0.7)' : 'text.secondary' }}>Cargando precio…</Typography>
-                              </Box>
-                            ) : (
-                              <>
-                                <Typography variant="h3" fontWeight={800} sx={{ color:isUltra ? '#fff' : planData.color, lineHeight:1 }}>
-                                  {formatPriceARS(planData.priceUsd * blueVenta)}
-                                  <Typography component="span" variant="body2" fontWeight={500} sx={{ ml:0.75, color:isUltra ? 'rgba(255,255,255,0.65)' : 'text.secondary' }}>/mes</Typography>
-                                </Typography>
-                                <Typography variant="caption" sx={{ color:isUltra ? 'rgba(255,255,255,0.55)' : 'text.secondary', mt:0.5, display:'block' }}>
-                                  ({formatPriceUSD(planData.priceUsd)})
-                                </Typography>
-                              </>
-                            )}
-                          </Box>
-
-                          <Box sx={{ mb:2.5, height:1, bgcolor:isUltra ? 'rgba(255,255,255,0.2)' : 'divider' }}/>
-
-                          <Typography variant="caption" fontWeight={700} sx={{ mb:1.25, display:'block', textTransform:'uppercase', letterSpacing:0.8, color:isUltra ? 'rgba(255,255,255,0.6)' : 'text.secondary' }}>Incluye</Typography>
-                          <List dense disablePadding sx={{ mb:planData.limitations?.length ? 2 : 'auto', flex: planData.limitations?.length ? 'none' : 1 }}>
-                            {planData.features.map((feature,idx) => (
-                              <ListItem key={idx} disableGutters sx={{ py:0.3, alignItems:'flex-start' }}>
-                                <ListItemIcon sx={{ minWidth:24, mt:0.2 }}>
-                                  <CheckIcon sx={{ fontSize:15, color:isUltra ? COLORS.secondaryLight : COLORS.primary }}/>
-                                </ListItemIcon>
-                                <ListItemText primary={feature} primaryTypographyProps={{ variant:'body2', sx:{ fontSize:'0.8rem', lineHeight:1.55, color:isUltra ? 'rgba(255,255,255,0.85)' : 'text.primary' } }}/>
                               </ListItem>
                             ))}
                           </List>
+                        )}
 
-                          {planData.limitations?.length > 0 && (
-                            <>
-                              <Typography variant="caption" fontWeight={700} sx={{ mb:1.25, display:'block', textTransform:'uppercase', letterSpacing:0.8, color:'text.secondary' }}>No incluye</Typography>
-                              <List dense disablePadding sx={{ mb:3, flex:1 }}>
-                                {planData.limitations.map((lim,idx) => (
-                                  <ListItem key={idx} disableGutters sx={{ py:0.3, alignItems:'flex-start' }}>
-                                    <ListItemIcon sx={{ minWidth:24, mt:0.2 }}>
-                                      <CloseIcon sx={{ fontSize:14, color:'text.disabled' }}/>
-                                    </ListItemIcon>
-                                    <ListItemText primary={lim} primaryTypographyProps={{ variant:'body2', sx:{ fontSize:'0.8rem', color:'text.secondary' } }}/>
-                                  </ListItem>
-                                ))}
-                              </List>
-                            </>
-                          )}
-
-                          <Box sx={{ mt:'auto' }}>
-                            <motion.div whileHover={{ scale:1.02 }} whileTap={{ scale:0.97 }}>
-                              <Button variant={isUltra ? 'contained' : 'outlined'} fullWidth size="large"
-                                onClick={planData.ctaAction} endIcon={<ArrowForwardIcon/>}
-                                sx={{ py:1.5, fontWeight:700, borderRadius:2.5, textTransform:'none', fontSize:'0.95rem',
-                                  ...(isUltra ? {
-                                    bgcolor:'rgba(255,255,255,0.18)', color:'#fff', border:'1.5px solid rgba(255,255,255,0.4)', backdropFilter:'blur(8px)',
-                                    '&:hover':{ bgcolor:'rgba(255,255,255,0.28)', border:'1.5px solid rgba(255,255,255,0.6)' }
-                                  } : {
-                                    borderColor:planData.color, color:planData.color, borderWidth:1.5,
-                                    '&:hover':{ borderWidth:1.5, bgcolor:alpha(planData.color,0.05) }
-                                  })
-                                }}>
-                                {planData.cta}
-                              </Button>
-                            </motion.div>
-                          </Box>
+                        {/* CTA */}
+                        <Box sx={{ mt: 'auto' }}>
+                          <Button
+                            variant="contained"
+                            fullWidth
+                            size="large"
+                            onClick={plan.ctaAction}
+                            sx={{
+                              py: 1.5,
+                              fontWeight: 700,
+                              borderRadius: 2,
+                              fontSize: '0.9375rem',
+                              ...(isUltra
+                                ? {
+                                    bgcolor: '#fff',
+                                    color: COLORS.primaryDark,
+                                    '&:hover': { bgcolor: '#f0f0f0' },
+                                  }
+                                : {
+                                    bgcolor: COLORS.primary,
+                                    color: '#fff',
+                                    '&:hover': { bgcolor: COLORS.primaryLight },
+                                  }),
+                            }}
+                          >
+                            {plan.cta}
+                          </Button>
                         </Box>
-                      </Card>
-                    </motion.div>
-                  </Grid>
-                )
-              })}
-            </Grid>
-          </motion.div>
-          <FadeSection delay={0.2}>
-            <Typography variant="caption" display="block" sx={{ mt:4, textAlign:'center', color:'text.secondary' }}>
-              Cotización del dólar blue utilizada: {formatPriceARS(blueVenta)}
-            </Typography>
-          </FadeSection>
-        </Container>
-      </Box>
-
-      {/* ─── BENEFITS ──────────────────────────────────────────────────── */}
-      <Box sx={{ py:{ xs:10, md:14 }, bgcolor:COLORS.bgAlt }}>
-        <Container>
-          <Grid container spacing={{ xs:6, md:10 }} alignItems="center">
-            <Grid item xs={12} md={6}>
-              <FadeSection direction="left">
-                <Typography variant="overline" sx={{ color:COLORS.primary, fontWeight:700, letterSpacing:2, mb:1.5, display:'block' }}>Beneficios</Typography>
-                <Typography variant="h3" fontWeight={800} sx={{ fontSize:{ xs:'1.85rem', md:'2.5rem' }, mb:1.5 }}>
-                  Qué aporta <Box component="span" sx={{ color:COLORS.primary }}>a tu operación</Box>
-                </Typography>
-                <Typography color="textSecondary" sx={{ mb:4, lineHeight:1.75 }}>
-                  No prometemos porcentajes mágicos: MozoQR está pensado para ordenar procesos que hoy suelen repartirse entre papel, memoria y mensajes sueltos.
-                </Typography>
-                <motion.div initial="hidden" whileInView="visible" viewport={{ once:true }} variants={{ hidden:{}, visible:{ transition:{ staggerChildren:0.08 } } }}>
-                  {benefits.map((text,i) => (
-                    <motion.div key={i} variants={fadeUp}>
-                      <Box sx={{ display:'flex', alignItems:'flex-start', gap:2, mb:1.75, p:2, borderRadius:2.5, transition:'background 0.2s', '&:hover':{ bgcolor:alpha(COLORS.primary,0.05) } }}>
-                        <Box sx={{ width:28, height:28, borderRadius:'50%', flexShrink:0, mt:0.1, display:'flex', alignItems:'center', justifyContent:'center', bgcolor:alpha(COLORS.success,0.12) }}>
-                          <CheckIcon sx={{ fontSize:15, color:COLORS.success }}/>
-                        </Box>
-                        <Typography variant="body1" fontWeight={500} sx={{ lineHeight:1.65 }}>{text}</Typography>
                       </Box>
-                    </motion.div>
-                  ))}
-                </motion.div>
-              </FadeSection>
-            </Grid>
-            <Grid item xs={12} md={6}>
-              <FadeSection direction="right" delay={0.1}>
-                <Card elevation={0} sx={{ p:{ xs:4, md:5 }, borderRadius:4, background:`linear-gradient(135deg, ${alpha(COLORS.secondary, 0.06)} 0%, ${COLORS.bgAlt} 100%)`, border:`1px solid ${alpha(COLORS.primary,0.12)}`, boxShadow:`0 24px 60px rgba(9,9,11,0.08)` }}>
-                  <Typography variant="h5" fontWeight={800} gutterBottom sx={{ mb:1 }}>Comenzá hoy mismo</Typography>
-                  <Typography color="textSecondary" sx={{ mb:4, lineHeight:1.7 }}>
-                    Recorré la demo con rol de comensal, cocina y dueño. Sin tarjeta para explorar el flujo.
-                  </Typography>
-                  <motion.div whileHover={{ scale:1.03 }} whileTap={{ scale:0.97 }}>
-                    <Button variant="contained" size="large" fullWidth endIcon={<ArrowForwardIcon/>} onClick={() => navigate('/demo')}
-                      sx={{ mb:2, py:1.75, fontWeight:700, borderRadius:2.5, fontSize:'1rem', boxShadow:`0 10px 30px rgba(9,9,11,0.15)` }}>
-                      Empezar demostración
-                    </Button>
-                  </motion.div>
-                  <motion.div whileHover={{ scale:1.02 }} whileTap={{ scale:0.97 }}>
-                    <Button variant="outlined" size="large" fullWidth href="mailto:ventas@mozoqr.com"
-                      sx={{ py:1.5, borderRadius:2.5, fontWeight:600, borderWidth:1.5, '&:hover':{ borderWidth:1.5 } }}>
-                      Contactar ventas
-                    </Button>
-                  </motion.div>
-                  <Box sx={{ mt:3.5, pt:3, borderTop:1, borderColor:COLORS.border }}>
-                    {['Sin tarjeta de crédito','Cancelación en cualquier momento'].map(t => (
-                      <Box key={t} sx={{ display:'flex', alignItems:'center', gap:1.25, mb:1 }}>
-                        <CheckCircleIcon sx={{ color:COLORS.success, fontSize:18 }}/>
-                        <Typography variant="body2" color="textSecondary">{t}</Typography>
-                      </Box>
-                    ))}
-                  </Box>
-                </Card>
-              </FadeSection>
-            </Grid>
+                    </Box>
+                  </FadeIn>
+                </Grid>
+              )
+            })}
           </Grid>
+
+          <FadeIn delay={0.2}>
+            <Typography variant="caption" display="block" sx={{ mt: 3, textAlign: 'center', color: COLORS.textMuted }}>
+              Cotización dólar blue: {formatPriceARS(blueVenta)}
+            </Typography>
+          </FadeIn>
         </Container>
       </Box>
 
-      {/* ─── FLOW PILLARS ──────────────────────────────────────────────── */}
-      <Box sx={{ py:{ xs:10, md:14 }, bgcolor:COLORS.surface }}>
+      {/* ─── CTA FINAL + FOOTER ───────────────────────── */}
+      <Box
+        sx={{
+          bgcolor: COLORS.primaryDark,
+          color: '#fff',
+          py: { xs: 8, md: 10 },
+        }}
+      >
         <Container>
-          <FadeSection>
-            <Typography variant="overline" display="block" align="center" sx={{ color:COLORS.primary, fontWeight:700, letterSpacing:2, mb:1.5 }}>Cómo funciona</Typography>
-            <Typography variant="h3" align="center" fontWeight={800} sx={{ fontSize:{ xs:'1.85rem', md:'2.6rem' }, mb:1.5 }}>
-              Tres lugares, <Box component="span" sx={{ color:COLORS.primary }}>un mismo flujo</Box>
-            </Typography>
-            <Typography variant="body1" align="center" color="textSecondary" sx={{ maxWidth:520, mx:'auto', mb:8, lineHeight:1.75 }}>
-              Así encaja MozoQR en el día a día: del comensal al fogón y del fogón al panel del dueño.
-            </Typography>
-          </FadeSection>
-          <Box sx={{ position:'relative' }}>
-            <Box sx={{ display:{ xs:'none', md:'block' }, position:'absolute', top:56, left:'16.66%', right:'16.66%', height:2, background:`linear-gradient(90deg, ${flowPillars[0].color}, ${flowPillars[1].color}, ${flowPillars[2].color})`, opacity:0.3, zIndex:0 }}/>
-            <motion.div initial="hidden" whileInView="visible" viewport={{ once:true, margin:'-60px' }} variants={{ hidden:{}, visible:{ transition:{ staggerChildren:0.15 } } }}>
-              <Grid container spacing={3}>
-                {flowPillars.map(pillar => (
-                  <Grid item xs={12} md={4} key={pillar.title}>
-                    <motion.div variants={fadeUp} whileHover={{ y:-10, transition:{ duration:0.28 } }} style={{ height:'100%' }}>
-                      <Card elevation={0} sx={{
-                        p:3.5, height:'100%', borderRadius:3.5, border:'1px solid', borderColor:alpha(pillar.color,0.2), bgcolor:COLORS.surface, position:'relative', overflow:'hidden',
-                        transition:'box-shadow 0.3s, border-color 0.3s',
-                        '&:hover':{ boxShadow:`0 20px 50px ${alpha(pillar.color,0.18)}`, borderColor:alpha(pillar.color,0.5) },
-                        '&::before':{ content:'""', position:'absolute', top:0, left:0, right:0, height:4, borderRadius:'3.5px 3.5px 0 0', bgcolor:pillar.color }
-                      }}>
-                        <Box sx={{ width:52, height:52, borderRadius:'50%', mb:2.5, display:'flex', alignItems:'center', justifyContent:'center', bgcolor:alpha(pillar.color,0.1), border:`2px solid ${alpha(pillar.color,0.25)}` }}>
-                          <Typography fontWeight={800} sx={{ color:pillar.color, fontSize:'1.1rem' }}>{pillar.num}</Typography>
-                        </Box>
-                        <Typography variant="overline" sx={{ color:pillar.color, fontWeight:700, letterSpacing:1 }}>{pillar.subtitle}</Typography>
-                        <Typography variant="h5" fontWeight={800} gutterBottom sx={{ mt:0.5, mb:1.5 }}>{pillar.title}</Typography>
-                        <Typography variant="body2" color="textSecondary" sx={{ lineHeight:1.75 }}>{pillar.body}</Typography>
-                      </Card>
-                    </motion.div>
-                  </Grid>
-                ))}
-              </Grid>
-            </motion.div>
-          </Box>
-        </Container>
-      </Box>
+          <Box sx={{ maxWidth: 560, mx: 'auto', textAlign: 'center' }}>
+            <FadeIn>
+              <Typography
+                variant="h4"
+                fontWeight={800}
+                sx={{ fontSize: { xs: '1.5rem', md: '2rem' }, mb: 2, letterSpacing: '-0.02em' }}
+              >
+                Probalo con datos de ejemplo
+              </Typography>
+              <Typography
+                sx={{ color: 'rgba(255,255,255,0.55)', mb: 4, lineHeight: 1.7 }}
+              >
+                Recorré la demo como comensal, cocina o dueño. Sin tarjeta, sin compromiso.
+              </Typography>
 
-      {/* ─── FINAL CTA ─────────────────────────────────────────────────── */}
-      <Box sx={{
-        py:{ xs:10, md:14 }, position:'relative', overflow:'hidden',
-        background:`linear-gradient(135deg, ${COLORS.primaryDark} 0%, ${COLORS.primary} 60%, ${COLORS.secondary} 130%)`
-      }}>
-        <Box sx={{ position:'absolute', inset:0, pointerEvents:'none', backgroundImage:`linear-gradient(rgba(255,255,255,0.05) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.05) 1px, transparent 1px)`, backgroundSize:'52px 52px' }}/>
-        <Container sx={{ position:'relative', zIndex:1 }}>
-          <FadeSection>
-            <Box sx={{ maxWidth:700, mx:'auto', textAlign:'center' }}>
-              <Typography variant="overline" sx={{ color:'rgba(255,255,255,0.65)', fontWeight:700, letterSpacing:2, mb:2, display:'block' }}>Demo gratuita</Typography>
-              <Typography variant="h3" fontWeight={800} sx={{ color:'#fff', fontSize:{ xs:'2rem', md:'3rem' }, mb:2.5, lineHeight:1.2 }}>
-                ¿Querés ver MozoQR en acción?
-              </Typography>
-              <Typography variant="h6" sx={{ color:'rgba(255,255,255,0.8)', mb:5, lineHeight:1.7, fontWeight:400 }}>
-                Entrá a la demo: probá pedidos, cocina y panel de dueño con datos de ejemplo, y elegí el plan cuando encaje con tu negocio.
-              </Typography>
-              <Stack direction={{ xs:'column', sm:'row' }} spacing={2} justifyContent="center">
-                <motion.div whileHover={{ scale:1.04 }} whileTap={{ scale:0.97 }}>
-                  <Button variant="contained" size="large" endIcon={<ArrowForwardIcon/>} onClick={() => navigate('/demo')}
-                    sx={{ bgcolor:'#fff', color:COLORS.primary, px:4, py:1.75, fontSize:'1rem', fontWeight:700, borderRadius:2.5, boxShadow:'0 8px 32px rgba(9,9,11,0.2)', '&:hover':{ bgcolor:COLORS.bgAlt, boxShadow:'0 12px 40px rgba(9,9,11,0.3)' } }}>
-                    Comenzar gratis ahora
-                  </Button>
-                </motion.div>
-                <motion.div whileHover={{ scale:1.04 }} whileTap={{ scale:0.97 }}>
-                  <Button variant="outlined" size="large" href="mailto:ventas@mozoqr.com"
-                    sx={{ borderColor:'rgba(255,255,255,0.5)', color:'#fff', borderWidth:1.5, px:4, py:1.75, fontSize:'1rem', fontWeight:600, borderRadius:2.5, '&:hover':{ borderColor:'#fff', borderWidth:1.5, bgcolor:'rgba(255,255,255,0.1)' } }}>
-                    Contactar Ventas
-                  </Button>
-                </motion.div>
+              <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2} justifyContent="center" sx={{ mb: 6 }}>
+                <Button
+                  variant="contained"
+                  size="large"
+                  onClick={() => navigate('/demo')}
+                  endIcon={<ArrowForwardIcon />}
+                  sx={{
+                    bgcolor: '#fff',
+                    color: COLORS.primaryDark,
+                    px: 4,
+                    py: 1.5,
+                    fontWeight: 700,
+                    borderRadius: 2,
+                    '&:hover': { bgcolor: '#f0f0f0' },
+                  }}
+                >
+                  Empezar demo
+                </Button>
+                <Button
+                  variant="outlined"
+                  size="large"
+                  href="mailto:ventas@mozoqr.com"
+                  sx={{
+                    borderColor: 'rgba(255,255,255,0.25)',
+                    color: '#fff',
+                    px: 4,
+                    py: 1.5,
+                    fontWeight: 600,
+                    borderRadius: 2,
+                    '&:hover': { borderColor: 'rgba(255,255,255,0.5)', bgcolor: 'rgba(255,255,255,0.05)' },
+                  }}
+                >
+                  Contactar ventas
+                </Button>
               </Stack>
-            </Box>
-          </FadeSection>
-        </Container>
-      </Box>
+            </FadeIn>
 
-      {/* ─── FOOTER ────────────────────────────────────────────────────── */}
-      <Box sx={{ bgcolor:COLORS.primaryDark, color:'rgba(255,255,255,0.9)', py:7 }}>
-        <Container>
-          <Box sx={{ maxWidth:480, mx:'auto', textAlign:'center' }}>
-            <Typography variant="h5" fontWeight={800} gutterBottom sx={{ letterSpacing:'-0.02em' }}>MozoQR</Typography>
-            <Typography variant="body2" sx={{ color:'rgba(255,255,255,0.5)', mb:3.5, lineHeight:1.75 }}>
-              Pedidos, cocina, cuenta y administración en un solo ecosistema.
-            </Typography>
-            <Box sx={{ display:'flex', justifyContent:'center', gap:4, mb:4, flexWrap:'wrap' }}>
-              {['Términos','Privacidad','Contacto'].map(link => (
-                <Box key={link} component="a" href="#" sx={{ color:'rgba(255,255,255,0.45)', textDecoration:'none', fontSize:'0.875rem', fontWeight:500, transition:'color 0.2s', '&:hover':{ color:'#fff' } }}>
-                  {link}
-                </Box>
-              ))}
+            {/* Footer */}
+            <Box sx={{ pt: 4, borderTop: '1px solid rgba(255,255,255,0.08)' }}>
+              <Typography variant="body2" fontWeight={700} sx={{ mb: 1, letterSpacing: '-0.01em' }}>
+                MozoQR
+              </Typography>
+              <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.35)', display: 'block', mb: 2 }}>
+                Pedidos, cocina y administración en un solo sistema.
+              </Typography>
+              <Stack direction="row" spacing={3} justifyContent="center" sx={{ mb: 2 }}>
+                {['Términos', 'Privacidad', 'Contacto'].map((link) => (
+                  <Box
+                    key={link}
+                    component="a"
+                    href="#"
+                    sx={{
+                      color: 'rgba(255,255,255,0.35)',
+                      textDecoration: 'none',
+                      fontSize: '0.8125rem',
+                      '&:hover': { color: 'rgba(255,255,255,0.7)' },
+                    }}
+                  >
+                    {link}
+                  </Box>
+                ))}
+              </Stack>
+              <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.2)' }}>
+                © {new Date().getFullYear()} MozoQR
+              </Typography>
             </Box>
-            <Box sx={{ width:40, height:1, bgcolor:'rgba(255,255,255,0.12)', mx:'auto', mb:3 }}/>
-            <Typography variant="caption" sx={{ color:'rgba(255,255,255,0.3)', display:'block' }}>
-              © {new Date().getFullYear()} MozoQR. Todos los derechos reservados.
-            </Typography>
           </Box>
         </Container>
       </Box>
