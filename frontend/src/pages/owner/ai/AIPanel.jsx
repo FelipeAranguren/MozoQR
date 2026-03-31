@@ -18,12 +18,13 @@ import {
   Button,
   Stack
 } from '@mui/material';
-import { MARANA_COLORS } from '../../../theme';
+import { MARANA_COLORS, COLORS } from '../../../theme';
 import PlanGate from '../../../components/PlanGate';
 import { useRestaurantPlan } from '../../../hooks/useRestaurantPlan';
 import { generateAIInsights } from '../../../utils/aiInsights';
 import { fetchProducts } from '../../../api/menu';
 import { getPaidOrdersForAI } from '../../../api/analytics';
+import { fetchWeeklyAiReport } from '../../../api/weeklyAi';
 import PsychologyIcon from '@mui/icons-material/Psychology';
 import TrendingDownIcon from '@mui/icons-material/TrendingDown';
 import RestaurantMenuIcon from '@mui/icons-material/RestaurantMenu';
@@ -32,6 +33,58 @@ import LocalOfferIcon from '@mui/icons-material/LocalOffer';
 import RocketLaunchIcon from '@mui/icons-material/RocketLaunch';
 import WarningAmberIcon from '@mui/icons-material/WarningAmber';
 import CalculateIcon from '@mui/icons-material/Calculate';
+import AutoAwesomeIcon from '@mui/icons-material/AutoAwesome';
+
+function renderMarkdownLine(line) {
+  if (!line) return null;
+  const parts = String(line).split(/(\*\*[^*]+\*\*)/g);
+  return parts.map((p, i) => {
+    if (p.startsWith('**') && p.endsWith('**')) {
+      return <strong key={i}>{p.slice(2, -2)}</strong>;
+    }
+    return <span key={i}>{p}</span>;
+  });
+}
+
+function MarkdownLite({ text }) {
+  if (!text || !String(text).trim()) return null;
+  return (
+    <Box sx={{ '& strong': { fontWeight: 700 } }}>
+      {String(text).split('\n').map((line, i) => {
+        const t = line.trimEnd();
+        if (t.startsWith('## ')) {
+          return (
+            <Typography key={i} variant="h6" sx={{ mt: i === 0 ? 0 : 2, mb: 1, fontWeight: 700 }}>
+              {renderMarkdownLine(t.slice(3))}
+            </Typography>
+          );
+        }
+        if (t.startsWith('### ')) {
+          return (
+            <Typography key={i} variant="subtitle1" sx={{ mt: 1.5, mb: 0.5, fontWeight: 700 }}>
+              {renderMarkdownLine(t.slice(4))}
+            </Typography>
+          );
+        }
+        if (t.startsWith('- ') || t.startsWith('* ')) {
+          return (
+            <Typography key={i} variant="body2" sx={{ pl: 2, mb: 0.5, display: 'block' }}>
+              • {renderMarkdownLine(t.slice(2))}
+            </Typography>
+          );
+        }
+        if (t.trim() === '') {
+          return <Box key={i} sx={{ height: 8 }} />;
+        }
+        return (
+          <Typography key={i} variant="body2" sx={{ mb: 0.5 }}>
+            {renderMarkdownLine(t)}
+          </Typography>
+        );
+      })}
+    </Box>
+  );
+}
 
 function addDays(base, days) {
   const d = new Date(base);
@@ -58,6 +111,9 @@ export default function AIPanel() {
   const [insights, setInsights] = useState(null);
   const [error, setError] = useState(null);
   const [showDiagnostics, setShowDiagnostics] = useState(false);
+  const [weeklyLoading, setWeeklyLoading] = useState(false);
+  const [weeklyData, setWeeklyData] = useState(null);
+  const [weeklyError, setWeeklyError] = useState(null);
   const [dataStats, setDataStats] = useState({
     products: 0,
     orders: 0,
@@ -134,6 +190,28 @@ export default function AIPanel() {
     }
   }, [slug, planLoading]);
 
+  useEffect(() => {
+    if (!slug || planLoading || String(plan || '').toUpperCase() !== 'ULTRA') {
+      return undefined;
+    }
+    let cancelled = false;
+    (async () => {
+      setWeeklyLoading(true);
+      setWeeklyError(null);
+      try {
+        const data = await fetchWeeklyAiReport(slug);
+        if (!cancelled) setWeeklyData(data);
+      } catch (e) {
+        if (!cancelled) setWeeklyError(e?.response?.data?.error || e?.message || 'Error al cargar informe IA');
+      } finally {
+        if (!cancelled) setWeeklyLoading(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [slug, planLoading, plan]);
+
   if (planLoading || loading) {
     return (
       <Container maxWidth="xl" sx={{ py: 3 }}>
@@ -163,9 +241,82 @@ export default function AIPanel() {
             </Button>
           </Box>
           <Typography variant="body2" color="text.secondary">
-            Análisis inteligente de tu negocio con sugerencias automatizadas
+            Análisis en tiempo real con reglas + informe semanal con IA (Google Gemini, sin tarjeta en Google AI Studio).
           </Typography>
         </Box>
+
+        <Card sx={{ mb: 3, border: `1px solid ${MARANA_COLORS.border}`, boxShadow: COLORS.shadow2 }}>
+          <CardContent>
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2 }}>
+              <AutoAwesomeIcon sx={{ color: MARANA_COLORS.secondary }} />
+              <Typography variant="h6" sx={{ fontWeight: 700 }}>
+                Informe semanal (IA)
+              </Typography>
+            </Box>
+            <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+              Se genera como máximo una vez por semana por restaurante usando todo el historial de pedidos pagados
+              que podamos leer del servidor (hasta ~12.000 pedidos). La próxima regeneración es automática cuando
+              venza el plazo de 7 días.
+            </Typography>
+            {weeklyLoading && (
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, py: 2 }}>
+                <CircularProgress size={28} sx={{ color: MARANA_COLORS.primary }} />
+                <Typography variant="body2" color="text.secondary">
+                  Generando o cargando informe… (la primera vez puede tardar un minuto)
+                </Typography>
+              </Box>
+            )}
+            {!weeklyLoading && weeklyError && (
+              <Alert severity="warning">{weeklyError}</Alert>
+            )}
+            {!weeklyLoading && weeklyData?.missingApiKey && (
+              <Alert severity="info" sx={{ mb: 2 }}>
+                El servidor aún no tiene configurada la clave de Gemini. Pedile al administrador que agregue{' '}
+                <strong>GEMINI_API_KEY</strong> en las variables de entorno (clave gratis en{' '}
+                <Box
+                  component="a"
+                  href="https://aistudio.google.com/apikey"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  sx={{ color: 'inherit', fontWeight: 700 }}
+                >
+                  Google AI Studio
+                </Box>
+                ).
+              </Alert>
+            )}
+            {!weeklyLoading && weeklyData?.ok === false && weeklyData?.error && (
+              <Alert severity="error" sx={{ mb: 2 }}>
+                {weeklyData.error}
+              </Alert>
+            )}
+            {!weeklyLoading && weeklyData?.generatedAt && (
+              <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 2 }}>
+                {weeklyData.cached ? 'Desde caché · ' : 'Recién generado · '}
+                Fecha: {new Date(weeklyData.generatedAt).toLocaleString('es-AR')}
+                {weeklyData.nextRefreshApprox && (
+                  <> · Próxima regeneración automática: {new Date(weeklyData.nextRefreshApprox).toLocaleString('es-AR')}</>
+                )}
+              </Typography>
+            )}
+            {!weeklyLoading && weeklyData?.reportMarkdown && (
+              <Box
+                sx={{
+                  p: 2,
+                  borderRadius: 2,
+                  bgcolor: 'action.hover',
+                  maxHeight: 560,
+                  overflow: 'auto',
+                }}
+              >
+                <MarkdownLite text={weeklyData.reportMarkdown} />
+              </Box>
+            )}
+            {!weeklyLoading && !weeklyData?.reportMarkdown && !weeklyData?.missingApiKey && !weeklyError && (
+              <Alert severity="info">No hay informe todavía. Cuando el servidor tenga datos y API key, se generará al entrar.</Alert>
+            )}
+          </CardContent>
+        </Card>
 
         {error && (
           <Alert severity="error" sx={{ mb: 3 }}>
