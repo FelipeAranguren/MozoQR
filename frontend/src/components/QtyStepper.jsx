@@ -5,7 +5,7 @@ import AddIcon from '@mui/icons-material/Add';
 import RemoveIcon from '@mui/icons-material/Remove';
 
 export default function QtyStepper({ value = 0, onAdd, onSub }) {
-  const menosActivo = value > 0; // true si puede restar
+  const menosActivo = value > 0;
 
   return (
     <Box
@@ -14,10 +14,10 @@ export default function QtyStepper({ value = 0, onAdd, onSub }) {
         alignItems: 'center',
         gap: 0.75,
         p: 0.5,
-        borderRadius: 2,
-        bgcolor: 'action.hover',
+        borderRadius: 'var(--mq-radius-sm)',
+        bgcolor: 'var(--mq-bg-alt)',
         border: '1px solid',
-        borderColor: 'divider',
+        borderColor: 'var(--mq-border)',
       }}
     >
       <IconButton
@@ -27,16 +27,16 @@ export default function QtyStepper({ value = 0, onAdd, onSub }) {
         sx={{
           width: 34,
           height: 34,
-          color: menosActivo ? 'primary.main' : 'text.disabled',
-          bgcolor: menosActivo ? 'background.paper' : 'transparent',
-          '&:hover': menosActivo ? { bgcolor: 'background.paper' } : {},
+          color: menosActivo ? 'var(--mq-text)' : 'var(--mq-text-muted)',
+          bgcolor: menosActivo ? 'var(--mq-surface)' : 'transparent',
+          '&:hover': menosActivo ? { bgcolor: 'var(--mq-surface)' } : {},
         }}
         aria-label="Restar"
       >
         <RemoveIcon fontSize="small" />
       </IconButton>
 
-      <Typography sx={{ minWidth: 22, textAlign: 'center', fontWeight: 800, color: 'text.primary' }}>
+      <Typography sx={{ minWidth: 22, textAlign: 'center', fontWeight: 800, color: 'var(--mq-text)' }}>
         {value}
       </Typography>
 
@@ -46,10 +46,11 @@ export default function QtyStepper({ value = 0, onAdd, onSub }) {
         sx={{
           width: 34,
           height: 34,
-          bgcolor: 'primary.main',
-          color: 'primary.contrastText',
+          bgcolor: 'var(--mq-primary)',
+          color: '#fff',
           '&:hover': {
-            bgcolor: 'primary.dark',
+            bgcolor: 'var(--mq-primary)',
+            opacity: 0.85,
           },
         }}
         aria-label="Sumar"

@@ -1,4 +1,3 @@
-// frontend/src/components/owner/OwnerHeader.jsx
 import React from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import {
@@ -22,20 +21,17 @@ export default function OwnerHeader({ slug, onMenuClick }) {
   const auth = useAuth();
   const { user, logout } = auth || { user: null, logout: () => {} };
 
-  // Generar breadcrumbs basado en la ruta actual
   const getBreadcrumbs = () => {
     const path = location.pathname;
     const parts = path.split('/').filter(Boolean);
     const breadcrumbs = [];
 
-    // Siempre incluir "Inicio"
     breadcrumbs.push({
       label: 'Inicio',
       path: '/',
       icon: <HomeIcon fontSize="small" />,
     });
 
-    // Si estamos en /owner, mostrar "Mis Restaurantes"
     if (path === '/owner') {
       breadcrumbs.push({
         label: 'Mis Restaurantes',
@@ -44,20 +40,17 @@ export default function OwnerHeader({ slug, onMenuClick }) {
       return breadcrumbs;
     }
 
-    // Si estamos en una ruta de owner con slug
     if (parts[0] === 'owner' && slug) {
       breadcrumbs.push({
         label: 'Mis Restaurantes',
         path: '/owner',
       });
 
-      // Agregar el restaurante
       breadcrumbs.push({
         label: slug,
         path: `/owner/${slug}/dashboard`,
       });
 
-      // Agregar la sección actual
       if (parts.length > 2) {
         const section = parts[2];
         const sectionLabels = {
@@ -93,9 +86,11 @@ export default function OwnerHeader({ slug, onMenuClick }) {
       position="fixed"
       sx={{
         zIndex: (theme) => theme.zIndex.drawer + 1,
-        bgcolor: 'rgba(255,253,249,0.86)',
+        bgcolor: 'background.paper',
         color: 'text.primary',
-        boxShadow: '0 18px 40px rgba(46,34,18,0.08)',
+        borderBottom: '1px solid',
+        borderColor: 'divider',
+        boxShadow: 'none',
       }}
     >
       <Toolbar sx={{ px: { xs: 1.5, sm: 2.5 }, minHeight: { xs: 56, sm: 64 } }}>
@@ -149,15 +144,15 @@ export default function OwnerHeader({ slug, onMenuClick }) {
             display: 'flex',
             alignItems: 'center',
             gap: 1.5,
-            px: 1.25,
+            px: 1.5,
             py: 0.5,
-            borderRadius: 999,
-            bgcolor: 'rgba(248,244,236,0.9)',
+            borderRadius: 2,
             border: '1px solid',
             borderColor: 'divider',
+            bgcolor: 'background.default',
           }}
         >
-          <Typography variant="body2" color="text.secondary" sx={{ fontWeight: 700 }}>
+          <Typography variant="body2" color="text.secondary" sx={{ fontWeight: 600 }}>
             {user?.username || user?.email || 'Usuario'}
           </Typography>
           <Button

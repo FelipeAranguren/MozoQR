@@ -35,14 +35,14 @@ export default function PaymentRequestAlertBanner({ tableNumbers = [] }) {
         gap: 1.5,
         py: 1.1,
         px: 2,
-        background: 'linear-gradient(135deg, #74437f 0%, #8a4d94 50%, #a463af 100%)',
+        background: 'var(--mq-primary)',
         color: '#fff',
-        boxShadow: '0 10px 26px rgba(116, 67, 127, 0.28)',
-        borderBottom: '1px solid rgba(255,255,255,0.24)',
+        boxShadow: 'var(--mq-shadow-2)',
+        borderBottom: '1px solid rgba(255,255,255,0.12)',
         animation: 'paymentBannerPulse 2s ease-in-out infinite',
         '@keyframes paymentBannerPulse': {
-          '0%, 100%': { boxShadow: '0 4px 20px rgba(156, 39, 176, 0.45)' },
-          '50%': { boxShadow: '0 4px 28px rgba(156, 39, 176, 0.6)' },
+          '0%, 100%': { boxShadow: '0 4px 20px rgba(9, 9, 11, 0.25)' },
+          '50%': { boxShadow: '0 4px 28px rgba(9, 9, 11, 0.4)' },
         },
       }}
     >

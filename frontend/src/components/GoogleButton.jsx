@@ -3,11 +3,9 @@ import { Button } from "@mui/material";
 import { FcGoogle } from "react-icons/fc";
 import { persistReturnUrlBeforeOAuth } from "../utils/authRedirect";
 
-// Claves consistentes
 const LS_JWT_KEY = "strapi_jwt";
 const LS_USER_KEY = "strapi_user";
 
-// En localhost siempre usar el backend local; en producción usar env
 function getApiBase() {
   const isLocalhost =
     typeof window !== "undefined" &&
@@ -20,7 +18,6 @@ function getApiBase() {
 
 export default function GoogleButton({ onSuccess, mode = "login" }) {
   const apiBase = getApiBase();
-  // Strapi acepta ?callback= para redirigir aquí tras OAuth (doc: query.callback en auth.connect)
   const redirectPath = typeof window !== "undefined" ? `${window.location.origin}/connect/google/redirect` : "";
   const url = redirectPath
     ? `${apiBase}/api/connect/google?prompt=select_account&callback=${encodeURIComponent(redirectPath)}`
@@ -31,11 +28,9 @@ export default function GoogleButton({ onSuccess, mode = "login" }) {
   const handleClick = (e) => {
     e.preventDefault();
     persistReturnUrlBeforeOAuth();
-    // Limpia cualquier sesión previa (DEV o social)
     localStorage.removeItem(LS_JWT_KEY);
     localStorage.removeItem(LS_USER_KEY);
     localStorage.removeItem("jwt");
-    // En móvil: abrir en nueva pestaña para que Google se vea a pantalla completa
     if (isMobile) {
       window.open(url, "_blank");
     } else {
@@ -50,24 +45,23 @@ export default function GoogleButton({ onSuccess, mode = "login" }) {
       startIcon={<FcGoogle />}
       onClick={handleClick}
       sx={{
-        borderColor: "divider",
-        color: "text.primary",
-        backgroundColor: "background.paper",
+        borderColor: 'var(--mq-border-strong)',
+        color: 'var(--mq-text)',
+        backgroundColor: 'var(--mq-surface)',
         textTransform: "none",
         fontSize: "0.95rem",
         fontWeight: 600,
         py: 1.5,
-        borderRadius: 1,
+        borderRadius: 'var(--mq-radius-sm)',
+        boxShadow: "none",
         "&:hover": {
-          backgroundColor: "action.hover",
-          borderColor: "text.secondary",
+          backgroundColor: 'var(--mq-bg-alt)',
+          borderColor: 'var(--mq-text-muted)',
           boxShadow: "none",
         },
-        boxShadow: "none",
       }}
     >
       {mode === "register" ? "Registrarse con Google" : "Iniciar sesión con Google"}
     </Button>
   );
 }
-

@@ -1,263 +1,236 @@
-// src/theme.js — sistema visual neutro / editorial (restaurante + operaciones)
 import { alpha, createTheme } from '@mui/material/styles'
 
-/** Tokens exportados para componentes que aún no usan solo `theme` */
-const MARANA_COLORS = {
-  primary: '#18181b',
-  primarySoft: '#f4f4f5',
-  primaryMuted: '#71717a',
-  secondary: '#ea580c',
-  accent: '#dc2626',
-  success: '#15803d',
-  warning: '#ca8a04',
-  error: '#dc2626',
-  info: '#0369a1',
-  background: '#f5f5f4',
-  backgroundAlt: '#fafaf9',
-  surface: '#ffffff',
-  surfaceStrong: '#f5f5f4',
-  white: '#ffffff',
-  border: '#e7e5e4',
-  borderStrong: '#d6d3d1',
-  textPrimary: '#0c0a09',
-  textSecondary: '#57534e',
-  textMuted: '#78716c',
-  shadow: 'rgba(15, 23, 42, 0.06)',
+/*
+ * MozoQR Design System v2
+ *
+ * Palette: warm neutral base (stone scale) with a single confident accent.
+ * Primary = near-black for premium weight.
+ * Secondary = deep teal-green for operational/action contexts.
+ * No random one-off colors in pages; everything flows from this file.
+ *
+ * Radius scale: 6 (controls) · 8 (inputs, chips) · 10 (cards) · 12 (panels) · 16 (hero/modal)
+ * Spacing: MUI default 8px grid, tightened for mobile via px/py overrides.
+ * Shadows: single-source warm-neutral tone rgba(12,10,9, …).
+ */
+
+const C = {
+  // ── Brand
+  primary:        '#18181b',
+  primaryLight:   '#3f3f46',
+  primaryDark:    '#09090b',
+
+  secondary:      '#0d9488', // teal-600 — calming, trust, restaurant-appropriate
+  secondaryLight: '#5eead4',
+  secondaryDark:  '#115e59',
+
+  accent:         '#ea580c', // orange-600 — used sparingly: badges, promotions
+
+  // ── Semantic
+  success:        '#16a34a',
+  successBg:      '#f0fdf4',
+  warning:        '#d97706',
+  warningBg:      '#fffbeb',
+  error:          '#dc2626',
+  errorBg:        '#fef2f2',
+  info:           '#0284c7',
+  infoBg:         '#f0f9ff',
+
+  // ── Neutral (zinc scale — cooler than stone, more professional)
+  white:          '#ffffff',
+  bg:             '#fafafa',
+  bgAlt:          '#f4f4f5',
+  surface:        '#ffffff',
+  surfaceRaised:  '#fafafa',
+  border:         '#e4e4e7',
+  borderStrong:   '#d4d4d8',
+  text:           '#09090b',
+  textSecondary:  '#52525b',
+  textMuted:      '#a1a1aa',
+  textOnDark:     '#ffffff',
+
+  // ── Shadows (single warm-neutral hue)
+  shadow1: '0 1px 2px rgba(9,9,11,0.05)',
+  shadow2: '0 1px 3px rgba(9,9,11,0.08), 0 1px 2px rgba(9,9,11,0.04)',
+  shadow3: '0 4px 12px rgba(9,9,11,0.08)',
+  shadow4: '0 8px 24px rgba(9,9,11,0.10)',
+  shadow5: '0 20px 48px rgba(9,9,11,0.12)',
 }
+
+const RADIUS = { xs: 6, sm: 8, md: 10, lg: 12, xl: 16 }
 
 const theme = createTheme({
   breakpoints: {
     values: { xs: 0, sm: 600, md: 900, lg: 1200, xl: 1536 },
   },
+
   palette: {
-    background: {
-      default: MARANA_COLORS.background,
-      paper: MARANA_COLORS.surface,
-    },
-    text: {
-      primary: MARANA_COLORS.textPrimary,
-      secondary: MARANA_COLORS.textSecondary,
-    },
-    primary: {
-      main: MARANA_COLORS.primary,
-      light: '#3f3f46',
-      dark: '#09090b',
-      contrastText: MARANA_COLORS.white,
-    },
-    secondary: {
-      main: MARANA_COLORS.secondary,
-      light: '#fb923c',
-      dark: '#c2410c',
-      contrastText: MARANA_COLORS.white,
-    },
-    success: {
-      main: MARANA_COLORS.success,
-      light: '#dcfce7',
-      dark: '#14532d',
-      contrastText: MARANA_COLORS.white,
-    },
-    warning: {
-      main: MARANA_COLORS.warning,
-      light: '#fef9c3',
-      dark: '#854d0e',
-      contrastText: '#0c0a09',
-    },
-    error: {
-      main: MARANA_COLORS.error,
-      light: '#fee2e2',
-      dark: '#991b1b',
-      contrastText: MARANA_COLORS.white,
-    },
-    info: {
-      main: MARANA_COLORS.info,
-      light: '#e0f2fe',
-      dark: '#075985',
-      contrastText: MARANA_COLORS.white,
-    },
-    divider: MARANA_COLORS.border,
-    marana: {
-      primary: MARANA_COLORS.primary,
-      secondary: MARANA_COLORS.secondary,
-      accent: MARANA_COLORS.accent,
-      background: MARANA_COLORS.background,
-      border: MARANA_COLORS.border,
-      borderStrong: MARANA_COLORS.borderStrong,
-      surface: MARANA_COLORS.surface,
-      surfaceStrong: MARANA_COLORS.surfaceStrong,
-      textMuted: MARANA_COLORS.textMuted,
-      success: MARANA_COLORS.success,
-      warning: MARANA_COLORS.warning,
-      error: MARANA_COLORS.error,
-      info: MARANA_COLORS.info,
-    },
+    background: { default: C.bg, paper: C.surface },
+    text:       { primary: C.text, secondary: C.textSecondary, disabled: C.textMuted },
+    primary:    { main: C.primary, light: C.primaryLight, dark: C.primaryDark, contrastText: C.white },
+    secondary:  { main: C.secondary, light: C.secondaryLight, dark: C.secondaryDark, contrastText: C.white },
+    success:    { main: C.success, light: C.successBg, contrastText: C.white },
+    warning:    { main: C.warning, light: C.warningBg, contrastText: '#422006' },
+    error:      { main: C.error, light: C.errorBg, contrastText: C.white },
+    info:       { main: C.info, light: C.infoBg, contrastText: C.white },
+    divider:    C.border,
+    action:     { selected: alpha(C.primary, 0.06), hover: alpha(C.primary, 0.04) },
   },
+
   typography: {
-    fontFamily: ['"Plus Jakarta Sans"', 'Manrope', '-apple-system', 'BlinkMacSystemFont', 'Segoe UI', 'sans-serif'].join(','),
-    h1: { fontSize: 'clamp(2rem, 3.8vw, 3.25rem)', fontWeight: 700, lineHeight: 1.05, letterSpacing: '-0.03em' },
-    h2: { fontSize: 'clamp(1.65rem, 2.8vw, 2.35rem)', fontWeight: 700, lineHeight: 1.1, letterSpacing: '-0.028em' },
-    h3: { fontSize: 'clamp(1.35rem, 2vw, 1.75rem)', fontWeight: 700, lineHeight: 1.15, letterSpacing: '-0.02em' },
-    h4: { fontSize: '1.25rem', fontWeight: 650, lineHeight: 1.25, letterSpacing: '-0.02em' },
-    h5: { fontSize: '1.05rem', fontWeight: 650, lineHeight: 1.35, letterSpacing: '-0.015em' },
-    h6: { fontSize: '0.9375rem', fontWeight: 650, lineHeight: 1.4, letterSpacing: '-0.01em' },
-    subtitle1: { fontSize: '1rem', fontWeight: 600, lineHeight: 1.5, letterSpacing: '-0.01em' },
+    fontFamily: ['"Plus Jakarta Sans"', 'Inter', '-apple-system', 'BlinkMacSystemFont', '"Segoe UI"', 'sans-serif'].join(','),
+    h1: { fontSize: 'clamp(2rem, 3.8vw, 3.25rem)', fontWeight: 800, lineHeight: 1.08, letterSpacing: '-0.025em' },
+    h2: { fontSize: 'clamp(1.65rem, 2.8vw, 2.35rem)', fontWeight: 800, lineHeight: 1.12, letterSpacing: '-0.02em' },
+    h3: { fontSize: 'clamp(1.35rem, 2vw, 1.75rem)', fontWeight: 700, lineHeight: 1.2, letterSpacing: '-0.018em' },
+    h4: { fontSize: '1.25rem', fontWeight: 700, lineHeight: 1.3, letterSpacing: '-0.015em' },
+    h5: { fontSize: '1.0625rem', fontWeight: 700, lineHeight: 1.35, letterSpacing: '-0.01em' },
+    h6: { fontSize: '0.9375rem', fontWeight: 700, lineHeight: 1.4, letterSpacing: '-0.008em' },
+    subtitle1: { fontSize: '1rem', fontWeight: 600, lineHeight: 1.5, letterSpacing: '-0.008em' },
     subtitle2: { fontSize: '0.875rem', fontWeight: 600, lineHeight: 1.45 },
-    body1: { fontSize: '0.9375rem', fontWeight: 450, lineHeight: 1.65, letterSpacing: '-0.008em' },
-    body2: { fontSize: '0.875rem', fontWeight: 450, lineHeight: 1.6, letterSpacing: '-0.008em' },
-    button: { textTransform: 'none', fontWeight: 600, fontSize: '0.9375rem', letterSpacing: '-0.01em' },
-    caption: { fontSize: '0.75rem', fontWeight: 500, lineHeight: 1.45, letterSpacing: '0.02em' },
-    overline: { fontSize: '0.6875rem', fontWeight: 700, lineHeight: 1.5, letterSpacing: '0.12em' },
+    body1: { fontSize: '0.9375rem', fontWeight: 400, lineHeight: 1.65 },
+    body2: { fontSize: '0.8125rem', fontWeight: 400, lineHeight: 1.6 },
+    button: { textTransform: 'none', fontWeight: 600, fontSize: '0.875rem', letterSpacing: '-0.006em' },
+    caption: { fontSize: '0.75rem', fontWeight: 500, lineHeight: 1.5, letterSpacing: '0.01em' },
+    overline: { fontSize: '0.6875rem', fontWeight: 700, lineHeight: 1.5, letterSpacing: '0.1em', textTransform: 'uppercase' },
   },
-  shape: {
-    borderRadius: 10,
-  },
+
+  shape: { borderRadius: RADIUS.md },
   spacing: 8,
+
   components: {
+    /* ── Baseline ─────────────────────────────────────────────── */
     MuiCssBaseline: {
       styleOverrides: {
-        body: {
-          backgroundColor: MARANA_COLORS.background,
-          color: MARANA_COLORS.textPrimary,
-        },
-        '::selection': {
-          backgroundColor: alpha(MARANA_COLORS.secondary, 0.2),
-        },
+        body: { backgroundColor: C.bg, color: C.text },
+        '::selection': { backgroundColor: alpha(C.secondary, 0.18) },
       },
     },
+
+    /* ── AppBar ───────────────────────────────────────────────── */
     MuiAppBar: {
+      defaultProps: { elevation: 0 },
       styleOverrides: {
         root: {
           backgroundImage: 'none',
-          backgroundColor: alpha(MARANA_COLORS.surface, 0.88),
-          color: MARANA_COLORS.textPrimary,
-          backdropFilter: 'blur(12px)',
-          borderBottom: `1px solid ${MARANA_COLORS.border}`,
-          boxShadow: `0 1px 0 ${alpha(MARANA_COLORS.textPrimary, 0.06)}`,
+          backgroundColor: alpha(C.surface, 0.92),
+          color: C.text,
+          backdropFilter: 'blur(14px)',
+          borderBottom: `1px solid ${C.border}`,
+          boxShadow: 'none',
         },
       },
     },
+
+    /* ── Buttons ──────────────────────────────────────────────── */
     MuiButton: {
+      defaultProps: { disableElevation: true },
       styleOverrides: {
         root: {
-          padding: '10px 18px',
-          minWidth: 44,
+          padding: '10px 20px',
           minHeight: 44,
-          borderRadius: 8,
+          borderRadius: RADIUS.sm,
           fontWeight: 600,
           textTransform: 'none',
-          boxShadow: 'none',
-          transition: 'background-color 160ms ease, color 160ms ease, border-color 160ms ease',
-          '&:hover': {
-            boxShadow: 'none',
-            transform: 'none',
-          },
+          transition: 'background-color 150ms, border-color 150ms, color 150ms, box-shadow 150ms',
         },
-        outlined: {
-          borderWidth: 1,
-          borderColor: MARANA_COLORS.borderStrong,
-          backgroundColor: MARANA_COLORS.surface,
-          '&:hover': {
-            borderWidth: 1,
-            borderColor: MARANA_COLORS.textMuted,
-            backgroundColor: MARANA_COLORS.backgroundAlt,
-          },
-        },
+        sizeSmall: { padding: '6px 14px', minHeight: 36, fontSize: '0.8125rem' },
+        sizeLarge: { padding: '12px 24px', minHeight: 48, fontSize: '0.9375rem' },
         contained: {
-          backgroundImage: 'none',
-          backgroundColor: MARANA_COLORS.primary,
-          '&:hover': {
-            backgroundColor: '#27272a',
-            boxShadow: 'none',
-          },
+          backgroundColor: C.primary,
+          color: C.white,
+          '&:hover': { backgroundColor: C.primaryLight },
         },
         containedSecondary: {
-          backgroundColor: MARANA_COLORS.secondary,
-          '&:hover': {
-            backgroundColor: '#c2410c',
-          },
+          backgroundColor: C.secondary,
+          color: C.white,
+          '&:hover': { backgroundColor: C.secondaryDark },
+        },
+        outlined: {
+          borderColor: C.borderStrong,
+          backgroundColor: C.surface,
+          color: C.text,
+          '&:hover': { borderColor: C.textMuted, backgroundColor: C.bgAlt },
+        },
+        text: {
+          color: C.textSecondary,
+          '&:hover': { backgroundColor: alpha(C.primary, 0.04) },
         },
       },
     },
+
     MuiIconButton: {
       styleOverrides: {
-        root: { borderRadius: 8 },
+        root: { borderRadius: RADIUS.sm },
       },
     },
+
+    /* ── Cards & Paper ────────────────────────────────────────── */
     MuiCard: {
+      defaultProps: { elevation: 0 },
       styleOverrides: {
         root: {
-          borderRadius: 12,
-          border: `1px solid ${MARANA_COLORS.border}`,
-          boxShadow: 'none',
-          backgroundColor: MARANA_COLORS.surface,
-          '&:hover': {
-            borderColor: MARANA_COLORS.borderStrong,
-          },
+          borderRadius: RADIUS.lg,
+          border: `1px solid ${C.border}`,
+          boxShadow: C.shadow1,
+          backgroundColor: C.surface,
+          transition: 'border-color 200ms, box-shadow 200ms',
+          '&:hover': { borderColor: C.borderStrong },
         },
       },
     },
+
     MuiPaper: {
+      defaultProps: { elevation: 0 },
       styleOverrides: {
         root: {
-          borderRadius: 12,
-          border: `1px solid ${MARANA_COLORS.border}`,
+          borderRadius: RADIUS.lg,
           backgroundImage: 'none',
-          backgroundColor: MARANA_COLORS.surface,
-          boxShadow: `0 1px 2px ${MARANA_COLORS.shadow}`,
+          backgroundColor: C.surface,
         },
       },
     },
+
+    /* ── Chips ────────────────────────────────────────────────── */
     MuiChip: {
       styleOverrides: {
         root: {
-          borderRadius: 8,
+          borderRadius: RADIUS.sm,
           fontWeight: 600,
-          border: `1px solid ${MARANA_COLORS.border}`,
-          backgroundColor: MARANA_COLORS.backgroundAlt,
-          '&.MuiChip-colorPrimary': {
-            backgroundColor: MARANA_COLORS.primary,
-            color: MARANA_COLORS.white,
-            borderColor: MARANA_COLORS.primary,
-          },
+          fontSize: '0.8125rem',
+          height: 34,
+        },
+        colorPrimary: {
+          backgroundColor: C.primary,
+          color: C.white,
+        },
+        colorDefault: {
+          backgroundColor: C.surface,
+          border: `1px solid ${C.border}`,
+          color: C.text,
         },
       },
     },
-    MuiTextField: {
-      defaultProps: { variant: 'outlined' },
-    },
+
+    /* ── Inputs ───────────────────────────────────────────────── */
+    MuiTextField: { defaultProps: { variant: 'outlined' } },
     MuiOutlinedInput: {
       styleOverrides: {
         root: {
-          borderRadius: 8,
-          backgroundColor: MARANA_COLORS.surface,
-          '& fieldset': {
-            borderColor: MARANA_COLORS.borderStrong,
-          },
-          '&:hover fieldset': {
-            borderColor: MARANA_COLORS.textMuted,
-          },
-          '&.Mui-focused fieldset': {
-            borderWidth: 1,
-            borderColor: MARANA_COLORS.primary,
-            boxShadow: `0 0 0 3px ${alpha(MARANA_COLORS.primary, 0.12)}`,
-          },
-          '&.Mui-disabled': {
-            backgroundColor: MARANA_COLORS.backgroundAlt,
-          },
+          borderRadius: RADIUS.sm,
+          backgroundColor: C.surface,
+          '& fieldset':           { borderColor: C.border },
+          '&:hover fieldset':     { borderColor: C.borderStrong },
+          '&.Mui-focused fieldset': { borderWidth: 1.5, borderColor: C.primary, boxShadow: `0 0 0 3px ${alpha(C.primary, 0.08)}` },
+          '&.Mui-disabled':       { backgroundColor: C.bgAlt },
         },
-        input: {
-          paddingTop: 12,
-          paddingBottom: 12,
-        },
+        input: { padding: '12px 14px' },
       },
     },
+
+    /* ── Tabs ─────────────────────────────────────────────────── */
     MuiTabs: {
       styleOverrides: {
         root: { minHeight: 44 },
-        indicator: {
-          height: 2,
-          borderRadius: 0,
-          backgroundColor: MARANA_COLORS.primary,
-        },
+        indicator: { height: 2.5, borderRadius: 2, backgroundColor: C.primary },
       },
     },
     MuiTab: {
@@ -266,84 +239,92 @@ const theme = createTheme({
           minHeight: 44,
           textTransform: 'none',
           fontWeight: 600,
-          paddingLeft: 16,
-          paddingRight: 16,
+          padding: '8px 16px',
         },
       },
     },
+
+    /* ── Dialogs ──────────────────────────────────────────────── */
     MuiDialog: {
       styleOverrides: {
         paper: {
-          borderRadius: 12,
-          backgroundColor: MARANA_COLORS.surface,
-          border: `1px solid ${MARANA_COLORS.border}`,
-          boxShadow: `0 25px 50px -12px ${alpha('#0c0a09', 0.2)}`,
+          borderRadius: RADIUS.xl,
+          border: `1px solid ${C.border}`,
+          boxShadow: C.shadow5,
         },
       },
     },
+
+    /* ── Drawers ──────────────────────────────────────────────── */
     MuiDrawer: {
       styleOverrides: {
         paper: {
-          backgroundColor: MARANA_COLORS.surface,
-          borderRight: `1px solid ${MARANA_COLORS.border}`,
+          backgroundColor: C.surface,
+          borderRight: `1px solid ${C.border}`,
         },
       },
     },
+
+    /* ── Alerts ───────────────────────────────────────────────── */
     MuiAlert: {
       styleOverrides: {
-        root: { borderRadius: 8 },
-        standardSuccess: { backgroundColor: alpha(MARANA_COLORS.success, 0.1) },
-        standardWarning: { backgroundColor: alpha(MARANA_COLORS.warning, 0.12) },
-        standardError: { backgroundColor: alpha(MARANA_COLORS.error, 0.1) },
-        standardInfo: { backgroundColor: alpha(MARANA_COLORS.info, 0.1) },
+        root: { borderRadius: RADIUS.sm },
+        standardSuccess: { backgroundColor: C.successBg, color: '#14532d' },
+        standardWarning: { backgroundColor: C.warningBg, color: '#78350f' },
+        standardError:   { backgroundColor: C.errorBg, color: '#7f1d1d' },
+        standardInfo:    { backgroundColor: C.infoBg, color: '#0c4a6e' },
       },
     },
+
+    /* ── Lists ────────────────────────────────────────────────── */
     MuiListItemButton: {
       styleOverrides: {
         root: {
-          borderRadius: 8,
-          marginInline: 6,
+          borderRadius: RADIUS.sm,
+          marginInline: 4,
           '&.Mui-selected': {
-            backgroundColor: alpha(MARANA_COLORS.primary, 0.08),
-            color: MARANA_COLORS.primary,
+            backgroundColor: alpha(C.primary, 0.06),
+            color: C.primary,
+            '&:hover': { backgroundColor: alpha(C.primary, 0.08) },
           },
         },
       },
     },
+
+    /* ── Dividers ─────────────────────────────────────────────── */
     MuiDivider: {
       styleOverrides: {
-        root: { borderColor: MARANA_COLORS.border },
+        root: { borderColor: C.border },
       },
     },
+
+    /* ── FAB ──────────────────────────────────────────────────── */
     MuiFab: {
       styleOverrides: {
-        root: {
-          boxShadow: `0 4px 14px ${alpha(MARANA_COLORS.textPrimary, 0.12)}`,
-        },
+        root: { boxShadow: C.shadow3 },
       },
     },
+
+    /* ── Tooltip ──────────────────────────────────────────────── */
     MuiTooltip: {
       styleOverrides: {
         tooltip: {
-          borderRadius: 6,
-          backgroundColor: alpha('#18181b', 0.92),
+          borderRadius: RADIUS.xs,
+          backgroundColor: alpha(C.primary, 0.92),
           fontWeight: 500,
           fontSize: '0.8125rem',
         },
       },
     },
-    MuiSnackbarContent: {
-      styleOverrides: {
-        root: { borderRadius: 8 },
-      },
-    },
+
+    /* ── Toggle ──────────────────────────────────────────────── */
     MuiToggleButtonGroup: {
       styleOverrides: {
         root: {
-          borderRadius: 8,
-          backgroundColor: MARANA_COLORS.backgroundAlt,
-          padding: 4,
-          border: `1px solid ${MARANA_COLORS.border}`,
+          borderRadius: RADIUS.sm,
+          backgroundColor: C.bgAlt,
+          padding: 3,
+          border: `1px solid ${C.border}`,
         },
       },
     },
@@ -351,19 +332,49 @@ const theme = createTheme({
       styleOverrides: {
         root: {
           border: 'none',
-          borderRadius: 6,
+          borderRadius: RADIUS.xs,
           fontWeight: 600,
-          color: MARANA_COLORS.textSecondary,
+          color: C.textSecondary,
           '&.Mui-selected': {
-            backgroundColor: MARANA_COLORS.surface,
-            color: MARANA_COLORS.primary,
-            boxShadow: `0 1px 2px ${MARANA_COLORS.shadow}`,
+            backgroundColor: C.surface,
+            color: C.primary,
+            boxShadow: C.shadow2,
           },
         },
       },
+    },
+
+    MuiSnackbarContent: {
+      styleOverrides: { root: { borderRadius: RADIUS.sm } },
     },
   },
 })
 
 export default theme
-export { MARANA_COLORS }
+
+export const COLORS = C
+export const RADIUS_SCALE = RADIUS
+
+// Legacy alias so existing imports don't break
+export const MARANA_COLORS = {
+  primary:       C.primary,
+  primarySoft:   C.bgAlt,
+  primaryMuted:  C.textMuted,
+  secondary:     C.secondary,
+  accent:        C.accent,
+  success:       C.success,
+  warning:       C.warning,
+  error:         C.error,
+  info:          C.info,
+  background:    C.bg,
+  backgroundAlt: C.bgAlt,
+  surface:       C.surface,
+  surfaceStrong: C.surfaceRaised,
+  white:         C.white,
+  border:        C.border,
+  borderStrong:  C.borderStrong,
+  textPrimary:   C.text,
+  textSecondary: C.textSecondary,
+  textMuted:     C.textMuted,
+  shadow:        'rgba(9,9,11,0.06)',
+}

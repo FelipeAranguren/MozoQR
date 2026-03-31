@@ -245,7 +245,7 @@ export default function PagosRealtimeBar({ slug, localItems = [] }) {
 
     if (!merged?.length) {
       return (
-        <Typography variant="body2" sx={{ color: 'text.secondary' }}>
+        <Typography variant="body2" sx={{ color: 'var(--mq-text-secondary)' }}>
           Sin pagos recientes
         </Typography>
       );
@@ -269,12 +269,12 @@ export default function PagosRealtimeBar({ slug, localItems = [] }) {
                 fontWeight: 700,
                 fontSize: '0.65rem',
                 lineHeight: 1,
-                bgcolor: 'rgba(35,122,87,0.12)',
-                color: 'success.dark',
-                border: '1px solid rgba(35,122,87,0.25)',
+                bgcolor: 'rgba(22, 163, 74, 0.12)',
+                color: '#15803d',
+                border: '1px solid rgba(22, 163, 74, 0.25)',
                 backdropFilter: 'blur(6px)',
                 '& .MuiChip-icon': {
-                  color: 'success.main',
+                  color: '#16a34a',
                   marginLeft: '4px',
                   marginRight: '-2px',
                 },
@@ -297,8 +297,8 @@ export default function PagosRealtimeBar({ slug, localItems = [] }) {
         py: 0.9,
         borderRadius: 3,
         border: '1px solid',
-        borderColor: 'divider',
-        bgcolor: 'rgba(255,253,249,0.78)',
+        borderColor: 'var(--mq-border)',
+        bgcolor: 'var(--mq-surface)',
         backdropFilter: 'blur(8px)',
         display: 'flex',
         alignItems: 'center',
@@ -306,7 +306,7 @@ export default function PagosRealtimeBar({ slug, localItems = [] }) {
         minHeight: 36,
         width: '100%',
         maxWidth: { xs: '100%', sm: 640, md: 760 },
-        boxShadow: '0 12px 26px rgba(46,34,18,0.08)',
+        boxShadow: 'var(--mq-shadow-2)',
       }}
     >
       <Typography
@@ -314,7 +314,7 @@ export default function PagosRealtimeBar({ slug, localItems = [] }) {
         sx={{
           fontWeight: 800,
           letterSpacing: 0.2,
-          color: 'text.primary',
+          color: 'var(--mq-text)',
           whiteSpace: 'nowrap',
           fontSize: '0.7rem',
         }}

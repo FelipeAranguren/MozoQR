@@ -796,7 +796,7 @@ export default function RestaurantMenu() {
         }}
       >
         {/* Header */}
-        <Box className="premium-panel" sx={{ textAlign: 'center', p: { xs: 3, sm: 4 }, mb: 2.5 }}>
+        <Box sx={{ bgcolor: 'background.paper', border: '1px solid', borderColor: 'divider', borderRadius: 3, boxShadow: '0 1px 3px rgba(9,9,11,0.08)', textAlign: 'center', p: { xs: 3, sm: 4 }, mb: 2.5 }}>
           <Typography
             component="h1"
             sx={{
@@ -834,7 +834,7 @@ export default function RestaurantMenu() {
                 height: 4,
                 borderRadius: 999,
                 backgroundColor: theme.palette.secondary.main,
-                boxShadow: '0 6px 14px rgba(46,34,18,0.12)',
+                boxShadow: '0 6px 14px rgba(9,9,11,0.12)',
               },
             })}
           />
@@ -911,16 +911,16 @@ export default function RestaurantMenu() {
               '& .MuiOutlinedInput-root': {
                 borderRadius: 999,
                 backgroundColor: (theme) =>
-                  theme.palette.mode === 'light' ? 'rgba(255,253,249,0.92)' : 'rgba(255,255,255,0.05)',
+                  theme.palette.mode === 'light' ? '#ffffff' : 'rgba(255,255,255,0.05)',
                 '&:hover': {
                   backgroundColor: (theme) =>
-                    theme.palette.mode === 'light' ? 'rgba(255,253,249,1)' : 'rgba(255,255,255,0.08)',
+                    theme.palette.mode === 'light' ? '#ffffff' : 'rgba(255,255,255,0.08)',
                 },
                 '&.Mui-focused': {
                   backgroundColor: (theme) =>
-                    theme.palette.mode === 'light' ? 'rgba(255,253,249,1)' : 'rgba(255,255,255,0.08)',
+                    theme.palette.mode === 'light' ? '#ffffff' : 'rgba(255,255,255,0.08)',
                 },
-                boxShadow: '0 16px 32px rgba(46,34,18,0.06)',
+                boxShadow: '0 16px 32px rgba(9,9,11,0.06)',
               },
             }}
           />
@@ -954,7 +954,7 @@ export default function RestaurantMenu() {
               }}
               color={categoriaSeleccionada === null ? 'primary' : 'default'}
               sx={{
-                  bgcolor: categoriaSeleccionada === null ? 'primary.main' : 'rgba(255,253,249,0.9)',
+                  bgcolor: categoriaSeleccionada === null ? 'primary.main' : 'background.paper',
                 color: categoriaSeleccionada === null ? 'white' : 'text.primary',
                 fontWeight: categoriaSeleccionada === null ? 600 : 400,
                 cursor: 'pointer',
@@ -981,7 +981,7 @@ export default function RestaurantMenu() {
                 }}
                 color={categoriaSeleccionada === (cat.id ?? cat.documentId) ? 'primary' : 'default'}
                 sx={{
-                  bgcolor: categoriaSeleccionada === (cat.id ?? cat.documentId) ? 'primary.main' : 'rgba(255,253,249,0.9)',
+                  bgcolor: categoriaSeleccionada === (cat.id ?? cat.documentId) ? 'primary.main' : 'background.paper',
                   color: categoriaSeleccionada === (cat.id ?? cat.documentId) ? 'white' : 'text.primary',
                   fontWeight: categoriaSeleccionada === (cat.id ?? cat.documentId) ? 600 : 400,
                   cursor: 'pointer',

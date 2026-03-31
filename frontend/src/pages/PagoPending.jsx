@@ -33,15 +33,16 @@ export default function PagoPending() {
 
   return (
     <StatusPage
+      variant="warning"
       kicker="Pago"
-      icon={<ScheduleIcon sx={{ fontSize: 72, color: "warning.main" }} />}
+      icon={<ScheduleIcon sx={{ fontSize: 56, color: '#d97706' }} />}
       title="Pago pendiente"
       description="Tu pago está siendo procesado. Podés consultar el estado en el mostrador mientras termina la acreditación."
       primaryAction={slug ? { label: "Volver al menú", onClick: () => navigate(`/${slug}/menu`) } : null}
       secondaryAction={{ label: "Volver al inicio", onClick: () => navigate("/"), variant: slug ? "outlined" : "contained" }}
     >
       {orderId ? (
-        <Typography variant="body2" color="text.secondary">
+        <Typography variant="body2" sx={{ color: '#52525b' }}>
           Pedido: {orderId}
         </Typography>
       ) : null}

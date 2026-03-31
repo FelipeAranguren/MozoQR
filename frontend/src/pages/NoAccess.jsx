@@ -15,15 +15,45 @@ export default function NoAccess() {
 
   return (
     <StatusPage
+      variant="warning"
       kicker="Permisos"
-      icon={<BlockIcon sx={{ fontSize: 72, color: "error.main" }} />}
+      icon={<BlockIcon sx={{ fontSize: 56, color: '#d97706' }} />}
       title="No tienes acceso a esta URL"
       description={errorMessage || "Verifica tu cuenta o los permisos del restaurante antes de continuar."}
     >
-      <Button component={Link} to={loginTo} variant="contained" fullWidth sx={{ maxWidth: 420 }}>
+      <Button
+        component={Link}
+        to={loginTo}
+        variant="contained"
+        fullWidth
+        sx={{
+          maxWidth: 380,
+          borderRadius: '8px',
+          textTransform: 'none',
+          fontWeight: 600,
+          py: 1.25,
+          bgcolor: '#0d9488',
+          '&:hover': { bgcolor: '#0d9488', filter: 'brightness(0.9)' },
+        }}
+      >
         Iniciar sesión
       </Button>
-      <Button component={Link} to="/" variant="outlined" fullWidth sx={{ maxWidth: 420 }}>
+      <Button
+        component={Link}
+        to="/"
+        variant="outlined"
+        fullWidth
+        sx={{
+          maxWidth: 380,
+          borderRadius: '8px',
+          textTransform: 'none',
+          fontWeight: 600,
+          py: 1.25,
+          color: '#52525b',
+          borderColor: '#e4e4e7',
+          '&:hover': { borderColor: '#a1a1aa', bgcolor: '#fafafa' },
+        }}
+      >
         Volver al inicio
       </Button>
     </StatusPage>

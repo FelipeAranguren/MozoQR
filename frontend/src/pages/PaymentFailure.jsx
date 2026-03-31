@@ -1,8 +1,5 @@
-// Página de retorno de Mercado Pago cuando el pago falló o fue rechazado (back_urls.failure).
-// auto_return: 'approved' redirige a /payment-success; si el usuario cancela o falla, MP redirige aquí.
 import React from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
-import { Typography } from "@mui/material";
 import ErrorOutlineIcon from "@mui/icons-material/ErrorOutline";
 import StatusPage from "../components/ui/StatusPage";
 
@@ -22,8 +19,9 @@ export default function PaymentFailure() {
 
   return (
     <StatusPage
+      variant="error"
       kicker="Mercado Pago"
-      icon={<ErrorOutlineIcon sx={{ fontSize: 72, color: "error.main" }} />}
+      icon={<ErrorOutlineIcon sx={{ fontSize: 56, color: '#dc2626' }} />}
       title="El pago no pudo completarse"
       description="Podés intentar de nuevo o elegir otro método de pago."
       detail={reasonHint}

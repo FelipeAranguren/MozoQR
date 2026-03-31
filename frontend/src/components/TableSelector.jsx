@@ -115,7 +115,7 @@ export default function TableSelector({ mesaOcupadaAlert = null, onDismissMesaOc
   if (loading) {
     return (
       <Container maxWidth="md" sx={{ py: { xs: 4, sm: 6 } }}>
-        <Box className="premium-panel" sx={{ p: { xs: 3, sm: 4 }, mb: 4, textAlign: 'center' }}>
+        <Box sx={{ bgcolor: 'background.paper', border: '1px solid', borderColor: 'divider', borderRadius: 3, boxShadow: '0 1px 3px rgba(9,9,11,0.08)', p: { xs: 3, sm: 4 }, mb: 4, textAlign: 'center' }}>
           <Skeleton variant="circular" width={64} height={64} sx={{ mx: 'auto', mb: 2 }} />
           <Skeleton variant="text" width={200} height={36} sx={{ mx: 'auto', mb: 1 }} />
           <Skeleton variant="text" width={320} height={24} sx={{ mx: 'auto' }} />
@@ -157,7 +157,7 @@ export default function TableSelector({ mesaOcupadaAlert = null, onDismissMesaOc
           </Typography>
         </Alert>
       )}
-      <Box className="premium-panel" sx={{ textAlign: 'center', mb: 4, p: { xs: 3, sm: 4.5 } }}>
+      <Box sx={{ bgcolor: 'background.paper', border: '1px solid', borderColor: 'divider', borderRadius: 3, boxShadow: '0 1px 3px rgba(9,9,11,0.08)', textAlign: 'center', mb: 4, p: { xs: 3, sm: 4.5 } }}>
         <Box
           sx={{
             width: 72,
@@ -193,7 +193,7 @@ export default function TableSelector({ mesaOcupadaAlert = null, onDismissMesaOc
             px: 1.5,
             py: 0.75,
             borderRadius: 999,
-            bgcolor: 'rgba(255,250,242,0.92)',
+            bgcolor: 'background.paper',
             border: '1px solid',
             borderColor: 'divider',
           }}
@@ -230,13 +230,13 @@ export default function TableSelector({ mesaOcupadaAlert = null, onDismissMesaOc
                     transition: 'all 0.2s',
                     border: '1px solid',
                     borderColor: isBlocked ? 'divider' : 'rgba(199,184,161,0.8)',
-                    bgcolor: isBlocked ? 'rgba(248,244,236,0.72)' : 'background.paper',
+                    bgcolor: isBlocked ? 'background.default' : 'background.paper',
                     ...(isBlocked
                       ? { opacity: 0.55 }
                       : {
                           '&:hover': {
                             transform: 'translateY(-4px)',
-                            boxShadow: '0 18px 36px rgba(46,34,18,0.09)',
+                            boxShadow: '0 18px 36px rgba(9,9,11,0.09)',
                           },
                         }),
                   }}
@@ -283,7 +283,7 @@ export default function TableSelector({ mesaOcupadaAlert = null, onDismissMesaOc
           </Box>
         </>
       ) : loadError ? (
-        <Box className="premium-panel" sx={{ textAlign: 'center', py: 4, px: 3 }}>
+        <Box sx={{ bgcolor: 'background.paper', border: '1px solid', borderColor: 'divider', borderRadius: 3, boxShadow: '0 1px 3px rgba(9,9,11,0.08)', textAlign: 'center', py: 4, px: 3 }}>
           <Typography variant="h6" color="error" sx={{ mb: 2 }}>
             Error al cargar las mesas
           </Typography>
@@ -321,7 +321,7 @@ export default function TableSelector({ mesaOcupadaAlert = null, onDismissMesaOc
           </Box>
         </Box>
       ) : (
-        <Box className="premium-panel" sx={{ textAlign: 'center', py: 4, px: 3 }}>
+        <Box sx={{ bgcolor: 'background.paper', border: '1px solid', borderColor: 'divider', borderRadius: 3, boxShadow: '0 1px 3px rgba(9,9,11,0.08)', textAlign: 'center', py: 4, px: 3 }}>
           <Typography variant="h6" color="text.secondary" sx={{ mb: 2 }}>
             No hay mesas configuradas
           </Typography>

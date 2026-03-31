@@ -2705,15 +2705,13 @@ export default function Mostrador() {
           width: '100%',
           minHeight: '100vh',
           boxSizing: 'border-box',
-          background:
-            'linear-gradient(180deg, #fafaf9 0%, #f5f5f4 100%)',
+          background: '#fafafa',
           '& *': { boxSizing: 'border-box' },
         }}
       >
       {/* Encabezado */}
       <Box
-        className="premium-panel"
-        sx={{ display: 'flex', flexDirection: { xs: 'column', sm: 'row' }, alignItems: { xs: 'stretch', sm: 'center' }, gap: 2, flexWrap: 'wrap', mb: 2, p: 2.5 }}
+        sx={{ display: 'flex', flexDirection: { xs: 'column', sm: 'row' }, alignItems: { xs: 'stretch', sm: 'center' }, gap: 2, flexWrap: 'wrap', mb: 2, p: 2.5, bgcolor: 'background.paper', borderRadius: 3, border: '1px solid #e4e4e7', boxShadow: '0 1px 2px rgba(9,9,11,0.05)' }}
       >
         <Box sx={{ flexGrow: 1, minWidth: 0 }}>
           <Typography
@@ -2738,7 +2736,7 @@ export default function Mostrador() {
                 height: 4,
                 borderRadius: 999,
               backgroundColor: theme.palette.secondary.main,
-              boxShadow: '0 8px 16px rgba(46,34,18,0.12)',
+              boxShadow: '0 8px 16px rgba(9,9,11,0.12)',
               })}
             />
           </Box>

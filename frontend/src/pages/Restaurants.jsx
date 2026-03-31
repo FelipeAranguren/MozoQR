@@ -14,6 +14,7 @@ import StarIcon from '@mui/icons-material/Star';
 import AccessTimeIcon from '@mui/icons-material/AccessTime';
 import { api } from '../api';
 import { getStrapiPublicBase } from '../utils/strapiPublicBase';
+import { COLORS } from '../theme';
 
 export default function Restaurants() {
   const [rests, setRests] = useState([]);
@@ -67,10 +68,18 @@ export default function Restaurants() {
   }
 
   return (
-    <Box sx={{ py: { xs: 4, sm: 6 } }}>
+    <Box sx={{ py: { xs: 4, sm: 6 }, bgcolor: 'background.default' }}>
     <Container maxWidth="md">
-      <Box className="premium-panel" sx={{ p: { xs: 3, sm: 4 }, mb: 4, textAlign: 'center' }}>
-        <Typography className="premium-kicker" sx={{ mb: 1 }}>Explorar</Typography>
+      <Box sx={{
+        p: { xs: 3, sm: 4 },
+        mb: 4,
+        textAlign: 'center',
+        bgcolor: 'background.paper',
+        borderRadius: 3,
+        border: `1px solid ${COLORS.border}`,
+        boxShadow: COLORS.shadow1,
+      }}>
+        <Typography variant="overline" sx={{ mb: 1, color: COLORS.textSecondary, display: 'block' }}>Explorar</Typography>
         <Typography variant="h2" align="center" gutterBottom>
           ¿Qué te apetece hoy?
         </Typography>
@@ -85,11 +94,10 @@ export default function Restaurants() {
             key={restaurant.id}
             sx={{
               p: 0,
-              borderRadius: 5,
               overflow: 'hidden',
               transition: 'transform 0.25s ease, box-shadow 0.25s ease',
               '&:hover': {
-                boxShadow: '0 22px 40px rgba(46,34,18,0.1)',
+                boxShadow: '0 8px 24px rgba(9,9,11,0.10)',
                 transform: 'translateY(-4px)',
               },
             }}
@@ -98,7 +106,7 @@ export default function Restaurants() {
               <img
                 src={restaurant.logo}
                 alt={restaurant.name}
-                style={{ width: 92, height: 92, borderRadius: 20, objectFit: 'cover', background: '#f8f4ec' }}
+                style={{ width: 92, height: 92, borderRadius: 16, objectFit: 'cover', background: COLORS.bgAlt }}
               />
 
               <Box sx={{ flex: 1, position: 'relative' }}>
@@ -117,15 +125,15 @@ export default function Restaurants() {
                       display: 'flex',
                       alignItems: 'center',
                       gap: 0.5,
-                      backgroundColor: 'rgba(35,122,87,0.12)',
+                      bgcolor: COLORS.successBg,
                       px: 1,
                       borderRadius: 999,
                       height: 28,
-                      border: '1px solid rgba(35,122,87,0.18)',
+                      border: `1px solid rgba(22,163,74,0.18)`,
                     }}
                   >
-                    <StarIcon fontSize="small" sx={{ color: 'success.main' }} />
-                    <Typography variant="caption" sx={{ color: 'success.dark' }}>
+                    <StarIcon fontSize="small" sx={{ color: COLORS.success }} />
+                    <Typography variant="caption" sx={{ color: COLORS.success, fontWeight: 600 }}>
                       {restaurant.rating}
                     </Typography>
                   </Box>
@@ -153,7 +161,15 @@ export default function Restaurants() {
         ))}
       </Box>
 
-      <Box className="premium-panel-soft" sx={{ textAlign: 'center', mt: 5, p: 3 }}>
+      <Box sx={{
+        textAlign: 'center',
+        mt: 5,
+        p: 3,
+        bgcolor: 'background.paper',
+        borderRadius: 3,
+        border: `1px solid ${COLORS.border}`,
+        boxShadow: COLORS.shadow1,
+      }}>
         <Typography variant="body2" color="text.secondary" gutterBottom>
           ¿No encuentras tu restaurante favorito?
         </Typography>

@@ -1,8 +1,6 @@
-// Página de retorno de Mercado Pago cuando el pago fue aprobado (auto_return: 'approved').
-// back_urls.success apunta aquí. MP envía por query: payment_id, status, preference_id, external_reference, etc.
 import React, { useEffect, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
-import { Box, CircularProgress, Typography } from "@mui/material";
+import { Box, CircularProgress } from "@mui/material";
 import CheckCircleOutlineIcon from "@mui/icons-material/CheckCircleOutline";
 import ScheduleIcon from "@mui/icons-material/Schedule";
 import { LAST_RECEIPT_KEY } from "../utils/receipt";
@@ -62,18 +60,18 @@ export default function PaymentSuccess() {
       window.location.assign(target);
     }, 250);
   };
-  // MP también puede enviar payment_id, collection_id, preference_id, external_reference por query
 
   return (
     <StatusPage
+      variant={isPending ? "warning" : "success"}
       kicker="Mercado Pago"
       icon={
         !done ? (
-          <CircularProgress size={56} />
+          <CircularProgress size={48} sx={{ color: isPending ? '#d97706' : '#16a34a' }} />
         ) : isPending ? (
-          <ScheduleIcon sx={{ fontSize: 72, color: "warning.main" }} />
+          <ScheduleIcon sx={{ fontSize: 56, color: '#d97706' }} />
         ) : (
-          <CheckCircleOutlineIcon sx={{ fontSize: 72, color: "success.main" }} />
+          <CheckCircleOutlineIcon sx={{ fontSize: 56, color: '#16a34a' }} />
         )}
       title={isPending ? "Pago pendiente" : "Pago acreditado"}
       description={message}

@@ -67,6 +67,7 @@ import { useRestaurantes } from '../hooks/useRestaurantes';
 import { getAllOwnerComments } from '../api/comments';
 import axios from 'axios';
 import { motion, AnimatePresence } from 'framer-motion';
+import { COLORS } from '../theme';
 
 const API_URL = import.meta.env?.VITE_API_URL || 'http://localhost:1337/api';
 
@@ -83,7 +84,6 @@ const formatCurrency = (amount) => {
   return new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS', maximumFractionDigits: 0 }).format(amount);
 };
 
-// Componente para badge de salud
 function HealthBadge({ status }) {
   let color = 'default';
   let label = 'Desconocido';
@@ -121,24 +121,23 @@ function HealthBadge({ status }) {
   );
 }
 
-// Componente Tarjeta KPI
 function StatCard({ title, value, subtitle, icon, color }) {
   return (
     <motion.div whileHover={{ y: -5 }} transition={{ type: "spring", stiffness: 300 }}>
-      <Card sx={{ height: '100%', position: 'relative', overflow: 'hidden', boxShadow: 3 }}>
-        <Box sx={{ position: 'absolute', top: -10, right: -10, opacity: 0.1, transform: 'scale(2.5)', color }}>
+      <Card sx={{ height: '100%', position: 'relative', overflow: 'hidden', border: `1px solid ${COLORS.border}`, boxShadow: COLORS.shadow2 }}>
+        <Box sx={{ position: 'absolute', top: -10, right: -10, opacity: 0.08, transform: 'scale(2.5)', color }}>
           {icon}
         </Box>
         <CardContent>
           <Box sx={{ display: 'flex', alignItems: 'center', mb: 1 }}>
-            <Box sx={{ p: 1, borderRadius: 2, bgcolor: `${color}20`, color: color, mr: 2, display: 'flex' }}>
+            <Box sx={{ p: 1, borderRadius: 2, bgcolor: `${color}14`, color: color, mr: 2, display: 'flex' }}>
               {icon}
             </Box>
             <Typography variant="body2" color="text.secondary" fontWeight={600}>
               {title}
             </Typography>
           </Box>
-          <Typography variant="h4" fontWeight={800} sx={{ mb: 0.5, color: '#1e293b' }}>
+          <Typography variant="h4" fontWeight={800} sx={{ mb: 0.5, color: COLORS.text }}>
             {value}
           </Typography>
           <Typography variant="caption" color="text.secondary">
@@ -150,9 +149,7 @@ function StatCard({ title, value, subtitle, icon, color }) {
   );
 }
 
-// Chart de Ingresos Simple (SVG)
 function RevenueChart({ data }) {
-  // data = [{ date: 'Jan', amount: 1000 }, ...]
   if (!data || data.length === 0) return <Typography variant="caption">Sin datos suficientes</Typography>;
 
   const height = 100;
@@ -169,12 +166,12 @@ function RevenueChart({ data }) {
       <svg width="100%" height="100%" viewBox={`0 0 ${width} ${height}`} preserveAspectRatio="none">
         <defs>
           <linearGradient id="grad" x1="0%" y1="0%" x2="0%" y2="100%">
-            <stop offset="0%" style={{ stopColor: '#10b981', stopOpacity: 0.4 }} />
-            <stop offset="100%" style={{ stopColor: '#10b981', stopOpacity: 0 }} />
+            <stop offset="0%" style={{ stopColor: COLORS.success, stopOpacity: 0.4 }} />
+            <stop offset="100%" style={{ stopColor: COLORS.success, stopOpacity: 0 }} />
           </linearGradient>
         </defs>
         <path d={`M0,${height} ${points} L${width},${height} Z`} fill="url(#grad)" />
-        <path d={`M0,${height} ${points}`} fill="none" stroke="#10b981" strokeWidth="3" strokeLinecap="round" />
+        <path d={`M0,${height} ${points}`} fill="none" stroke={COLORS.success} strokeWidth="3" strokeLinecap="round" />
       </svg>
     </Box>
   );
@@ -182,7 +179,6 @@ function RevenueChart({ data }) {
 
 // --- DIÁLOGOS ---
 
-// 1. Dialog Crear/Editar Restaurante
 function RestaurantDialog({ open, onClose, restaurant, onSave }) {
   const [formData, setFormData] = useState({
     name: '',
@@ -265,7 +261,6 @@ function RestaurantDialog({ open, onClose, restaurant, onSave }) {
           variant="contained"
           onClick={() => onSave(formData)}
           startIcon={<SaveIcon />}
-          sx={{ bgcolor: '#0f172a', '&:hover': { bgcolor: '#1e293b' } }}
         >
           Guardar Cambios
         </Button>
@@ -274,7 +269,6 @@ function RestaurantDialog({ open, onClose, restaurant, onSave }) {
   );
 }
 
-// 2. Dialog Registrar Pago / Suscripción
 function SubscriptionDialog({ open, onClose, restaurantes, initialRestaurantId, onSave }) {
   const [formData, setFormData] = useState({
     restaurante: initialRestaurantId || '',
@@ -293,7 +287,6 @@ function SubscriptionDialog({ open, onClose, restaurantes, initialRestaurantId, 
   const handleChange = (e) => {
     setFormData({ ...formData, [e.target.name]: e.target.value });
 
-    // Auto-set amount logic
     if (e.target.name === 'plan') {
       let amount = 0;
       if (e.target.value === 'pro') amount = 29900;
@@ -383,26 +376,21 @@ export default function AdminDashboard() {
   const { restaurantes, loading, error, refetch } = useRestaurantes();
   const [activeTab, setActiveTab] = useState(0);
 
-  // Estados para CRUD Restaurantes
   const [openRestDialog, setOpenRestDialog] = useState(false);
   const [editingRestaurant, setEditingRestaurant] = useState(null);
 
-  // Estados para Suscripciones
   const [openSubDialog, setOpenSubDialog] = useState(false);
   const [selectedRestForSub, setSelectedRestForSub] = useState(null);
 
-  // Menú de Acciones
   const [anchorEl, setAnchorEl] = useState(null);
   const [menuTargetRestaurant, setMenuTargetRestaurant] = useState(null);
   const openMenu = Boolean(anchorEl);
 
-  // Paginación
   const [page, setPage] = useState(0);
   const [rowsPerPage, setRowsPerPage] = useState(10);
 
   // --- DERIVED DATA ---
 
-  // 1. All Transactions (Flattened History)
   const billingHistory = useMemo(() => {
     if (!restaurantes) return [];
     const history = restaurantes.flatMap(r =>
@@ -413,23 +401,19 @@ export default function AdminDashboard() {
         ownerEmail: r.owner_email || 'N/A'
       }))
     );
-    // Sort by date desc
     return history.sort((a, b) => new Date(b.createdAt || b.startDate) - new Date(a.createdAt || a.startDate));
   }, [restaurantes]);
 
-  // 2. Revenue Data for Chart (Last 6 months)
   const revenueData = useMemo(() => {
     const months = {};
     billingHistory.forEach(tx => {
       const date = new Date(tx.createdAt || tx.startDate);
-      const key = `${date.getMonth() + 1}/${date.getFullYear()}`; // e.g., 12/2025
+      const key = `${date.getMonth() + 1}/${date.getFullYear()}`;
       months[key] = (months[key] || 0) + Number(tx.amount || 0);
     });
-    // Convert to array
-    return Object.entries(months).map(([date, amount]) => ({ date, amount })).reverse().slice(0, 6).reverse(); // Dummy logic for order
+    return Object.entries(months).map(([date, amount]) => ({ date, amount })).reverse().slice(0, 6).reverse();
   }, [billingHistory]);
 
-  // 3. KPIs
   const kpis = useMemo(() => {
     if (!restaurantes) return { total: 0, mrr: 0, active: 0, users: 0 };
     let mrr = 0;
@@ -438,12 +422,10 @@ export default function AdminDashboard() {
     let usersCount = 0;
 
     restaurantes.forEach(r => {
-      // MRR: Active subscription amount
       const activeSub = r.subscriptions?.find(s => s.status === 'active');
       if (activeSub) {
         mrr += Number(activeSub.amount || 0);
       } else {
-        // Fallback checks
         if (r.suscripcion === 'pro') mrr += 29900;
         if (r.suscripcion === 'ultra') mrr += 59900;
       }
@@ -478,10 +460,8 @@ export default function AdminDashboard() {
       const headers = { Authorization: `Bearer ${token}` };
 
       if (editingRestaurant) {
-        // Update
         await axios.put(`${API_URL}/restaurantes/${editingRestaurant.id}`, { data }, { headers });
       } else {
-        // Create
         await axios.post(`${API_URL}/restaurantes`, { data }, { headers });
       }
       setOpenRestDialog(false);
@@ -508,13 +488,11 @@ export default function AdminDashboard() {
     }
   };
 
-  // --- LOGICA CORE DE SINCRONIZACION ---
   const handleSaveSubscription = async (data) => {
     try {
       const token = localStorage.getItem('strapi_jwt') || localStorage.getItem('jwt');
       const headers = { Authorization: `Bearer ${token}` };
 
-      // 1. Crear el registro en 'subscriptions' (HISTORIAL)
       const payload = {
         data: {
           restaurante: data.restaurante,
@@ -527,7 +505,6 @@ export default function AdminDashboard() {
       };
       await axios.post(`${API_URL}/subscriptions`, payload, { headers });
 
-      // 2. ACTUALIZAR 'restaurante.suscripcion' (Sincronización Legacy)
       let legacyPlan = 'basic';
       if (['basic', 'pro', 'ultra'].includes(data.plan)) {
         legacyPlan = data.plan;
@@ -578,14 +555,25 @@ export default function AdminDashboard() {
       maxWidth="xl"
       sx={{
         py: 4,
-        bgcolor: 'transparent',
         minHeight: '100vh',
-        background: 'linear-gradient(180deg, #fafaf9 0%, #f5f5f4 100%)',
+        bgcolor: 'background.default',
       }}
     >
 
       {/* HEADER */}
-      <Box className="premium-panel" sx={{ mb: 4, display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 2, p: 3 }}>
+      <Box sx={{
+        mb: 4,
+        display: 'flex',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+        flexWrap: 'wrap',
+        gap: 2,
+        p: 3,
+        bgcolor: 'background.paper',
+        borderRadius: 3,
+        border: `1px solid ${COLORS.border}`,
+        boxShadow: COLORS.shadow1,
+      }}>
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
           <Button
             startIcon={<ArrowBackIcon />}
@@ -622,21 +610,21 @@ export default function AdminDashboard() {
       {/* KPIS */}
       <Grid container spacing={3} sx={{ mb: 4 }}>
         <Grid item xs={12} sm={6} md={3}>
-          <StatCard title="Flota Activa" value={kpis.total} subtitle="Restaurantes registrados" icon={<RestaurantIcon />} color="#3b82f6" />
+          <StatCard title="Flota Activa" value={kpis.total} subtitle="Restaurantes registrados" icon={<RestaurantIcon />} color={COLORS.secondary} />
         </Grid>
         <Grid item xs={12} sm={6} md={3}>
-          <StatCard title="MRR Mensual" value={`$${kpis.mrr}`} subtitle="Ingresos recurrentes" icon={<MoneyIcon />} color="#10b981" />
+          <StatCard title="MRR Mensual" value={`$${kpis.mrr}`} subtitle="Ingresos recurrentes" icon={<MoneyIcon />} color={COLORS.success} />
         </Grid>
         <Grid item xs={12} sm={6} md={3}>
-          <StatCard title="Salud de Flota" value={kpis.active} subtitle="Locales activos (7d)" icon={<CheckCircleIcon />} color="#f59e0b" />
+          <StatCard title="Salud de Flota" value={kpis.active} subtitle="Locales activos (7d)" icon={<CheckCircleIcon />} color={COLORS.warning} />
         </Grid>
         <Grid item xs={12} sm={6} md={3}>
-          <StatCard title="Usuarios" value={kpis.users} subtitle="Miembros de equipo" icon={<PeopleIcon />} color="#8b5cf6" />
+          <StatCard title="Usuarios" value={kpis.users} subtitle="Miembros de equipo" icon={<PeopleIcon />} color={COLORS.info} />
         </Grid>
       </Grid>
 
       {/* Main Content Area */}
-      <Card sx={{ mb: 3, borderRadius: 3, boxShadow: '0 1px 3px 0 rgb(0 0 0 / 0.1), 0 1px 2px -1px rgb(0 0 0 / 0.1)', overflow: 'visible' }}>
+      <Card sx={{ mb: 3, borderRadius: 3, border: `1px solid ${COLORS.border}`, boxShadow: COLORS.shadow2, overflow: 'visible' }}>
         <Tabs
           value={activeTab}
           onChange={(e, v) => setActiveTab(v)}
@@ -654,7 +642,7 @@ export default function AdminDashboard() {
           <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.3 }}>
             <TableContainer>
               <Table>
-                <TableHead sx={{ bgcolor: '#f1f5f9' }}>
+                <TableHead sx={{ bgcolor: COLORS.bgAlt }}>
                   <TableRow>
                     <TableCell sx={{ fontWeight: 700 }}>Restaurante</TableCell>
                     <TableCell sx={{ fontWeight: 700 }}>Dueño / Contacto</TableCell>
@@ -674,11 +662,11 @@ export default function AdminDashboard() {
                         <TableRow key={r.id} hover sx={{ '&:last-child td, &:last-child th': { border: 0 } }}>
                           <TableCell>
                             <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
-                              <Avatar src={r.logo} sx={{ width: 44, height: 44, bgcolor: '#cbd5e1', fontSize: '1rem' }}>{r.name?.[0]}</Avatar>
+                              <Avatar src={r.logo} sx={{ width: 44, height: 44, bgcolor: COLORS.bgAlt, fontSize: '1rem' }}>{r.name?.[0]}</Avatar>
                               <Box>
-                                <Typography fontWeight={700} variant="body2" sx={{ color: '#0f172a' }}>{r.name}</Typography>
+                                <Typography fontWeight={700} variant="body2" sx={{ color: COLORS.text }}>{r.name}</Typography>
                                 <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
-                                  <Typography variant="caption" sx={{ fontFamily: 'monospace', bgcolor: '#e2e8f0', px: 0.5, borderRadius: 0.5, color: '#64748b' }}>
+                                  <Typography variant="caption" sx={{ fontFamily: 'monospace', bgcolor: COLORS.bgAlt, px: 0.5, borderRadius: 0.5, color: COLORS.textSecondary }}>
                                     {r.slug}
                                   </Typography>
                                   {r.is_demo && <Chip label="DEMO" size="small" color="info" sx={{ height: 16, fontSize: '0.6rem' }} />}
@@ -687,7 +675,7 @@ export default function AdminDashboard() {
                             </Box>
                           </TableCell>
                           <TableCell>
-                            <Typography variant="body2" fontWeight={500} sx={{ color: '#334155' }}>{r.owner_email || '—'}</Typography>
+                            <Typography variant="body2" fontWeight={500} sx={{ color: COLORS.textSecondary }}>{r.owner_email || '—'}</Typography>
                             <Typography variant="caption" color="text.secondary">{(r.restaurant_members || 0) + ' miembros'}</Typography>
                           </TableCell>
                           <TableCell>
@@ -708,7 +696,7 @@ export default function AdminDashboard() {
                             </Typography>
                           </TableCell>
                           <TableCell align="right">
-                            <IconButton onClick={(e) => handleMenuClick(e, r)} size="small" sx={{ color: '#94a3b8' }}>
+                            <IconButton onClick={(e) => handleMenuClick(e, r)} size="small" sx={{ color: COLORS.textMuted }}>
                               <MoreVertIcon />
                             </IconButton>
                           </TableCell>
@@ -744,7 +732,7 @@ export default function AdminDashboard() {
                   <RevenueChart data={revenueData} />
                 </Grid>
                 <Grid item xs={12} md={4}>
-                  <Card variant="outlined" sx={{ height: '100%', bgcolor: '#f8fafc', borderStyle: 'dashed' }}>
+                  <Card variant="outlined" sx={{ height: '100%', bgcolor: COLORS.bgAlt, borderStyle: 'dashed' }}>
                     <CardContent sx={{ display: 'flex', flexDirection: 'column', height: '100%', justifyContent: 'center', alignItems: 'center', textAlign: 'center' }}>
                       <Button
                         variant="contained"
@@ -774,7 +762,7 @@ export default function AdminDashboard() {
 
               <TableContainer component={Paper} variant="outlined">
                 <Table size="small">
-                  <TableHead sx={{ bgcolor: '#f8fafc' }}>
+                  <TableHead sx={{ bgcolor: COLORS.bgAlt }}>
                     <TableRow>
                       <TableCell sx={{ fontWeight: 700 }}>Fecha</TableCell>
                       <TableCell sx={{ fontWeight: 700 }}>Restaurante</TableCell>
@@ -797,7 +785,7 @@ export default function AdminDashboard() {
                           <TableCell>
                             Plan {tx.plan?.toUpperCase()}
                           </TableCell>
-                          <TableCell sx={{ fontWeight: 700, color: '#0f172a' }}>
+                          <TableCell sx={{ fontWeight: 700, color: COLORS.text }}>
                             {formatCurrency(tx.amount)}
                           </TableCell>
                           <TableCell>
@@ -817,17 +805,17 @@ export default function AdminDashboard() {
         {activeTab === 2 && <CommentsList />}
       </Card>
 
-      {/* MENÚ DE ACCIONES RÁPIDAS (Igual que antes) */}
+      {/* MENÚ DE ACCIONES RÁPIDAS */}
       <Menu
         anchorEl={anchorEl}
         open={openMenu}
         onClose={handleMenuClose}
-        PaperProps={{ elevation: 4, sx: { minWidth: 220, borderRadius: 2, mt: 1 } }}
+        PaperProps={{ elevation: 0, sx: { minWidth: 220, borderRadius: 2, mt: 1, border: `1px solid ${COLORS.border}`, boxShadow: COLORS.shadow4 } }}
         transformOrigin={{ horizontal: 'right', vertical: 'top' }}
         anchorOrigin={{ horizontal: 'right', vertical: 'bottom' }}
       >
         <MenuItem onClick={() => handleImpersonate(menuTargetRestaurant)}>
-          <ListItemIcon><LoginIcon fontSize="small" sx={{ color: '#3b82f6' }} /></ListItemIcon>
+          <ListItemIcon><LoginIcon fontSize="small" sx={{ color: COLORS.secondary }} /></ListItemIcon>
           <ListItemText primary="Entrar como dueño" primaryTypographyProps={{ fontWeight: 500 }} />
         </MenuItem>
         <Divider />
@@ -836,7 +824,7 @@ export default function AdminDashboard() {
           setOpenSubDialog(true);
           handleMenuClose();
         }}>
-          <ListItemIcon><ReceiptIcon fontSize="small" sx={{ color: '#10b981' }} /></ListItemIcon>
+          <ListItemIcon><ReceiptIcon fontSize="small" sx={{ color: COLORS.success }} /></ListItemIcon>
           <ListItemText primary="Registrar Cobro" secondary="Sincroniza plan" />
         </MenuItem>
         <MenuItem onClick={() => {
@@ -881,7 +869,7 @@ function CommentsList() {
     <Box>
       {comments.length === 0 ? <Box p={3}><Typography color="text.secondary">No hay comentarios aún.</Typography></Box> :
         comments.map(c => (
-          <Box key={c.id} sx={{ p: 2, borderBottom: '1px solid #f1f5f9', bgcolor: 'white', '&:hover': { bgcolor: '#f8fafc' } }}>
+          <Box key={c.id} sx={{ p: 2, borderBottom: `1px solid ${COLORS.border}`, bgcolor: 'background.paper', '&:hover': { bgcolor: COLORS.bgAlt } }}>
             <Box display="flex" justifyContent="space-between" mb={1}>
               <Typography variant="subtitle2" fontWeight={700}>{c.restaurantName}</Typography>
               <Typography variant="caption" color="text.secondary">{formatDate(c.createdAt)}</Typography>

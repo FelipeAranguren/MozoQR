@@ -1,4 +1,3 @@
-// frontend/src/layouts/OwnerLayout.jsx
 import React, { useState } from 'react';
 import { Outlet, useParams } from 'react-router-dom';
 import { Box, Drawer, Toolbar, useMediaQuery, useTheme } from '@mui/material';
@@ -21,8 +20,7 @@ export default function OwnerLayout() {
       sx={{
         display: 'flex',
         minHeight: '100vh',
-        background:
-          'linear-gradient(180deg, #fafaf9 0%, #f5f5f4 100%)',
+        bgcolor: 'background.default',
       }}
     >
       <OwnerHeader slug={slug} onMenuClick={isMobile ? handleDrawerToggle : undefined} />
@@ -36,11 +34,12 @@ export default function OwnerLayout() {
           '& .MuiDrawer-paper': {
             width: isMobile ? DRAWER_WIDTH_MOBILE : DRAWER_WIDTH,
             boxSizing: 'border-box',
-            borderRight: 1,
+            borderRight: '1px solid',
             borderColor: 'divider',
             top: { xs: 56, sm: 64 },
             height: { xs: 'calc(100vh - 56px)', sm: 'calc(100vh - 64px)' },
             px: 1,
+            bgcolor: 'background.paper',
           },
         }}
       >
@@ -54,7 +53,7 @@ export default function OwnerLayout() {
           p: { xs: 2, sm: 2.5, md: 3 },
           width: { xs: '100%', md: `calc(100% - ${DRAWER_WIDTH}px)` },
           minHeight: '100vh',
-          bgcolor: 'transparent',
+          bgcolor: 'background.default',
           overflowX: 'hidden',
         }}
       >

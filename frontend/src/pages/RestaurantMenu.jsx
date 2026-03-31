@@ -864,25 +864,9 @@ export default function RestaurantMenu() {
         width: '100%',
         position: 'relative',
         minHeight: '100vh',
-        background: (theme) =>
-          theme.palette.mode === 'light'
-            ? 'radial-gradient(circle at top left, #e0f2f1 0, #f9fafb 40%, #ffffff 100%)'
-            : 'radial-gradient(circle at top left, #0f172a 0, #020617 55%, #000000 100%)',
+        bgcolor: 'background.default',
       }}
     >
-      <Box
-        sx={(theme) => ({
-          position: 'absolute',
-          inset: 0,
-          pointerEvents: 'none',
-          backgroundImage:
-            theme.palette.mode === 'light'
-              ? 'radial-gradient(circle at 10% 20%, rgba(0,150,136,0.12) 0, transparent 40%), radial-gradient(circle at 90% 10%, rgba(255,159,64,0.12) 0, transparent 45%)'
-              : 'radial-gradient(circle at 10% 20%, rgba(34,197,94,0.12) 0, transparent 40%), radial-gradient(circle at 90% 10%, rgba(56,189,248,0.16) 0, transparent 45%)',
-          opacity: 0.9,
-        })}
-      />
-
       <Container
         component="main"
         maxWidth="sm"
@@ -896,16 +880,17 @@ export default function RestaurantMenu() {
       >
         {/* Header */}
         <Box
-          sx={(theme) => ({
+          sx={{
             mb: 2.5,
             p: { xs: 3, sm: 4 },
-            background: 'rgba(255,253,249,0.84)',
-            border: '1px solid rgba(199,184,161,0.5)',
-            borderRadius: '28px',
-            boxShadow: '0 20px 44px rgba(46,34,18,0.08)',
+            bgcolor: 'background.paper',
+            border: '1px solid',
+            borderColor: 'divider',
+            borderRadius: 3,
+            boxShadow: '0 1px 3px rgba(9,9,11,0.08)',
             position: 'relative',
             overflow: 'visible',
-          })}
+          }}
         >
           <Box sx={{ position: 'relative', textAlign: 'left' }}>
             <Typography
@@ -999,19 +984,15 @@ export default function RestaurantMenu() {
             sx={{
               '& .MuiOutlinedInput-root': {
                 borderRadius: 999,
-                backgroundColor: (theme) =>
-                  theme.palette.mode === 'light'
-                    ? 'rgba(255,255,255,0.9)'
-                    : 'rgba(15,23,42,0.95)',
-                boxShadow: '0 16px 32px rgba(46,34,18,0.08)',
+                backgroundColor: 'background.paper',
                 '& fieldset': {
-                  borderColor: (theme) => alpha(theme.palette.primary.main, 0.22),
+                  borderColor: 'divider',
                 },
                 '&:hover fieldset': {
-                  borderColor: (theme) => alpha(theme.palette.primary.main, 0.5),
+                  borderColor: 'text.secondary',
                 },
                 '&.Mui-focused fieldset': {
-                  borderColor: (theme) => alpha(theme.palette.primary.main, 0.8),
+                  borderColor: 'primary.main',
                 },
               },
             }}
@@ -1033,7 +1014,7 @@ export default function RestaurantMenu() {
                 height: 6,
               },
               '&::-webkit-scrollbar-thumb': {
-                backgroundColor: 'rgba(15,118,110,0.35)',
+                backgroundColor: 'rgba(161,161,170,0.35)',
                 borderRadius: 999,
               },
             }}
@@ -1050,15 +1031,12 @@ export default function RestaurantMenu() {
               color={categoriaSeleccionada === null ? 'primary' : 'default'}
               sx={{
                 bgcolor:
-                  categoriaSeleccionada === null ? 'primary.main' : 'rgba(255,255,255,0.9)',
+                  categoriaSeleccionada === null ? 'primary.main' : 'background.paper',
                 color: categoriaSeleccionada === null ? 'white' : 'text.primary',
                 fontWeight: categoriaSeleccionada === null ? 700 : 500,
                 borderRadius: 999,
                 px: 1.5,
-                boxShadow:
-                  categoriaSeleccionada === null
-                    ? '0 10px 25px rgba(15,118,110,0.4)'
-                    : 'none',
+                boxShadow: 'none',
               }}
             />
             {categorias.map((cat) => (
@@ -1084,7 +1062,7 @@ export default function RestaurantMenu() {
                   bgcolor:
                     categoriaSeleccionada === (cat.id ?? cat.documentId)
                       ? 'primary.main'
-                      : 'rgba(255,255,255,0.9)',
+                      : 'background.paper',
                   color:
                     categoriaSeleccionada === (cat.id ?? cat.documentId)
                       ? 'white'
@@ -1093,6 +1071,7 @@ export default function RestaurantMenu() {
                     categoriaSeleccionada === (cat.id ?? cat.documentId) ? 700 : 500,
                   borderRadius: 999,
                   px: 1.5,
+                  boxShadow: 'none',
                 }}
               />
             ))}

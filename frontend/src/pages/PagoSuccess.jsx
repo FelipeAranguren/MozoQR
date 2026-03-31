@@ -29,16 +29,12 @@ export default function PagoSuccess() {
   };
 
   const getReturnSlug = () => {
-    // 1) Ruta canónica /:slug/pago-success (fuente de verdad tras volver de MP)
     const fromPath = normalizeSlug(slugFromRoute);
     if (fromPath) return fromPath;
-    // 2) Query legacy ?slug=
     const fromQuery = normalizeSlug(searchParams.get("slug"));
     if (fromQuery) return fromQuery;
-    // 3) Recibo de esta sesión (sin prioridad sobre URL)
     const fromReceipt = normalizeSlug(receiptData?.slug);
     if (fromReceipt) return fromReceipt;
-    // 4) Último recibo en storage (solo si no hay URL; evita mezclar restaurantes)
     try {
       const saved = localStorage.getItem(LAST_RECEIPT_KEY);
       if (saved) {
@@ -66,7 +62,7 @@ export default function PagoSuccess() {
       try {
         const q = new URLSearchParams(window.location.search);
         const preference_id = q.get("preference_id");
-        const payment_id    = q.get("payment_id"); // puede venir si usás auto_return
+        const payment_id    = q.get("payment_id");
         const url = new URL(`${API_BASE}/api/payments/confirm`);
         if (preference_id) url.searchParams.set("preference_id", preference_id);
         if (payment_id)    url.searchParams.set("payment_id", payment_id);
@@ -91,7 +87,6 @@ export default function PagoSuccess() {
 
   const handleSeguirOrdenando = () => {
     const target = slug ? `/${encodeURIComponent(slug)}/menu` : "/";
-    // Doble navegación: SPA inmediata + fallback hard reload.
     navigate(target, { replace: true });
     window.setTimeout(() => {
       window.location.assign(target);
@@ -100,7 +95,6 @@ export default function PagoSuccess() {
 
   const handleVolverInicio = () => {
     const target = slug ? `/${encodeURIComponent(slug)}/menu` : "/";
-    // Doble navegación para evitar quedar en pantalla en blanco intermitente.
     navigate(target, { replace: true });
     window.setTimeout(() => {
       window.location.assign(target);
@@ -109,8 +103,9 @@ export default function PagoSuccess() {
 
   return (
     <StatusPage
+      variant="success"
       kicker="Pago"
-      icon={<CheckCircleIcon sx={{ fontSize: 72, color: "success.main" }} />}
+      icon={<CheckCircleIcon sx={{ fontSize: 56, color: '#16a34a' }} />}
       title="Pago confirmado"
       description={msg}
       primaryAction={slug ? { label: "Seguir ordenando", onClick: handleSeguirOrdenando } : null}
@@ -123,12 +118,22 @@ export default function PagoSuccess() {
           fullWidth
           startIcon={<ReceiptIcon />}
           onClick={handleShowReceipt}
-          sx={{ mt: 1, mb: 1, maxWidth: 420 }}
+          sx={{
+            mt: 1,
+            mb: 1,
+            maxWidth: 380,
+            borderRadius: '8px',
+            textTransform: 'none',
+            fontWeight: 600,
+            py: 1.25,
+            bgcolor: '#16a34a',
+            '&:hover': { bgcolor: '#16a34a', filter: 'brightness(0.9)' },
+          }}
         >
           Ver / Imprimir recibo
         </Button>
       ) : (
-        <Typography variant="body2" color="text.secondary">
+        <Typography variant="body2" sx={{ color: '#52525b' }}>
           Estamos cerrando el pago y sincronizando el pedido con el sistema.
         </Typography>
       )}

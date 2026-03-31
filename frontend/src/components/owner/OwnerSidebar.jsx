@@ -1,4 +1,3 @@
-// frontend/src/components/owner/OwnerSidebar.jsx
 import React from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import {
@@ -86,14 +85,21 @@ export default function OwnerSidebar({ slug, onNavigate }) {
   };
 
   return (
-    <Box sx={{ width: '100%', height: '100%', bgcolor: 'transparent', py: 1 }}>
+    <Box
+      sx={{
+        width: '100%',
+        height: '100%',
+        bgcolor: 'background.paper',
+        borderRight: '1px solid',
+        borderColor: 'divider',
+        py: 1,
+      }}
+    >
       <Box
         sx={{
           p: 2.25,
-          borderBottom: 1,
+          borderBottom: '1px solid',
           borderColor: 'divider',
-          borderRadius: 4,
-          bgcolor: 'rgba(255,253,249,0.74)',
           mb: 1.5,
         }}
       >
@@ -114,10 +120,10 @@ export default function OwnerSidebar({ slug, onNavigate }) {
               sx={{
                 py: 1.25,
                 '&.Mui-selected': {
-                  bgcolor: 'action.selected',
+                  bgcolor: (theme) => theme.palette.action.selected,
                   color: 'primary.main',
                   '&:hover': {
-                    bgcolor: 'action.hover',
+                    bgcolor: (theme) => theme.palette.action.hover,
                   },
                   '& .MuiListItemIcon-root': {
                     color: 'primary.main',
@@ -130,7 +136,7 @@ export default function OwnerSidebar({ slug, onNavigate }) {
             >
               <ListItemIcon
                 sx={{
-                  color: isActive(item.path) ? 'primary.contrastText' : 'text.secondary',
+                  color: isActive(item.path) ? 'primary.main' : 'text.secondary',
                 }}
               >
                 {item.icon}
@@ -147,7 +153,7 @@ export default function OwnerSidebar({ slug, onNavigate }) {
         <ListItemButton
           onClick={() => { window.open(`/${slug}/menu`, '_blank', 'noopener,noreferrer'); onNavigate?.(); }}
           sx={{
-            borderRadius: 3,
+            borderRadius: 1.5,
             mb: 1,
             py: 1.25,
             '&:hover': { bgcolor: 'action.hover' },
@@ -166,7 +172,7 @@ export default function OwnerSidebar({ slug, onNavigate }) {
         <ListItemButton
           onClick={() => { navigate(`/staff/${slug}/orders`); onNavigate?.(); }}
           sx={{
-            borderRadius: 3,
+            borderRadius: 1.5,
             mb: 1,
             py: 1.25,
             '&:hover': { bgcolor: 'action.hover' },
@@ -180,7 +186,7 @@ export default function OwnerSidebar({ slug, onNavigate }) {
         <ListItemButton
           onClick={() => { navigate('/owner'); onNavigate?.(); }}
           sx={{
-            borderRadius: 3,
+            borderRadius: 1.5,
             py: 1.25,
             '&:hover': { bgcolor: 'action.hover' },
           }}

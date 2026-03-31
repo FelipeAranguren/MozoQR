@@ -17,6 +17,7 @@ import {
 } from '@mui/material';
 import PrintIcon from '@mui/icons-material/Print';
 import DownloadIcon from '@mui/icons-material/Download';
+import { COLORS } from '../theme';
 
 const money = (n) => {
   const num = Number(n);
@@ -106,8 +107,8 @@ export default function ReceiptDialog({ open, onClose, receiptData }) {
               p: 3,
               border: '1px dashed',
               borderColor: 'divider',
-              borderRadius: 4,
-              bgcolor: 'rgba(255,253,249,0.88)',
+              borderRadius: 3,
+              bgcolor: 'background.paper',
             }}
           >
             {/* Encabezado - estilo ticket */}

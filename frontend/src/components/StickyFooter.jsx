@@ -2074,18 +2074,18 @@ export default function StickyFooter({ table, tableSessionId, restaurantName, se
                 <Button
                   fullWidth
                   variant="outlined"
-                  startIcon={payLoading ? <CircularProgress size={20} sx={{ color: '#2196F3' }} /> : <AttachMoneyIcon />}
+                  startIcon={payLoading ? <CircularProgress size={20} sx={{ color: 'info.main' }} /> : <AttachMoneyIcon />}
                   onClick={handlePayWithMercadoPago}
                   disabled={payLoading || !online}
                   sx={{
                     borderRadius: 2,
                     textTransform: 'none',
                     py: 1.5,
-                    color: '#2196F3',
-                    borderColor: '#2196F3',
+                    color: 'info.main',
+                    borderColor: 'info.main',
                     '&:hover': {
-                      bgcolor: alpha('#2196F3', 0.1),
-                      borderColor: '#0b7dda',
+                      bgcolor: alpha('#0284c7', 0.1),
+                      borderColor: '#0369a1',
                     },
                   }}
                 >
@@ -2105,12 +2105,12 @@ export default function StickyFooter({ table, tableSessionId, restaurantName, se
                   borderRadius: 2,
                   textTransform: 'none',
                   py: 1.5,
-                  bgcolor: payMethod === 'card' ? '#2196F3' : undefined,
-                  color: payMethod === 'card' ? 'white' : '#2196F3',
-                  borderColor: '#2196F3',
+                  bgcolor: payMethod === 'card' ? '#0284c7' : undefined,
+                  color: payMethod === 'card' ? 'white' : 'info.main',
+                  borderColor: 'info.main',
                   '&:hover': {
-                    bgcolor: payMethod === 'card' ? '#0b7dda' : alpha('#2196F3', 0.1),
-                    borderColor: '#0b7dda',
+                    bgcolor: payMethod === 'card' ? '#0369a1' : alpha('#0284c7', 0.1),
+                    borderColor: '#0369a1',
                   },
                 }}
               >
@@ -2125,12 +2125,12 @@ export default function StickyFooter({ table, tableSessionId, restaurantName, se
                   borderRadius: 2,
                   textTransform: 'none',
                   py: 1.5,
-                  bgcolor: payMethod === 'cash' ? '#4CAF50' : undefined,
-                  color: payMethod === 'cash' ? 'white' : '#4CAF50',
-                  borderColor: '#4CAF50',
+                  bgcolor: payMethod === 'cash' ? '#16a34a' : undefined,
+                  color: payMethod === 'cash' ? 'white' : '#16a34a',
+                  borderColor: '#16a34a',
                   '&:hover': {
-                    bgcolor: payMethod === 'cash' ? '#45a049' : alpha('#4CAF50', 0.1),
-                    borderColor: '#45a049',
+                    bgcolor: payMethod === 'cash' ? '#15803d' : alpha('#16a34a', 0.1),
+                    borderColor: '#15803d',
                   },
                 }}
               >

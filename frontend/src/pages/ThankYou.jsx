@@ -11,7 +11,7 @@ import StatusPage from '../components/ui/StatusPage';
 export default function ThankYou() {
     const [searchParams] = useSearchParams();
     const navigate = useNavigate();
-    const type = searchParams.get('type'); // 'online' | 'presencial'
+    const type = searchParams.get('type');
     const slug = searchParams.get('slug');
     const [receiptData, setReceiptData] = useState(null);
     const [receiptOpen, setReceiptOpen] = useState(false);
@@ -30,11 +30,12 @@ export default function ThankYou() {
 
     return (
         <StatusPage
+            variant={isOnline ? 'success' : 'warning'}
             kicker={isOnline ? 'Pago finalizado' : 'Atención al cliente'}
             icon={isOnline ? (
-                <CheckCircleIcon sx={{ fontSize: 80, color: 'success.main' }} />
+                <CheckCircleIcon sx={{ fontSize: 56, color: '#16a34a' }} />
             ) : (
-                <RoomServiceIcon sx={{ fontSize: 80, color: 'warning.main' }} />
+                <RoomServiceIcon sx={{ fontSize: 56, color: '#d97706' }} />
             )}
             title={isOnline ? 'Gracias por tu visita' : 'Mozo notificado'}
             description={isOnline
@@ -50,7 +51,16 @@ export default function ThankYou() {
                     fullWidth
                     startIcon={<ReceiptIcon />}
                     onClick={handleShowReceipt}
-                    sx={{ mb: 1, maxWidth: 420 }}
+                    sx={{
+                        mb: 1,
+                        maxWidth: 380,
+                        borderRadius: '8px',
+                        textTransform: 'none',
+                        fontWeight: 600,
+                        py: 1.25,
+                        bgcolor: '#16a34a',
+                        '&:hover': { bgcolor: '#16a34a', filter: 'brightness(0.9)' },
+                    }}
                 >
                     Ver / Imprimir recibo
                 </Button>

@@ -19,7 +19,7 @@ export default function PagoFailure() {
   const { slug: slugFromRoute } = useParams();
   const [searchParams] = useSearchParams();
   const orderId = searchParams.get("orderId");
-  const status = searchParams.get("status"); // failure/rejected
+  const status = searchParams.get("status");
   const [slugFromReceipt, setSlugFromReceipt] = useState(null);
 
   useEffect(() => {
@@ -34,15 +34,16 @@ export default function PagoFailure() {
 
   return (
     <StatusPage
+      variant="error"
       kicker="Pago"
-      icon={<ErrorOutlineIcon sx={{ fontSize: 72, color: "error.main" }} />}
+      icon={<ErrorOutlineIcon sx={{ fontSize: 56, color: '#dc2626' }} />}
       title="El pago fue rechazado"
       description="No se pudo completar el cobro. Puedes intentar nuevamente o resolverlo en el mostrador."
       primaryAction={slug ? { label: "Volver al menú", onClick: () => navigate(`/${slug}/menu`) } : null}
       secondaryAction={{ label: "Volver al inicio", onClick: () => navigate("/"), variant: slug ? "outlined" : "contained" }}
     >
       {orderId ? (
-        <Typography variant="body2" color="text.secondary">
+        <Typography variant="body2" sx={{ color: '#52525b' }}>
           Pedido: {orderId}
         </Typography>
       ) : null}
