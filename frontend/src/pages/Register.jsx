@@ -1,8 +1,6 @@
 import React, { useState, useEffect, useMemo } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import {
-  Container,
-  Paper,
   TextField,
   Button,
   Typography,
@@ -10,11 +8,12 @@ import {
   Alert,
   Link,
   Divider,
+  CircularProgress,
 } from "@mui/material";
-import { motion } from "framer-motion";
 import GoogleButton from "../components/GoogleButton";
 import { useAuth } from "../context/AuthContext";
 import { getSafeCallbackUrl, syncAuthReturnStorageFromLoginPage } from "../utils/authRedirect";
+import AuthCardShell from "../components/ui/AuthCardShell";
 
 export default function Register() {
   const navigate = useNavigate();
@@ -86,138 +85,105 @@ export default function Register() {
   };
 
   return (
-    <Box
-      sx={{
-        minHeight: "100vh",
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
-        background: "linear-gradient(to bottom right, #e0f2f1, #ffffff)",
-        py: 4,
-      }}
+    <AuthCardShell
+      eyebrow="Alta de cuenta"
+      title="Crea tu acceso"
+      description="Activa tu cuenta para administrar tu operación, menú y experiencia de pago desde un único panel."
     >
-      <Container maxWidth="sm">
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.5 }}
+      {error && (
+        <Alert severity="error" sx={{ mb: 3 }}>
+          {error}
+        </Alert>
+      )}
+
+      <Box component="form" onSubmit={handleSubmit} sx={{ mb: 3 }}>
+        <TextField
+          fullWidth
+          label="Email"
+          type="email"
+          value={email}
+          onChange={(e) => setEmail(e.target.value)}
+          margin="normal"
+          required
+          autoComplete="email"
+          disabled={loading}
+        />
+
+        <TextField
+          fullWidth
+          label="Contraseña"
+          type="password"
+          value={password}
+          onChange={(e) => setPassword(e.target.value)}
+          margin="normal"
+          required
+          autoComplete="new-password"
+          disabled={loading}
+          helperText="Mínimo 6 caracteres"
+        />
+
+        <TextField
+          fullWidth
+          label="Repetir contraseña"
+          type="password"
+          value={confirmPassword}
+          onChange={(e) => setConfirmPassword(e.target.value)}
+          margin="normal"
+          required
+          autoComplete="new-password"
+          disabled={loading}
+          error={confirmPassword !== "" && password !== confirmPassword}
+          helperText={
+            confirmPassword !== "" && password !== confirmPassword
+              ? "Las contraseñas no coinciden"
+              : ""
+          }
+        />
+
+        <Button
+          type="submit"
+          fullWidth
+          variant="contained"
+          size="large"
+          disabled={loading}
+          sx={{
+            mt: 3,
+            mb: 2,
+            py: 1.65,
+            fontSize: "1rem",
+          }}
         >
-          <Paper
-            elevation={3}
-            sx={{
-              p: 4,
-              borderRadius: 2,
+          {loading ? <CircularProgress size={20} color="inherit" /> : "Registrarse"}
+        </Button>
+      </Box>
+
+      <Divider sx={{ my: 3 }}>
+        <Typography variant="body2" color="text.secondary">
+          O continuá con
+        </Typography>
+      </Divider>
+
+      <Box sx={{ mb: 3 }}>
+        <GoogleButton mode="register" />
+      </Box>
+
+      <Box sx={{ mt: 3, textAlign: "center" }}>
+        <Typography variant="body2" color="text.secondary">
+          ¿Ya tienes una cuenta?{" "}
+          <Link
+            component="button"
+            variant="body2"
+            onClick={() => {
+              const cb = searchParams.get("callbackUrl");
+              navigate(cb ? `/login?callbackUrl=${encodeURIComponent(cb)}` : "/login");
             }}
+            sx={{ fontWeight: 700 }}
           >
-            <Typography
-              variant="h4"
-              component="h1"
-              gutterBottom
-              align="center"
-              fontWeight="bold"
-              sx={{ mb: 3 }}
-            >
-              Registrarse
-            </Typography>
-
-            {error && (
-              <Alert severity="error" sx={{ mb: 3 }}>
-                {error}
-              </Alert>
-            )}
-
-            <Box component="form" onSubmit={handleSubmit} sx={{ mb: 3 }}>
-              <TextField
-                fullWidth
-                label="Email"
-                type="email"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                margin="normal"
-                required
-                autoComplete="email"
-                disabled={loading}
-              />
-
-              <TextField
-                fullWidth
-                label="Contraseña"
-                type="password"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                margin="normal"
-                required
-                autoComplete="new-password"
-                disabled={loading}
-                helperText="Mínimo 6 caracteres"
-              />
-
-              <TextField
-                fullWidth
-                label="Repetir contraseña"
-                type="password"
-                value={confirmPassword}
-                onChange={(e) => setConfirmPassword(e.target.value)}
-                margin="normal"
-                required
-                autoComplete="new-password"
-                disabled={loading}
-                error={confirmPassword !== "" && password !== confirmPassword}
-                helperText={
-                  confirmPassword !== "" && password !== confirmPassword
-                    ? "Las contraseñas no coinciden"
-                    : ""
-                }
-              />
-
-              <Button
-                type="submit"
-                fullWidth
-                variant="contained"
-                size="large"
-                disabled={loading}
-                sx={{
-                  mt: 3,
-                  mb: 2,
-                  py: 1.5,
-                  fontSize: "1rem",
-                  fontWeight: 600,
-                }}
-              >
-                {loading ? "Registrando..." : "Registrarse"}
-              </Button>
-            </Box>
-
-            <Divider sx={{ my: 3 }}>
-              <Typography variant="body2" color="text.secondary">
-                O
-              </Typography>
-            </Divider>
-
-            <Box sx={{ mb: 3 }}>
-              <GoogleButton mode="register" />
-            </Box>
-
-            <Box sx={{ mt: 3, textAlign: "center" }}>
-              <Typography variant="body2" color="text.secondary">
-                ¿Ya tienes una cuenta?{" "}
-                <Link
-                  component="button"
-                  variant="body2"
-                  onClick={() => {
-                    const cb = searchParams.get("callbackUrl");
-                    navigate(cb ? `/login?callbackUrl=${encodeURIComponent(cb)}` : "/login");
-                  }}
-                  sx={{ fontWeight: 600 }}
-                >
-                  Inicia sesión aquí
-                </Link>
-              </Typography>
-            </Box>
-          </Paper>
-        </motion.div>
-      </Container>
-    </Box>
+            Inicia sesión aquí
+          </Link>
+        </Typography>
+      </Box>
+    </AuthCardShell>
   );
 }
 

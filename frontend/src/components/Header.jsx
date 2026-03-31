@@ -1,5 +1,5 @@
 import React from "react";
-import { AppBar, Toolbar, Typography, Button, Link } from "@mui/material";
+import { AppBar, Toolbar, Typography, Button, Link, Box } from "@mui/material";
 import { Link as RouterLink, useLocation, useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 import { buildLoginPathWithCurrentUrl, buildRegisterPathWithCurrentUrl } from "../utils/authRedirect";
@@ -24,7 +24,6 @@ export default function Header() {
     <>
       <AppBar
         position="fixed"
-        elevation={2}
         sx={{
           top: 0,
           left: 0,
@@ -33,6 +32,9 @@ export default function Header() {
           maxWidth: '100%',
           overflow: 'hidden',
           zIndex: (theme) => theme.zIndex.appBar,
+          backgroundColor: 'rgba(255,255,255,0.92)',
+          borderBottom: '1px solid',
+          borderColor: 'divider',
         }}
       >
       <Toolbar
@@ -40,13 +42,32 @@ export default function Header() {
           flexWrap: 'nowrap',
           gap: 1,
           maxWidth: '100%',
-          px: { xs: 1.5, sm: 2 },
+          px: { xs: 1.5, sm: 2.5 },
+          minHeight: { xs: 64, sm: 72 },
         }}
       >
         {isRestaurantMenuFlow ? (
-          <Typography variant="h6" noWrap sx={{ flexShrink: 0, mr: 'auto' }}>
-            MozoQR
-          </Typography>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.25, flexShrink: 0, mr: 'auto' }}>
+            <Box
+              sx={{
+                width: 36,
+                height: 36,
+                borderRadius: 1,
+                display: 'grid',
+                placeItems: 'center',
+                bgcolor: 'primary.main',
+                color: 'primary.contrastText',
+                fontWeight: 800,
+                fontSize: '0.9rem',
+                boxShadow: 'none',
+              }}
+            >
+              M
+            </Box>
+            <Typography variant="h6" noWrap sx={{ flexShrink: 0, fontWeight: 700, letterSpacing: '-0.02em' }}>
+              MozoQR
+            </Typography>
+          </Box>
         ) : (
           <Link
             component={RouterLink}
@@ -55,9 +76,27 @@ export default function Header() {
             underline="none"
             sx={{ flexShrink: 0, mr: 'auto' }}
           >
-            <Typography variant="h6" noWrap>
-              MozoQR
-            </Typography>
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.25 }}>
+              <Box
+                sx={{
+                  width: 36,
+                  height: 36,
+                  borderRadius: 1,
+                  display: 'grid',
+                  placeItems: 'center',
+                  bgcolor: 'primary.main',
+                  color: 'primary.contrastText',
+                  fontWeight: 800,
+                  fontSize: '0.9rem',
+                  boxShadow: 'none',
+                }}
+              >
+                M
+              </Box>
+              <Typography variant="h6" noWrap sx={{ fontWeight: 700, letterSpacing: '-0.02em' }}>
+                MozoQR
+              </Typography>
+            </Box>
           </Link>
         )}
 
@@ -77,31 +116,23 @@ export default function Header() {
             >
               {user?.username || user?.email || "Usuario"}
             </Typography>
-            <Button color="inherit" onClick={handleLogout} sx={{ flexShrink: 0, px: { xs: 1, sm: 2 } }}>
+            <Button color="inherit" onClick={handleLogout} variant="outlined" sx={{ flexShrink: 0, px: { xs: 1.25, sm: 2 } }}>
               Salir
             </Button>
           </>
         ) : (
           <>
             <Button 
-              color="inherit" 
+              color="inherit"
               onClick={() => navigate(buildLoginPathWithCurrentUrl())}
-              sx={{ mr: 1 }}
+              sx={{ mr: 0.75 }}
             >
               Iniciar sesión
             </Button>
             <Button 
-              color="inherit" 
-              variant="outlined"
+              color="primary"
+              variant="contained"
               onClick={() => navigate(buildRegisterPathWithCurrentUrl())}
-              sx={{
-                borderColor: "white",
-                color: "white",
-                "&:hover": {
-                  backgroundColor: "rgba(255,255,255,0.1)",
-                  borderColor: "white",
-                }
-              }}
             >
               Registrarse
             </Button>

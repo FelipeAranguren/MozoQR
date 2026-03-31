@@ -278,15 +278,17 @@ export default function TablesStatusGridEnhanced({
   return (
     <Box
       sx={{
-        // Asegurar que no aparezcan scrollbars que causen desplazamiento
         overflowX: 'hidden',
         width: '100%',
         position: 'relative',
       }}
     >
-      <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 2 }}>
+      <Box
+        className="premium-panel-soft"
+        sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 2, p: 2.25 }}
+      >
         <Box>
-          <Typography variant="h6" sx={{ fontWeight: 700, mb: 0.5 }}>
+          <Typography variant="h6" sx={{ fontWeight: 800, mb: 0.5 }}>
             Estado de Mesas ({tables.length})
           </Typography>
           <Typography variant="body2" color="text.secondary">
@@ -360,18 +362,15 @@ export default function TablesStatusGridEnhanced({
                 onClick={() => onTableClick && onTableClick(table)}
                 title=""
                 sx={{
-                  border: `2px solid ${tableStatus.color}`,
-                  borderRadius: 2,
+                  border: `1px solid ${tableStatus.color}`,
+                  borderRadius: 4,
                   p: { xs: 1.25, sm: 1.5, md: 2 },
                   textAlign: 'center',
                   cursor: onTableClick ? 'pointer' : 'default',
-                  // Transición solo para box-shadow, todos los colores cambian instantáneamente
                   transition: 'box-shadow 0.2s ease',
-                  // border-color, bgcolor, color sin transición para cambio instantáneo y simultáneo
-                  // Mantener borderWidth constante para no cambiar el tamaño
                   background: tableStatus.status === 'available'
-                    ? 'linear-gradient(135deg, #ffffff 0%, #f1f8e9 100%)'
-                    : `linear-gradient(135deg, ${tableStatus.color}15 0%, ${tableStatus.color}08 100%)`,
+                    ? 'linear-gradient(135deg, #fffdf9 0%, #f5fbf7 100%)'
+                    : `linear-gradient(135deg, rgba(255,253,249,0.98) 0%, ${tableStatus.color}10 100%)`,
                   position: 'relative',
                   overflow: 'hidden',
                   animation: tableStatus.blinking
@@ -388,28 +387,20 @@ export default function TablesStatusGridEnhanced({
                     }
                   },
                   '&:hover': onTableClick ? {
-                    // SOLO efectos visuales que NO cambian el tamaño ni causan scrollbars
-                    boxShadow: `0px 2px 8px ${tableStatus.color}40`,
-                    // Cambiar a color oscuro según el estado (instantáneo, sin transición)
+                    boxShadow: `0 14px 28px ${tableStatus.color}24`,
                     borderColor: getHoverBorderColor(tableStatus.status),
-                    // Mantener borderWidth en 2px para no cambiar el tamaño del casillero
-                    borderWidth: '2px',
-                    // NO usar transform, scale, ni translateY - mantiene el tamaño exacto
-                    // border-color cambia instantáneamente (sin transición)
+                    borderWidth: '1px',
                     zIndex: 1,
-                    // Cambiar color del Chip a color oscuro (sin transición)
                     '& .MuiChip-root': {
                       bgcolor: getHoverBorderColor(tableStatus.status),
                       transition: 'none', // Sin transición para cambio instantáneo
                     },
-                    // Cambiar color del Box del icono a color oscuro (sin transición)
                     '& .table-icon-box': {
                       bgcolor: `${getHoverBorderColor(tableStatus.status)}20`,
                       color: getHoverBorderColor(tableStatus.status),
                       border: `2px solid ${getHoverBorderColor(tableStatus.status)}40`,
                       transition: 'none', // Sin transición para cambio instantáneo
                     },
-                    // Cambiar color del Typography de estado (solo para 'calling', sin transición)
                     '& .table-status-text': {
                       color: getHoverBorderColor(tableStatus.status),
                       transition: 'none', // Sin transición para cambio instantáneo

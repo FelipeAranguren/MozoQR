@@ -321,7 +321,7 @@ export default function Home() {
           minHeight: (theme) => `calc(100dvh - ${theme.mixins.toolbar.minHeight}px)`,
           height: (theme) => `calc(100dvh - ${theme.mixins.toolbar.minHeight}px)`,
           overflow: 'hidden',
-          bgcolor: '#000000',
+          bgcolor: '#10241d',
         }}
       >
           <QrStarfieldHero progress={explosionProgress} />
@@ -343,13 +343,12 @@ export default function Home() {
               <Typography
                 component="h1"
                 sx={{
-                  fontFamily: '"Georgia", "Times New Roman", serif',
-                  fontWeight: 700,
+                  fontWeight: 800,
                   fontSize: { xs: 'clamp(2rem, 8vw, 2.85rem)', md: 'clamp(2.85rem, 4vw, 3.85rem)' },
                   letterSpacing: '-0.03em',
                   lineHeight: 1.05,
                   color: '#ffffff',
-                  textShadow: '0 0 40px rgba(76, 201, 240, 0.35)',
+                  textShadow: '0 0 36px rgba(184, 135, 70, 0.22)',
                   mb: 0.5,
                 }}
               >
@@ -358,8 +357,8 @@ export default function Home() {
               <Typography
                 variant="subtitle1"
                 sx={{
-                  color: 'rgba(255,255,255,0.55)',
-                  fontWeight: 500,
+                  color: 'rgba(255,255,255,0.68)',
+                  fontWeight: 700,
                   fontSize: { xs: '0.9rem', md: '1rem' },
                   letterSpacing: '0.12em',
                   textTransform: 'uppercase',
@@ -376,7 +375,7 @@ export default function Home() {
                 variant="contained"
                 size="large"
                 onClick={() => navigate('/demo')}
-                endIcon={<ArrowForwardIcon sx={{ color: '#0a0a0a' }} />}
+                endIcon={<ArrowForwardIcon sx={{ color: '#fff' }} />}
                 sx={{
                   py: 1.85,
                   px: 4,
@@ -384,13 +383,13 @@ export default function Home() {
                   fontWeight: 800,
                   borderRadius: 3,
                   whiteSpace: 'nowrap',
-                  bgcolor: '#ffffff',
-                  color: '#0a0a0a',
-                  boxShadow: '0 0 32px rgba(255,255,255,0.45), 0 8px 32px rgba(76, 201, 240, 0.25)',
+                  bgcolor: theme.palette.primary.main,
+                  color: '#fff',
+                  boxShadow: '0 12px 32px rgba(15, 23, 42, 0.12)',
                   transition: 'box-shadow 0.25s, transform 0.2s',
                   '&:hover': {
-                    bgcolor: '#f5f5f5',
-                    boxShadow: '0 0 48px rgba(255,255,255,0.55), 0 12px 40px rgba(247, 37, 133, 0.2)',
+                    bgcolor: theme.palette.primary.dark,
+                    boxShadow: '0 16px 40px rgba(15, 23, 42, 0.14)',
                   },
                 }}
               >

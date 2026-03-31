@@ -105,21 +105,26 @@ export default function Checkout() {
     <Box
       sx={{
         minHeight: '100vh',
-        bgcolor: MARANA_COLORS.background,
+        bgcolor: 'transparent',
         py: { xs: 3, md: 5 },
         px: 1,
       }}
     >
       <Container maxWidth="md">
-        <Typography variant="h4" fontWeight="bold" align="center" gutterBottom sx={{ color: MARANA_COLORS.textPrimary }}>
-          Completar tu suscripción
-        </Typography>
-        <Typography variant="body1" align="center" color="text.secondary" sx={{ mb: 3 }}>
-          Elige tu plan y método de pago
-        </Typography>
+        <Box className="premium-panel" sx={{ p: { xs: 3, sm: 4 }, mb: 3, textAlign: 'center' }}>
+          <Typography className="premium-kicker" sx={{ mb: 1 }}>
+            Suscripción
+          </Typography>
+          <Typography variant="h2" align="center" gutterBottom sx={{ color: MARANA_COLORS.textPrimary }}>
+            Completar tu suscripción
+          </Typography>
+          <Typography variant="body1" align="center" color="text.secondary">
+            Elige tu plan y método de pago con una interfaz más limpia, confiable y clara.
+          </Typography>
+        </Box>
 
         {/* Selector de plan */}
-        <Card sx={{ mb: 3, borderRadius: 3, overflow: 'hidden', border: `1px solid ${MARANA_COLORS.border}` }}>
+        <Card sx={{ mb: 3, borderRadius: 5, overflow: 'hidden', border: `1px solid ${MARANA_COLORS.border}` }}>
           <CardContent sx={{ p: { xs: 2, sm: 3 } }}>
             <Typography variant="subtitle1" fontWeight="700" sx={{ mb: 2, color: MARANA_COLORS.textPrimary }}>
               Plan
@@ -158,7 +163,7 @@ export default function Checkout() {
         </Card>
 
         {/* Método de pago */}
-        <Card sx={{ mb: 3, borderRadius: 3, border: `1px solid ${MARANA_COLORS.border}` }}>
+        <Card sx={{ mb: 3, borderRadius: 5, border: `1px solid ${MARANA_COLORS.border}` }}>
           <CardContent sx={{ p: { xs: 2, sm: 3 } }}>
             <Typography variant="subtitle1" fontWeight="700" sx={{ mb: 2, color: MARANA_COLORS.textPrimary }}>
               Selecciona tu método de pago
@@ -209,7 +214,7 @@ export default function Checkout() {
         <Card
           sx={{
             mb: 3,
-            borderRadius: 3,
+            borderRadius: 5,
             border: `2px solid ${planOption.color}`,
             bgcolor: alpha(planOption.color, 0.04),
           }}

@@ -2,8 +2,9 @@
 // auto_return: 'approved' redirige a /payment-success; si el usuario cancela o falla, MP redirige aquí.
 import React from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
-import { Container, Typography, Button, Box } from "@mui/material";
+import { Typography } from "@mui/material";
 import ErrorOutlineIcon from "@mui/icons-material/ErrorOutline";
+import StatusPage from "../components/ui/StatusPage";
 
 const REASON_HINTS = {
   config_error: "No pudimos validar el pago con el restaurante (credenciales o conexión). Si Mercado Pago mostró el cobro como aprobado, avisá en el local.",
@@ -20,29 +21,14 @@ export default function PaymentFailure() {
   const reasonHint = REASON_HINTS[reason] || null;
 
   return (
-    <Container maxWidth="sm" sx={{ py: 6, minHeight: "100vh", display: "flex", alignItems: "center" }}>
-      <Box sx={{ textAlign: "center", width: "100%" }}>
-        <ErrorOutlineIcon sx={{ fontSize: 56, color: "error.main", mb: 2 }} />
-        <Typography variant="h6" color="text.primary" gutterBottom>
-          El pago no pudo completarse
-        </Typography>
-        <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-          Podés intentar de nuevo o elegir otro método de pago.
-        </Typography>
-        {reasonHint && (
-          <Typography variant="body2" color="text.secondary" sx={{ mb: 2, px: 1 }}>
-            {reasonHint}
-          </Typography>
-        )}
-        {slug && (
-          <Button variant="contained" onClick={() => navigate(`/${slug}/menu`)} sx={{ mr: 1 }}>
-            Volver al menú
-          </Button>
-        )}
-        <Button variant="outlined" onClick={() => navigate("/")}>
-          Volver al inicio
-        </Button>
-      </Box>
-    </Container>
+    <StatusPage
+      kicker="Mercado Pago"
+      icon={<ErrorOutlineIcon sx={{ fontSize: 72, color: "error.main" }} />}
+      title="El pago no pudo completarse"
+      description="Podés intentar de nuevo o elegir otro método de pago."
+      detail={reasonHint}
+      primaryAction={slug ? { label: "Volver al menú", onClick: () => navigate(`/${slug}/menu`) } : null}
+      secondaryAction={{ label: "Volver al inicio", onClick: () => navigate("/") }}
+    />
   );
 }

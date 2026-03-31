@@ -13,7 +13,6 @@ export default function DemoLanding() {
     const navigate = useNavigate();
     const theme = useTheme();
 
-    // Demo slug
     const DEMO_SLUG = 'mcdonalds';
 
     const roles = [
@@ -74,7 +73,7 @@ export default function DemoLanding() {
     return (
         <Box sx={{
             minHeight: '100vh',
-            bgcolor: '#f5f7fa',
+            bgcolor: 'transparent',
             display: 'flex',
             justifyContent: 'center',
             alignItems: 'flex-start',
@@ -84,8 +83,6 @@ export default function DemoLanding() {
             <Box sx={{
                 width: '100%',
                 maxWidth: { xs: '100%', md: '1200px' },
-                transform: { xs: 'none', md: 'scale(0.75)' },
-                transformOrigin: 'top center',
                 px: { xs: 1, sm: 2, md: 0 }
             }}>
                 <Container
@@ -95,7 +92,7 @@ export default function DemoLanding() {
                     }}
                 >
                 {/* Header */}
-                <Box sx={{ textAlign: 'center', mb: 8 }}>
+                <Box className="premium-panel" sx={{ textAlign: 'center', mb: 5, p: { xs: 3, md: 5 } }}>
                     <motion.div
                         initial={{ opacity: 0, y: -20 }}
                         animate={{ opacity: 1, y: 0 }}
@@ -104,26 +101,21 @@ export default function DemoLanding() {
                         <Box sx={{
                             display: 'inline-flex',
                             p: 2,
-                            bgcolor: 'primary.main',
-                            borderRadius: 3,
+                            bgcolor: 'action.selected',
+                            borderRadius: 5,
                             mb: 3,
-                            boxShadow: '0 4px 20px rgba(0,0,0,0.1)'
+                            color: 'primary.main'
                         }}>
-                            <RestaurantMenuIcon sx={{ fontSize: 48, color: 'white' }} />
+                            <RestaurantMenuIcon sx={{ fontSize: 48 }} />
                         </Box>
+                        <Typography className="premium-kicker" sx={{ mb: 1.25 }}>
+                            Entorno de demostración
+                        </Typography>
                         <Typography
                             variant="h2"
                             component="h1"
-                            fontWeight="800"
                             gutterBottom
-                            sx={{
-                                background: `linear-gradient(45deg, ${theme.palette.primary.main}, ${theme.palette.secondary.main})`,
-                                backgroundClip: 'text',
-                                textFillColor: 'transparent',
-                                WebkitBackgroundClip: 'text',
-                                WebkitTextFillColor: 'transparent',
-                                mb: 2
-                            }}
+                            sx={{ mb: 2 }}
                         >
                             MozoQR Demo
                         </Typography>
@@ -154,23 +146,24 @@ export default function DemoLanding() {
                                     <Card
                                         elevation={0}
                                         sx={{
-                                            p: { xs: 2.5, md: 4 },
+                                            p: { xs: 2.75, md: 4 },
                                             height: '100%',
-                                            borderRadius: 4,
+                                            borderRadius: 6,
                                             border: '1px solid',
                                             borderColor: 'divider',
+                                            background: 'linear-gradient(180deg, rgba(255,253,249,0.98), rgba(248,244,236,0.94))',
                                             transition: 'all 0.3s ease',
                                             '&:hover': {
-                                                boxShadow: '0 12px 40px rgba(0,0,0,0.08)',
+                                                boxShadow: '0 18px 34px rgba(46,34,18,0.1)',
                                                 borderColor: alpha(role.color, 0.3),
-                                                background: `linear-gradient(to bottom right, #ffffff, ${alpha(role.color, 0.05)})`
+                                                background: `linear-gradient(to bottom right, #fffdf9, ${alpha(role.color, 0.05)})`
                                             }
                                         }}
                                     >
                                         <Box sx={{ display: 'flex', alignItems: 'flex-start', mb: { xs: 2, md: 3 } }}>
                                             <Box sx={{
                                                 p: { xs: 1.5, md: 2 },
-                                                borderRadius: 3,
+                                                borderRadius: 4,
                                                 bgcolor: alpha(role.color, 0.1),
                                                 color: role.color,
                                                 mr: { xs: 2, md: 3 },
@@ -207,16 +200,16 @@ export default function DemoLanding() {
                                             endIcon={<ArrowForwardIcon />}
                                             sx={{
                                                 bgcolor: role.color,
-                                                py: 1.5,
+                                                py: 1.45,
                                                 fontSize: '1rem',
-                                                fontWeight: 'bold',
-                                                borderRadius: 2,
+                                                fontWeight: 800,
+                                                borderRadius: 3.5,
                                                 textTransform: 'none',
-                                                boxShadow: `0 4px 12px ${alpha(role.color, 0.3)}`,
+                                                boxShadow: `0 14px 24px ${alpha(role.color, 0.24)}`,
                                                 '&:hover': {
                                                     bgcolor: role.color,
                                                     filter: 'brightness(0.9)',
-                                                    boxShadow: `0 6px 16px ${alpha(role.color, 0.4)}`,
+                                                    boxShadow: `0 18px 28px ${alpha(role.color, 0.3)}`,
                                                 }
                                             }}
                                         >
@@ -230,7 +223,7 @@ export default function DemoLanding() {
                 </motion.div>
 
                 {/* Footer Info */}
-                <Box sx={{ mt: 8, textAlign: 'center' }}>
+                <Box className="premium-panel-soft" sx={{ mt: 6, textAlign: 'center', p: 2.5 }}>
                     <Typography variant="body2" color="text.secondary">
                         Para reiniciar la demo, puedes volver a esta página en cualquier momento.
                     </Typography>

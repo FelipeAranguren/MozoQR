@@ -18,10 +18,14 @@ export default defineConfig(async () => {
       'Pragma': 'no-cache',
     },
     proxy: {
+      // Strapi monta todo bajo /api — no quitar el prefijo (si no, 404 y respuestas raras en el cliente).
       '/api': {
-        target: 'http://127.0.0.1:1337', // Strapi
+        target: 'http://127.0.0.1:1337',
         changeOrigin: true,
-        rewrite: (p) => p.replace(/^\/api/, ''),
+      },
+      '/uploads': {
+        target: 'http://127.0.0.1:1337',
+        changeOrigin: true,
       },
     },
   };

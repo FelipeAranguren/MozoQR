@@ -1,9 +1,10 @@
 //frontend/src/pages/PagoPending.jsx
 import React, { useEffect, useState } from "react";
 import { useNavigate, useParams, useSearchParams } from "react-router-dom";
-import { Container, Paper, Typography, Button, Box } from "@mui/material";
+import { Typography } from "@mui/material";
 import ScheduleIcon from "@mui/icons-material/Schedule";
 import { loadLastReceiptFromStorage } from "../utils/receipt";
+import StatusPage from "../components/ui/StatusPage";
 
 function normalizeSlug(value) {
   if (value == null) return "";
@@ -31,43 +32,19 @@ export default function PagoPending() {
     normalizeSlug(slugFromReceipt);
 
   return (
-    <Container maxWidth="sm" sx={{ py: 4, minHeight: "100vh", display: "flex", alignItems: "center" }}>
-      <Paper elevation={3} sx={{ p: 4, textAlign: "center", borderRadius: 3 }}>
-        <ScheduleIcon sx={{ fontSize: 64, color: "warning.main", mb: 2 }} />
-        <Typography variant="h5" gutterBottom sx={{ fontWeight: 600 }}>
-          Pago pendiente
+    <StatusPage
+      kicker="Pago"
+      icon={<ScheduleIcon sx={{ fontSize: 72, color: "warning.main" }} />}
+      title="Pago pendiente"
+      description="Tu pago está siendo procesado. Podés consultar el estado en el mostrador mientras termina la acreditación."
+      primaryAction={slug ? { label: "Volver al menú", onClick: () => navigate(`/${slug}/menu`) } : null}
+      secondaryAction={{ label: "Volver al inicio", onClick: () => navigate("/"), variant: slug ? "outlined" : "contained" }}
+    >
+      {orderId ? (
+        <Typography variant="body2" color="text.secondary">
+          Pedido: {orderId}
         </Typography>
-        <Typography variant="body1" color="text.secondary" sx={{ mb: 3 }}>
-          Tu pago está siendo procesado. Te avisaremos cuando se acredite. Podés consultar el estado en el mostrador.
-        </Typography>
-        {orderId && (
-          <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-            Pedido: {orderId}
-          </Typography>
-        )}
-        <Box sx={{ display: "flex", flexDirection: "column", gap: 1, mt: 2 }}>
-          {slug && (
-            <Button
-              variant="contained"
-              size="large"
-              fullWidth
-              onClick={() => navigate(`/${slug}/menu`)}
-              sx={{ borderRadius: 2, py: 1.5, fontSize: "1rem", fontWeight: 600 }}
-            >
-              Volver al Menú
-            </Button>
-          )}
-          <Button
-            variant={slug ? "outlined" : "contained"}
-            size="large"
-            fullWidth
-            onClick={() => navigate("/")}
-            sx={{ borderRadius: 2, py: 1.5 }}
-          >
-            Volver al inicio
-          </Button>
-        </Box>
-      </Paper>
-    </Container>
+      ) : null}
+    </StatusPage>
   );
 }

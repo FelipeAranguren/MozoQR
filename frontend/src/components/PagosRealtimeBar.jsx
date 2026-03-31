@@ -263,15 +263,15 @@ export default function PagosRealtimeBar({ slug, localItems = [] }) {
               size="small"
               variant="filled"
               sx={{
-                height: 20,
-                maxHeight: 20,
+                height: 22,
+                maxHeight: 22,
                 borderRadius: 999,
-                fontWeight: 600,
+                fontWeight: 700,
                 fontSize: '0.65rem',
                 lineHeight: 1,
-                bgcolor: 'rgba(46, 125, 50, 0.10)',
+                bgcolor: 'rgba(35,122,87,0.12)',
                 color: 'success.dark',
-                border: '1px solid rgba(46, 125, 50, 0.35)',
+                border: '1px solid rgba(35,122,87,0.25)',
                 backdropFilter: 'blur(6px)',
                 '& .MuiChip-icon': {
                   color: 'success.main',
@@ -293,12 +293,12 @@ export default function PagosRealtimeBar({ slug, localItems = [] }) {
   return (
     <Box
       sx={{
-        px: 1,
-        py: 0.75,
-        borderRadius: 2,
+        px: 1.25,
+        py: 0.9,
+        borderRadius: 3,
         border: '1px solid',
         borderColor: 'divider',
-        bgcolor: 'rgba(255,255,255,0.65)',
+        bgcolor: 'rgba(255,253,249,0.78)',
         backdropFilter: 'blur(8px)',
         display: 'flex',
         alignItems: 'center',
@@ -306,7 +306,7 @@ export default function PagosRealtimeBar({ slug, localItems = [] }) {
         minHeight: 36,
         width: '100%',
         maxWidth: { xs: '100%', sm: 640, md: 760 },
-        boxShadow: '0 6px 22px rgba(0,0,0,0.06)',
+        boxShadow: '0 12px 26px rgba(46,34,18,0.08)',
       }}
     >
       <Typography

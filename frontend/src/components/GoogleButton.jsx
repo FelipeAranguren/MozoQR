@@ -50,19 +50,20 @@ export default function GoogleButton({ onSuccess, mode = "login" }) {
       startIcon={<FcGoogle />}
       onClick={handleClick}
       sx={{
-        borderColor: "#dadce0",
-        color: "#3c4043",
-        backgroundColor: "white",
+        borderColor: "divider",
+        color: "text.primary",
+        backgroundColor: "background.paper",
         textTransform: "none",
-        fontSize: "14px",
-        fontWeight: 500,
+        fontSize: "0.95rem",
+        fontWeight: 600,
         py: 1.5,
+        borderRadius: 1,
         "&:hover": {
-          backgroundColor: "#f8f9fa",
-          borderColor: "#dadce0",
-          boxShadow: "0 1px 3px rgba(0,0,0,.12), 0 1px 2px rgba(0,0,0,.24)",
+          backgroundColor: "action.hover",
+          borderColor: "text.secondary",
+          boxShadow: "none",
         },
-        boxShadow: "0 1px 2px rgba(0,0,0,.08)",
+        boxShadow: "none",
       }}
     >
       {mode === "register" ? "Registrarse con Google" : "Iniciar sesión con Google"}

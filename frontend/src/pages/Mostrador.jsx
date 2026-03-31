@@ -2705,17 +2705,22 @@ export default function Mostrador() {
           width: '100%',
           minHeight: '100vh',
           boxSizing: 'border-box',
+          background:
+            'linear-gradient(180deg, #fafaf9 0%, #f5f5f4 100%)',
           '& *': { boxSizing: 'border-box' },
         }}
       >
       {/* Encabezado */}
-      <Box sx={{ display: 'flex', flexDirection: { xs: 'column', sm: 'row' }, alignItems: { xs: 'stretch', sm: 'center' }, gap: 2, flexWrap: 'wrap', mb: 2 }}>
+      <Box
+        className="premium-panel"
+        sx={{ display: 'flex', flexDirection: { xs: 'column', sm: 'row' }, alignItems: { xs: 'stretch', sm: 'center' }, gap: 2, flexWrap: 'wrap', mb: 2, p: 2.5 }}
+      >
         <Box sx={{ flexGrow: 1, minWidth: 0 }}>
           <Typography
             component="h1"
             sx={(theme) => ({
               fontSize: { xs: 20, sm: 26, md: 28 },
-              fontWeight: 600,
+              fontWeight: 800,
               lineHeight: 1.2,
               color: 'text.primary',
               mb: 0.5,
@@ -2732,8 +2737,8 @@ export default function Mostrador() {
                 width: 44,
                 height: 4,
                 borderRadius: 999,
-                backgroundColor: theme.palette.primary.main,
-                boxShadow: '0 2px 8px rgba(0,0,0,0.10)',
+              backgroundColor: theme.palette.secondary.main,
+              boxShadow: '0 8px 16px rgba(46,34,18,0.12)',
               })}
             />
           </Box>
@@ -2775,7 +2780,7 @@ export default function Mostrador() {
               setShowHistoryDrawer(true);
               fetchFullHistory();
             }}
-            sx={{ borderRadius: 2, px: 2, py: 1, textTransform: 'none', fontWeight: 600, whiteSpace: 'nowrap' }}
+            sx={{ borderRadius: 3, px: 2, py: 1, textTransform: 'none', fontWeight: 700, whiteSpace: 'nowrap' }}
           >
             Historial
           </Button>
@@ -2784,7 +2789,7 @@ export default function Mostrador() {
             color="secondary"
             startIcon={<CleaningServicesIcon />}
             onClick={handleCleanupOldSessions}
-            sx={{ borderRadius: 2, px: 2, py: 1, textTransform: 'none', fontWeight: 600, whiteSpace: 'nowrap' }}
+            sx={{ borderRadius: 3, px: 2, py: 1, textTransform: 'none', fontWeight: 700, whiteSpace: 'nowrap' }}
             title="Marcar todos los pedidos como pagados y liberar todas las mesas"
           >
             Limpiar

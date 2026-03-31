@@ -1,5 +1,29 @@
 /* src/index.css */
+@import url("https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:ital,wght@0,400;0,500;0,600;0,700;1,400&family=Manrope:wght@400;500;600;700&display=swap");
 @import "tailwindcss";
+
+:root {
+  color-scheme: light;
+  --mq-primary: #18181b;
+  --mq-primary-strong: #09090b;
+  --mq-primary-soft: #f4f4f5;
+  --mq-secondary: #ea580c;
+  --mq-bg: #f5f5f4;
+  --mq-bg-alt: #fafaf9;
+  --mq-surface: #ffffff;
+  --mq-surface-strong: #f5f5f4;
+  --mq-border: #e7e5e4;
+  --mq-border-strong: #d6d3d1;
+  --mq-text: #0c0a09;
+  --mq-text-secondary: #57534e;
+  --mq-text-muted: #78716c;
+  --mq-shadow: 0 1px 2px rgba(15, 23, 42, 0.05);
+  --mq-shadow-soft: 0 1px 3px rgba(15, 23, 42, 0.06);
+  --mq-radius-xl: 12px;
+  --mq-radius-lg: 12px;
+  --mq-radius-md: 10px;
+  --mq-radius-sm: 8px;
+}
 
 html, body, #root {
   height: 100%;
@@ -8,9 +32,9 @@ html, body, #root {
   padding: 0;
 }
 
-/* Reservar espacio de la scrollbar para evitar salto al hacer hover en el menú de productos */
 html {
   scrollbar-gutter: stable;
+  background: var(--mq-bg);
 }
 
 *,
@@ -19,20 +43,85 @@ html {
   box-sizing: border-box;
 }
 
+body {
+  font-family: "Plus Jakarta Sans", "Manrope", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  color: var(--mq-text);
+  background-color: var(--mq-bg);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
 img, video {
   max-width: 100%;
   height: auto;
 }
 
-/* evita que algún wrapper meta un max-width fijo */
 #root, .App {
   min-width: 0;
 }
 
-/* Grid pattern background */
+button,
+input,
+textarea,
+select {
+  font: inherit;
+}
+
+a {
+  color: inherit;
+}
+
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgba(120, 113, 108, 0.35);
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(87, 83, 78, 0.5);
+}
+
 .bg-grid-pattern {
-  background-image: 
-    linear-gradient(to right, rgba(0, 0, 0, 0.03) 1px, transparent 1px),
-    linear-gradient(to bottom, rgba(0, 0, 0, 0.03) 1px, transparent 1px);
-  background-size: 20px 20px;
+  background-image:
+    linear-gradient(to right, rgba(0, 0, 0, 0.04) 1px, transparent 1px),
+    linear-gradient(to bottom, rgba(0, 0, 0, 0.04) 1px, transparent 1px);
+  background-size: 24px 24px;
+}
+
+.premium-shell {
+  background: var(--mq-bg-alt);
+}
+
+.premium-panel {
+  background: var(--mq-surface);
+  border: 1px solid var(--mq-border);
+  border-radius: var(--mq-radius-xl);
+  box-shadow: var(--mq-shadow);
+}
+
+.premium-panel-soft {
+  background: var(--mq-bg-alt);
+  border: 1px solid var(--mq-border);
+  border-radius: var(--mq-radius-lg);
+  box-shadow: var(--mq-shadow-soft);
+}
+
+.premium-kicker {
+  font-size: 0.6875rem;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--mq-text-muted);
+}
+
+.premium-section-title {
+  letter-spacing: -0.02em;
 }

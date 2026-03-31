@@ -1,5 +1,8 @@
 import React from "react";
 import { Link, useLocation } from "react-router-dom";
+import { Button } from "@mui/material";
+import BlockIcon from "@mui/icons-material/Block";
+import StatusPage from "../components/ui/StatusPage";
 
 export default function NoAccess() {
   const location = useLocation();
@@ -11,53 +14,18 @@ export default function NoAccess() {
       : "/login";
 
   return (
-    <div
-      style={{
-        textAlign: "center",
-        marginTop: "15vh",
-        fontFamily: "sans-serif",
-        padding: "2rem",
-      }}
+    <StatusPage
+      kicker="Permisos"
+      icon={<BlockIcon sx={{ fontSize: 72, color: "error.main" }} />}
+      title="No tienes acceso a esta URL"
+      description={errorMessage || "Verifica tu cuenta o los permisos del restaurante antes de continuar."}
     >
-      <div style={{ fontSize: "4rem", marginBottom: "1rem" }}>⛔</div>
-      <h2 style={{ color: "#b00", marginBottom: "1rem" }}>No tienes acceso a esta URL</h2>
-      {errorMessage ? (
-        <p style={{ color: "#666", marginBottom: "1.5rem", maxWidth: "600px", margin: "0 auto 1.5rem" }}>
-          {errorMessage}
-        </p>
-      ) : (
-        <p style={{ color: "#666", marginBottom: "1.5rem" }}>
-          Verifica tu cuenta o los permisos del restaurante.
-        </p>
-      )}
-      <div style={{ display: "flex", gap: "1rem", justifyContent: "center", flexWrap: "wrap" }}>
-        <Link 
-          to={loginTo} 
-          style={{ 
-            color: "#007bff", 
-            textDecoration: "none",
-            padding: "0.5rem 1rem",
-            border: "1px solid #007bff",
-            borderRadius: "4px",
-            display: "inline-block"
-          }}
-        >
-          Iniciar sesión
-        </Link>
-        <Link 
-          to="/" 
-          style={{ 
-            color: "#007bff", 
-            textDecoration: "none",
-            padding: "0.5rem 1rem",
-            border: "1px solid #007bff",
-            borderRadius: "4px",
-            display: "inline-block"
-          }}
-        >
-          ← Volver al inicio
-        </Link>
-      </div>
-    </div>
+      <Button component={Link} to={loginTo} variant="contained" fullWidth sx={{ maxWidth: 420 }}>
+        Iniciar sesión
+      </Button>
+      <Button component={Link} to="/" variant="outlined" fullWidth sx={{ maxWidth: 420 }}>
+        Volver al inicio
+      </Button>
+    </StatusPage>
   );
 }

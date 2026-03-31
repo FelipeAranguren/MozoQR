@@ -1,8 +1,6 @@
 import React, { useState, useEffect, useMemo } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import {
-  Container,
-  Paper,
   TextField,
   Button,
   Typography,
@@ -10,11 +8,12 @@ import {
   Alert,
   Link,
   Divider,
+  CircularProgress,
 } from "@mui/material";
-import { motion } from "framer-motion";
 import GoogleButton from "../components/GoogleButton";
 import { useAuth } from "../context/AuthContext";
 import { getSafeCallbackUrl, syncAuthReturnStorageFromLoginPage } from "../utils/authRedirect";
+import AuthCardShell from "../components/ui/AuthCardShell";
 
 export default function Login() {
   const navigate = useNavigate();
@@ -78,119 +77,86 @@ export default function Login() {
   };
 
   return (
-    <Box
-      sx={{
-        minHeight: "100vh",
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
-        background: "linear-gradient(to bottom right, #e0f2f1, #ffffff)",
-        py: 4,
-      }}
+    <AuthCardShell
+      eyebrow="Acceso seguro"
+      title="Entrá a tu restaurante"
+      description="Gestioná operaciones, pedidos y métricas con una interfaz más clara y profesional."
     >
-      <Container maxWidth="sm">
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.5 }}
+      {error && (
+        <Alert severity="error" sx={{ mb: 3 }}>
+          {error}
+        </Alert>
+      )}
+
+      <Box component="form" onSubmit={handleSubmit} sx={{ mb: 3 }}>
+        <TextField
+          fullWidth
+          label="Email"
+          type="email"
+          value={email}
+          onChange={(e) => setEmail(e.target.value)}
+          margin="normal"
+          required
+          autoComplete="email"
+          disabled={loading}
+        />
+
+        <TextField
+          fullWidth
+          label="Contraseña"
+          type="password"
+          value={password}
+          onChange={(e) => setPassword(e.target.value)}
+          margin="normal"
+          required
+          autoComplete="current-password"
+          disabled={loading}
+        />
+
+        <Button
+          type="submit"
+          fullWidth
+          variant="contained"
+          size="large"
+          disabled={loading}
+          sx={{
+            mt: 3,
+            mb: 2,
+            py: 1.65,
+            fontSize: "1rem",
+          }}
         >
-          <Paper
-            elevation={3}
-            sx={{
-              p: 4,
-              borderRadius: 2,
+          {loading ? <CircularProgress size={20} color="inherit" /> : "Iniciar sesión"}
+        </Button>
+      </Box>
+
+      <Divider sx={{ my: 3 }}>
+        <Typography variant="body2" color="text.secondary">
+          O continuá con
+        </Typography>
+      </Divider>
+
+      <Box sx={{ mb: 3 }}>
+        <GoogleButton mode="login" />
+      </Box>
+
+      <Box sx={{ mt: 3, textAlign: "center" }}>
+        <Typography variant="body2" color="text.secondary">
+          ¿No tienes una cuenta?{" "}
+          <Link
+            component="button"
+            variant="body2"
+            onClick={() => {
+              const cb = searchParams.get("callbackUrl");
+              navigate(cb ? `/register?callbackUrl=${encodeURIComponent(cb)}` : "/register");
             }}
+            sx={{ fontWeight: 700 }}
           >
-            <Typography
-              variant="h4"
-              component="h1"
-              gutterBottom
-              align="center"
-              fontWeight="bold"
-              sx={{ mb: 3 }}
-            >
-              Iniciar sesión
-            </Typography>
-
-            {error && (
-              <Alert severity="error" sx={{ mb: 3 }}>
-                {error}
-              </Alert>
-            )}
-
-            <Box component="form" onSubmit={handleSubmit} sx={{ mb: 3 }}>
-              <TextField
-                fullWidth
-                label="Email"
-                type="email"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                margin="normal"
-                required
-                autoComplete="email"
-                disabled={loading}
-              />
-
-              <TextField
-                fullWidth
-                label="Contraseña"
-                type="password"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                margin="normal"
-                required
-                autoComplete="current-password"
-                disabled={loading}
-              />
-
-              <Button
-                type="submit"
-                fullWidth
-                variant="contained"
-                size="large"
-                disabled={loading}
-                sx={{
-                  mt: 3,
-                  mb: 2,
-                  py: 1.5,
-                  fontSize: "1rem",
-                  fontWeight: 600,
-                }}
-              >
-                {loading ? "Iniciando sesión..." : "Iniciar sesión"}
-              </Button>
-            </Box>
-
-            <Divider sx={{ my: 3 }}>
-              <Typography variant="body2" color="text.secondary">
-                O
-              </Typography>
-            </Divider>
-
-            <Box sx={{ mb: 3 }}>
-              <GoogleButton mode="login" />
-            </Box>
-
-            <Box sx={{ mt: 3, textAlign: "center" }}>
-              <Typography variant="body2" color="text.secondary">
-                ¿No tienes una cuenta?{" "}
-                <Link
-                  component="button"
-                  variant="body2"
-                  onClick={() => {
-                    const cb = searchParams.get("callbackUrl");
-                    navigate(cb ? `/register?callbackUrl=${encodeURIComponent(cb)}` : "/register");
-                  }}
-                  sx={{ fontWeight: 600 }}
-                >
-                  Regístrate aquí
-                </Link>
-              </Typography>
-            </Box>
-          </Paper>
-        </motion.div>
-      </Container>
-    </Box>
+            Regístrate aquí
+          </Link>
+        </Typography>
+      </Box>
+    </AuthCardShell>
   );
 }
 

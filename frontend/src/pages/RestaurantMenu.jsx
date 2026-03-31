@@ -39,6 +39,7 @@ import { withRetry } from '../utils/retry';
 import MenuProductCard from '../components/MenuProductCard';
 import TableSelector from '../components/TableSelector';
 import { buildProductOrderStatusMap, menuBadgeLabelForOrderStatus } from '../utils/orderStatusEs';
+import { getStrapiPublicBase } from '../utils/strapiPublicBase';
 
 const PLACEHOLDER = 'https://via.placeholder.com/600x400?text=No+Image';
 const money = (n) =>
@@ -185,7 +186,7 @@ export default function RestaurantMenu() {
       const categoriasMapeadas = categories.map((cat) => {
         // Los productos ya vienen en cat.productos (no cat.attributes.productos)
         const productosCat = (cat.productos || []).map((p) => {
-          const baseApi = (import.meta.env?.VITE_API_URL || '').replace('/api', '');
+          const baseApi = getStrapiPublicBase();
           // El endpoint namespaced ya devuelve la URL completa de la imagen si el plan es PRO
           const img = p.image || PLACEHOLDER;
           const descripcion = Array.isArray(p.description)
@@ -555,7 +556,7 @@ export default function RestaurantMenu() {
             setCategoriaSeleccionada(null);
           } else {
             // Si realmente no hay categorías, mostramos lista plana
-            const baseApi = (import.meta.env?.VITE_API_URL || '').replace('/api', '');
+            const baseApi = getStrapiPublicBase();
             const list = Array.isArray(menus)
               ? menus.flatMap((m) => m.products || m.productos || [])
               : menus?.products || menus?.productos || [];
@@ -606,7 +607,7 @@ export default function RestaurantMenu() {
             devLog('Categorías cargadas desde fallback:', menus.categories.length);
           } else {
             // Fallback antiguo: lista plana
-            const baseApi = (import.meta.env?.VITE_API_URL || '').replace('/api', '');
+            const baseApi = getStrapiPublicBase();
             const list = Array.isArray(menus)
               ? menus.flatMap((m) => m.products || m.productos || [])
               : menus?.products || menus?.productos || [];
@@ -643,7 +644,12 @@ export default function RestaurantMenu() {
           console.error('Error en fallback completo:', fallbackErr);
           setProductos([]);
           setProductosTodos([]);
-          setMenuLoadError(fallbackErr?.message || 'No se pudo cargar el menú. Revisá tu conexión.');
+          const st = fallbackErr?.response?.status;
+          const msg =
+            st === 426
+              ? 'Error de conexión con el servidor (426). Reiniciá el frontend (npm run dev) y abrí http://127.0.0.1:5173 con el backend en http://127.0.0.1:1337.'
+              : fallbackErr?.message || 'No se pudo cargar el menú. Revisá tu conexión.';
+          setMenuLoadError(msg);
         }
       } finally {
         setLoading(false);
@@ -885,17 +891,18 @@ export default function RestaurantMenu() {
           position: 'relative',
           zIndex: 1,
           px: { xs: 1.5, sm: 2.5 },
-          py: { xs: 2.5, sm: 3.5 },
+          py: { xs: 3, sm: 4 },
         }}
       >
         {/* Header */}
         <Box
           sx={(theme) => ({
             mb: 2.5,
-            p: 0,
-            pb: 2,
-            background: 'transparent',
-            boxShadow: 'none',
+            p: { xs: 3, sm: 4 },
+            background: 'rgba(255,253,249,0.84)',
+            border: '1px solid rgba(199,184,161,0.5)',
+            borderRadius: '28px',
+            boxShadow: '0 20px 44px rgba(46,34,18,0.08)',
             position: 'relative',
             overflow: 'visible',
           })}
@@ -925,7 +932,7 @@ export default function RestaurantMenu() {
                 fontSize: '0.95rem',
               }}
             >
-              ELEGÍ TUS PLATOS FAVORITOS
+              Carta digital
             </Typography>
 
             {table && (
@@ -957,7 +964,7 @@ export default function RestaurantMenu() {
         </Box>
 
         {/* Barra de búsqueda */}
-        <Box sx={{ mb: 2 }}>
+        <Box sx={{ mb: 2.5 }}>
           <TextField
             fullWidth
             placeholder="Buscar por nombre o descripción..."
@@ -996,8 +1003,7 @@ export default function RestaurantMenu() {
                   theme.palette.mode === 'light'
                     ? 'rgba(255,255,255,0.9)'
                     : 'rgba(15,23,42,0.95)',
-                boxShadow:
-                  '0 10px 30px rgba(15,118,110,0.15)',
+                boxShadow: '0 16px 32px rgba(46,34,18,0.08)',
                 '& fieldset': {
                   borderColor: (theme) => alpha(theme.palette.primary.main, 0.22),
                 },

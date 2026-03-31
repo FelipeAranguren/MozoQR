@@ -574,10 +574,18 @@ export default function AdminDashboard() {
   if (loading) return <Box sx={{ display: 'flex', justifyContent: 'center', height: '100vh', alignItems: 'center' }}><CircularProgress /></Box>;
 
   return (
-    <Container maxWidth="xl" sx={{ py: 4, bgcolor: '#f8fafc', minHeight: '100vh' }}>
+    <Container
+      maxWidth="xl"
+      sx={{
+        py: 4,
+        bgcolor: 'transparent',
+        minHeight: '100vh',
+        background: 'linear-gradient(180deg, #fafaf9 0%, #f5f5f4 100%)',
+      }}
+    >
 
       {/* HEADER */}
-      <Box sx={{ mb: 4, display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 2 }}>
+      <Box className="premium-panel" sx={{ mb: 4, display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 2, p: 3 }}>
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
           <Button
             startIcon={<ArrowBackIcon />}
@@ -588,7 +596,7 @@ export default function AdminDashboard() {
             Volver
           </Button>
           <Box>
-            <Typography variant="h4" fontWeight={800} sx={{ color: '#0f172a', letterSpacing: -1 }}>
+            <Typography variant="h4" fontWeight={800} sx={{ color: 'text.primary', letterSpacing: -1 }}>
               Super Admin 3.0
             </Typography>
             <Typography variant="body2" color="text.secondary">
@@ -604,7 +612,7 @@ export default function AdminDashboard() {
             variant="contained"
             startIcon={<AddIcon />}
             onClick={() => { setEditingRestaurant(null); setOpenRestDialog(true); }}
-            sx={{ bgcolor: '#0f172a', borderRadius: 2, px: 3, boxShadow: '0 4px 12px rgba(15,23,42,0.3)' }}
+            sx={{ borderRadius: 3, px: 3 }}
           >
             Nuevo Restaurante
           </Button>

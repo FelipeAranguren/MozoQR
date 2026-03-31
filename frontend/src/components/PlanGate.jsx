@@ -42,12 +42,13 @@ export default function PlanGate({
 
   return (
     <Paper
+      elevation={0}
       sx={{
         p: 4,
         textAlign: 'center',
-        background: `linear-gradient(135deg, ${MARANA_COLORS.background} 0%, #ffffff 100%)`,
-        border: `2px dashed ${MARANA_COLORS.border}`,
-        borderRadius: 3
+        bgcolor: 'background.paper',
+        border: `1px dashed ${MARANA_COLORS.borderStrong}`,
+        borderRadius: 2,
       }}
     >
       <LockIcon 

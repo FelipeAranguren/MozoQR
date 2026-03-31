@@ -715,8 +715,11 @@ export default function OwnerDashboard() {
   return (
     <Box 
       sx={{ 
-        p: isEjecutiva ? 4 : 3, 
-        background: isEjecutiva ? 'linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%)' : MARANA_COLORS.background, 
+        p: isEjecutiva ? 4 : 3,
+        borderRadius: 6,
+        background: 'linear-gradient(180deg, rgba(255,253,249,0.9) 0%, rgba(248,244,236,0.92) 100%)',
+        border: `1px solid ${MARANA_COLORS.border}`,
+        boxShadow: '0 24px 48px rgba(46,34,18,0.08)',
         minHeight: '100vh',
         transition: 'all 0.3s ease'
       }}
@@ -728,7 +731,7 @@ export default function OwnerDashboard() {
         mb: isEjecutiva ? 4 : 4, 
         gap: 0,
         pb: isEjecutiva ? 3 : 0,
-        borderBottom: isEjecutiva ? `2px solid ${MARANA_COLORS.border}` : 'none'
+        borderBottom: `1px solid ${MARANA_COLORS.border}`
       }}>
         {/* Fila 1: título + plan a la izquierda, Ver menú + vista a la derecha */}
         <Box sx={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', flexWrap: 'wrap', gap: 2 }}>
@@ -847,9 +850,9 @@ export default function OwnerDashboard() {
                   style={{
                     padding: '8px 12px',
                     border: `1px solid ${MARANA_COLORS.border}`,
-                    borderRadius: 8,
-                    background: '#fff',
-                    fontFamily: 'Inter, sans-serif'
+                    borderRadius: 12,
+                    background: '#fffdf9',
+                    fontFamily: 'Manrope, sans-serif'
                   }}
                 />
                 <Typography variant="body2" color="text.secondary">—</Typography>
@@ -861,9 +864,9 @@ export default function OwnerDashboard() {
                   style={{
                     padding: '8px 12px',
                     border: `1px solid ${MARANA_COLORS.border}`,
-                    borderRadius: 8,
-                    background: '#fff',
-                    fontFamily: 'Inter, sans-serif'
+                    borderRadius: 12,
+                    background: '#fffdf9',
+                    fontFamily: 'Manrope, sans-serif'
                   }}
                 />
               </Box>
@@ -1013,10 +1016,10 @@ export default function OwnerDashboard() {
           <Box
             sx={{
               border: `1px solid ${MARANA_COLORS.border}`,
-              borderRadius: 3,
-              background: '#fff',
+              borderRadius: 4,
+              background: '#fffdf9',
               p: 3,
-              boxShadow: '0px 1px 3px rgba(0,0,0,0.05)',
+              boxShadow: '0 18px 36px rgba(46,34,18,0.06)',
               mb: 3
             }}
           >
@@ -1042,9 +1045,9 @@ export default function OwnerDashboard() {
                   style={{
                     width: '100%',
                     padding: '12px',
-                    borderRadius: 8,
+                    borderRadius: 12,
                     border: `1px solid ${commentError ? '#f44336' : MARANA_COLORS.border}`,
-                    fontFamily: 'Inter, sans-serif',
+                    fontFamily: 'Manrope, sans-serif',
                     fontSize: '14px',
                     resize: 'vertical',
                     boxSizing: 'border-box'

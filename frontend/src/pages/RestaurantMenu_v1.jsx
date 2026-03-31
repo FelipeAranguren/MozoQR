@@ -6,10 +6,7 @@ import {
   Container,
   Typography,
   Card,
-  CardMedia,
   CircularProgress,
-  CardContent,
-  CardActions,
   Button,
   TextField,
   InputAdornment,
@@ -38,9 +35,10 @@ import useTableSession from '../hooks/useTableSession';
 import StickyFooter from '../components/StickyFooter';
 import { devLog } from '../utils/devLog';
 import { withRetry } from '../utils/retry';
-import QtyStepper from '../components/QtyStepper';
+import MenuProductCard from '../components/MenuProductCard';
 import TableSelector from '../components/TableSelector';
 import { buildProductOrderStatusMap, menuBadgeLabelForOrderStatus } from '../utils/orderStatusEs';
+import { getStrapiPublicBase } from '../utils/strapiPublicBase';
 
 const PLACEHOLDER = 'https://via.placeholder.com/600x400?text=No+Image';
 const money = (n) =>
@@ -178,7 +176,7 @@ export default function RestaurantMenu() {
       const categoriasMapeadas = categories.map((cat) => {
         // Los productos ya vienen en cat.productos (no cat.attributes.productos)
         const productosCat = (cat.productos || []).map((p) => {
-          const baseApi = (import.meta.env?.VITE_API_URL || '').replace('/api', '');
+          const baseApi = getStrapiPublicBase();
           // El endpoint namespaced ya devuelve la URL completa de la imagen si el plan es PRO
           const img = p.image || PLACEHOLDER;
           const descripcion = Array.isArray(p.description)
@@ -532,7 +530,7 @@ export default function RestaurantMenu() {
             setCategoriaSeleccionada(null);
           } else {
             // Si realmente no hay categorías, mostramos lista plana
-            const baseApi = (import.meta.env?.VITE_API_URL || '').replace('/api', '');
+            const baseApi = getStrapiPublicBase();
             const list = Array.isArray(menus)
               ? menus.flatMap((m) => m.products || m.productos || [])
               : menus?.products || menus?.productos || [];
@@ -576,7 +574,7 @@ export default function RestaurantMenu() {
             devLog('Categorías cargadas desde fallback:', menus.categories.length);
           } else {
             // Fallback antiguo: lista plana
-            const baseApi = (import.meta.env?.VITE_API_URL || '').replace('/api', '');
+            const baseApi = getStrapiPublicBase();
             const list = Array.isArray(menus)
               ? menus.flatMap((m) => m.products || m.productos || [])
               : menus?.products || menus?.productos || [];
@@ -775,14 +773,22 @@ export default function RestaurantMenu() {
 
   // --------- UI principal
   return (
-    <Box sx={{ width: '100%', position: 'relative', minHeight: '100vh' }}>
+    <Box
+      sx={{
+        width: '100%',
+        position: 'relative',
+        minHeight: '100vh',
+        background:
+          'linear-gradient(180deg, #fafaf9 0%, #f5f5f4 100%)',
+      }}
+    >
       <Container
         component="main"
         maxWidth="sm"
         disableGutters
         sx={{
-          px: { xs: 1.25, sm: 2 },
-          py: { xs: 3, sm: 4 },
+          px: { xs: 1.5, sm: 2.5 },
+          py: { xs: 3, sm: 4.5 },
           position: 'relative',
           borderRadius: 0,
           bgcolor: 'transparent',
@@ -790,7 +796,7 @@ export default function RestaurantMenu() {
         }}
       >
         {/* Header */}
-        <Box sx={{ textAlign: 'center' }}>
+        <Box className="premium-panel" sx={{ textAlign: 'center', p: { xs: 3, sm: 4 }, mb: 2.5 }}>
           <Typography
             component="h1"
             sx={{
@@ -811,7 +817,7 @@ export default function RestaurantMenu() {
           <Box
             sx={(theme) => ({
               width: 120,
-              height: 2,
+              height: 3,
               mx: 'auto',
               borderRadius: 999,
               background:
@@ -827,8 +833,8 @@ export default function RestaurantMenu() {
                 width: 40,
                 height: 4,
                 borderRadius: 999,
-                backgroundColor: theme.palette.primary.main,
-                boxShadow: '0 2px 8px rgba(0,0,0,0.10)',
+                backgroundColor: theme.palette.secondary.main,
+                boxShadow: '0 6px 14px rgba(46,34,18,0.12)',
               },
             })}
           />
@@ -866,7 +872,7 @@ export default function RestaurantMenu() {
         </Box>
 
         {/* Barra de búsqueda */}
-        <Box sx={{ mt: 3, mb: 2 }}>
+        <Box sx={{ mt: 1, mb: 2.5 }}>
           <TextField
             fullWidth
             placeholder="Buscar productos..."
@@ -903,17 +909,18 @@ export default function RestaurantMenu() {
             }}
             sx={{
               '& .MuiOutlinedInput-root': {
-                borderRadius: 3,
+                borderRadius: 999,
                 backgroundColor: (theme) =>
-                  theme.palette.mode === 'light' ? 'rgba(0,0,0,0.02)' : 'rgba(255,255,255,0.05)',
+                  theme.palette.mode === 'light' ? 'rgba(255,253,249,0.92)' : 'rgba(255,255,255,0.05)',
                 '&:hover': {
                   backgroundColor: (theme) =>
-                    theme.palette.mode === 'light' ? 'rgba(0,0,0,0.04)' : 'rgba(255,255,255,0.08)',
+                    theme.palette.mode === 'light' ? 'rgba(255,253,249,1)' : 'rgba(255,255,255,0.08)',
                 },
                 '&.Mui-focused': {
                   backgroundColor: (theme) =>
-                    theme.palette.mode === 'light' ? 'rgba(0,0,0,0.04)' : 'rgba(255,255,255,0.08)',
+                    theme.palette.mode === 'light' ? 'rgba(255,253,249,1)' : 'rgba(255,255,255,0.08)',
                 },
+                boxShadow: '0 16px 32px rgba(46,34,18,0.06)',
               },
             }}
           />
@@ -947,7 +954,7 @@ export default function RestaurantMenu() {
               }}
               color={categoriaSeleccionada === null ? 'primary' : 'default'}
               sx={{
-                bgcolor: categoriaSeleccionada === null ? 'primary.main' : 'background.paper',
+                  bgcolor: categoriaSeleccionada === null ? 'primary.main' : 'rgba(255,253,249,0.9)',
                 color: categoriaSeleccionada === null ? 'white' : 'text.primary',
                 fontWeight: categoriaSeleccionada === null ? 600 : 400,
                 cursor: 'pointer',
@@ -974,7 +981,7 @@ export default function RestaurantMenu() {
                 }}
                 color={categoriaSeleccionada === (cat.id ?? cat.documentId) ? 'primary' : 'default'}
                 sx={{
-                  bgcolor: categoriaSeleccionada === (cat.id ?? cat.documentId) ? 'primary.main' : 'background.paper',
+                  bgcolor: categoriaSeleccionada === (cat.id ?? cat.documentId) ? 'primary.main' : 'rgba(255,253,249,0.9)',
                   color: categoriaSeleccionada === (cat.id ?? cat.documentId) ? 'white' : 'text.primary',
                   fontWeight: categoriaSeleccionada === (cat.id ?? cat.documentId) ? 600 : 400,
                   cursor: 'pointer',
@@ -1148,207 +1155,14 @@ export default function RestaurantMenu() {
                       whileHover={{ scale: 1.01 }}
                       style={{ originX: 0.5 }}
                     >
-                      <Card
-                        elevation={0}
-                        sx={(theme) => ({
-                          position: 'relative',
-                          display: 'flex',
-                          alignItems: 'stretch',
-                          gap: { xs: 1, sm: 1.25 },
-                          p: { xs: 1.25, sm: 1.5 },
-                          borderRadius: 4,
-                          mx: { xs: 0, sm: 0 },
-                          boxSizing: 'border-box',
-                          background:
-                            theme.palette.mode === 'light'
-                              ? `linear-gradient(180deg, ${theme.palette.common.white} 0%, ${alpha(
-                                theme.palette.common.white,
-                                0.98
-                              )} 100%)`
-                              : `linear-gradient(180deg, ${alpha('#1e1e1e', 1)} 0%, ${alpha(
-                                '#1e1e1e',
-                                0.95
-                              )} 100%)`,
-                          border: `1px solid ${alpha(theme.palette.common.black, qty > 0 ? 0.12 : 0.06)}`,
-                          boxShadow:
-                            qty > 0
-                              ? theme.palette.mode === 'light'
-                                ? '0 8px 32px rgba(0,0,0,0.08), 0 2px 0 rgba(0,0,0,0.03)'
-                                : '0 8px 32px rgba(0,0,0,0.4)'
-                              : theme.palette.mode === 'light'
-                                ? '0 4px 20px rgba(0,0,0,0.04), 0 1px 0 rgba(0,0,0,0.02)'
-                                : '0 6px 24px rgba(0,0,0,0.3)',
-                          flexDirection: 'row',
-                          transition: 'all 0.3s ease',
-                          overflow: 'hidden', // Evitar que el sombreado se corte
-                          '&:hover': {
-                            borderColor: alpha(theme.palette.primary.main, 0.3),
-                            boxShadow:
-                              theme.palette.mode === 'light'
-                                ? '0 12px 40px rgba(0,0,0,0.1), 0 2px 0 rgba(0,0,0,0.04)'
-                                : '0 12px 40px rgba(0,0,0,0.5)',
-                          },
-                        })}
-                      >
-                        {/* Imagen */}
-                        <Box
-                          sx={{
-                            width: { xs: 90, sm: 110 },
-                            flexShrink: 0,
-                            borderRadius: 2.5,
-                            overflow: 'hidden',
-                            position: 'relative',
-                            boxShadow: '0 2px 8px rgba(0,0,0,0.1)',
-                          }}
-                        >
-                          <CardMedia
-                            component="img"
-                            image={plato.imagen}
-                            alt={plato.nombre}
-                            loading="lazy"
-                            sx={{
-                              width: '100%',
-                              height: '100%',
-                              aspectRatio: '1 / 1',
-                              objectFit: 'cover',
-                              display: 'block',
-                              transition: 'transform 0.3s ease',
-                              '&:hover': {
-                                transform: 'scale(1.05)',
-                              },
-                            }}
-                          />
-                          {qty > 0 && (
-                            <Chip
-                              label={qty}
-                              size="small"
-                              sx={{
-                                position: 'absolute',
-                                top: 8,
-                                right: 8,
-                                backgroundColor: 'primary.main',
-                                color: 'white',
-                                fontWeight: 700,
-                                height: 24,
-                                minWidth: 24,
-                                fontSize: '0.75rem',
-                                boxShadow: '0 2px 8px rgba(0,0,0,0.2)',
-                              }}
-                            />
-                          )}
-                        </Box>
-
-                        {/* Texto */}
-                        <CardContent sx={{ p: 0, flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column' }}>
-                          <Box
-                            sx={{
-                              display: 'flex',
-                              alignItems: 'baseline',
-                              gap: 1,
-                              flexWrap: 'wrap',
-                              mb: 0.75,
-                              minWidth: 0,
-                            }}
-                          >
-                            <Typography
-                              variant="subtitle1"
-                              sx={{
-                                fontWeight: 700,
-                                fontSize: { xs: 17, sm: 19 },
-                                minWidth: 0,
-                                lineHeight: 1.3,
-                              }}
-                              title={plato.nombre}
-                            >
-                              {plato.nombre}
-                            </Typography>
-                            {orderBadge ? (
-                              <Chip
-                                label={orderBadge}
-                                size="small"
-                                sx={{
-                                  height: 22,
-                                  fontSize: '0.7rem',
-                                  fontWeight: 700,
-                                  flexShrink: 0,
-                                  bgcolor:
-                                    orderBadge === 'En preparación' ? 'primary.main' : 'warning.main',
-                                  color: 'common.white',
-                                }}
-                              />
-                            ) : null}
-                          </Box>
-
-                          <Box
-                            sx={{
-                              display: 'flex',
-                              alignItems: 'center',
-                              gap: 1,
-                              mb: 1,
-                            }}
-                          >
-                            <Typography
-                              variant="h6"
-                              sx={{
-                                fontWeight: 700,
-                                color: 'primary.main',
-                                fontSize: { xs: 16, sm: 18 },
-                              }}
-                            >
-                              {money(plato.precio)}
-                            </Typography>
-                            <Box
-                              sx={{
-                                height: 3,
-                                width: 24,
-                                bgcolor: 'divider',
-                                borderRadius: 1.5,
-                              }}
-                            />
-                          </Box>
-
-                          {plato.descripcion && (
-                            <Typography
-                              variant="body2"
-                              sx={{
-                                color: 'text.secondary',
-                                display: '-webkit-box',
-                                WebkitLineClamp: 2,
-                                WebkitBoxOrient: 'vertical',
-                                overflow: 'hidden',
-                                fontSize: { xs: '0.875rem', sm: '0.9375rem' },
-                                lineHeight: 1.5,
-                                flex: 1,
-                              }}
-                              title={plato.descripcion}
-                            >
-                              {plato.descripcion}
-                            </Typography>
-                          )}
-                        </CardContent>
-
-                        {/* Stepper */}
-                        <CardActions
-                          sx={{
-                            p: 0,
-                            ml: { xs: 0.5, sm: 1 },
-                            flexDirection: 'column',
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                            gap: 0.5,
-                            flexShrink: 0,
-                            minWidth: { xs: 85, sm: 100 },
-                          }}
-                        >
-                          <QtyStepper
-                            value={qty}
-                            onAdd={() =>
-                              addItem({ id: plato.id, nombre: plato.nombre, precio: plato.precio })
-                            }
-                            onSub={() => removeItem(plato.id)}
-                          />
-                        </CardActions>
-                      </Card>
+                      <MenuProductCard
+                        producto={plato}
+                        qty={qty}
+                        priceFormatted={money(plato.precio)}
+                        onAdd={() => addItem({ id: plato.id, nombre: plato.nombre, precio: plato.precio })}
+                        onSub={() => removeItem(plato.id)}
+                        orderStatusLabel={orderBadge}
+                      />
                     </motion.div>
                   );
                 })}
