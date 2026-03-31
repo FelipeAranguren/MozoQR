@@ -25,6 +25,7 @@ import { generateAIInsights } from '../../../utils/aiInsights';
 import { fetchProducts } from '../../../api/menu';
 import { getPaidOrdersForAI } from '../../../api/analytics';
 import { fetchWeeklyAiReport } from '../../../api/weeklyAi';
+import { formatAxiosError } from '../../../utils/apiErrors';
 import PsychologyIcon from '@mui/icons-material/Psychology';
 import TrendingDownIcon from '@mui/icons-material/TrendingDown';
 import RestaurantMenuIcon from '@mui/icons-material/RestaurantMenu';
@@ -179,7 +180,7 @@ export default function AIPanel() {
         }
       } catch (err) {
         console.error('Error loading AI insights:', err);
-        setError(err.message);
+        setError(formatAxiosError(err));
       } finally {
         setLoading(false);
       }
@@ -202,7 +203,13 @@ export default function AIPanel() {
         const data = await fetchWeeklyAiReport(slug);
         if (!cancelled) setWeeklyData(data);
       } catch (e) {
-        if (!cancelled) setWeeklyError(e?.response?.data?.error || e?.message || 'Error al cargar informe IA');
+        if (!cancelled) {
+          let msg = formatAxiosError(e);
+          if (e?.response?.status === 403) {
+            msg += ' Si tu plan es Ultra, puede ser un tema de permisos (tu usuario tiene que ser dueño o staff del local en el servidor de producción).';
+          }
+          setWeeklyError(msg);
+        }
       } finally {
         if (!cancelled) setWeeklyLoading(false);
       }
@@ -267,7 +274,7 @@ export default function AIPanel() {
               </Box>
             )}
             {!weeklyLoading && weeklyError && (
-              <Alert severity="warning">{weeklyError}</Alert>
+              <Alert severity="warning">{String(weeklyError)}</Alert>
             )}
             {!weeklyLoading && weeklyData?.missingApiKey && (
               <Alert severity="info" sx={{ mb: 2 }}>
@@ -287,7 +294,7 @@ export default function AIPanel() {
             )}
             {!weeklyLoading && weeklyData?.ok === false && weeklyData?.error && (
               <Alert severity="error" sx={{ mb: 2 }}>
-                {weeklyData.error}
+                {typeof weeklyData.error === 'string' ? weeklyData.error : JSON.stringify(weeklyData.error)}
               </Alert>
             )}
             {!weeklyLoading && weeklyData?.generatedAt && (
