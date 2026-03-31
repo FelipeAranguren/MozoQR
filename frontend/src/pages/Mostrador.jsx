@@ -2831,21 +2831,27 @@ export default function Mostrador() {
 
         {/* PEDIDOS tab */}
         {activeTab === 0 && (
-          <Grid container spacing={1.5} sx={{ height: '100%' }}>
+          <Grid container spacing={2}>
             {/* Pendientes */}
-            <Grid item xs={12} md={4}>
-              <Box sx={{ mb: 1, display: 'flex', alignItems: 'center', gap: 0.75 }}>
-                <AccessTimeIcon sx={{ fontSize: 18, color: '#f59e0b' }} />
-                <Typography variant="subtitle2" sx={{ fontWeight: 700 }}>
+            <Grid item xs={12} md={6}>
+              <Box sx={{ mb: 1.5, display: 'flex', alignItems: 'center', gap: 1 }}>
+                <AccessTimeIcon sx={{ fontSize: 20, color: 'text.secondary' }} />
+                <Typography variant="h6" sx={{ fontWeight: 600 }}>
                   Pendientes ({pedidosPendientes.length})
                 </Typography>
               </Box>
               {pedidosPendientes.length === 0 && (
-                <Typography variant="body2" color="text.secondary" sx={{ fontSize: '0.8125rem' }}>
-                  Sin pedidos pendientes
+                <Typography variant="body2" color="text.secondary">
+                  No hay pedidos pendientes
                 </Typography>
               )}
-              <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
+              <Box
+                sx={{
+                  columnCount: { xs: 1, sm: 2, lg: 3 },
+                  columnGap: (theme) => theme.spacing(1.25),
+                  '& > *': { breakInside: 'avoid', marginBottom: (theme) => theme.spacing(1.25) },
+                }}
+              >
                 {pedidosPendientes.map((pedido) => {
                   if (!pedido?.documentId && pedido?.id == null) return null;
                   if (phantomBlocklistRef.current.has(String(pedido?.documentId ?? ''))) return null;
@@ -2859,46 +2865,26 @@ export default function Mostrador() {
             </Grid>
 
             {/* Cocinando */}
-            <Grid item xs={12} md={4}>
-              <Box sx={{ mb: 1, display: 'flex', alignItems: 'center', gap: 0.75 }}>
-                <RestaurantIcon sx={{ fontSize: 18, color: '#0288d1' }} />
-                <Typography variant="subtitle2" sx={{ fontWeight: 700 }}>
+            <Grid item xs={12} md={6}>
+              <Box sx={{ mb: 1.5, display: 'flex', alignItems: 'center', gap: 1 }}>
+                <RestaurantIcon sx={{ fontSize: 20, color: 'text.secondary' }} />
+                <Typography variant="h6" sx={{ fontWeight: 600 }}>
                   Cocinando ({pedidosEnCocina.length})
                 </Typography>
               </Box>
               {pedidosEnCocina.length === 0 && (
-                <Typography variant="body2" color="text.secondary" sx={{ fontSize: '0.8125rem' }}>
-                  Sin pedidos cocinando
+                <Typography variant="body2" color="text.secondary">
+                  No hay pedidos cocinando
                 </Typography>
               )}
-              <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
+              <Box
+                sx={{
+                  columnCount: { xs: 1, sm: 2, lg: 3 },
+                  columnGap: (theme) => theme.spacing(1.25),
+                  '& > *': { breakInside: 'avoid', marginBottom: (theme) => theme.spacing(1.25) },
+                }}
+              >
                 {pedidosEnCocina.map((pedido) => {
-                  if (!pedido?.documentId && pedido?.id == null) return null;
-                  if (phantomBlocklistRef.current.has(String(pedido?.documentId ?? ''))) return null;
-                  return (
-                    <Box key={pedido.documentId || pedido.id}>
-                      {renderPedidoCard(pedido)}
-                    </Box>
-                  );
-                })}
-              </Box>
-            </Grid>
-
-            {/* Listos para servir */}
-            <Grid item xs={12} md={4}>
-              <Box sx={{ mb: 1, display: 'flex', alignItems: 'center', gap: 0.75 }}>
-                <CheckCircleIcon sx={{ fontSize: 18, color: '#16a34a' }} />
-                <Typography variant="subtitle2" sx={{ fontWeight: 700 }}>
-                  Listos ({pedidosListos.length})
-                </Typography>
-              </Box>
-              {pedidosListos.length === 0 && (
-                <Typography variant="body2" color="text.secondary" sx={{ fontSize: '0.8125rem' }}>
-                  Sin pedidos listos
-                </Typography>
-              )}
-              <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
-                {pedidosListos.map((pedido) => {
                   if (!pedido?.documentId && pedido?.id == null) return null;
                   if (phantomBlocklistRef.current.has(String(pedido?.documentId ?? ''))) return null;
                   return (
