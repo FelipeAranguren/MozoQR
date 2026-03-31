@@ -2865,10 +2865,10 @@ export default function Mostrador() {
             </Grid>
 
             {/* Cocinando */}
-            <Grid item xs={12} md={6}>
-              <Box sx={{ mb: 1.5, display: 'flex', alignItems: 'center', gap: 1 }}>
-                <RestaurantIcon sx={{ fontSize: 20, color: 'text.secondary' }} />
-                <Typography variant="h6" sx={{ fontWeight: 600 }}>
+            <Grid item xs={12} md={6} sx={{ bgcolor: '#f0f7ff', borderRadius: 2, py: '12px !important' }}>
+              <Box sx={{ mb: 1.5, display: 'flex', alignItems: 'center', gap: 1, px: 0.5 }}>
+                <RestaurantIcon sx={{ fontSize: 20, color: '#0288d1' }} />
+                <Typography variant="h6" sx={{ fontWeight: 600, color: '#0277bd' }}>
                   Cocinando ({pedidosEnCocina.length})
                 </Typography>
               </Box>

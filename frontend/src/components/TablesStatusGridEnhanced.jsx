@@ -262,53 +262,33 @@ export default function TablesStatusGridEnhanced({
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'space-between',
-          mb: 2,
-          p: 2.25,
+          mb: 1,
+          px: 1.5,
+          py: 0.75,
           bgcolor: 'background.paper',
-          borderRadius: 3,
+          borderRadius: 2,
           border: `1px solid ${COLORS.border}`,
-          boxShadow: COLORS.shadow1,
         }}
       >
-        <Box>
-          <Typography variant="h6" sx={{ fontWeight: 800, mb: 0.5 }}>
-            Estado de Mesas ({tables.length})
-          </Typography>
-          <Typography variant="body2" color="text.secondary">
-            Vista en tiempo real del estado de todas las mesas
-          </Typography>
-        </Box>
-        <Box sx={{ display: 'flex', gap: 0.75, flexWrap: 'wrap' }}>
-          <Chip
-            icon={<CheckCircleIcon sx={{ fontSize: 18 }} />}
-            label="Disponible"
-            size="small"
-            sx={{ bgcolor: COLORS.success, color: 'white', fontWeight: 600, fontSize: { xs: '0.75rem', sm: '0.8125rem' }, '& .MuiChip-label': { px: 0.75 } }}
-          />
-          <Chip
-            icon={<RestaurantIcon sx={{ fontSize: 18 }} />}
-            label="Ocupada"
-            size="small"
-            sx={{ bgcolor: '#2563eb', color: 'white', fontWeight: 600, fontSize: { xs: '0.75rem', sm: '0.8125rem' }, '& .MuiChip-label': { px: 0.75 } }}
-          />
-          <Chip
-            icon={<CleaningServicesIcon sx={{ fontSize: 18 }} />}
-            label="Por limpiar"
-            size="small"
-            sx={{ bgcolor: COLORS.warning, color: 'white', fontWeight: 600, fontSize: { xs: '0.75rem', sm: '0.8125rem' }, '& .MuiChip-label': { px: 0.75 } }}
-          />
-          <Chip
-            icon={<NotificationsActiveIcon sx={{ fontSize: 18 }} />}
-            label="Llamando"
-            size="small"
-            sx={{ bgcolor: COLORS.error, color: 'white', fontWeight: 600, fontSize: { xs: '0.75rem', sm: '0.8125rem' }, '& .MuiChip-label': { px: 0.75 } }}
-          />
-          <Chip
-            icon={<AccountBalanceWalletIcon sx={{ fontSize: 18 }} />}
-            label="Solicita pago"
-            size="small"
-            sx={{ bgcolor: '#7c3aed', color: 'white', fontWeight: 600, fontSize: { xs: '0.75rem', sm: '0.8125rem' }, '& .MuiChip-label': { px: 0.75 } }}
-          />
+        <Typography variant="subtitle2" sx={{ fontWeight: 700 }}>
+          Mesas ({tables.length})
+        </Typography>
+        <Box sx={{ display: 'flex', gap: 0.5, flexWrap: 'wrap' }}>
+          {[
+            { icon: <CheckCircleIcon sx={{ fontSize: 14 }} />, label: 'Disponible', color: COLORS.success },
+            { icon: <RestaurantIcon sx={{ fontSize: 14 }} />, label: 'Ocupada', color: '#2563eb' },
+            { icon: <CleaningServicesIcon sx={{ fontSize: 14 }} />, label: 'Limpiar', color: COLORS.warning },
+            { icon: <NotificationsActiveIcon sx={{ fontSize: 14 }} />, label: 'Llamando', color: COLORS.error },
+            { icon: <AccountBalanceWalletIcon sx={{ fontSize: 14 }} />, label: 'Pago', color: '#7c3aed' },
+          ].map((s) => (
+            <Chip
+              key={s.label}
+              icon={s.icon}
+              label={s.label}
+              size="small"
+              sx={{ bgcolor: s.color, color: 'white', fontWeight: 600, fontSize: '0.675rem', height: 20, '& .MuiChip-label': { px: 0.5 }, '& .MuiChip-icon': { ml: 0.25 } }}
+            />
+          ))}
         </Box>
       </Box>
 
@@ -317,13 +297,11 @@ export default function TablesStatusGridEnhanced({
           width: '100%',
           maxWidth: '100%',
           overflow: 'hidden',
-          py: 0.25,
-          px: 0.25,
         }}
       >
         <Grid
           container
-          spacing={2}
+          spacing={1}
           sx={{
             width: '100%',
             margin: 0,
@@ -338,15 +316,15 @@ export default function TablesStatusGridEnhanced({
           ).length;
 
           return (
-            <Grid item xs={6} sm={4} md={3} lg={2.4} key={table.id || table.number}>
+            <Grid item xs={4} sm={3} md={2} lg={1.5} key={table.id || table.number}>
               <Card
                 elevation={0}
                 onClick={() => onTableClick && onTableClick(table)}
                 title=""
                 sx={{
                   border: `1px solid ${tableStatus.color}`,
-                  borderRadius: 3,
-                  p: { xs: 1.25, sm: 1.5, md: 2 },
+                  borderRadius: 2,
+                  p: { xs: 0.75, sm: 1 },
                   textAlign: 'center',
                   cursor: onTableClick ? 'pointer' : 'default',
                   transition: 'box-shadow 0.2s ease',
@@ -364,12 +342,12 @@ export default function TablesStatusGridEnhanced({
                       transform: 'scale(1)'
                     },
                     '50%': {
-                      boxShadow: `0 0 0 8px ${tableStatus.color}00`,
-                      transform: 'scale(1.02)'
+                      boxShadow: `0 0 0 6px ${tableStatus.color}00`,
+                      transform: 'scale(1.01)'
                     }
                   },
                   '&:hover': onTableClick ? {
-                    boxShadow: `0 8px 24px ${tableStatus.color}24`,
+                    boxShadow: `0 4px 16px ${tableStatus.color}24`,
                     borderColor: getHoverBorderColor(tableStatus.status),
                     borderWidth: '1px',
                     zIndex: 1,
@@ -380,7 +358,7 @@ export default function TablesStatusGridEnhanced({
                     '& .table-icon-box': {
                       bgcolor: `${getHoverBorderColor(tableStatus.status)}20`,
                       color: getHoverBorderColor(tableStatus.status),
-                      border: `2px solid ${getHoverBorderColor(tableStatus.status)}40`,
+                      border: `1px solid ${getHoverBorderColor(tableStatus.status)}40`,
                       transition: 'none',
                     },
                     '& .table-status-text': {
@@ -395,7 +373,7 @@ export default function TablesStatusGridEnhanced({
                     display: 'flex',
                     alignItems: 'center',
                     justifyContent: 'center',
-                    mb: 1
+                    mb: 0.5,
                   }}
                 >
                   <Badge
@@ -411,21 +389,25 @@ export default function TablesStatusGridEnhanced({
                     sx={{
                       '& .MuiBadge-badge': {
                         pointerEvents: 'none',
+                        fontSize: '0.65rem',
+                        minWidth: 16,
+                        height: 16,
                       }
                     }}
                   >
                     <Box
                       className="table-icon-box"
                       sx={{
-                        p: 1.5,
-                        borderRadius: 2,
+                        p: 0.75,
+                        borderRadius: 1.5,
                         bgcolor: `${tableStatus.color}20`,
                         color: tableStatus.color,
                         display: 'flex',
                         alignItems: 'center',
                         justifyContent: 'center',
-                        border: `2px solid ${tableStatus.color}40`,
+                        border: `1px solid ${tableStatus.color}40`,
                         transition: 'none',
+                        '& .MuiSvgIcon-root': { fontSize: 18 },
                       }}
                     >
                       {tableStatus.icon}
@@ -434,39 +416,35 @@ export default function TablesStatusGridEnhanced({
                 </Box>
 
                 <Typography
-                  variant="h6"
+                  variant="subtitle2"
                   sx={{
                     fontWeight: 700,
-                    mb: 0.5,
+                    fontSize: '0.8125rem',
+                    lineHeight: 1.2,
+                    mb: 0.25,
                     color: tableStatus.status === 'calling' ? tableStatus.color : 'text.primary'
                   }}
                 >
-                  Mesa {table.number || table.name || '—'}
+                  {table.number || table.name || '—'}
                 </Typography>
 
                 <Chip
-                  icon={tableStatus.icon}
-                  label={(() => {
-                    return tableStatus.label;
-                  })()}
+                  label={tableStatus.label}
                   size="small"
                   sx={{
                     bgcolor: tableStatus.color,
                     color: 'white',
                     fontWeight: 600,
-                    mb: 1,
-                    fontSize: '0.7rem',
-                    height: '24px',
+                    fontSize: '0.6rem',
+                    height: 18,
                     transition: 'none',
-                    '& .MuiChip-icon': {
-                      color: 'white'
-                    }
+                    '& .MuiChip-label': { px: 0.5 },
                   }}
                 />
 
                 {tableStatus.status === 'occupied' && activeOrdersCount > 0 && (
-                  <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>
-                    {activeOrdersCount} pedido{activeOrdersCount > 1 ? 's' : ''} activo{activeOrdersCount > 1 ? 's' : ''}
+                  <Typography variant="caption" color="text.secondary" sx={{ display: 'block', fontSize: '0.65rem', mt: 0.25 }}>
+                    {activeOrdersCount} pedido{activeOrdersCount > 1 ? 's' : ''}
                   </Typography>
                 )}
 
@@ -478,11 +456,12 @@ export default function TablesStatusGridEnhanced({
                       display: 'block',
                       color: tableStatus.color,
                       fontWeight: 600,
-                      mt: 0.5,
+                      fontSize: '0.65rem',
+                      mt: 0.25,
                       transition: 'none',
                     }}
                   >
-                    ⚠️ Atención requerida
+                    ⚠️ Atención
                   </Typography>
                 )}
               </Card>
