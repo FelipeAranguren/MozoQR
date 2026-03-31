@@ -5,15 +5,11 @@ import {
   Box,
   Container,
   Typography,
-  Card,
-  CircularProgress,
   Button,
   TextField,
   InputAdornment,
   Chip,
   Skeleton,
-  Fade,
-  Grow,
   Dialog,
   DialogTitle,
   DialogContent,
@@ -23,7 +19,6 @@ import {
 import SearchIcon from '@mui/icons-material/Search';
 import SwapHorizIcon from '@mui/icons-material/SwapHoriz';
 import KeyboardArrowUpIcon from '@mui/icons-material/KeyboardArrowUp';
-import { alpha } from '@mui/material/styles';
 import { motion, AnimatePresence } from 'framer-motion';
 
 import { useCart } from '../context/CartContext';
@@ -35,8 +30,9 @@ import useTableSession from '../hooks/useTableSession';
 import StickyFooter from '../components/StickyFooter';
 import { devLog } from '../utils/devLog';
 import { withRetry } from '../utils/retry';
-import MenuProductCard from '../components/MenuProductCard';
 import TableSelector from '../components/TableSelector';
+import AddIcon from '@mui/icons-material/Add';
+import RemoveIcon from '@mui/icons-material/Remove';
 import { buildProductOrderStatusMap, menuBadgeLabelForOrderStatus } from '../utils/orderStatusEs';
 import { getStrapiPublicBase } from '../utils/strapiPublicBase';
 
@@ -638,28 +634,22 @@ export default function RestaurantMenu() {
 
   // Componente de skeleton loader para productos
   const ProductSkeleton = () => (
-    <Card
-      elevation={0}
+    <Box
       sx={{
         display: 'flex',
-        gap: 1.25,
-        p: 1.25,
-        borderRadius: 3,
-        border: '1px solid',
-        borderColor: 'divider',
+        alignItems: 'center',
+        gap: 2,
+        px: 2,
+        py: 2,
       }}
     >
-      <Skeleton variant="rectangular" width={92} height={92} sx={{ borderRadius: 2 }} />
+      <Skeleton variant="rectangular" width={72} height={72} sx={{ borderRadius: 1.5, flexShrink: 0 }} />
       <Box sx={{ flex: 1, minWidth: 0 }}>
-        <Skeleton variant="text" width="60%" height={24} />
-        <Skeleton variant="text" width="40%" height={20} sx={{ mt: 0.5 }} />
-        <Skeleton variant="text" width="100%" height={16} sx={{ mt: 1 }} />
-        <Skeleton variant="text" width="80%" height={16} />
+        <Skeleton variant="text" width="60%" height={22} />
+        <Skeleton variant="text" width="30%" height={18} sx={{ mt: 0.25 }} />
       </Box>
-      <Box sx={{ display: 'flex', alignItems: 'center' }}>
-        <Skeleton variant="rectangular" width={96} height={36} sx={{ borderRadius: 1 }} />
-      </Box>
-    </Card>
+      <Skeleton variant="circular" width={36} height={36} />
+    </Box>
   );
 
   // Si hay número de mesa en la URL pero no existe en la BD -> mostrar mensaje de error
@@ -715,18 +705,21 @@ export default function RestaurantMenu() {
           py: { xs: 3, sm: 4 },
         }}
       >
-        <Box sx={{ textAlign: 'center', mb: 4 }}>
-          <Skeleton variant="text" width="60%" height={40} sx={{ mx: 'auto', mb: 2 }} />
-          <Skeleton variant="text" width="40%" height={20} sx={{ mx: 'auto' }} />
+        <Box sx={{ mb: 3, px: 0.5 }}>
+          <Skeleton variant="text" width="55%" height={36} />
+          <Skeleton variant="text" width="30%" height={20} sx={{ mt: 0.5 }} />
         </Box>
-        <Box sx={{ display: 'flex', gap: 1, mb: 3, overflowX: 'auto', pb: 1 }}>
+        <Box sx={{ display: 'flex', gap: 1, mb: 2, overflowX: 'auto', pb: 1 }}>
           {[1, 2, 3, 4].map((i) => (
-            <Skeleton key={i} variant="rounded" width={100} height={36} sx={{ flexShrink: 0 }} />
+            <Skeleton key={i} variant="rounded" width={80} height={32} sx={{ flexShrink: 0, borderRadius: 4 }} />
           ))}
         </Box>
-        <Box sx={{ display: 'grid', gap: 1.75, mt: 3 }}>
-          {[1, 2, 3, 4].map((i) => (
-            <ProductSkeleton key={i} />
+        <Box sx={{ bgcolor: 'background.paper', borderRadius: 2, border: '1px solid', borderColor: 'divider', overflow: 'hidden' }}>
+          {[1, 2, 3, 4, 5].map((i) => (
+            <React.Fragment key={i}>
+              {i > 1 && <Box sx={{ mx: 2, borderBottom: '1px solid', borderColor: 'divider' }} />}
+              <ProductSkeleton />
+            </React.Fragment>
           ))}
         </Box>
       </Container>
@@ -778,8 +771,7 @@ export default function RestaurantMenu() {
         width: '100%',
         position: 'relative',
         minHeight: '100vh',
-        background:
-          'linear-gradient(180deg, #fafaf9 0%, #f5f5f4 100%)',
+        bgcolor: '#ffffff',
       }}
     >
       <Container
@@ -795,61 +787,20 @@ export default function RestaurantMenu() {
           boxShadow: 'none',
         }}
       >
-        {/* Header */}
-        <Box sx={{ bgcolor: 'background.paper', border: '1px solid', borderColor: 'divider', borderRadius: 3, boxShadow: '0 1px 3px rgba(9,9,11,0.08)', textAlign: 'center', p: { xs: 3, sm: 4 }, mb: 2.5 }}>
+        {/* Header — estilo clásico limpio */}
+        <Box sx={{ mb: 2, px: 0.5 }}>
           <Typography
             component="h1"
             sx={{
-              fontWeight: 700,
-              lineHeight: 1.15,
-              letterSpacing: 0.5,
-              mb: 1,
-              fontSize: 'clamp(22px, 4.2vw, 32px)',
+              fontWeight: 800,
+              lineHeight: 1.1,
+              fontSize: 'clamp(24px, 5vw, 34px)',
+              letterSpacing: '-0.01em',
               wordBreak: 'break-word',
+              color: 'text.primary',
             }}
           >
-            Menú de{' '}
-            <Box component="span" sx={{ fontWeight: 800 }}>
-              {nombreRestaurante || slug}
-            </Box>
-          </Typography>
-
-          <Box
-            sx={(theme) => ({
-              width: 120,
-              height: 3,
-              mx: 'auto',
-              borderRadius: 999,
-              background:
-                theme.palette.mode === 'light' ? 'rgba(0,0,0,0.12)' : 'rgba(255,255,255,0.24)',
-              position: 'relative',
-              mb: 0.5,
-              '&::after': {
-                content: '""',
-                position: 'absolute',
-                left: '50%',
-                top: -1,
-                transform: 'translateX(-50%)',
-                width: 40,
-                height: 4,
-                borderRadius: 999,
-                backgroundColor: theme.palette.secondary.main,
-                boxShadow: '0 6px 14px rgba(9,9,11,0.12)',
-              },
-            })}
-          />
-
-          <Typography
-            variant="caption"
-            sx={{
-              color: 'text.secondary',
-              letterSpacing: 1,
-              textTransform: 'uppercase',
-              mt: 1.5,
-              display: 'block',
-            }}
-          >
-            Elegí tus platos favoritos
+            {nombreRestaurante || slug}
           </Typography>
           {table && (
             <Button
@@ -857,12 +808,13 @@ export default function RestaurantMenu() {
               onClick={() => (items.length > 0 ? setChangeTableDialog(true) : navigate(`/${slug}/menu`))}
               startIcon={<SwapHorizIcon sx={{ fontSize: 16 }} />}
               sx={{
-                mt: 1,
+                mt: 0.5,
                 textTransform: 'none',
                 color: 'text.secondary',
-                fontSize: '0.75rem',
+                fontSize: '0.8125rem',
+                fontWeight: 500,
                 minWidth: 0,
-                px: 0.5,
+                px: 0,
                 '&:hover': { color: 'primary.main', bgcolor: 'transparent' },
               }}
             >
@@ -1094,19 +1046,32 @@ export default function RestaurantMenu() {
           </Box>
         )}
 
-        {/* Lista de productos */}
+        {/* Nombre de categoría como título */}
+        {!searchQuery && categoriaSeleccionada && (
+          <Typography
+            sx={{
+              fontWeight: 700,
+              fontSize: '1.125rem',
+              color: 'text.primary',
+              mb: 1.5,
+              px: 0.5,
+            }}
+          >
+            {findCategoria(categoriaSeleccionada)?.name || ''}
+          </Typography>
+        )}
+
+        {/* Lista de productos — estilo clásico (filas con thumbnail) */}
         <Box
           id="productos-section"
           sx={{
-            display: 'grid',
-            gap: { xs: 1.5, sm: 2 },
             width: '100%',
             mt: searchQuery ? 2 : 0,
-            overflowX: 'hidden',
-            overflowY: 'visible',
-            py: 0.5,
-            pb: 2,
-            px: { xs: 0, sm: 0.5 },
+            bgcolor: 'background.paper',
+            borderRadius: 2,
+            border: '1px solid',
+            borderColor: 'divider',
+            overflow: 'hidden',
           }}
         >
           <AnimatePresence mode="wait">
@@ -1117,13 +1082,7 @@ export default function RestaurantMenu() {
                 animate={{ opacity: 1, y: 0 }}
                 exit={{ opacity: 0 }}
               >
-                <Box
-                  sx={{
-                    textAlign: 'center',
-                    py: 8,
-                    px: 2,
-                  }}
-                >
+                <Box sx={{ textAlign: 'center', py: 8, px: 2 }}>
                   <Typography variant="h6" color="text.secondary" gutterBottom>
                     No se encontraron productos
                   </Typography>
@@ -1138,32 +1097,199 @@ export default function RestaurantMenu() {
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}
                 exit={{ opacity: 0 }}
-                style={{ display: 'grid', gap: 'inherit', width: '100%' }}
               >
                 {productosFiltrados.map((plato, index) => {
                   const qty = items.find((i) => i.id === plato.id)?.qty || 0;
-                  const orderBadge = menuBadgeLabelForOrderStatus(
-                    productOrderStatusByProductId[String(plato.id)]
-                  );
+                  const orderSt = productOrderStatusByProductId[String(plato.id)];
+                  const orderBadge = menuBadgeLabelForOrderStatus(orderSt);
                   return (
-                    <motion.div
-                      key={plato.id}
-                      initial={{ opacity: 0, y: 20 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      exit={{ opacity: 0, scale: 0.9 }}
-                      transition={{ duration: 0.3, delay: index * 0.05 }}
-                      whileHover={{ scale: 1.01 }}
-                      style={{ originX: 0.5 }}
-                    >
-                      <MenuProductCard
-                        producto={plato}
-                        qty={qty}
-                        priceFormatted={money(plato.precio)}
-                        onAdd={() => addItem({ id: plato.id, nombre: plato.nombre, precio: plato.precio })}
-                        onSub={() => removeItem(plato.id)}
-                        orderStatusLabel={orderBadge}
-                      />
-                    </motion.div>
+                    <Box key={plato.id}>
+                      {index > 0 && (
+                        <Box sx={{ mx: 2, borderBottom: '1px solid', borderColor: 'divider' }} />
+                      )}
+                      <motion.div
+                        initial={{ opacity: 0 }}
+                        animate={{ opacity: 1 }}
+                        transition={{ duration: 0.2, delay: index * 0.03 }}
+                      >
+                        <Box
+                          sx={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: 2,
+                            px: 2,
+                            py: 2,
+                            cursor: 'pointer',
+                            transition: 'background-color 150ms',
+                            '&:active': { bgcolor: 'action.hover' },
+                          }}
+                          onClick={() => {
+                            if (qty === 0) addItem({ id: plato.id, nombre: plato.nombre, precio: plato.precio });
+                          }}
+                        >
+                          {/* Thumbnail */}
+                          <Box
+                            sx={{
+                              width: 72,
+                              height: 72,
+                              borderRadius: 1.5,
+                              overflow: 'hidden',
+                              flexShrink: 0,
+                              bgcolor: 'background.default',
+                            }}
+                          >
+                            {plato.imagen && plato.imagen !== PLACEHOLDER ? (
+                              <img
+                                src={plato.imagen}
+                                alt={plato.nombre}
+                                loading="lazy"
+                                style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
+                              />
+                            ) : (
+                              <Box
+                                sx={{
+                                  width: '100%',
+                                  height: '100%',
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  justifyContent: 'center',
+                                }}
+                              >
+                                <Typography variant="caption" color="text.muted" sx={{ fontSize: '0.6rem' }}>
+                                  Sin foto
+                                </Typography>
+                              </Box>
+                            )}
+                          </Box>
+
+                          {/* Info */}
+                          <Box sx={{ flex: 1, minWidth: 0 }}>
+                            <Typography
+                              sx={{
+                                fontWeight: 700,
+                                fontSize: '0.9375rem',
+                                lineHeight: 1.3,
+                                color: 'text.primary',
+                                overflow: 'hidden',
+                                textOverflow: 'ellipsis',
+                                display: '-webkit-box',
+                                WebkitLineClamp: 2,
+                                WebkitBoxOrient: 'vertical',
+                              }}
+                            >
+                              {plato.nombre}
+                            </Typography>
+                            <Typography
+                              sx={{
+                                fontWeight: 600,
+                                fontSize: '0.875rem',
+                                color: 'text.secondary',
+                                mt: 0.25,
+                              }}
+                            >
+                              {money(plato.precio)}
+                            </Typography>
+                            {orderBadge && (
+                              <Typography
+                                variant="caption"
+                                sx={{
+                                  mt: 0.5,
+                                  display: 'inline-block',
+                                  px: 1,
+                                  py: 0.25,
+                                  borderRadius: 1,
+                                  fontWeight: 600,
+                                  fontSize: '0.65rem',
+                                  bgcolor: orderBadge === 'En preparación' ? 'primary.main' : 'warning.main',
+                                  color: '#fff',
+                                }}
+                              >
+                                {orderBadge}
+                              </Typography>
+                            )}
+                          </Box>
+
+                          {/* Qty controls */}
+                          <Box sx={{ flexShrink: 0, display: 'flex', alignItems: 'center' }}>
+                            {qty === 0 ? (
+                              <Button
+                                variant="outlined"
+                                size="small"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  addItem({ id: plato.id, nombre: plato.nombre, precio: plato.precio });
+                                }}
+                                sx={{
+                                  minWidth: 36,
+                                  width: 36,
+                                  height: 36,
+                                  p: 0,
+                                  borderRadius: '50%',
+                                  borderColor: 'divider',
+                                  color: 'text.primary',
+                                }}
+                                aria-label={`Agregar ${plato.nombre}`}
+                              >
+                                <AddIcon sx={{ fontSize: 20 }} />
+                              </Button>
+                            ) : (
+                              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                                <Button
+                                  size="small"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    removeItem(plato.id);
+                                  }}
+                                  sx={{
+                                    minWidth: 32,
+                                    width: 32,
+                                    height: 32,
+                                    p: 0,
+                                    borderRadius: '50%',
+                                    bgcolor: 'background.default',
+                                    color: 'text.primary',
+                                    '&:hover': { bgcolor: 'action.hover' },
+                                  }}
+                                  aria-label={`Quitar ${plato.nombre}`}
+                                >
+                                  <RemoveIcon sx={{ fontSize: 18 }} />
+                                </Button>
+                                <Typography
+                                  sx={{
+                                    fontWeight: 700,
+                                    fontSize: '0.9375rem',
+                                    minWidth: 20,
+                                    textAlign: 'center',
+                                  }}
+                                >
+                                  {qty}
+                                </Typography>
+                                <Button
+                                  size="small"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    addItem({ id: plato.id, nombre: plato.nombre, precio: plato.precio });
+                                  }}
+                                  sx={{
+                                    minWidth: 32,
+                                    width: 32,
+                                    height: 32,
+                                    p: 0,
+                                    borderRadius: '50%',
+                                    bgcolor: 'primary.main',
+                                    color: 'primary.contrastText',
+                                    '&:hover': { bgcolor: 'primary.dark' },
+                                  }}
+                                  aria-label={`Sumar ${plato.nombre}`}
+                                >
+                                  <AddIcon sx={{ fontSize: 18 }} />
+                                </Button>
+                              </Box>
+                            )}
+                          </Box>
+                        </Box>
+                      </motion.div>
+                    </Box>
                   );
                 })}
               </motion.div>
