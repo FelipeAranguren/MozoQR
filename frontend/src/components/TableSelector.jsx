@@ -114,8 +114,8 @@ export default function TableSelector({ mesaOcupadaAlert = null, onDismissMesaOc
 
   if (loading) {
     return (
-      <Container maxWidth="md" sx={{ py: 4 }}>
-        <Box sx={{ textAlign: 'center', mb: 4 }}>
+      <Container maxWidth="md" sx={{ py: { xs: 4, sm: 6 } }}>
+        <Box sx={{ bgcolor: 'background.paper', border: '1px solid', borderColor: 'divider', borderRadius: 3, boxShadow: '0 1px 3px rgba(9,9,11,0.08)', p: { xs: 3, sm: 4 }, mb: 4, textAlign: 'center' }}>
           <Skeleton variant="circular" width={64} height={64} sx={{ mx: 'auto', mb: 2 }} />
           <Skeleton variant="text" width={200} height={36} sx={{ mx: 'auto', mb: 1 }} />
           <Skeleton variant="text" width={320} height={24} sx={{ mx: 'auto' }} />
@@ -140,11 +140,11 @@ export default function TableSelector({ mesaOcupadaAlert = null, onDismissMesaOc
   }
 
   return (
-    <Container maxWidth="md" sx={{ py: 4 }}>
+    <Container maxWidth="md" sx={{ py: { xs: 4, sm: 6 } }}>
       {mesaOcupadaAlert?.number != null && !mesaOcupadaDismissed && (
         <Alert
           severity="warning"
-          variant="filled"
+          variant="standard"
           onClose={dismissMesaOcupada}
           sx={{ mb: 3, textAlign: 'left' }}
         >
@@ -157,21 +157,48 @@ export default function TableSelector({ mesaOcupadaAlert = null, onDismissMesaOc
           </Typography>
         </Alert>
       )}
-      <Box sx={{ textAlign: 'center', mb: 4 }}>
-        <TableRestaurantIcon sx={{ fontSize: 64, color: 'primary.main', mb: 2 }} />
+      <Box sx={{ bgcolor: 'background.paper', border: '1px solid', borderColor: 'divider', borderRadius: 3, boxShadow: '0 1px 3px rgba(9,9,11,0.08)', textAlign: 'center', mb: 4, p: { xs: 3, sm: 4.5 } }}>
+        <Box
+          sx={{
+            width: 72,
+            height: 72,
+            borderRadius: 2,
+            display: 'grid',
+            placeItems: 'center',
+            mx: 'auto',
+            mb: 2,
+            bgcolor: 'action.selected',
+            color: 'primary.main',
+          }}
+        >
+          <TableRestaurantIcon sx={{ fontSize: 36 }} />
+        </Box>
         {restaurantName && (
-          <Typography variant="overline" color="text.secondary" sx={{ display: 'block', mb: 0.5 }}>
+          <Typography variant="overline" color="text.secondary" sx={{ display: 'block', mb: 0.75 }}>
             {restaurantName}
           </Typography>
         )}
-        <Typography variant="h4" sx={{ fontWeight: 700, mb: 1 }}>
-          Selecciona tu Mesa
+        <Typography variant="h3" sx={{ fontWeight: 800, mb: 1 }}>
+          Selecciona tu mesa
         </Typography>
-        <Typography variant="body1" color="text.secondary" sx={{ mb: 2 }}>
-          Elige la mesa donde te encuentras para comenzar a hacer tu pedido
+        <Typography variant="body1" color="text.secondary" sx={{ mb: 3, maxWidth: 520, mx: 'auto' }}>
+          Elige la mesa donde te encuentras para comenzar tu pedido con una experiencia clara y segura.
         </Typography>
-        <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', gap: 0.5 }}>
-          <Typography variant="body2" color="text.secondary" sx={{ mr: 0.5 }}>
+        <Box
+          sx={{
+            display: 'inline-flex',
+            justifyContent: 'center',
+            alignItems: 'center',
+            gap: 0.5,
+            px: 1.5,
+            py: 0.75,
+            borderRadius: 999,
+            bgcolor: 'background.paper',
+            border: '1px solid',
+            borderColor: 'divider',
+          }}
+        >
+          <Typography variant="body2" color="text.secondary" sx={{ mr: 0.5, fontWeight: 700 }}>
             Compartir menú:
           </Typography>
           <Tooltip title="Copiar link">
@@ -199,13 +226,17 @@ export default function TableSelector({ mesaOcupadaAlert = null, onDismissMesaOc
                 <Card
                   sx={{
                     height: '100%',
+                    borderRadius: 5,
                     transition: 'all 0.2s',
+                    border: '1px solid',
+                    borderColor: isBlocked ? 'divider' : 'rgba(199,184,161,0.8)',
+                    bgcolor: isBlocked ? 'background.default' : 'background.paper',
                     ...(isBlocked
                       ? { opacity: 0.55 }
                       : {
                           '&:hover': {
                             transform: 'translateY(-4px)',
-                            boxShadow: 6,
+                            boxShadow: '0 18px 36px rgba(9,9,11,0.09)',
                           },
                         }),
                   }}
@@ -218,12 +249,12 @@ export default function TableSelector({ mesaOcupadaAlert = null, onDismissMesaOc
                     <CardContent sx={{ textAlign: 'center', p: '0 !important' }}>
                       <TableRestaurantIcon
                         sx={{
-                          fontSize: 48,
+                          fontSize: 38,
                           color: 'primary.main',
-                          mb: 1,
+                          mb: 1.25,
                         }}
                       />
-                      <Typography variant="h5" sx={{ fontWeight: 700, mb: 0.5 }}>
+                      <Typography variant="h5" sx={{ fontWeight: 800, mb: 0.5 }}>
                         {table.number}
                       </Typography>
                       {table.displayName && table.displayName !== `Mesa ${table.number}` && (
@@ -245,14 +276,14 @@ export default function TableSelector({ mesaOcupadaAlert = null, onDismissMesaOc
             <Button
               variant="outlined"
               onClick={() => setCustomTableDialog(true)}
-              sx={{ textTransform: 'none' }}
+              sx={{ textTransform: 'none', px: 3 }}
             >
               ¿No encuentras tu mesa? Ingresa el número manualmente
             </Button>
           </Box>
         </>
       ) : loadError ? (
-        <Box sx={{ textAlign: 'center', py: 4 }}>
+        <Box sx={{ bgcolor: 'background.paper', border: '1px solid', borderColor: 'divider', borderRadius: 3, boxShadow: '0 1px 3px rgba(9,9,11,0.08)', textAlign: 'center', py: 4, px: 3 }}>
           <Typography variant="h6" color="error" sx={{ mb: 2 }}>
             Error al cargar las mesas
           </Typography>
@@ -290,7 +321,7 @@ export default function TableSelector({ mesaOcupadaAlert = null, onDismissMesaOc
           </Box>
         </Box>
       ) : (
-        <Box sx={{ textAlign: 'center', py: 4 }}>
+        <Box sx={{ bgcolor: 'background.paper', border: '1px solid', borderColor: 'divider', borderRadius: 3, boxShadow: '0 1px 3px rgba(9,9,11,0.08)', textAlign: 'center', py: 4, px: 3 }}>
           <Typography variant="h6" color="text.secondary" sx={{ mb: 2 }}>
             No hay mesas configuradas
           </Typography>

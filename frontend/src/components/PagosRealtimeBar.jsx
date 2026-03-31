@@ -259,7 +259,7 @@ export default function PagosRealtimeBar({ slug, localItems = [] }) {
 
     if (!merged?.length) {
       return (
-        <Typography variant="body2" sx={{ color: 'text.secondary' }}>
+        <Typography variant="body2" sx={{ color: 'var(--mq-text-secondary)' }}>
           Sin pagos recientes
         </Typography>
       );
@@ -288,18 +288,18 @@ export default function PagosRealtimeBar({ slug, localItems = [] }) {
               size="small"
               variant="filled"
               sx={{
-                height: 20,
-                maxHeight: 20,
+                height: 22,
+                maxHeight: 22,
                 borderRadius: 999,
-                fontWeight: 600,
+                fontWeight: 700,
                 fontSize: '0.65rem',
                 lineHeight: 1,
-                bgcolor: 'rgba(46, 125, 50, 0.10)',
-                color: 'success.dark',
-                border: '1px solid rgba(46, 125, 50, 0.35)',
+                bgcolor: 'rgba(22, 163, 74, 0.12)',
+                color: '#15803d',
+                border: '1px solid rgba(22, 163, 74, 0.25)',
                 backdropFilter: 'blur(6px)',
                 '& .MuiChip-icon': {
-                  color: 'success.main',
+                  color: '#16a34a',
                   marginLeft: '4px',
                   marginRight: '-2px',
                 },
@@ -319,12 +319,12 @@ export default function PagosRealtimeBar({ slug, localItems = [] }) {
   return (
     <Box
       sx={{
-        px: 1,
-        py: 0.75,
-        borderRadius: 2,
+        px: 1.25,
+        py: 0.9,
+        borderRadius: 3,
         border: '1px solid',
-        borderColor: 'divider',
-        bgcolor: 'rgba(255,255,255,0.65)',
+        borderColor: 'var(--mq-border)',
+        bgcolor: 'var(--mq-surface)',
         backdropFilter: 'blur(8px)',
         display: 'flex',
         alignItems: 'center',
@@ -332,7 +332,7 @@ export default function PagosRealtimeBar({ slug, localItems = [] }) {
         minHeight: 36,
         width: '100%',
         maxWidth: { xs: '100%', sm: 640, md: 760 },
-        boxShadow: '0 6px 22px rgba(0,0,0,0.06)',
+        boxShadow: 'var(--mq-shadow-2)',
       }}
     >
       <Typography
@@ -340,7 +340,7 @@ export default function PagosRealtimeBar({ slug, localItems = [] }) {
         sx={{
           fontWeight: 800,
           letterSpacing: 0.2,
-          color: 'text.primary',
+          color: 'var(--mq-text)',
           whiteSpace: 'nowrap',
           fontSize: '0.7rem',
         }}

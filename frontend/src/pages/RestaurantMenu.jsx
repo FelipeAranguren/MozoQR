@@ -39,6 +39,7 @@ import { withRetry } from '../utils/retry';
 import MenuProductCard from '../components/MenuProductCard';
 import TableSelector from '../components/TableSelector';
 import { buildProductOrderStatusMap, menuBadgeLabelForOrderStatus } from '../utils/orderStatusEs';
+import { getStrapiPublicBase } from '../utils/strapiPublicBase';
 
 const PLACEHOLDER = 'https://via.placeholder.com/600x400?text=No+Image';
 const money = (n) =>
@@ -185,7 +186,7 @@ export default function RestaurantMenu() {
       const categoriasMapeadas = categories.map((cat) => {
         // Los productos ya vienen en cat.productos (no cat.attributes.productos)
         const productosCat = (cat.productos || []).map((p) => {
-          const baseApi = (import.meta.env?.VITE_API_URL || '').replace('/api', '');
+          const baseApi = getStrapiPublicBase();
           // El endpoint namespaced ya devuelve la URL completa de la imagen si el plan es PRO
           const img = p.image || PLACEHOLDER;
           const descripcion = Array.isArray(p.description)
@@ -555,7 +556,7 @@ export default function RestaurantMenu() {
             setCategoriaSeleccionada(null);
           } else {
             // Si realmente no hay categorías, mostramos lista plana
-            const baseApi = (import.meta.env?.VITE_API_URL || '').replace('/api', '');
+            const baseApi = getStrapiPublicBase();
             const list = Array.isArray(menus)
               ? menus.flatMap((m) => m.products || m.productos || [])
               : menus?.products || menus?.productos || [];
@@ -606,7 +607,7 @@ export default function RestaurantMenu() {
             devLog('Categorías cargadas desde fallback:', menus.categories.length);
           } else {
             // Fallback antiguo: lista plana
-            const baseApi = (import.meta.env?.VITE_API_URL || '').replace('/api', '');
+            const baseApi = getStrapiPublicBase();
             const list = Array.isArray(menus)
               ? menus.flatMap((m) => m.products || m.productos || [])
               : menus?.products || menus?.productos || [];
@@ -643,7 +644,12 @@ export default function RestaurantMenu() {
           console.error('Error en fallback completo:', fallbackErr);
           setProductos([]);
           setProductosTodos([]);
-          setMenuLoadError(fallbackErr?.message || 'No se pudo cargar el menú. Revisá tu conexión.');
+          const st = fallbackErr?.response?.status;
+          const msg =
+            st === 426
+              ? 'Error de conexión con el servidor (426). Reiniciá el frontend (npm run dev) y abrí http://127.0.0.1:5173 con el backend en http://127.0.0.1:1337.'
+              : fallbackErr?.message || 'No se pudo cargar el menú. Revisá tu conexión.';
+          setMenuLoadError(msg);
         }
       } finally {
         setLoading(false);
@@ -858,25 +864,9 @@ export default function RestaurantMenu() {
         width: '100%',
         position: 'relative',
         minHeight: '100vh',
-        background: (theme) =>
-          theme.palette.mode === 'light'
-            ? 'radial-gradient(circle at top left, #e0f2f1 0, #f9fafb 40%, #ffffff 100%)'
-            : 'radial-gradient(circle at top left, #0f172a 0, #020617 55%, #000000 100%)',
+        bgcolor: 'background.default',
       }}
     >
-      <Box
-        sx={(theme) => ({
-          position: 'absolute',
-          inset: 0,
-          pointerEvents: 'none',
-          backgroundImage:
-            theme.palette.mode === 'light'
-              ? 'radial-gradient(circle at 10% 20%, rgba(0,150,136,0.12) 0, transparent 40%), radial-gradient(circle at 90% 10%, rgba(255,159,64,0.12) 0, transparent 45%)'
-              : 'radial-gradient(circle at 10% 20%, rgba(34,197,94,0.12) 0, transparent 40%), radial-gradient(circle at 90% 10%, rgba(56,189,248,0.16) 0, transparent 45%)',
-          opacity: 0.9,
-        })}
-      />
-
       <Container
         component="main"
         maxWidth="sm"
@@ -885,20 +875,22 @@ export default function RestaurantMenu() {
           position: 'relative',
           zIndex: 1,
           px: { xs: 1.5, sm: 2.5 },
-          py: { xs: 2.5, sm: 3.5 },
+          py: { xs: 3, sm: 4 },
         }}
       >
         {/* Header */}
         <Box
-          sx={(theme) => ({
+          sx={{
             mb: 2.5,
-            p: 0,
-            pb: 2,
-            background: 'transparent',
-            boxShadow: 'none',
+            p: { xs: 3, sm: 4 },
+            bgcolor: 'background.paper',
+            border: '1px solid',
+            borderColor: 'divider',
+            borderRadius: 3,
+            boxShadow: '0 1px 3px rgba(9,9,11,0.08)',
             position: 'relative',
             overflow: 'visible',
-          })}
+          }}
         >
           <Box sx={{ position: 'relative', textAlign: 'left' }}>
             <Typography
@@ -925,7 +917,7 @@ export default function RestaurantMenu() {
                 fontSize: '0.95rem',
               }}
             >
-              ELEGÍ TUS PLATOS FAVORITOS
+              Carta digital
             </Typography>
 
             {table && (
@@ -957,7 +949,7 @@ export default function RestaurantMenu() {
         </Box>
 
         {/* Barra de búsqueda */}
-        <Box sx={{ mb: 2 }}>
+        <Box sx={{ mb: 2.5 }}>
           <TextField
             fullWidth
             placeholder="Buscar por nombre o descripción..."
@@ -992,20 +984,15 @@ export default function RestaurantMenu() {
             sx={{
               '& .MuiOutlinedInput-root': {
                 borderRadius: 999,
-                backgroundColor: (theme) =>
-                  theme.palette.mode === 'light'
-                    ? 'rgba(255,255,255,0.9)'
-                    : 'rgba(15,23,42,0.95)',
-                boxShadow:
-                  '0 10px 30px rgba(15,118,110,0.15)',
+                backgroundColor: 'background.paper',
                 '& fieldset': {
-                  borderColor: (theme) => alpha(theme.palette.primary.main, 0.22),
+                  borderColor: 'divider',
                 },
                 '&:hover fieldset': {
-                  borderColor: (theme) => alpha(theme.palette.primary.main, 0.5),
+                  borderColor: 'text.secondary',
                 },
                 '&.Mui-focused fieldset': {
-                  borderColor: (theme) => alpha(theme.palette.primary.main, 0.8),
+                  borderColor: 'primary.main',
                 },
               },
             }}
@@ -1027,7 +1014,7 @@ export default function RestaurantMenu() {
                 height: 6,
               },
               '&::-webkit-scrollbar-thumb': {
-                backgroundColor: 'rgba(15,118,110,0.35)',
+                backgroundColor: 'rgba(161,161,170,0.35)',
                 borderRadius: 999,
               },
             }}
@@ -1044,15 +1031,12 @@ export default function RestaurantMenu() {
               color={categoriaSeleccionada === null ? 'primary' : 'default'}
               sx={{
                 bgcolor:
-                  categoriaSeleccionada === null ? 'primary.main' : 'rgba(255,255,255,0.9)',
+                  categoriaSeleccionada === null ? 'primary.main' : 'background.paper',
                 color: categoriaSeleccionada === null ? 'white' : 'text.primary',
                 fontWeight: categoriaSeleccionada === null ? 700 : 500,
                 borderRadius: 999,
                 px: 1.5,
-                boxShadow:
-                  categoriaSeleccionada === null
-                    ? '0 10px 25px rgba(15,118,110,0.4)'
-                    : 'none',
+                boxShadow: 'none',
               }}
             />
             {categorias.map((cat) => (
@@ -1078,7 +1062,7 @@ export default function RestaurantMenu() {
                   bgcolor:
                     categoriaSeleccionada === (cat.id ?? cat.documentId)
                       ? 'primary.main'
-                      : 'rgba(255,255,255,0.9)',
+                      : 'background.paper',
                   color:
                     categoriaSeleccionada === (cat.id ?? cat.documentId)
                       ? 'white'
@@ -1087,6 +1071,7 @@ export default function RestaurantMenu() {
                     categoriaSeleccionada === (cat.id ?? cat.documentId) ? 700 : 500,
                   borderRadius: 999,
                   px: 1.5,
+                  boxShadow: 'none',
                 }}
               />
             ))}

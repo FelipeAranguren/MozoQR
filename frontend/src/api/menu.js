@@ -1,4 +1,5 @@
 import { client } from './client';
+import { getStrapiPublicBase } from '../utils/strapiPublicBase';
 
 // Helper para obtener token de autenticación
 function getAuthHeaders() {
@@ -263,7 +264,7 @@ function textToBlocks(text) {
 
 // Helper para mapear productos
 function mapProducts(data) {
-  const baseURL = import.meta.env?.VITE_API_URL?.replace('/api', '') || '';
+  const baseURL = getStrapiPublicBase();
 
   console.log('mapProducts: recibidos', data.length, 'productos');
   if (data.length > 0) {

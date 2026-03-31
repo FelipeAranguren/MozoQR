@@ -11,7 +11,7 @@ import {
   Divider, Grid, TextField, Snackbar, Alert,
   Dialog, DialogTitle, DialogContent, DialogContentText, DialogActions,
   Chip, Drawer, IconButton, MenuItem, Select, FormControl,
-  InputLabel, Tooltip, CircularProgress
+  InputLabel, Tooltip, CircularProgress, Tabs, Tab, Badge
 } from '@mui/material';
 import AccessTimeIcon from '@mui/icons-material/AccessTime';
 import RestaurantIcon from '@mui/icons-material/Restaurant';
@@ -96,6 +96,10 @@ export default function Mostrador() {
   const [cocinandoInFlight, setCocinandoInFlight] = useState(() => new Set());
   /** Pagos detectados en cliente (pedido pasó a paid y salió del listado activo) — complementa API/SSE */
   const [pagosLocalesAlertas, setPagosLocalesAlertas] = useState([]);
+  const [activeTab, setActiveTab] = useState(0);
+  const [tabNotify, setTabNotify] = useState({ pedidos: false, mesas: false });
+  const activeTabRef = useRef(0);
+  const prevMesaSnapshotRef = useRef(null);
 
   // ----- refs auxiliares (SOLO AQUÍ ARRIBA; no dentro de funciones) -----
   const pedidosRef = useRef([]);
@@ -872,6 +876,9 @@ export default function Mostrador() {
         try { playBeep(); } catch { }
         setSnack({ open: true, msg: `${nuevosFiltrados.length} pedido(s) nuevo(s)`, severity: 'info' });
         nuevosFiltrados.forEach((n) => triggerFlash(n.documentId));
+        if (activeTabRef.current !== 0) {
+          setTabNotify((prev) => ({ ...prev, pedidos: true }));
+        }
       }
       // sembrar vistos (en 1ª carga: todos, luego: sólo los nuevos); no sembrar fantasmas
       const idsAAgregar = hasLoadedRef.current ? nuevosVisibles : visiblesValidados.filter((p) => !blocklist.has(String(p?.documentId ?? '')));
@@ -1025,10 +1032,8 @@ export default function Mostrador() {
   const fetchMesas = async () => {
     try {
       const mesasData = await fetchTables(slug);
-      // Filtrar duplicados: si hay múltiples mesas con el mismo número, usar solo la primera (más antigua)
       const mesasUnicas = mesasData.reduce((acc, mesa) => {
         const mesaNum = mesa.number;
-        // Si ya existe una mesa con este número, no agregar (mantener la primera)
         if (!acc.find(m => m.number === mesaNum)) {
           acc.push(mesa);
         } else {
@@ -1036,6 +1041,11 @@ export default function Mostrador() {
         }
         return acc;
       }, []);
+      const newSnap = mesasUnicas.map((m) => `${m.number}:${m.status}`).sort().join('|');
+      if (prevMesaSnapshotRef.current != null && newSnap !== prevMesaSnapshotRef.current && activeTabRef.current !== 1) {
+        setTabNotify((prev) => ({ ...prev, mesas: true }));
+      }
+      prevMesaSnapshotRef.current = newSnap;
       setMesas(mesasUnicas);
     } catch (err) {
       // Error silencioso
@@ -2700,202 +2710,207 @@ export default function Mostrador() {
 
       <Box
         sx={{
-          p: { xs: 1.5, sm: 2, md: 3 },
           overflowX: 'hidden',
           width: '100%',
-          minHeight: '100vh',
+          height: '100vh',
+          display: 'flex',
+          flexDirection: 'column',
           boxSizing: 'border-box',
+          background: '#fafafa',
           '& *': { boxSizing: 'border-box' },
+          '@keyframes tabPulse': { '0%,100%': { opacity: 1 }, '50%': { opacity: 0.3 } },
         }}
       >
-      {/* Encabezado */}
-      <Box sx={{ display: 'flex', flexDirection: { xs: 'column', sm: 'row' }, alignItems: { xs: 'stretch', sm: 'center' }, gap: 2, flexWrap: 'wrap', mb: 2 }}>
-        <Box sx={{ flexGrow: 1, minWidth: 0 }}>
-          <Typography
-            component="h1"
-            sx={(theme) => ({
-              fontSize: { xs: 20, sm: 26, md: 28 },
-              fontWeight: 600,
-              lineHeight: 1.2,
-              color: 'text.primary',
-              mb: 0.5,
-            })}
-          >
-            Mostrador — {slug?.toUpperCase?.()}
-          </Typography>
-          <Box sx={{ height: 2, width: 120, bgcolor: 'divider', borderRadius: 1, position: 'relative' }}>
-            <Box
-              sx={(theme) => ({
-                position: 'absolute',
-                left: 0,
-                top: -1,
-                width: 44,
-                height: 4,
-                borderRadius: 999,
-                backgroundColor: theme.palette.primary.main,
-                boxShadow: '0 2px 8px rgba(0,0,0,0.10)',
-              })}
-            />
-          </Box>
-          {lastUpdateAt && (
-            <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 0.5 }}>
-              Actualizado {lastUpdateAt.toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
-            </Typography>
-          )}
-        </Box>
+      {/* Encabezado compacto */}
+      <Box
+        sx={{ display: 'flex', alignItems: 'center', gap: 1.5, flexWrap: 'wrap', px: { xs: 1.5, sm: 2 }, py: 1, bgcolor: 'background.paper', borderBottom: '1px solid #e4e4e7', flexShrink: 0 }}
+      >
+        <Typography
+          component="h1"
+          sx={{ fontSize: { xs: 16, sm: 20 }, fontWeight: 800, lineHeight: 1.2, color: 'text.primary', whiteSpace: 'nowrap' }}
+        >
+          Mostrador — {slug?.toUpperCase?.()}
+        </Typography>
 
-        {/* Barra de notificaciones de pagos (últimas 3 mesas pagadas por MP) */}
-        <Box sx={{ flexBasis: { xs: '100%', sm: 'auto' }, flexGrow: 0, display: 'flex', justifyContent: { xs: 'flex-start', sm: 'center' }, mr: { sm: 1 } }}>
+        {lastUpdateAt && (
+          <Typography variant="caption" color="text.secondary" sx={{ whiteSpace: 'nowrap' }}>
+            {lastUpdateAt.toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
+          </Typography>
+        )}
+
+        <Box sx={{ flexGrow: 1, display: 'flex', justifyContent: 'center', minWidth: 0 }}>
           <PagosRealtimeBar slug={slug} localItems={pagosLocalesAlertas} />
         </Box>
 
         <Tooltip title="Refrescar ahora">
           <span>
-            <IconButton
-              onClick={handleRefresh}
-              disabled={refreshing}
-              size="small"
-              sx={{ mr: 0.5 }}
-              aria-label="Refrescar datos"
-            >
-              {refreshing ? (
-                <CircularProgress size={20} />
-              ) : (
-                <RefreshIcon />
-              )}
+            <IconButton onClick={handleRefresh} disabled={refreshing} size="small" aria-label="Refrescar datos">
+              {refreshing ? <CircularProgress size={18} /> : <RefreshIcon fontSize="small" />}
             </IconButton>
           </span>
         </Tooltip>
 
-        <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
-          <Button
-            variant="outlined"
-            startIcon={<HistoryIcon />}
-            onClick={() => {
-              setShowHistoryDrawer(true);
-              fetchFullHistory();
-            }}
-            sx={{ borderRadius: 2, px: 2, py: 1, textTransform: 'none', fontWeight: 600, whiteSpace: 'nowrap' }}
-          >
-            Historial
-          </Button>
-          <Button
-            variant="outlined"
-            color="secondary"
-            startIcon={<CleaningServicesIcon />}
-            onClick={handleCleanupOldSessions}
-            sx={{ borderRadius: 2, px: 2, py: 1, textTransform: 'none', fontWeight: 600, whiteSpace: 'nowrap' }}
-            title="Marcar todos los pedidos como pagados y liberar todas las mesas"
-          >
-            Limpiar
-          </Button>
-        </Box>
+        <Button
+          variant="outlined"
+          size="small"
+          startIcon={<HistoryIcon />}
+          onClick={() => { setShowHistoryDrawer(true); fetchFullHistory(); }}
+          sx={{ borderRadius: 2, px: 1.5, py: 0.5, textTransform: 'none', fontWeight: 700, whiteSpace: 'nowrap', fontSize: '0.8125rem' }}
+        >
+          Historial
+        </Button>
+        <Button
+          variant="outlined"
+          color="secondary"
+          size="small"
+          startIcon={<CleaningServicesIcon />}
+          onClick={handleCleanupOldSessions}
+          sx={{ borderRadius: 2, px: 1.5, py: 0.5, textTransform: 'none', fontWeight: 700, whiteSpace: 'nowrap', fontSize: '0.8125rem' }}
+        >
+          Limpiar
+        </Button>
       </Box>
 
-      {error && <Typography color="error">{error}</Typography>}
+      {error && <Typography color="error" sx={{ px: 2, py: 0.5 }}>{error}</Typography>}
 
-      {/* Vista activa - siempre visible */}
-      <>
-        {/* Sección superior: Pedidos activos */}
-        <Grid container spacing={2} sx={{ mb: 3 }}>
-          {/* Sección 1: Pendientes — 3 columnas de pedidos */}
-          <Grid item xs={12} md={6}>
-            <Box sx={{ mb: 1.5, display: 'flex', alignItems: 'center', gap: 1 }}>
-              <AccessTimeIcon sx={{ fontSize: 20, color: 'text.secondary' }} />
-              <Typography variant="h6" sx={{ fontWeight: 600 }}>
-                Pendientes ({pedidosPendientes.length})
-              </Typography>
-            </Box>
-            {pedidosPendientes.length === 0 && (
-              <Typography variant="body2" color="text.secondary">
-                No hay pedidos pendientes
-              </Typography>
-            )}
-            <Box
-              sx={{
-                columnCount: { xs: 1, sm: 2, lg: 3 },
-                columnGap: (theme) => theme.spacing(1.25),
-                opacity: 1,
-                transition: 'opacity 0.15s ease-out',
-                '& > *': {
-                  breakInside: 'avoid',
-                  marginBottom: (theme) => theme.spacing(1.25),
-                },
-              }}
-            >
-              {pedidosPendientes.map((pedido) => {
-                if (!pedido?.documentId && pedido?.id == null) return null;
-                if (phantomBlocklistRef.current.has(String(pedido?.documentId ?? ''))) return null;
-                return (
-                  <Box key={pedido.documentId || pedido.id}>
-                    {renderPedidoCard(pedido)}
-                  </Box>
-                );
-              })}
-            </Box>
-            
+      {/* Tabs */}
+      <Box sx={{ borderBottom: '1px solid #e4e4e7', bgcolor: 'background.paper', flexShrink: 0, px: { xs: 1, sm: 2 } }}>
+        <Tabs
+          value={activeTab}
+          onChange={(_, v) => {
+            setActiveTab(v);
+            activeTabRef.current = v;
+            setTabNotify((prev) => {
+              if (v === 0) return { ...prev, pedidos: false };
+              if (v === 1) return { ...prev, mesas: false };
+              return prev;
+            });
+          }}
+          variant="fullWidth"
+          sx={{ minHeight: 44, '& .MuiTab-root': { minHeight: 44, py: 0.5, textTransform: 'none', fontWeight: 700, fontSize: '0.9375rem' } }}
+        >
+          <Tab
+            label={
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                <RestaurantIcon fontSize="small" />
+                <span>Pedidos</span>
+                <Badge
+                  badgeContent={pedidosPendientes.length + pedidosEnCocina.length + pedidosListos.length}
+                  color="error"
+                  max={99}
+                  sx={{ '& .MuiBadge-badge': { fontSize: '0.7rem', minWidth: 18, height: 18 } }}
+                />
+                {tabNotify.pedidos && (
+                  <Box sx={{ width: 8, height: 8, borderRadius: '50%', bgcolor: 'error.main', animation: 'tabPulse 1s infinite', ml: 0.5 }} />
+                )}
+              </Box>
+            }
+          />
+          <Tab
+            label={
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                <TableRestaurantIcon fontSize="small" />
+                <span>Mesas</span>
+                <Badge
+                  badgeContent={mesas.filter((m) => m.status === 'ocupada').length}
+                  color="info"
+                  max={99}
+                  sx={{ '& .MuiBadge-badge': { fontSize: '0.7rem', minWidth: 18, height: 18 } }}
+                />
+                {tabNotify.mesas && (
+                  <Box sx={{ width: 8, height: 8, borderRadius: '50%', bgcolor: 'warning.main', animation: 'tabPulse 1s infinite', ml: 0.5 }} />
+                )}
+              </Box>
+            }
+          />
+        </Tabs>
+      </Box>
+
+      {/* Tab content - fills remaining viewport */}
+      <Box sx={{ flex: 1, overflow: 'auto', px: { xs: 1, sm: 2 }, py: 1.5 }}>
+
+        {/* PEDIDOS tab */}
+        {activeTab === 0 && (
+          <Grid container spacing={2} sx={{ minHeight: '100%' }}>
+            {/* Pendientes */}
+            <Grid item xs={12} md={6}>
+              <Box sx={{ mb: 1.5, display: 'flex', alignItems: 'center', gap: 1 }}>
+                <AccessTimeIcon sx={{ fontSize: 20, color: 'text.secondary' }} />
+                <Typography variant="h6" sx={{ fontWeight: 600 }}>
+                  Pendientes ({pedidosPendientes.length})
+                </Typography>
+              </Box>
+              {pedidosPendientes.length === 0 && (
+                <Typography variant="body2" color="text.secondary">
+                  No hay pedidos pendientes
+                </Typography>
+              )}
+              <Box
+                sx={{
+                  columnCount: { xs: 1, sm: 2, lg: 3 },
+                  columnGap: (theme) => theme.spacing(1.25),
+                  '& > *': { breakInside: 'avoid', marginBottom: (theme) => theme.spacing(1.25) },
+                }}
+              >
+                {pedidosPendientes.map((pedido) => {
+                  if (!pedido?.documentId && pedido?.id == null) return null;
+                  if (phantomBlocklistRef.current.has(String(pedido?.documentId ?? ''))) return null;
+                  return (
+                    <Box key={pedido.documentId || pedido.id}>
+                      {renderPedidoCard(pedido)}
+                    </Box>
+                  );
+                })}
+              </Box>
+            </Grid>
+
+            {/* Cocinando */}
+            <Grid item xs={12} md={6} sx={{ bgcolor: '#f0f7ff', borderRadius: 2, py: '12px !important' }}>
+              <Box sx={{ mb: 1.5, display: 'flex', alignItems: 'center', gap: 1, px: 0.5 }}>
+                <RestaurantIcon sx={{ fontSize: 20, color: '#0288d1' }} />
+                <Typography variant="h6" sx={{ fontWeight: 600, color: '#0277bd' }}>
+                  Cocinando ({pedidosEnCocina.length})
+                </Typography>
+              </Box>
+              {pedidosEnCocina.length === 0 && (
+                <Typography variant="body2" color="text.secondary">
+                  No hay pedidos cocinando
+                </Typography>
+              )}
+              <Box
+                sx={{
+                  columnCount: { xs: 1, sm: 2, lg: 3 },
+                  columnGap: (theme) => theme.spacing(1.25),
+                  '& > *': { breakInside: 'avoid', marginBottom: (theme) => theme.spacing(1.25) },
+                }}
+              >
+                {pedidosEnCocina.map((pedido) => {
+                  if (!pedido?.documentId && pedido?.id == null) return null;
+                  if (phantomBlocklistRef.current.has(String(pedido?.documentId ?? ''))) return null;
+                  return (
+                    <Box key={pedido.documentId || pedido.id}>
+                      {renderPedidoCard(pedido)}
+                    </Box>
+                  );
+                })}
+              </Box>
+            </Grid>
           </Grid>
+        )}
 
-          {/* Sección 2: Cocinando — 3 columnas de pedidos */}
-          <Grid item xs={12} md={6}>
-            <Box sx={{ mb: 1.5, display: 'flex', alignItems: 'center', gap: 1 }}>
-              <RestaurantIcon sx={{ fontSize: 20, color: 'text.secondary' }} />
-              <Typography variant="h6" sx={{ fontWeight: 600 }}>
-                Cocinando ({pedidosEnCocina.length})
-              </Typography>
-            </Box>
-            {pedidosEnCocina.length === 0 && (
-              <Typography variant="body2" color="text.secondary">
-                No hay pedidos cocinando
-              </Typography>
-            )}
-            <Box
-              sx={{
-                columnCount: { xs: 1, sm: 2, lg: 3 },
-                columnGap: (theme) => theme.spacing(1.25),
-                opacity: 1,
-                transition: 'opacity 0.15s ease-out',
-                '& > *': {
-                  breakInside: 'avoid',
-                  marginBottom: (theme) => theme.spacing(1.25),
-                },
-              }}
-            >
-              {pedidosEnCocina.map((pedido) => {
-                if (!pedido?.documentId && pedido?.id == null) return null;
-                if (phantomBlocklistRef.current.has(String(pedido?.documentId ?? ''))) return null;
-                return (
-                  <Box key={pedido.documentId || pedido.id}>
-                    {renderPedidoCard(pedido)}
-                  </Box>
-                );
-              })}
-            </Box>
-          </Grid>
-        </Grid>
-
-        {/* División visual */}
-        <Divider sx={{ my: 3, borderWidth: 2 }} />
-
-        {/* Sección inferior: Grid de mesas */}
-        <Box sx={{ mt: 3 }}>
+        {/* MESAS tab */}
+        {activeTab === 1 && (
           <TablesStatusGridEnhanced
             tables={mesas}
-            // Pedidos activos para estado y badge: misma fuente que Pendientes (ordersForGrid desde pedidos)
             orders={ordersForGrid}
             systemOrders={pedidosSistema}
             openSessions={openSessions}
             onTableClick={(table) => {
-              // Abrir modal con detalles de la mesa
-              // Obtener el estado más actualizado de la mesa desde el array mesas (fuente de verdad)
               const mesaActual = mesas.find(m => Number(m.number) === Number(table.number)) || table;
-              
-              // Solo mostrar en el detalle los pedidos "reales" (no de sistema)
               const mesaPedidos = pedidos.filter(p =>
                 !isSystemOrder(p) &&
                 p.mesa_sesion?.mesa?.number === table.number
               );
-              // Y agrupar también las llamadas del sistema para poder limpiarlas
               const mesaSystemPedidos = pedidos.filter(p =>
                 isSystemOrder(p) &&
                 p.mesa_sesion?.mesa?.number === table.number
@@ -2904,8 +2919,8 @@ export default function Mostrador() {
               setTableDetailDialog({
                 open: true,
                 mesa: {
-                  ...mesaActual, // Usar mesaActual para tener el status más actualizado
-                  ...table, // Mantener otros campos de table
+                  ...mesaActual,
+                  ...table,
                   pedidos: mesaPedidos,
                   cuenta: mesaCuenta,
                   systemPedidos: mesaSystemPedidos,
@@ -2913,9 +2928,11 @@ export default function Mostrador() {
               });
             }}
           />
-        </Box>
+        )}
 
-      </>
+      </Box>
+
+      
 
       {/* Drawer de historial completo */}
       <Drawer
@@ -3640,7 +3657,7 @@ export default function Mostrador() {
                         size="small"
                         startIcon={<ReceiptIcon />}
                         onClick={() => setReceiptDialog({ open: true, data: cuentaToReceiptData(tableDetailDialog.mesa.cuenta) })}
-                        sx={{ mt: 2, borderColor: 'rgba(255,255,255,0.8)', color: 'inherit' }}
+                        sx={{ mt: 2, borderColor: 'rgba(255,255,255,0.8)', color: '#fff', bgcolor: 'transparent', '&:hover': { bgcolor: 'rgba(255,255,255,0.1)', borderColor: '#fff' } }}
                       >
                         Ver recibo
                       </Button>

@@ -62,106 +62,175 @@ export default function MenuProductCard({
       producto?.is_popular
   );
 
-  const teal = '#0f7c79';
+  const ink = 'var(--mq-text)';
+  const muted = 'var(--mq-text-secondary)';
+  const surface = 'var(--mq-surface)';
+  const border = 'var(--mq-border)';
+  const btnBg = 'var(--mq-primary)';
 
   return (
     <div
-      className="w-full bg-white rounded-[28px] overflow-hidden border border-[#e7f6f3] shadow-[0_12px_35px_rgba(0,0,0,0.08)]"
+      className="w-full overflow-hidden"
       style={{ WebkitTapHighlightColor: 'transparent' }}
     >
-      <div className="relative w-full aspect-square bg-[#f3f6f6] rounded-t-[28px] overflow-hidden">
-        {isPopular && (
-          <div
-            className="absolute top-3 left-3 uppercase rounded-full px-3 py-1 text-white text-[12px] font-extrabold tracking-wide"
-            style={{ backgroundColor: teal }}
-          >
-            POPULAR
-          </div>
-        )}
-
-        {orderStatusLabel ? (
-          <div
-            className="absolute top-3 right-3 rounded-full px-2.5 py-1 text-white text-[11px] font-extrabold tracking-wide shadow-sm max-w-[calc(100%-5rem)] truncate"
-            style={{
-              backgroundColor: orderStatusLabel === 'En preparación' ? teal : '#d97706',
-            }}
-            title={orderStatusLabel}
-          >
-            {orderStatusLabel}
-          </div>
-        ) : null}
-
-        {imagen ? (
-          <img src={imagen} alt={nombre} loading="lazy" className="w-full h-full object-cover block" />
-        ) : null}
-      </div>
-
-      <div className="p-4 flex flex-col">
-        <h3
-          className="text-black font-extrabold text-[18px] leading-snug overflow-hidden [display:-webkit-box] [-webkit-line-clamp:1] [-webkit-box-orient:vertical]"
-          title={nombre}
+      <div
+        className="overflow-hidden border"
+        style={{
+          borderRadius: 'var(--mq-radius-lg)',
+          background: surface,
+          borderColor: border,
+          boxShadow: 'var(--mq-shadow-1)',
+        }}
+      >
+        <div
+          className="relative w-full aspect-square overflow-hidden"
+          style={{
+            background: 'var(--mq-bg-alt)',
+          }}
         >
-          {nombre}
-        </h3>
-
-        {descripcion ? (
-          <p
-            className="mt-2 text-[#6b7280] text-[14px] leading-[1.35] overflow-hidden [display:-webkit-box] [-webkit-line-clamp:2] [-webkit-box-orient:vertical] min-h-[40px]"
-            title={descripcion}
-          >
-            {descripcion}
-          </p>
-        ) : (
-          <div className="mt-2 min-h-[40px]" />
-        )}
-
-        <div className="mt-auto pt-3 flex items-center justify-between">
-          <div className="text-[#0f7c79] font-extrabold text-[18px] leading-none">{priceFormatted}</div>
-
-          {qty <= 0 ? (
-            <button
-              type="button"
-              onClick={onAdd}
-              aria-label={`Agregar ${nombre}`}
-              className="w-11 h-11 rounded-full flex items-center justify-center select-none text-white"
-              style={{ backgroundColor: teal }}
+          {isPopular && (
+            <div
+              className="absolute top-3 left-3 z-10 uppercase px-2.5 py-1 text-[10px] font-bold tracking-[0.12em]"
+              style={{
+                borderRadius: 'var(--mq-radius-sm)',
+                backgroundColor: 'rgba(234, 88, 12, 0.1)',
+                color: 'var(--mq-accent)',
+                border: '1px solid rgba(234, 88, 12, 0.25)',
+              }}
             >
-              <IconPlus />
-            </button>
+              Popular
+            </div>
+          )}
+
+          {orderStatusLabel ? (
+            <div
+              className="absolute top-3 right-3 z-10 px-2.5 py-1 text-[11px] font-semibold tracking-[0.06em] shadow-sm max-w-[calc(100%-5rem)] truncate"
+              style={{
+                borderRadius: 'var(--mq-radius-sm)',
+                backgroundColor: orderStatusLabel === 'En preparación' ? btnBg : '#ca8a04',
+                color: '#fff',
+              }}
+              title={orderStatusLabel}
+            >
+              {orderStatusLabel}
+            </div>
+          ) : null}
+
+          {imagen ? (
+            <img src={imagen} alt={nombre} loading="lazy" className="w-full h-full object-cover block" />
           ) : (
-            <div className="flex items-center gap-2">
-              {/* Pill clara para '-' y cantidad */}
-              <div className="h-11 flex items-center bg-[#f0f5f5] rounded-full px-3">
-                <button
-                  type="button"
-                  onClick={onSub}
-                  aria-label={`Quitar ${nombre}`}
-                  className="w-11 h-11 flex items-center justify-center select-none"
-                  style={{ color: teal }}
-                >
-                <IconMinus />
-                </button>
-
-                <div className="min-w-[18px] text-center text-black font-extrabold text-[16px]">
-                  {qty}
-                </div>
+            <div className="flex h-full w-full items-end p-5">
+              <div
+                className="px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.1em]"
+                style={{
+                  borderRadius: 'var(--mq-radius-sm)',
+                  backgroundColor: 'rgba(255,255,255,0.9)',
+                  color: muted,
+                  border: `1px solid ${border}`,
+                }}
+              >
+                Sin foto
               </div>
+            </div>
+          )}
+        </div>
 
-              {/* Botón '+' teal separado */}
+        <div className="flex flex-col gap-3 p-5">
+          <h3
+            className="overflow-hidden text-[17px] font-bold leading-snug tracking-[-0.02em] [display:-webkit-box] [-webkit-line-clamp:1] [-webkit-box-orient:vertical]"
+            title={nombre}
+            style={{ color: ink }}
+          >
+            {nombre}
+          </h3>
+
+          {descripcion ? (
+            <p
+              className="min-h-[40px] overflow-hidden text-[14px] leading-[1.5] [display:-webkit-box] [-webkit-line-clamp:2] [-webkit-box-orient:vertical]"
+              style={{ color: muted }}
+              title={descripcion}
+            >
+              {descripcion}
+            </p>
+          ) : (
+            <div className="min-h-[40px]" />
+          )}
+
+          <div
+            className="mt-auto flex items-center justify-between gap-3 border px-4 py-3"
+            style={{
+              borderRadius: 'var(--mq-radius-md)',
+              backgroundColor: 'var(--mq-bg-alt)',
+              borderColor: border,
+            }}
+          >
+            <div>
+              <div className="text-[10px] font-bold uppercase tracking-[0.12em]" style={{ color: 'var(--mq-text-muted)' }}>
+                Precio
+              </div>
+              <div className="text-[17px] font-bold leading-none tracking-[-0.02em]" style={{ color: ink }}>
+                {priceFormatted}
+              </div>
+            </div>
+
+            {qty <= 0 ? (
               <button
                 type="button"
                 onClick={onAdd}
-                aria-label={`Sumar ${nombre}`}
-                className="w-11 h-11 rounded-full flex items-center justify-center select-none text-white"
-                style={{ backgroundColor: teal }}
+                aria-label={`Agregar ${nombre}`}
+                className="flex h-10 w-10 items-center justify-center select-none text-white"
+                style={{
+                  borderRadius: 'var(--mq-radius-sm)',
+                  backgroundColor: btnBg,
+                }}
               >
                 <IconPlus />
               </button>
-            </div>
-          )}
+            ) : (
+              <div className="flex items-center gap-2">
+                <div
+                  className="flex h-10 items-center border px-1.5"
+                  style={{
+                    borderRadius: 'var(--mq-radius-sm)',
+                    backgroundColor: 'var(--mq-surface)',
+                    borderColor: border,
+                  }}
+                >
+                  <button
+                    type="button"
+                    onClick={onSub}
+                    aria-label={`Quitar ${nombre}`}
+                    className="flex h-9 w-9 items-center justify-center select-none"
+                    style={{
+                      borderRadius: 'var(--mq-radius-sm)',
+                      color: ink,
+                    }}
+                  >
+                    <IconMinus />
+                  </button>
+
+                  <div className="min-w-[24px] text-center text-[15px] font-bold" style={{ color: ink }}>
+                    {qty}
+                  </div>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={onAdd}
+                  aria-label={`Sumar ${nombre}`}
+                  className="flex h-10 w-10 items-center justify-center select-none text-white"
+                  style={{
+                    borderRadius: 'var(--mq-radius-sm)',
+                    backgroundColor: btnBg,
+                  }}
+                >
+                  <IconPlus />
+                </button>
+              </div>
+            )}
+          </div>
         </div>
       </div>
     </div>
   );
 }
-

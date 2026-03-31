@@ -19,7 +19,7 @@ import {
   CircularProgress,
   alpha,
 } from '@mui/material';
-import { MARANA_COLORS } from '../theme';
+import { COLORS } from '../theme';
 import { useExchangeRate } from '../hooks/useExchangeRate';
 import { formatArs } from '../api/exchangeRate';
 import { PLAN_BASE_USD } from '../constants/planPricing';
@@ -45,10 +45,9 @@ function MercadoPagoLogo() {
 }
 
 const PLAN_OPTIONS = [
-  // Para pruebas, el plan Básico queda casi gratis (0.0007 USD)
-  { key: 'basic', planKey: 'BASIC', name: 'Básico', priceUsd: 0.0007, color: MARANA_COLORS.textSecondary },
-  { key: 'pro', planKey: 'PRO', name: 'Pro', priceUsd: PLAN_BASE_USD.PRO, color: MARANA_COLORS.secondary },
-  { key: 'ultra', planKey: 'ULTRA', name: 'Ultra', priceUsd: PLAN_BASE_USD.ULTRA, color: MARANA_COLORS.primary },
+  { key: 'basic', planKey: 'BASIC', name: 'Básico', priceUsd: 0.0007, color: COLORS.textSecondary },
+  { key: 'pro', planKey: 'PRO', name: 'Pro', priceUsd: PLAN_BASE_USD.PRO, color: COLORS.secondary },
+  { key: 'ultra', planKey: 'ULTRA', name: 'Ultra', priceUsd: PLAN_BASE_USD.ULTRA, color: COLORS.primary },
 ];
 
 const VALID_PLAN_KEYS = PLAN_OPTIONS.map((p) => p.key);
@@ -105,23 +104,43 @@ export default function Checkout() {
     <Box
       sx={{
         minHeight: '100vh',
-        bgcolor: MARANA_COLORS.background,
+        bgcolor: COLORS.bg,
         py: { xs: 3, md: 5 },
         px: 1,
       }}
     >
       <Container maxWidth="md">
-        <Typography variant="h4" fontWeight="bold" align="center" gutterBottom sx={{ color: MARANA_COLORS.textPrimary }}>
-          Completar tu suscripción
-        </Typography>
-        <Typography variant="body1" align="center" color="text.secondary" sx={{ mb: 3 }}>
-          Elige tu plan y método de pago
-        </Typography>
+        {/* Header */}
+        <Box
+          sx={{
+            p: { xs: 3, sm: 4 },
+            mb: 3,
+            textAlign: 'center',
+            bgcolor: 'background.paper',
+            borderRadius: '12px',
+            border: `1px solid ${COLORS.border}`,
+            boxShadow: COLORS.shadow1,
+          }}
+        >
+          <Typography
+            variant="overline"
+            component="p"
+            sx={{ mb: 1, color: COLORS.textSecondary }}
+          >
+            Suscripción
+          </Typography>
+          <Typography variant="h2" align="center" gutterBottom sx={{ color: COLORS.text }}>
+            Completar tu suscripción
+          </Typography>
+          <Typography variant="body1" align="center" sx={{ color: COLORS.textSecondary }}>
+            Elige tu plan y método de pago con una interfaz más limpia, confiable y clara.
+          </Typography>
+        </Box>
 
         {/* Selector de plan */}
-        <Card sx={{ mb: 3, borderRadius: 3, overflow: 'hidden', border: `1px solid ${MARANA_COLORS.border}` }}>
+        <Card sx={{ mb: 3, borderRadius: '12px', overflow: 'hidden', border: `1px solid ${COLORS.border}` }}>
           <CardContent sx={{ p: { xs: 2, sm: 3 } }}>
-            <Typography variant="subtitle1" fontWeight="700" sx={{ mb: 2, color: MARANA_COLORS.textPrimary }}>
+            <Typography variant="subtitle1" fontWeight="700" sx={{ mb: 2, color: COLORS.text }}>
               Plan
             </Typography>
             <Tabs
@@ -131,8 +150,8 @@ export default function Checkout() {
               sx={{
                 minHeight: 48,
                 '& .MuiTab-root': { fontWeight: 600, textTransform: 'none', fontSize: '0.95rem' },
-                '& .Mui-selected': { color: planOption.color },
-                '& .MuiTabs-indicator': { bgcolor: planOption.color, height: 3 },
+                '& .Mui-selected': { color: COLORS.primary },
+                '& .MuiTabs-indicator': { bgcolor: COLORS.primary, height: 3 },
               }}
             >
               {PLAN_OPTIONS.map((opt) => (
@@ -143,9 +162,9 @@ export default function Checkout() {
                     <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 0.5 }}>
                       <span>{opt.name}</span>
                       {loading ? (
-                        <CircularProgress size={16} sx={{ color: opt.color }} />
+                        <CircularProgress size={16} sx={{ color: COLORS.textMuted }} />
                       ) : (
-                        <Typography component="span" variant="caption" sx={{ color: 'text.secondary', fontWeight: 500 }}>
+                        <Typography component="span" variant="caption" sx={{ color: COLORS.textSecondary, fontWeight: 500 }}>
                           $ {formatArs(opt.priceUsd * rate)} ARS
                         </Typography>
                       )}
@@ -158,9 +177,9 @@ export default function Checkout() {
         </Card>
 
         {/* Método de pago */}
-        <Card sx={{ mb: 3, borderRadius: 3, border: `1px solid ${MARANA_COLORS.border}` }}>
+        <Card sx={{ mb: 3, borderRadius: '12px', border: `1px solid ${COLORS.border}` }}>
           <CardContent sx={{ p: { xs: 2, sm: 3 } }}>
-            <Typography variant="subtitle1" fontWeight="700" sx={{ mb: 2, color: MARANA_COLORS.textPrimary }}>
+            <Typography variant="subtitle1" fontWeight="700" sx={{ mb: 2, color: COLORS.text }}>
               Selecciona tu método de pago
             </Typography>
             <FormControl component="fieldset" fullWidth>
@@ -175,26 +194,26 @@ export default function Checkout() {
                   sx={{
                     p: 2,
                     cursor: 'pointer',
-                    border: `2px solid ${paymentMethod === 'mercadopago' ? MARANA_COLORS.primary : MARANA_COLORS.border}`,
-                    borderRadius: 2,
-                    bgcolor: paymentMethod === 'mercadopago' ? alpha(MARANA_COLORS.primary, 0.04) : 'transparent',
+                    border: `2px solid ${paymentMethod === 'mercadopago' ? COLORS.primary : COLORS.border}`,
+                    borderRadius: '8px',
+                    bgcolor: paymentMethod === 'mercadopago' ? alpha(COLORS.primary, 0.03) : 'transparent',
                     transition: 'all 0.2s',
-                    '&:hover': { borderColor: alpha(MARANA_COLORS.primary, 0.5) },
+                    '&:hover': { borderColor: alpha(COLORS.primary, 0.5) },
                   }}
                 >
                   <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, flexWrap: 'wrap' }}>
                     <FormControlLabel
                       value="mercadopago"
-                      control={<Radio sx={{ color: MARANA_COLORS.primary, '&.Mui-checked': { color: MARANA_COLORS.primary } }} />}
+                      control={<Radio sx={{ color: COLORS.primary, '&.Mui-checked': { color: COLORS.primary } }} />}
                       label=""
                       sx={{ m: 0 }}
                     />
                     <MercadoPagoLogo />
                     <Box>
-                      <Typography fontWeight="600" color="text.primary">
+                      <Typography fontWeight="600" sx={{ color: COLORS.text }}>
                         Mercado Pago
                       </Typography>
-                      <Typography variant="body2" color="text.secondary">
+                      <Typography variant="body2" sx={{ color: COLORS.textSecondary }}>
                         El pago se realizará en pesos argentinos (ARS)
                       </Typography>
                     </Box>
@@ -209,29 +228,29 @@ export default function Checkout() {
         <Card
           sx={{
             mb: 3,
-            borderRadius: 3,
-            border: `2px solid ${planOption.color}`,
-            bgcolor: alpha(planOption.color, 0.04),
+            borderRadius: '12px',
+            border: `1px solid ${COLORS.border}`,
+            bgcolor: alpha(COLORS.secondary, 0.04),
           }}
         >
           <CardContent sx={{ p: { xs: 2, sm: 3 } }}>
-            <Typography variant="subtitle1" fontWeight="700" sx={{ mb: 2, color: MARANA_COLORS.textPrimary }}>
+            <Typography variant="subtitle1" fontWeight="700" sx={{ mb: 2, color: COLORS.text }}>
               Resumen de compra
             </Typography>
             <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.5 }}>
               <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <Typography color="text.secondary">Plan seleccionado</Typography>
-                <Typography fontWeight="600" sx={{ color: planOption.color }}>
+                <Typography sx={{ color: COLORS.textSecondary }}>Plan seleccionado</Typography>
+                <Typography fontWeight="600" sx={{ color: COLORS.secondary }}>
                   {planOption.name}
                 </Typography>
               </Box>
               <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <Typography color="text.secondary">Precio en USD</Typography>
-                <Typography fontWeight="600">USD {planOption.priceUsd}</Typography>
+                <Typography sx={{ color: COLORS.textSecondary }}>Precio en USD</Typography>
+                <Typography fontWeight="600" sx={{ color: COLORS.text }}>USD {planOption.priceUsd}</Typography>
               </Box>
               <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <Typography color="text.secondary">Valor del dólar actual</Typography>
-                <Typography fontWeight="600">$ {formatArs(rate)} ARS</Typography>
+                <Typography sx={{ color: COLORS.textSecondary }}>Valor del dólar actual</Typography>
+                <Typography fontWeight="600" sx={{ color: COLORS.text }}>$ {formatArs(rate)} ARS</Typography>
               </Box>
               <Box
                 sx={{
@@ -240,13 +259,13 @@ export default function Checkout() {
                   alignItems: 'center',
                   mt: 2,
                   pt: 2,
-                  borderTop: `1px solid ${MARANA_COLORS.border}`,
+                  borderTop: `1px solid ${COLORS.border}`,
                 }}
               >
-                <Typography variant="h6" fontWeight="700" color="text.primary">
+                <Typography variant="h6" fontWeight="700" sx={{ color: COLORS.text }}>
                   Total
                 </Typography>
-                <Typography variant="h5" fontWeight="800" sx={{ color: planOption.color }}>
+                <Typography variant="h5" fontWeight="800" sx={{ color: COLORS.text }}>
                   $ {formatArs(totalArs)} ARS
                 </Typography>
               </Box>
@@ -262,6 +281,7 @@ export default function Checkout() {
         {/* Botón finalizar */}
         <Button
           variant="contained"
+          color="primary"
           fullWidth
           size="large"
           disabled={submitting}
@@ -270,14 +290,12 @@ export default function Checkout() {
             py: 1.5,
             fontSize: '1.1rem',
             fontWeight: 700,
-            borderRadius: 2,
+            borderRadius: '8px',
             textTransform: 'none',
-            bgcolor: planOption.color,
-            boxShadow: `0 4px 14px ${alpha(planOption.color, 0.4)}`,
+            color: COLORS.white,
+            boxShadow: `0 4px 14px rgba(9,9,11,0.18)`,
             '&:hover': {
-              bgcolor: planOption.color,
-              filter: 'brightness(0.92)',
-              boxShadow: `0 6px 20px ${alpha(planOption.color, 0.45)}`,
+              boxShadow: `0 6px 20px rgba(9,9,11,0.22)`,
             },
           }}
         >
@@ -291,7 +309,7 @@ export default function Checkout() {
           )}
         </Button>
 
-        <Typography variant="body2" color="text.secondary" align="center" sx={{ mt: 2 }}>
+        <Typography variant="body2" align="center" sx={{ mt: 2, color: COLORS.textSecondary }}>
           Tipo de cambio utilizado: 1 USD = $ {formatArs(rate)} ARS
         </Typography>
       </Container>

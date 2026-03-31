@@ -29,6 +29,19 @@ export default {
       const knex = strapi?.db?.connection;
       if (!knex?.schema) return;
 
+      const hasRestaurantes = await knex.schema.hasTable('restaurantes');
+      if (hasRestaurantes) {
+        const hasWeeklyMd = await knex.schema.hasColumn('restaurantes', 'weekly_ai_report_markdown');
+        const hasWeeklyAt = await knex.schema.hasColumn('restaurantes', 'weekly_ai_generated_at');
+        if (!hasWeeklyMd || !hasWeeklyAt) {
+          await knex.schema.alterTable('restaurantes', (table: any) => {
+            if (!hasWeeklyMd) table.text('weekly_ai_report_markdown');
+            if (!hasWeeklyAt) table.dateTime('weekly_ai_generated_at');
+          });
+          strapi?.log?.info?.('[bootstrap] ✅ Added weekly_ai_* columns to restaurantes');
+        }
+      }
+
       const hasMesas = await knex.schema.hasTable('mesas');
       if (!hasMesas) return;
 

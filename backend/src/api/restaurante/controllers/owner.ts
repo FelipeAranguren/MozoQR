@@ -1,5 +1,11 @@
 // backend/src/api/restaurante/controllers/owner.ts
 import { getBackendUrl } from '../../../config/urls';
+import {
+  buildOrderHistorySummary,
+  generateWeeklyReportMarkdown,
+  isWeeklyCacheFresh,
+  WEEK_MS,
+} from '../../../services/weekly-ai-report';
 
 declare const strapi: any;
 
@@ -118,5 +124,99 @@ export default {
     const filtered = restaurantsWithKpis.filter((r: any) => r != null).sort((a: any, b: any) => a.name.localeCompare(b.name));
 
     ctx.body = { data: filtered };
+  },
+
+  /**
+   * GET /api/owner/:slug/weekly-ai-report
+   * Informe semanal con IA (Gemini). Máximo 1 generación nueva cada 7 días por restaurante (caché en BD).
+   * Query: force=1 para forzar regeneración (solo uso interno / soporte).
+   */
+  async weeklyAiReport(ctx: any) {
+    const restauranteId = ctx.state.restauranteId;
+    const slug = ctx.params?.slug;
+    const force =
+      ctx.query?.force === 'true' ||
+      ctx.query?.force === '1' ||
+      ctx.query?.force === true;
+
+    if (!restauranteId || !slug) {
+      return ctx.badRequest('Falta restaurante');
+    }
+
+    const rest = await strapi.entityService.findOne('api::restaurante.restaurante', restauranteId, {
+      fields: ['name', 'Suscripcion', 'weekly_ai_report_markdown', 'weekly_ai_generated_at'],
+    });
+
+    if (!rest) {
+      return ctx.notFound('Restaurante no encontrado');
+    }
+
+    const plan = String(rest.Suscripcion || 'basic').toLowerCase();
+    if (plan !== 'ultra') {
+      return ctx.forbidden('El informe con IA requiere plan Ultra');
+    }
+
+    const cachedMarkdown = rest.weekly_ai_report_markdown;
+    const generatedAt = rest.weekly_ai_generated_at;
+
+    if (!force && cachedMarkdown && isWeeklyCacheFresh(generatedAt)) {
+      const genTime = new Date(generatedAt as string).getTime();
+      ctx.body = {
+        ok: true,
+        cached: true,
+        generatedAt,
+        nextRefreshApprox: new Date(genTime + WEEK_MS).toISOString(),
+        reportMarkdown: cachedMarkdown,
+        missingApiKey: false,
+      };
+      return;
+    }
+
+    const apiKey = process.env.GEMINI_API_KEY;
+    if (!apiKey || !String(apiKey).trim()) {
+      ctx.body = {
+        ok: false,
+        cached: false,
+        missingApiKey: true,
+        generatedAt: generatedAt || null,
+        reportMarkdown: cachedMarkdown || null,
+        message:
+          'Falta GEMINI_API_KEY en el servidor. Creá una clave gratis en Google AI Studio (https://aistudio.google.com/apikey) y configurá la variable en el hosting.',
+      };
+      return;
+    }
+
+    try {
+      const summary = await buildOrderHistorySummary(strapi, restauranteId, rest.name || slug);
+      const reportMarkdown = await generateWeeklyReportMarkdown(apiKey, summary);
+      const nowIso = new Date().toISOString();
+
+      await strapi.entityService.update('api::restaurante.restaurante', restauranteId, {
+        data: {
+          weekly_ai_report_markdown: reportMarkdown,
+          weekly_ai_generated_at: nowIso,
+        },
+      });
+
+      ctx.body = {
+        ok: true,
+        cached: false,
+        generatedAt: nowIso,
+        nextRefreshApprox: new Date(Date.now() + WEEK_MS).toISOString(),
+        reportMarkdown,
+        missingApiKey: false,
+      };
+    } catch (err: any) {
+      strapi.log.error('[weeklyAiReport]', err);
+      ctx.status = 502;
+      ctx.body = {
+        ok: false,
+        cached: false,
+        missingApiKey: false,
+        error: err?.message || 'Error al generar el informe',
+        reportMarkdown: cachedMarkdown || null,
+        generatedAt: generatedAt || null,
+      };
+    }
   },
 };

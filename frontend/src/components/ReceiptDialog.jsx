@@ -17,6 +17,7 @@ import {
 } from '@mui/material';
 import PrintIcon from '@mui/icons-material/Print';
 import DownloadIcon from '@mui/icons-material/Download';
+import { COLORS } from '../theme';
 
 const money = (n) => {
   const num = Number(n);
@@ -95,7 +96,7 @@ export default function ReceiptDialog({ open, onClose, receiptData }) {
         }
       `}</style>
       <Dialog open={open} onClose={onClose} maxWidth="sm" fullWidth PaperProps={{ className: 'no-print' }}>
-        <DialogTitle sx={{ pb: 0 }}>Comprobante de cuenta</DialogTitle>
+        <DialogTitle sx={{ pb: 0, pt: 3 }}>Comprobante de cuenta</DialogTitle>
         <DialogContent sx={{ pt: 2 }}>
           <Box
             ref={printRef}
@@ -103,16 +104,16 @@ export default function ReceiptDialog({ open, onClose, receiptData }) {
             sx={{
               maxWidth: 320,
               mx: 'auto',
-              p: 2.5,
-              border: '2px dashed',
+              p: 3,
+              border: '1px dashed',
               borderColor: 'divider',
-              borderRadius: 2,
-              bgcolor: 'grey.50',
+              borderRadius: 3,
+              bgcolor: 'background.paper',
             }}
           >
             {/* Encabezado - estilo ticket */}
             <Box sx={{ textAlign: 'center', mb: 1.5 }}>
-              <Typography variant="h6" fontWeight={800} sx={{ letterSpacing: 1, fontSize: '1.1rem' }}>
+              <Typography variant="h6" fontWeight={800} sx={{ letterSpacing: 0.2, fontSize: '1.1rem' }}>
                 {legalName}
               </Typography>
               <Typography variant="caption" color="text.secondary">CUENTA / TICKET</Typography>

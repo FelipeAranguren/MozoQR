@@ -113,6 +113,12 @@
         "v2"
       ],
       "default": "v2"
+    },
+    "weekly_ai_report_markdown": {
+      "type": "text"
+    },
+    "weekly_ai_generated_at": {
+      "type": "datetime"
     }
   }
 }

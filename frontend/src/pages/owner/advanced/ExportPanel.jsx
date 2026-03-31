@@ -196,6 +196,7 @@ export default function ExportPanel({ slug }) {
                   fullWidth
                   sx={{
                     bgcolor: MARANA_COLORS.primary,
+                    color: '#fff',
                     '&:hover': {
                       bgcolor: MARANA_COLORS.primary,
                       opacity: 0.9

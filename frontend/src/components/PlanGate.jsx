@@ -2,7 +2,6 @@
 import React from 'react';
 import { Box, Typography, Button, Paper } from '@mui/material';
 import LockIcon from '@mui/icons-material/Lock';
-import { MARANA_COLORS } from '../theme';
 import { useNavigate } from 'react-router-dom';
 
 /**
@@ -42,26 +41,27 @@ export default function PlanGate({
 
   return (
     <Paper
+      elevation={0}
       sx={{
         p: 4,
         textAlign: 'center',
-        background: `linear-gradient(135deg, ${MARANA_COLORS.background} 0%, #ffffff 100%)`,
-        border: `2px dashed ${MARANA_COLORS.border}`,
-        borderRadius: 3
+        bgcolor: 'var(--mq-surface)',
+        border: '1px dashed var(--mq-border-strong)',
+        borderRadius: 'var(--mq-radius-lg)',
       }}
     >
       <LockIcon 
         sx={{ 
           fontSize: 48, 
-          color: MARANA_COLORS.textSecondary,
+          color: 'var(--mq-text-secondary)',
           mb: 2,
           opacity: 0.5
         }} 
       />
-      <Typography variant="h6" sx={{ fontWeight: 600, mb: 1 }}>
+      <Typography variant="h6" sx={{ fontWeight: 600, mb: 1, color: 'var(--mq-text)' }}>
         Función disponible en plan {planNames[requiredPlan]}
       </Typography>
-      <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
+      <Typography variant="body2" sx={{ mb: 3, color: 'var(--mq-text-secondary)' }}>
         {upgradeMessage || `Actualiza tu plan para acceder a esta funcionalidad avanzada.`}
       </Typography>
       {slug && (
@@ -69,11 +69,12 @@ export default function PlanGate({
           variant="contained"
           onClick={() => navigate(`/owner/${slug}/plan`)}
           sx={{
-            bgcolor: MARANA_COLORS.primary,
+            bgcolor: 'var(--mq-primary)',
+            color: '#fff',
             '&:hover': {
-              bgcolor: MARANA_COLORS.primary,
-              opacity: 0.9
-            }
+              bgcolor: 'var(--mq-primary)',
+              opacity: 0.9,
+            },
           }}
         >
           Ver planes disponibles
@@ -82,4 +83,3 @@ export default function PlanGate({
     </Paper>
   );
 }
-

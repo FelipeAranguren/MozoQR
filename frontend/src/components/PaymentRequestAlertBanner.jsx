@@ -33,21 +33,21 @@ export default function PaymentRequestAlertBanner({ tableNumbers = [] }) {
         alignItems: 'center',
         justifyContent: 'center',
         gap: 1.5,
-        py: 1.25,
+        py: 1.1,
         px: 2,
-        background: 'linear-gradient(135deg, #7b1fa2 0%, #9c27b0 50%, #ab47bc 100%)',
+        background: 'var(--mq-primary)',
         color: '#fff',
-        boxShadow: '0 4px 20px rgba(156, 39, 176, 0.45)',
-        borderBottom: '3px solid rgba(255,255,255,0.3)',
+        boxShadow: 'var(--mq-shadow-2)',
+        borderBottom: '1px solid rgba(255,255,255,0.12)',
         animation: 'paymentBannerPulse 2s ease-in-out infinite',
         '@keyframes paymentBannerPulse': {
-          '0%, 100%': { boxShadow: '0 4px 20px rgba(156, 39, 176, 0.45)' },
-          '50%': { boxShadow: '0 4px 28px rgba(156, 39, 176, 0.6)' },
+          '0%, 100%': { boxShadow: '0 4px 20px rgba(9, 9, 11, 0.25)' },
+          '50%': { boxShadow: '0 4px 28px rgba(9, 9, 11, 0.4)' },
         },
       }}
     >
       <AccountBalanceWalletIcon sx={{ fontSize: 28, opacity: 0.95 }} />
-      <Typography variant="h6" component="span" sx={{ fontWeight: 700, fontSize: { xs: '1rem', sm: '1.1rem' } }}>
+      <Typography variant="h6" component="span" sx={{ fontWeight: 800, fontSize: { xs: '0.98rem', sm: '1.05rem' }, letterSpacing: '-0.02em' }}>
         ¡Atención! Hay mesas solicitando la cuenta.
       </Typography>
       <Typography variant="body1" component="span" sx={{ fontWeight: 600, fontSize: { xs: '0.9rem', sm: '1rem' }, opacity: 0.95 }}>

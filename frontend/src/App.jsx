@@ -1,7 +1,6 @@
 // frontend/src/App.jsx
 import React, { useEffect } from 'react';
 import { BrowserRouter, Routes, Route, Navigate, useParams, useLocation, useNavigate } from 'react-router-dom';
-import { CssBaseline } from '@mui/material';
 import Header from './components/Header';
 import Home from './pages/Home';
 import Restaurants from './pages/Restaurants';
@@ -73,7 +72,6 @@ export default function App() {
       <AuthProvider>
         <GoogleTokenRedirect>
           <ScrollToTop />
-          <CssBaseline />
           <OfflineBanner />
           <ConditionalHeader />
           <Routes>

@@ -1,6 +1,5 @@
-// frontend/src/layouts/OwnerLayout.jsx
 import React, { useState } from 'react';
-import { Outlet, useParams, useLocation } from 'react-router-dom';
+import { Outlet, useParams } from 'react-router-dom';
 import { Box, Drawer, Toolbar, useMediaQuery, useTheme } from '@mui/material';
 import OwnerSidebar from '../components/owner/OwnerSidebar';
 import OwnerHeader from '../components/owner/OwnerHeader';
@@ -10,7 +9,6 @@ const DRAWER_WIDTH_MOBILE = 280;
 
 export default function OwnerLayout() {
   const { slug } = useParams();
-  const location = useLocation();
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('md'));
   const [mobileOpen, setMobileOpen] = useState(false);
@@ -18,7 +16,13 @@ export default function OwnerLayout() {
   const handleDrawerToggle = () => setMobileOpen((v) => !v);
 
   return (
-    <Box sx={{ display: 'flex', minHeight: '100vh' }}>
+    <Box
+      sx={{
+        display: 'flex',
+        minHeight: '100vh',
+        bgcolor: 'background.default',
+      }}
+    >
       <OwnerHeader slug={slug} onMenuClick={isMobile ? handleDrawerToggle : undefined} />
       <Drawer
         variant={isMobile ? 'temporary' : 'permanent'}
@@ -30,15 +34,17 @@ export default function OwnerLayout() {
           '& .MuiDrawer-paper': {
             width: isMobile ? DRAWER_WIDTH_MOBILE : DRAWER_WIDTH,
             boxSizing: 'border-box',
-            borderRight: 1,
+            borderRight: '1px solid',
             borderColor: 'divider',
             top: { xs: 56, sm: 64 },
             height: { xs: 'calc(100vh - 56px)', sm: 'calc(100vh - 64px)' },
+            px: 1,
+            bgcolor: 'background.paper',
           },
         }}
       >
         <Toolbar sx={{ display: { xs: 'block', md: 'none' }, minHeight: { xs: 56, sm: 64 } }} />
-        <OwnerSidebar slug={slug} currentPath={location.pathname} onNavigate={isMobile ? handleDrawerToggle : undefined} />
+        <OwnerSidebar slug={slug} onNavigate={isMobile ? handleDrawerToggle : undefined} />
       </Drawer>
       <Box
         component="main"

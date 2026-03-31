@@ -2,6 +2,7 @@
 import { useState, useEffect } from 'react';
 import axios from 'axios';
 import { getMercadoPagoFromMetodos } from '../api/restaurant';
+import { getStrapiPublicBase } from '../utils/strapiPublicBase';
 
 const API_URL = import.meta.env?.VITE_API_URL || 'http://localhost:1337/api';
 
@@ -38,7 +39,7 @@ export function useRestaurantes() {
 
       // Mapear los datos de Strapi a un formato más usable
       const data = res.data?.data || [];
-      const base = API_URL.replace('/api', '');
+      const base = getStrapiPublicBase();
 
       const mappedRestaurantes = data.map((r) => {
         // Strapi v4 puede tener datos en r.attributes o directamente en r

@@ -5,18 +5,11 @@ import {
   Box,
   Container,
   Typography,
-  Card,
-  CardMedia,
-  CircularProgress,
-  CardContent,
-  CardActions,
   Button,
   TextField,
   InputAdornment,
   Chip,
   Skeleton,
-  Fade,
-  Grow,
   Dialog,
   DialogTitle,
   DialogContent,
@@ -26,7 +19,6 @@ import {
 import SearchIcon from '@mui/icons-material/Search';
 import SwapHorizIcon from '@mui/icons-material/SwapHoriz';
 import KeyboardArrowUpIcon from '@mui/icons-material/KeyboardArrowUp';
-import { alpha } from '@mui/material/styles';
 import { motion, AnimatePresence } from 'framer-motion';
 
 import { useCart } from '../context/CartContext';
@@ -38,9 +30,11 @@ import useTableSession from '../hooks/useTableSession';
 import StickyFooter from '../components/StickyFooter';
 import { devLog } from '../utils/devLog';
 import { withRetry } from '../utils/retry';
-import QtyStepper from '../components/QtyStepper';
 import TableSelector from '../components/TableSelector';
+import AddIcon from '@mui/icons-material/Add';
+import RemoveIcon from '@mui/icons-material/Remove';
 import { buildProductOrderStatusMap, menuBadgeLabelForOrderStatus } from '../utils/orderStatusEs';
+import { getStrapiPublicBase } from '../utils/strapiPublicBase';
 
 const PLACEHOLDER = 'https://via.placeholder.com/600x400?text=No+Image';
 const money = (n) =>
@@ -178,7 +172,7 @@ export default function RestaurantMenu() {
       const categoriasMapeadas = categories.map((cat) => {
         // Los productos ya vienen en cat.productos (no cat.attributes.productos)
         const productosCat = (cat.productos || []).map((p) => {
-          const baseApi = (import.meta.env?.VITE_API_URL || '').replace('/api', '');
+          const baseApi = getStrapiPublicBase();
           // El endpoint namespaced ya devuelve la URL completa de la imagen si el plan es PRO
           const img = p.image || PLACEHOLDER;
           const descripcion = Array.isArray(p.description)
@@ -532,7 +526,7 @@ export default function RestaurantMenu() {
             setCategoriaSeleccionada(null);
           } else {
             // Si realmente no hay categorías, mostramos lista plana
-            const baseApi = (import.meta.env?.VITE_API_URL || '').replace('/api', '');
+            const baseApi = getStrapiPublicBase();
             const list = Array.isArray(menus)
               ? menus.flatMap((m) => m.products || m.productos || [])
               : menus?.products || menus?.productos || [];
@@ -576,7 +570,7 @@ export default function RestaurantMenu() {
             devLog('Categorías cargadas desde fallback:', menus.categories.length);
           } else {
             // Fallback antiguo: lista plana
-            const baseApi = (import.meta.env?.VITE_API_URL || '').replace('/api', '');
+            const baseApi = getStrapiPublicBase();
             const list = Array.isArray(menus)
               ? menus.flatMap((m) => m.products || m.productos || [])
               : menus?.products || menus?.productos || [];
@@ -640,28 +634,22 @@ export default function RestaurantMenu() {
 
   // Componente de skeleton loader para productos
   const ProductSkeleton = () => (
-    <Card
-      elevation={0}
+    <Box
       sx={{
         display: 'flex',
-        gap: 1.25,
-        p: 1.25,
-        borderRadius: 3,
-        border: '1px solid',
-        borderColor: 'divider',
+        alignItems: 'center',
+        gap: 2,
+        px: 2,
+        py: 2,
       }}
     >
-      <Skeleton variant="rectangular" width={92} height={92} sx={{ borderRadius: 2 }} />
+      <Skeleton variant="rectangular" width={72} height={72} sx={{ borderRadius: 1.5, flexShrink: 0 }} />
       <Box sx={{ flex: 1, minWidth: 0 }}>
-        <Skeleton variant="text" width="60%" height={24} />
-        <Skeleton variant="text" width="40%" height={20} sx={{ mt: 0.5 }} />
-        <Skeleton variant="text" width="100%" height={16} sx={{ mt: 1 }} />
-        <Skeleton variant="text" width="80%" height={16} />
+        <Skeleton variant="text" width="60%" height={22} />
+        <Skeleton variant="text" width="30%" height={18} sx={{ mt: 0.25 }} />
       </Box>
-      <Box sx={{ display: 'flex', alignItems: 'center' }}>
-        <Skeleton variant="rectangular" width={96} height={36} sx={{ borderRadius: 1 }} />
-      </Box>
-    </Card>
+      <Skeleton variant="circular" width={36} height={36} />
+    </Box>
   );
 
   // Si hay número de mesa en la URL pero no existe en la BD -> mostrar mensaje de error
@@ -717,18 +705,21 @@ export default function RestaurantMenu() {
           py: { xs: 3, sm: 4 },
         }}
       >
-        <Box sx={{ textAlign: 'center', mb: 4 }}>
-          <Skeleton variant="text" width="60%" height={40} sx={{ mx: 'auto', mb: 2 }} />
-          <Skeleton variant="text" width="40%" height={20} sx={{ mx: 'auto' }} />
+        <Box sx={{ mb: 3, px: 0.5 }}>
+          <Skeleton variant="text" width="55%" height={36} />
+          <Skeleton variant="text" width="30%" height={20} sx={{ mt: 0.5 }} />
         </Box>
-        <Box sx={{ display: 'flex', gap: 1, mb: 3, overflowX: 'auto', pb: 1 }}>
+        <Box sx={{ display: 'flex', gap: 1, mb: 2, overflowX: 'auto', pb: 1 }}>
           {[1, 2, 3, 4].map((i) => (
-            <Skeleton key={i} variant="rounded" width={100} height={36} sx={{ flexShrink: 0 }} />
+            <Skeleton key={i} variant="rounded" width={80} height={32} sx={{ flexShrink: 0, borderRadius: 4 }} />
           ))}
         </Box>
-        <Box sx={{ display: 'grid', gap: 1.75, mt: 3 }}>
-          {[1, 2, 3, 4].map((i) => (
-            <ProductSkeleton key={i} />
+        <Box sx={{ bgcolor: 'background.paper', borderRadius: 2, border: '1px solid', borderColor: 'divider', overflow: 'hidden' }}>
+          {[1, 2, 3, 4, 5].map((i) => (
+            <React.Fragment key={i}>
+              {i > 1 && <Box sx={{ mx: 2, borderBottom: '1px solid', borderColor: 'divider' }} />}
+              <ProductSkeleton />
+            </React.Fragment>
           ))}
         </Box>
       </Container>
@@ -775,75 +766,41 @@ export default function RestaurantMenu() {
 
   // --------- UI principal
   return (
-    <Box sx={{ width: '100%', position: 'relative', minHeight: '100vh' }}>
+    <Box
+      sx={{
+        width: '100%',
+        position: 'relative',
+        minHeight: '100vh',
+        bgcolor: '#ffffff',
+      }}
+    >
       <Container
         component="main"
         maxWidth="sm"
         disableGutters
         sx={{
-          px: { xs: 1.25, sm: 2 },
-          py: { xs: 3, sm: 4 },
+          px: { xs: 1.5, sm: 2.5 },
+          py: { xs: 3, sm: 4.5 },
           position: 'relative',
           borderRadius: 0,
           bgcolor: 'transparent',
           boxShadow: 'none',
         }}
       >
-        {/* Header */}
-        <Box sx={{ textAlign: 'center' }}>
+        {/* Header — estilo clásico limpio */}
+        <Box sx={{ mb: 2, px: 0.5 }}>
           <Typography
             component="h1"
             sx={{
-              fontWeight: 700,
-              lineHeight: 1.15,
-              letterSpacing: 0.5,
-              mb: 1,
-              fontSize: 'clamp(22px, 4.2vw, 32px)',
+              fontWeight: 800,
+              lineHeight: 1.1,
+              fontSize: 'clamp(24px, 5vw, 34px)',
+              letterSpacing: '-0.01em',
               wordBreak: 'break-word',
+              color: 'text.primary',
             }}
           >
-            Menú de{' '}
-            <Box component="span" sx={{ fontWeight: 800 }}>
-              {nombreRestaurante || slug}
-            </Box>
-          </Typography>
-
-          <Box
-            sx={(theme) => ({
-              width: 120,
-              height: 2,
-              mx: 'auto',
-              borderRadius: 999,
-              background:
-                theme.palette.mode === 'light' ? 'rgba(0,0,0,0.12)' : 'rgba(255,255,255,0.24)',
-              position: 'relative',
-              mb: 0.5,
-              '&::after': {
-                content: '""',
-                position: 'absolute',
-                left: '50%',
-                top: -1,
-                transform: 'translateX(-50%)',
-                width: 40,
-                height: 4,
-                borderRadius: 999,
-                backgroundColor: theme.palette.primary.main,
-                boxShadow: '0 2px 8px rgba(0,0,0,0.10)',
-              },
-            })}
-          />
-
-          <Typography
-            variant="caption"
-            sx={{
-              color: 'text.secondary',
-              letterSpacing: 1,
-              textTransform: 'uppercase',
-              mt: 1.5,
-              display: 'block',
-            }}
-          >
-            Elegí tus platos favoritos
+            {nombreRestaurante || slug}
           </Typography>
           {table && (
             <Button
@@ -851,12 +808,13 @@ export default function RestaurantMenu() {
               onClick={() => (items.length > 0 ? setChangeTableDialog(true) : navigate(`/${slug}/menu`))}
               startIcon={<SwapHorizIcon sx={{ fontSize: 16 }} />}
               sx={{
-                mt: 1,
+                mt: 0.5,
                 textTransform: 'none',
                 color: 'text.secondary',
-                fontSize: '0.75rem',
+                fontSize: '0.8125rem',
+                fontWeight: 500,
                 minWidth: 0,
-                px: 0.5,
+                px: 0,
                 '&:hover': { color: 'primary.main', bgcolor: 'transparent' },
               }}
             >
@@ -866,7 +824,7 @@ export default function RestaurantMenu() {
         </Box>
 
         {/* Barra de búsqueda */}
-        <Box sx={{ mt: 3, mb: 2 }}>
+        <Box sx={{ mt: 1, mb: 2.5 }}>
           <TextField
             fullWidth
             placeholder="Buscar productos..."
@@ -903,17 +861,18 @@ export default function RestaurantMenu() {
             }}
             sx={{
               '& .MuiOutlinedInput-root': {
-                borderRadius: 3,
+                borderRadius: 999,
                 backgroundColor: (theme) =>
-                  theme.palette.mode === 'light' ? 'rgba(0,0,0,0.02)' : 'rgba(255,255,255,0.05)',
+                  theme.palette.mode === 'light' ? '#ffffff' : 'rgba(255,255,255,0.05)',
                 '&:hover': {
                   backgroundColor: (theme) =>
-                    theme.palette.mode === 'light' ? 'rgba(0,0,0,0.04)' : 'rgba(255,255,255,0.08)',
+                    theme.palette.mode === 'light' ? '#ffffff' : 'rgba(255,255,255,0.08)',
                 },
                 '&.Mui-focused': {
                   backgroundColor: (theme) =>
-                    theme.palette.mode === 'light' ? 'rgba(0,0,0,0.04)' : 'rgba(255,255,255,0.08)',
+                    theme.palette.mode === 'light' ? '#ffffff' : 'rgba(255,255,255,0.08)',
                 },
+                boxShadow: '0 16px 32px rgba(9,9,11,0.06)',
               },
             }}
           />
@@ -947,7 +906,7 @@ export default function RestaurantMenu() {
               }}
               color={categoriaSeleccionada === null ? 'primary' : 'default'}
               sx={{
-                bgcolor: categoriaSeleccionada === null ? 'primary.main' : 'background.paper',
+                  bgcolor: categoriaSeleccionada === null ? 'primary.main' : 'background.paper',
                 color: categoriaSeleccionada === null ? 'white' : 'text.primary',
                 fontWeight: categoriaSeleccionada === null ? 600 : 400,
                 cursor: 'pointer',
@@ -1087,19 +1046,32 @@ export default function RestaurantMenu() {
           </Box>
         )}
 
-        {/* Lista de productos */}
+        {/* Nombre de categoría como título */}
+        {!searchQuery && categoriaSeleccionada && (
+          <Typography
+            sx={{
+              fontWeight: 700,
+              fontSize: '1.125rem',
+              color: 'text.primary',
+              mb: 1.5,
+              px: 0.5,
+            }}
+          >
+            {findCategoria(categoriaSeleccionada)?.name || ''}
+          </Typography>
+        )}
+
+        {/* Lista de productos — estilo clásico (filas con thumbnail) */}
         <Box
           id="productos-section"
           sx={{
-            display: 'grid',
-            gap: { xs: 1.5, sm: 2 },
             width: '100%',
             mt: searchQuery ? 2 : 0,
-            overflowX: 'hidden',
-            overflowY: 'visible',
-            py: 0.5,
-            pb: 2,
-            px: { xs: 0, sm: 0.5 },
+            bgcolor: 'background.paper',
+            borderRadius: 2,
+            border: '1px solid',
+            borderColor: 'divider',
+            overflow: 'hidden',
           }}
         >
           <AnimatePresence mode="wait">
@@ -1110,13 +1082,7 @@ export default function RestaurantMenu() {
                 animate={{ opacity: 1, y: 0 }}
                 exit={{ opacity: 0 }}
               >
-                <Box
-                  sx={{
-                    textAlign: 'center',
-                    py: 8,
-                    px: 2,
-                  }}
-                >
+                <Box sx={{ textAlign: 'center', py: 8, px: 2 }}>
                   <Typography variant="h6" color="text.secondary" gutterBottom>
                     No se encontraron productos
                   </Typography>
@@ -1131,225 +1097,199 @@ export default function RestaurantMenu() {
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}
                 exit={{ opacity: 0 }}
-                style={{ display: 'grid', gap: 'inherit', width: '100%' }}
               >
                 {productosFiltrados.map((plato, index) => {
                   const qty = items.find((i) => i.id === plato.id)?.qty || 0;
-                  const orderBadge = menuBadgeLabelForOrderStatus(
-                    productOrderStatusByProductId[String(plato.id)]
-                  );
+                  const orderSt = productOrderStatusByProductId[String(plato.id)];
+                  const orderBadge = menuBadgeLabelForOrderStatus(orderSt);
                   return (
-                    <motion.div
-                      key={plato.id}
-                      initial={{ opacity: 0, y: 20 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      exit={{ opacity: 0, scale: 0.9 }}
-                      transition={{ duration: 0.3, delay: index * 0.05 }}
-                      whileHover={{ scale: 1.01 }}
-                      style={{ originX: 0.5 }}
-                    >
-                      <Card
-                        elevation={0}
-                        sx={(theme) => ({
-                          position: 'relative',
-                          display: 'flex',
-                          alignItems: 'stretch',
-                          gap: { xs: 1, sm: 1.25 },
-                          p: { xs: 1.25, sm: 1.5 },
-                          borderRadius: 4,
-                          mx: { xs: 0, sm: 0 },
-                          boxSizing: 'border-box',
-                          background:
-                            theme.palette.mode === 'light'
-                              ? `linear-gradient(180deg, ${theme.palette.common.white} 0%, ${alpha(
-                                theme.palette.common.white,
-                                0.98
-                              )} 100%)`
-                              : `linear-gradient(180deg, ${alpha('#1e1e1e', 1)} 0%, ${alpha(
-                                '#1e1e1e',
-                                0.95
-                              )} 100%)`,
-                          border: `1px solid ${alpha(theme.palette.common.black, qty > 0 ? 0.12 : 0.06)}`,
-                          boxShadow:
-                            qty > 0
-                              ? theme.palette.mode === 'light'
-                                ? '0 8px 32px rgba(0,0,0,0.08), 0 2px 0 rgba(0,0,0,0.03)'
-                                : '0 8px 32px rgba(0,0,0,0.4)'
-                              : theme.palette.mode === 'light'
-                                ? '0 4px 20px rgba(0,0,0,0.04), 0 1px 0 rgba(0,0,0,0.02)'
-                                : '0 6px 24px rgba(0,0,0,0.3)',
-                          flexDirection: 'row',
-                          transition: 'all 0.3s ease',
-                          overflow: 'hidden', // Evitar que el sombreado se corte
-                          '&:hover': {
-                            borderColor: alpha(theme.palette.primary.main, 0.3),
-                            boxShadow:
-                              theme.palette.mode === 'light'
-                                ? '0 12px 40px rgba(0,0,0,0.1), 0 2px 0 rgba(0,0,0,0.04)'
-                                : '0 12px 40px rgba(0,0,0,0.5)',
-                          },
-                        })}
+                    <Box key={plato.id}>
+                      {index > 0 && (
+                        <Box sx={{ mx: 2, borderBottom: '1px solid', borderColor: 'divider' }} />
+                      )}
+                      <motion.div
+                        initial={{ opacity: 0 }}
+                        animate={{ opacity: 1 }}
+                        transition={{ duration: 0.2, delay: index * 0.03 }}
                       >
-                        {/* Imagen */}
                         <Box
                           sx={{
-                            width: { xs: 90, sm: 110 },
-                            flexShrink: 0,
-                            borderRadius: 2.5,
-                            overflow: 'hidden',
-                            position: 'relative',
-                            boxShadow: '0 2px 8px rgba(0,0,0,0.1)',
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: 2,
+                            px: 2,
+                            py: 2,
+                            cursor: 'pointer',
+                            transition: 'background-color 150ms',
+                            '&:active': { bgcolor: 'action.hover' },
+                          }}
+                          onClick={() => {
+                            if (qty === 0) addItem({ id: plato.id, nombre: plato.nombre, precio: plato.precio });
                           }}
                         >
-                          <CardMedia
-                            component="img"
-                            image={plato.imagen}
-                            alt={plato.nombre}
-                            loading="lazy"
-                            sx={{
-                              width: '100%',
-                              height: '100%',
-                              aspectRatio: '1 / 1',
-                              objectFit: 'cover',
-                              display: 'block',
-                              transition: 'transform 0.3s ease',
-                              '&:hover': {
-                                transform: 'scale(1.05)',
-                              },
-                            }}
-                          />
-                          {qty > 0 && (
-                            <Chip
-                              label={qty}
-                              size="small"
-                              sx={{
-                                position: 'absolute',
-                                top: 8,
-                                right: 8,
-                                backgroundColor: 'primary.main',
-                                color: 'white',
-                                fontWeight: 700,
-                                height: 24,
-                                minWidth: 24,
-                                fontSize: '0.75rem',
-                                boxShadow: '0 2px 8px rgba(0,0,0,0.2)',
-                              }}
-                            />
-                          )}
-                        </Box>
-
-                        {/* Texto */}
-                        <CardContent sx={{ p: 0, flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column' }}>
+                          {/* Thumbnail */}
                           <Box
                             sx={{
-                              display: 'flex',
-                              alignItems: 'baseline',
-                              gap: 1,
-                              flexWrap: 'wrap',
-                              mb: 0.75,
-                              minWidth: 0,
+                              width: 72,
+                              height: 72,
+                              borderRadius: 1.5,
+                              overflow: 'hidden',
+                              flexShrink: 0,
+                              bgcolor: 'background.default',
                             }}
                           >
+                            {plato.imagen && plato.imagen !== PLACEHOLDER ? (
+                              <img
+                                src={plato.imagen}
+                                alt={plato.nombre}
+                                loading="lazy"
+                                style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
+                              />
+                            ) : (
+                              <Box
+                                sx={{
+                                  width: '100%',
+                                  height: '100%',
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  justifyContent: 'center',
+                                }}
+                              >
+                                <Typography variant="caption" color="text.muted" sx={{ fontSize: '0.6rem' }}>
+                                  Sin foto
+                                </Typography>
+                              </Box>
+                            )}
+                          </Box>
+
+                          {/* Info */}
+                          <Box sx={{ flex: 1, minWidth: 0 }}>
                             <Typography
-                              variant="subtitle1"
                               sx={{
                                 fontWeight: 700,
-                                fontSize: { xs: 17, sm: 19 },
-                                minWidth: 0,
+                                fontSize: '0.9375rem',
                                 lineHeight: 1.3,
+                                color: 'text.primary',
+                                overflow: 'hidden',
+                                textOverflow: 'ellipsis',
+                                display: '-webkit-box',
+                                WebkitLineClamp: 2,
+                                WebkitBoxOrient: 'vertical',
                               }}
-                              title={plato.nombre}
                             >
                               {plato.nombre}
                             </Typography>
-                            {orderBadge ? (
-                              <Chip
-                                label={orderBadge}
-                                size="small"
-                                sx={{
-                                  height: 22,
-                                  fontSize: '0.7rem',
-                                  fontWeight: 700,
-                                  flexShrink: 0,
-                                  bgcolor:
-                                    orderBadge === 'En preparación' ? 'primary.main' : 'warning.main',
-                                  color: 'common.white',
-                                }}
-                              />
-                            ) : null}
-                          </Box>
-
-                          <Box
-                            sx={{
-                              display: 'flex',
-                              alignItems: 'center',
-                              gap: 1,
-                              mb: 1,
-                            }}
-                          >
                             <Typography
-                              variant="h6"
                               sx={{
-                                fontWeight: 700,
-                                color: 'primary.main',
-                                fontSize: { xs: 16, sm: 18 },
+                                fontWeight: 600,
+                                fontSize: '0.875rem',
+                                color: 'text.secondary',
+                                mt: 0.25,
                               }}
                             >
                               {money(plato.precio)}
                             </Typography>
-                            <Box
-                              sx={{
-                                height: 3,
-                                width: 24,
-                                bgcolor: 'divider',
-                                borderRadius: 1.5,
-                              }}
-                            />
+                            {orderBadge && (
+                              <Typography
+                                variant="caption"
+                                sx={{
+                                  mt: 0.5,
+                                  display: 'inline-block',
+                                  px: 1,
+                                  py: 0.25,
+                                  borderRadius: 1,
+                                  fontWeight: 600,
+                                  fontSize: '0.65rem',
+                                  bgcolor: orderBadge === 'En preparación' ? 'primary.main' : 'warning.main',
+                                  color: '#fff',
+                                }}
+                              >
+                                {orderBadge}
+                              </Typography>
+                            )}
                           </Box>
 
-                          {plato.descripcion && (
-                            <Typography
-                              variant="body2"
-                              sx={{
-                                color: 'text.secondary',
-                                display: '-webkit-box',
-                                WebkitLineClamp: 2,
-                                WebkitBoxOrient: 'vertical',
-                                overflow: 'hidden',
-                                fontSize: { xs: '0.875rem', sm: '0.9375rem' },
-                                lineHeight: 1.5,
-                                flex: 1,
-                              }}
-                              title={plato.descripcion}
-                            >
-                              {plato.descripcion}
-                            </Typography>
-                          )}
-                        </CardContent>
-
-                        {/* Stepper */}
-                        <CardActions
-                          sx={{
-                            p: 0,
-                            ml: { xs: 0.5, sm: 1 },
-                            flexDirection: 'column',
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                            gap: 0.5,
-                            flexShrink: 0,
-                            minWidth: { xs: 85, sm: 100 },
-                          }}
-                        >
-                          <QtyStepper
-                            value={qty}
-                            onAdd={() =>
-                              addItem({ id: plato.id, nombre: plato.nombre, precio: plato.precio })
-                            }
-                            onSub={() => removeItem(plato.id)}
-                          />
-                        </CardActions>
-                      </Card>
-                    </motion.div>
+                          {/* Qty controls */}
+                          <Box sx={{ flexShrink: 0, display: 'flex', alignItems: 'center' }}>
+                            {qty === 0 ? (
+                              <Button
+                                variant="outlined"
+                                size="small"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  addItem({ id: plato.id, nombre: plato.nombre, precio: plato.precio });
+                                }}
+                                sx={{
+                                  minWidth: 36,
+                                  width: 36,
+                                  height: 36,
+                                  p: 0,
+                                  borderRadius: '50%',
+                                  borderColor: 'divider',
+                                  color: 'text.primary',
+                                }}
+                                aria-label={`Agregar ${plato.nombre}`}
+                              >
+                                <AddIcon sx={{ fontSize: 20 }} />
+                              </Button>
+                            ) : (
+                              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                                <Button
+                                  size="small"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    removeItem(plato.id);
+                                  }}
+                                  sx={{
+                                    minWidth: 32,
+                                    width: 32,
+                                    height: 32,
+                                    p: 0,
+                                    borderRadius: '50%',
+                                    bgcolor: 'background.default',
+                                    color: 'text.primary',
+                                    '&:hover': { bgcolor: 'action.hover' },
+                                  }}
+                                  aria-label={`Quitar ${plato.nombre}`}
+                                >
+                                  <RemoveIcon sx={{ fontSize: 18 }} />
+                                </Button>
+                                <Typography
+                                  sx={{
+                                    fontWeight: 700,
+                                    fontSize: '0.9375rem',
+                                    minWidth: 20,
+                                    textAlign: 'center',
+                                  }}
+                                >
+                                  {qty}
+                                </Typography>
+                                <Button
+                                  size="small"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    addItem({ id: plato.id, nombre: plato.nombre, precio: plato.precio });
+                                  }}
+                                  sx={{
+                                    minWidth: 32,
+                                    width: 32,
+                                    height: 32,
+                                    p: 0,
+                                    borderRadius: '50%',
+                                    bgcolor: 'primary.main',
+                                    color: 'primary.contrastText',
+                                    '&:hover': { bgcolor: 'primary.dark' },
+                                  }}
+                                  aria-label={`Sumar ${plato.nombre}`}
+                                >
+                                  <AddIcon sx={{ fontSize: 18 }} />
+                                </Button>
+                              </Box>
+                            )}
+                          </Box>
+                        </Box>
+                      </motion.div>
+                    </Box>
                   );
                 })}
               </motion.div>

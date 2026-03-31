@@ -472,6 +472,7 @@ export default function RestaurantSettings() {
                 disabled={saving || isDemoAccess}
                 sx={{
                   bgcolor: MARANA_COLORS.primary,
+                  color: '#fff',
                   '&:hover': { bgcolor: MARANA_COLORS.primary },
                   minWidth: 150
                 }}

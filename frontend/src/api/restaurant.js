@@ -1,6 +1,7 @@
 // frontend/src/api/restaurant.js
 import { api } from '../api';
 import { uploadImage } from './menu';
+import { getStrapiPublicBase } from '../utils/strapiPublicBase';
 
 /**
  * Misma lógica que el backend: encuentra el método con provider === 'mercado_pago' y active === true.
@@ -99,7 +100,7 @@ export async function fetchRestaurant(slug) {
     let logoId = null;
     
     if (logo && logo !== null) {
-      const baseURL = import.meta.env?.VITE_API_URL?.replace('/api', '') || '';
+      const baseURL = getStrapiPublicBase();
       const logoAttrs = logo.attributes || logo;
       
       // Obtener el ID del logo

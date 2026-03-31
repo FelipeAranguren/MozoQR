@@ -113,6 +113,7 @@ export default function TasksPanel({ slug }) {
           onClick={() => setOpenDialog(true)}
           sx={{
             bgcolor: MARANA_COLORS.primary,
+            color: '#fff',
             '&:hover': {
               bgcolor: MARANA_COLORS.primary,
               opacity: 0.9
@@ -295,6 +296,7 @@ export default function TasksPanel({ slug }) {
             onClick={handleAddTask}
             sx={{
               bgcolor: MARANA_COLORS.primary,
+              color: '#fff',
               '&:hover': {
                 bgcolor: MARANA_COLORS.primary,
                 opacity: 0.9

@@ -31,7 +31,7 @@ import { createOwnerComment } from '../api/comments';
 const api = client;
 const http = client;
 
-import { MARANA_COLORS } from '../theme';
+import { COLORS, MARANA_COLORS } from '../theme';
 import AttachMoneyIcon from '@mui/icons-material/AttachMoney';
 import ShoppingCartIcon from '@mui/icons-material/ShoppingCart';
 import PeopleIcon from '@mui/icons-material/People';
@@ -83,7 +83,7 @@ function toDateInputStr(d) {
   const dd = String(x.getDate()).padStart(2, '0');
   return `${y}-${m}-${dd}`;
 }
-/** Envía a la API ISO strings y hace to exclusivo (+1 ms) para no perder “hoy”. */
+/** Envía a la API ISO strings y hace to exclusivo (+1 ms) para no perder "hoy". */
 function buildRangeForApi(start, end) {
   const fromIso = startOfDay(start).toISOString();
   const endExclusive = new Date(endOfDay(end).getTime() + 1); // exclusivo
@@ -97,8 +97,6 @@ function safeDate(x) { const d = new Date(x); return isNaN(d.getTime()) ? new Da
 /** Detecta si un string parece un slug de sesión (ej: "hdz08q-otw1") */
 function looksLikeSessionSlug(str) {
   if (!str || typeof str !== 'string') return false;
-  // Los slugs de sesión suelen tener guiones y letras mezcladas con números
-  // Ejemplos: "hdz08q-otw1", "ts_abc123_1234567890", "sess_restaurant_1_1234567890"
   return /^[a-z0-9]+[-_][a-z0-9]+/i.test(str) || str.includes('_') || str.length > 20;
 }
 
@@ -114,27 +112,20 @@ function makeFallbackSessionKey(o) {
 
 /** Lector robusto de mesa: prioriza mesa_sesion.mesa.number (estructura anidada) y luego campo mesa procesado */
 function readTableLabelFromOrder(o, sessionKey) {
-  // 1) PRIMERO: buscar en mesa_sesion.mesa.number (estructura anidada como en Mostrador.jsx)
-  // Procesar estructura Strapi v4 (data/attributes) o estructura plana
   const processMesaSesion = (ms) => {
     if (!ms) return null;
-    // Procesar sesión: puede venir como ms.data o ms directamente
     const ses = ms?.data || ms;
     const sesAttrs = ses?.attributes || ses || {};
-    // Procesar mesa: puede venir como sesAttrs.mesa.data o sesAttrs.mesa directamente
     const mesa = sesAttrs?.mesa?.data || sesAttrs?.mesa || null;
     const mesaAttrs = mesa?.attributes || mesa || {};
-    // Extraer número de mesa
     return mesaAttrs?.number ?? mesaAttrs?.numero ?? mesa?.number ?? mesa?.numero ?? null;
   };
 
-  // Buscar en ambas variantes (snake_case y camelCase)
   const mesaSesionNumber = processMesaSesion(o?.mesa_sesion) ?? processMesaSesion(o?.mesaSesion);
   if (mesaSesionNumber != null) {
     return String(mesaSesionNumber);
   }
 
-  // También buscar en estructuras planas (por si ya fueron procesadas)
   const flatMesaSesionNumber =
     o?.mesa_sesion?.mesa?.number ??
     o?.mesa_sesion?.mesa?.numero ??
@@ -154,27 +145,20 @@ function readTableLabelFromOrder(o, sessionKey) {
     return String(flatMesaSesionNumber);
   }
 
-  // 2) SEGUNDO: usar el campo 'mesa' que viene procesado de getPaidOrders (analytics.js)
-  // Este campo ya contiene el número de mesa extraído por pickMesaNumberFromOrderAttrs
   if (o?.mesa != null) {
     const mesaValue = o.mesa;
-    // Si es un número, usarlo directamente
     if (typeof mesaValue === 'number' || (typeof mesaValue === 'string' && /^\d+$/.test(mesaValue))) {
       return String(mesaValue);
     }
-    // Si es un string que no parece un slug, intentar extraer número o usarlo
     if (typeof mesaValue === 'string' && mesaValue !== '—' && !looksLikeSessionSlug(mesaValue)) {
       const numMatch = mesaValue.match(/\d+/);
       if (numMatch) return numMatch[0];
-      // Si no tiene números pero no es un slug, puede ser un nombre válido
       if (mesaValue.length < 20 && !mesaValue.includes('-') && !mesaValue.includes('_')) {
         return mesaValue;
       }
     }
-    // Si es '—' o un slug, continuar buscando en otras estructuras
   }
 
-  // 3) Buscar en estructuras anidadas directas (mesa.number, table.number, etc.)
   const nestedNumber =
     o?.mesa?.number ??
     o?.mesa?.data?.attributes?.number ??
@@ -190,7 +174,6 @@ function readTableLabelFromOrder(o, sessionKey) {
     return String(nestedNumber);
   }
 
-  // 4) Buscar en strings directos que no sean slugs
   const stringCandidates = [
     (typeof o?.mesa === 'string' && o.mesa) ||
     (typeof o?.table === 'string' && o.table) ||
@@ -201,14 +184,12 @@ function readTableLabelFromOrder(o, sessionKey) {
     if (cand && !looksLikeSessionSlug(cand)) {
       const numMatch = String(cand).match(/\d+/);
       if (numMatch) return numMatch[0];
-      // Si no tiene números pero no es un slug, puede ser válido
       if (cand.length < 20 && !cand.includes('-') && !cand.includes('_')) {
         return String(cand);
       }
     }
   }
 
-  // 5) Fallback de sessionKey, pero evitando slugs
   if (typeof sessionKey === 'string' && sessionKey.startsWith('fallback:')) {
     const maybeMesa = sessionKey.slice('fallback:'.length).split('|')[0];
     if (maybeMesa && !looksLikeSessionSlug(maybeMesa)) {
@@ -218,7 +199,6 @@ function readTableLabelFromOrder(o, sessionKey) {
     }
   }
 
-  // 6) Último recurso: no mostrar ids ni slugs
   return '—';
 }
 
@@ -255,11 +235,9 @@ function extractItemsFromOrder(order) {
   }
   return out;
 }
-// 👉 reemplaza TODO el bloque de groupOrdersToInvoices por esto
 function groupOrdersToInvoices(orders = []) {
   const byKey = new Map();
 
-  // lector robusto de id de mesa_sesión
   const readMesaSesionId = (o) =>
     o?.mesa_sesion?.data?.id ??
     o?.mesa_sesion?.id ??
@@ -270,7 +248,6 @@ function groupOrdersToInvoices(orders = []) {
     null;
 
   for (const o of orders) {
-    // preferimos mesa_sesión; si no hay, una “factura” por pedido
     const msId = readMesaSesionId(o);
     const sessionKey = msId ? `ms:${msId}` : `order:${o.id}`;
 
@@ -378,10 +355,8 @@ export default function OwnerDashboard() {
     if (!slug) return;
     setIsLoading(true);
 
-    // 👉 rango en ISO + to exclusivo
     const { fromIso, toIso } = buildRangeForApi(start, end);
 
-    // Calcular rangos para HOY y AYER
     const today = new Date();
     const yesterday = addDays(today, -1);
     const todayStart = startOfDay(today).toISOString();
@@ -396,8 +371,6 @@ export default function OwnerDashboard() {
       getTotalOrdersCount({ slug }),
       getSessionsCount({ slug, from: fromIso, to: toIso }),
       fetchTopProducts({ slug, from: fromIso, to: toIso, limit: 5 }),
-      // Obtener productos: usar API directa (sin filtrar por available) para que el owner vea TODOS los productos
-      // El endpoint público filtra por available, pero el owner necesita ver todos para gestionarlos
       (async () => {
         try {
           console.log('🔍 [OwnerDashboard] Iniciando obtención de productos para slug:', slug);
@@ -415,7 +388,6 @@ export default function OwnerDashboard() {
           }
 
           console.log('🔍 [OwnerDashboard] Obteniendo productos para restauranteId:', restauranteId);
-          // NO filtrar por available - el owner necesita ver TODOS los productos
           const productosRes = await api.get(
             `/productos?filters[restaurante][id][$eq]=${restauranteId}&populate[image,categoria]&sort[0]=name:asc`,
             { headers: { Authorization: `Bearer ${localStorage.getItem('jwt') || localStorage.getItem('strapi_jwt') || ''}` } }
@@ -424,7 +396,6 @@ export default function OwnerDashboard() {
           const productos = productosRes?.data?.data || [];
           console.log('✅ [OwnerDashboard] Productos obtenidos de API directa (TODOS, incluidos no disponibles):', productos.length);
           
-          // Contar productos disponibles vs no disponibles
           const disponibles = productos.filter(p => {
             const attr = p.attributes || p;
             return attr.available !== false;
@@ -444,14 +415,13 @@ export default function OwnerDashboard() {
           return productos.map(p => {
             const attr = p.attributes || p;
             const categoria = attr.categoria?.data || attr.categoria;
-            // Preservar el valor exacto de available - si no existe, asumir true (comportamiento por defecto de Strapi)
             const availableValue = attr.available !== undefined ? attr.available : true;
             return {
               id: p.id || p.documentId,
               name: attr.name || '',
               price: Number(attr.price || 0),
               image: attr.image?.data?.attributes?.url || attr.image?.url || null,
-              available: availableValue, // Preservar el valor real de available (true, false, etc.)
+              available: availableValue,
               categoriaId: categoria ? (categoria.id || categoria.documentId) : null,
               categoriaName: categoria ? (categoria.attributes?.name || categoria.name) : null
             };
@@ -462,11 +432,8 @@ export default function OwnerDashboard() {
           return [];
         }
       })(),
-      // Obtener información del restaurante (mesas, categorías, logo) para métricas
       api.get(`/restaurantes?filters[slug][$eq]=${slug}&populate[mesas]=true&populate[categorias]=true&populate[logo]=true`).catch(() => ({ data: { data: [] } })),
-      // Categorías vía API directa (populate[categorias] en restaurante a veces no devuelve datos en Strapi 5)
       fetchCategories(slug).catch(() => []),
-      // Obtener mesas y pedidos activos
       fetchTables(slug).catch((e) => { console.warn('Error fetching tables:', e); return []; }),
       fetchActiveOrders(slug).catch((e) => { console.warn('Error fetching active orders:', e); return []; }),
     ])
@@ -483,11 +450,9 @@ export default function OwnerDashboard() {
         setTopProducts(topProd || []);
         setInvoices(groupOrdersToInvoices(list));
 
-        // Mesas y pedidos activos
         setTables(Array.isArray(tablesData) ? tablesData : []);
         setActiveOrders(Array.isArray(activeOrdersData) ? activeOrdersData : []);
 
-        // Calcular métricas para Success Score usando productos activos (como los ve el cliente)
         const restaurant = restaurantRes?.data?.data?.[0];
         const productos = Array.isArray(productosActivos) ? productosActivos : [];
 
@@ -500,27 +465,24 @@ export default function OwnerDashboard() {
               ? categoriesData.length
               : (categoriasFromPopulate?.length || 0);
 
-          // Guardar información del restaurante para el formulario de comentarios
           const restaurantId = restaurant.id || restaurant.documentId;
           const restaurantName = attr.name || restaurant.name || prettyName(slug);
           setRestaurantInfo({ id: restaurantId, name: restaurantName });
 
-          // Usar TODOS los productos obtenidos (incluidos no disponibles) para métricas del owner
           const productsWithoutImage = productos.filter(p => !p.image).length;
           const productsWithoutCategory = productos.filter(p => !p.categoriaId).length;
 
           setRestaurantMetrics({
             productsWithoutImage,
             totalProducts: productos.length,
-            outdatedPrices: 0, // TODO: implementar lógica de precios desactualizados
-            missingTables: 0,   // TODO: implementar lógica de mesas sin configurar
+            outdatedPrices: 0,
+            missingTables: 0,
             totalTables: mesas.length,
             hasLogo: !!(attr.logo?.data || attr.logo),
             totalCategories,
             productsWithoutCategory
           });
         } else {
-          // Si no hay restaurante pero sí productos, calcular métricas solo con productos
           const productsWithoutImage = productos.filter(p => !p.image).length;
           const productsWithoutCategory = productos.filter(p => !p.categoriaId).length;
 
@@ -573,10 +535,8 @@ export default function OwnerDashboard() {
       Object.entries(paymentMixCount).map(([k, v]) => [k, Math.round((v * 100) / totalInv) + '%'])
     );
 
-    // Comparativa HOY vs AYER
     const todayVsYesterday = calculateTodayVsYesterday(ordersToday, ordersYesterday);
 
-    // Tendencia de ventas (últimos 7 días vs anteriores 7 días)
     const recent7Days = periodOrders.filter(o => {
       const orderDate = safeDate(o.createdAt);
       const daysAgo = Math.floor((today - orderDate) / (1000 * 60 * 60 * 24));
@@ -589,9 +549,8 @@ export default function OwnerDashboard() {
     });
     const salesTrend = calculateSalesTrend(recent7Days, previous7Days);
 
-    // Comparativa semanal (esta semana vs semana pasada)
     const thisWeekStart = new Date(today);
-    thisWeekStart.setDate(today.getDate() - today.getDay()); // Domingo de esta semana
+    thisWeekStart.setDate(today.getDate() - today.getDay());
     thisWeekStart.setHours(0, 0, 0, 0);
 
     const lastWeekStart = new Date(thisWeekStart);
@@ -667,7 +626,6 @@ export default function OwnerDashboard() {
     return () => window.removeEventListener('keydown', onKey);
   }, []);
 
-  // Función para manejar el envío de comentarios
   const handleSubmitComment = async (e) => {
     e.preventDefault();
     if (!commentText.trim() || !restaurantInfo.id) {
@@ -715,22 +673,24 @@ export default function OwnerDashboard() {
   return (
     <Box 
       sx={{ 
-        p: isEjecutiva ? 4 : 3, 
-        background: isEjecutiva ? 'linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%)' : MARANA_COLORS.background, 
+        p: isEjecutiva ? 4 : 3,
+        borderRadius: 3,
+        bgcolor: 'background.default',
+        border: `1px solid ${COLORS.border}`,
+        boxShadow: '0 1px 3px rgba(9,9,11,0.08), 0 1px 2px rgba(9,9,11,0.04)',
         minHeight: '100vh',
         transition: 'all 0.3s ease'
       }}
     >
-      {/* Header: fila 1 = título + Ver menú/toggle; fila 2 = períodos a ancho completo */}
+      {/* Header */}
       <Box sx={{ 
         display: 'flex', 
         flexDirection: 'column',
         mb: isEjecutiva ? 4 : 4, 
         gap: 0,
         pb: isEjecutiva ? 3 : 0,
-        borderBottom: isEjecutiva ? `2px solid ${MARANA_COLORS.border}` : 'none'
+        borderBottom: `1px solid ${COLORS.border}`
       }}>
-        {/* Fila 1: título + plan a la izquierda, Ver menú + vista a la derecha */}
         <Box sx={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', flexWrap: 'wrap', gap: 2 }}>
           <Box>
             <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 0.5 }}>
@@ -770,13 +730,12 @@ export default function OwnerDashboard() {
                 textTransform: 'none',
                 fontWeight: 600,
                 px: 2,
-                border: `1px solid ${MARANA_COLORS.border}`,
+                border: `1px solid ${COLORS.border}`,
                 '&.Mui-selected': {
-                  bgcolor: MARANA_COLORS.primary,
-                  color: '#fff',
+                  bgcolor: COLORS.primary,
+                  color: COLORS.white,
                   '&:hover': {
-                    bgcolor: MARANA_COLORS.primary,
-                    opacity: 0.9
+                    bgcolor: COLORS.primaryLight,
                   }
                 }
               }
@@ -788,7 +747,6 @@ export default function OwnerDashboard() {
           </Box>
         </Box>
 
-        {/* Fila 2: espacio debajo del título y fila de períodos en una sola línea (como el rectángulo marcado) */}
         <Box sx={{ mt: 3, width: '100%' }}>
           <Box sx={{ 
             display: 'flex', 
@@ -812,8 +770,9 @@ export default function OwnerDashboard() {
                   px: 2,
                   textTransform: 'none',
                   ...(p.key === periodKey && {
-                    bgcolor: MARANA_COLORS.primary,
-                    '&:hover': { bgcolor: MARANA_COLORS.primary, opacity: 0.9 }
+                    bgcolor: COLORS.primary,
+                    color: '#fff',
+                    '&:hover': { bgcolor: COLORS.primaryLight }
                   })
                 }}
               >
@@ -830,8 +789,9 @@ export default function OwnerDashboard() {
                 px: 2,
                 textTransform: 'none',
                 ...(periodKey === 'custom' && {
-                  bgcolor: MARANA_COLORS.primary,
-                  '&:hover': { bgcolor: MARANA_COLORS.primary, opacity: 0.9 }
+                  bgcolor: COLORS.primary,
+                  color: '#fff',
+                  '&:hover': { bgcolor: COLORS.primaryLight }
                 })
               }}
             >
@@ -846,10 +806,10 @@ export default function OwnerDashboard() {
                   onChange={(e) => setCustomStart(e.target.value)}
                   style={{
                     padding: '8px 12px',
-                    border: `1px solid ${MARANA_COLORS.border}`,
+                    border: `1px solid ${COLORS.border}`,
                     borderRadius: 8,
-                    background: '#fff',
-                    fontFamily: 'Inter, sans-serif'
+                    background: COLORS.white,
+                    fontFamily: 'inherit'
                   }}
                 />
                 <Typography variant="body2" color="text.secondary">—</Typography>
@@ -860,10 +820,10 @@ export default function OwnerDashboard() {
                   onChange={(e) => setCustomEnd(e.target.value)}
                   style={{
                     padding: '8px 12px',
-                    border: `1px solid ${MARANA_COLORS.border}`,
+                    border: `1px solid ${COLORS.border}`,
                     borderRadius: 8,
-                    background: '#fff',
-                    fontFamily: 'Inter, sans-serif'
+                    background: COLORS.white,
+                    fontFamily: 'inherit'
                   }}
                 />
               </Box>
@@ -872,11 +832,9 @@ export default function OwnerDashboard() {
         </Box>
       </Box>
 
-      {/* Renderizado condicional: Vista Operativa vs Vista Ejecutiva */}
       {isOperativa ? (
         <>
           {/* ========== VISTA OPERATIVA ========== */}
-          {/* KPIs mejorados */}
           <Grid
             container
             spacing={2}
@@ -895,7 +853,7 @@ export default function OwnerDashboard() {
                   label: 'vs ayer'
                 } : undefined}
                 icon={<AttachMoneyIcon />}
-                color={MARANA_COLORS.primary}
+                color={COLORS.primary}
                 loading={isLoading}
               />
             </Grid>
@@ -905,7 +863,7 @@ export default function OwnerDashboard() {
                 value={derivedKpis.ticketPromedio}
                 formatter={money}
                 icon={<ShoppingCartIcon />}
-                color={MARANA_COLORS.secondary}
+                color={COLORS.secondary}
                 loading={isLoading}
               />
             </Grid>
@@ -915,7 +873,7 @@ export default function OwnerDashboard() {
                 value={lifetimeOrders}
                 formatter={(n) => String(Math.round(n))}
                 icon={<TrendingUpIcon />}
-                color={MARANA_COLORS.primary}
+                color={COLORS.primary}
                 loading={isLoading}
               />
             </Grid>
@@ -925,13 +883,12 @@ export default function OwnerDashboard() {
                 value={sessionsCount}
                 formatter={(n) => String(Math.round(n))}
                 icon={<PeopleIcon />}
-                color={MARANA_COLORS.accent}
+                color={COLORS.accent}
                 loading={isLoading}
               />
             </Grid>
           </Grid>
 
-          {/* Gráfico de ventas */}
           <Box sx={{ mb: 3 }}>
             <SalesByDayChart
               slug={slug}
@@ -942,7 +899,6 @@ export default function OwnerDashboard() {
             />
           </Box>
 
-          {/* Comparativas mejoradas */}
           <Grid container spacing={2} sx={{ mb: 3 }}>
             <Grid item xs={12} sm={6} md={4}>
               <ComparisonCard
@@ -976,12 +932,10 @@ export default function OwnerDashboard() {
             </Grid>
           </Grid>
 
-          {/* Health Check Panel */}
           <Box sx={{ mb: 3 }}>
             <HealthCheckPanel
               metrics={restaurantMetrics}
               onActionClick={(actionId) => {
-                // Navegar a la sección correspondiente
                 if (actionId === 'images' || actionId === 'categories') {
                   navigate(`/owner/${slug}/menu`);
                 } else if (actionId === 'tables') {
@@ -993,7 +947,6 @@ export default function OwnerDashboard() {
             />
           </Box>
 
-          {/* Mesas en tiempo real y Heatmap de horas pico */}
           <Grid container spacing={2} sx={{ mb: 3 }}>
             <Grid item xs={12} lg={6}>
               <TablesStatusGrid
@@ -1012,11 +965,11 @@ export default function OwnerDashboard() {
           {/* Sección de Comentarios */}
           <Box
             sx={{
-              border: `1px solid ${MARANA_COLORS.border}`,
+              border: `1px solid ${COLORS.border}`,
               borderRadius: 3,
-              background: '#fff',
+              bgcolor: 'background.paper',
               p: 3,
-              boxShadow: '0px 1px 3px rgba(0,0,0,0.05)',
+              boxShadow: COLORS.shadow2,
               mb: 3
             }}
           >
@@ -1043,8 +996,8 @@ export default function OwnerDashboard() {
                     width: '100%',
                     padding: '12px',
                     borderRadius: 8,
-                    border: `1px solid ${commentError ? '#f44336' : MARANA_COLORS.border}`,
-                    fontFamily: 'Inter, sans-serif',
+                    border: `1px solid ${commentError ? COLORS.error : COLORS.border}`,
+                    fontFamily: 'inherit',
                     fontSize: '14px',
                     resize: 'vertical',
                     boxSizing: 'border-box'
@@ -1066,18 +1019,12 @@ export default function OwnerDashboard() {
                 type="submit"
                 variant="contained"
                 disabled={isSubmittingComment || !commentText.trim()}
-                sx={{
-                  bgcolor: MARANA_COLORS.primary,
-                  '&:hover': { bgcolor: MARANA_COLORS.primary, opacity: 0.9 },
-                  '&:disabled': { bgcolor: '#ccc' }
-                }}
               >
                 {isSubmittingComment ? 'Enviando...' : 'Enviar Comentario'}
               </Button>
             </form>
           </Box>
 
-          {/* Actividad Reciente y Top Productos */}
           <Grid container spacing={2} sx={{ mb: 3 }}>
             <Grid item xs={12} lg={6}>
               <RecentActivityPanel
@@ -1093,11 +1040,11 @@ export default function OwnerDashboard() {
           {/* Facturas del período */}
           <Box
             sx={{
-              border: `1px solid ${MARANA_COLORS.border}`,
+              border: `1px solid ${COLORS.border}`,
               borderRadius: 3,
-              background: '#fff',
+              bgcolor: 'background.paper',
               p: 3,
-              boxShadow: '0px 1px 3px rgba(0,0,0,0.05)',
+              boxShadow: COLORS.shadow1,
               mb: 3
             }}
           >
@@ -1127,15 +1074,13 @@ export default function OwnerDashboard() {
       ) : (
         <>
           {/* ========== VISTA EJECUTIVA ========== */}
-          {/* Descripción de la Vista Ejecutiva */}
-          <Box sx={{ mb: 4, p: 2.5, borderRadius: 3, bgcolor: '#fff', border: `1px solid ${MARANA_COLORS.border}` }}>
+          <Box sx={{ mb: 4, p: 2.5, borderRadius: 3, bgcolor: 'background.paper', border: `1px solid ${COLORS.border}` }}>
             <Typography variant="body1" color="text.secondary" sx={{ fontStyle: 'italic' }}>
               Vista Ejecutiva: Análisis estratégico enfocado en métricas de negocio, rentabilidad y tendencias. 
               Ideal para toma de decisiones de alto nivel y planificación estratégica.
             </Typography>
           </Box>
 
-          {/* KPIs Ejecutivos - Cards grandes */}
           <ExecutiveKPIs
             periodTotal={periodTotal}
             ticketPromedio={derivedKpis.ticketPromedio}
@@ -1147,7 +1092,6 @@ export default function OwnerDashboard() {
             loading={isLoading}
           />
 
-          {/* Resumen Ejecutivo */}
           <ExecutiveSummary
             periodTotal={periodTotal}
             ticketPromedio={derivedKpis.ticketPromedio}
@@ -1159,7 +1103,6 @@ export default function OwnerDashboard() {
             weeklyComparison={derivedKpis.weeklyComparison}
           />
 
-          {/* Gráficos Ejecutivos */}
           <ExecutiveCharts
             slug={slug}
             start={start}
@@ -1192,13 +1135,18 @@ function FiltersBar({ filters, onFiltersChange, onExport, paymentMethods }) {
     <div style={{ display: 'flex', gap: 12, marginBottom: 16, flexWrap: 'wrap', alignItems: 'center' }}>
       <input type="text" name="query" placeholder="Buscar por ID o mesa…" value={filters.query}
         onChange={handleInputChange}
-        style={{ padding: '8px 12px', borderRadius: 8, border: '1px solid #d1d5db', minWidth: 200 }} />
+        style={{ padding: '8px 12px', borderRadius: 8, border: `1px solid ${COLORS.border}`, minWidth: 200 }} />
       <select name="paymentMethod" value={filters.paymentMethod} onChange={handleInputChange}
-        style={{ padding: '8px 12px', borderRadius: 8, border: '1px solid #d1d5db', background: '#fff' }}>
+        style={{ padding: '8px 12px', borderRadius: 8, border: `1px solid ${COLORS.border}`, background: COLORS.white }}>
         <option value="">Todo Pago</option>
         {paymentMethods.map(method => <option key={method} value={method}>{method}</option>)}
       </select>
-      <button onClick={() => onFiltersChange({ query: '', paymentMethod: '' })} className="period-btn">Limpiar</button>
+      <button
+        onClick={() => onFiltersChange({ query: '', paymentMethod: '' })}
+        style={{ padding: '8px 16px', borderRadius: 8, border: `1px solid ${COLORS.border}`, background: COLORS.white, cursor: 'pointer', fontWeight: 600, color: COLORS.textSecondary }}
+      >
+        Limpiar
+      </button>
       <button 
         onClick={onExport}
         style={{ 
@@ -1206,8 +1154,8 @@ function FiltersBar({ filters, onFiltersChange, onExport, paymentMethods }) {
           padding: '8px 16px', 
           borderRadius: 8, 
           border: 'none', 
-          background: '#10b981', 
-          color: '#fff', 
+          background: COLORS.success, 
+          color: COLORS.white, 
           fontWeight: 600, 
           cursor: 'pointer' 
         }}
@@ -1239,9 +1187,9 @@ function KpiBox({ title, value, formatter, resetKey, isText }) {
   }, [value, resetKey, isText]);
   const show = isText ? String(value) : (formatter ? formatter(display) : String(Math.round(display)));
   return (
-    <div style={{ border: '1px solid #f0f0f0', borderRadius: 12, padding: 16, display: 'flex', flexDirection: 'column', justifyContent: 'center', background: '#fff' }}>
-      <div style={{ color: '#6b7280', fontWeight: 600, marginBottom: 8, fontSize: 14 }}>{title}</div>
-      <div style={{ fontWeight: 800, lineHeight: 1.1, fontSize: isText ? 14 : 'clamp(24px, 4vw, 28px)' }} title={String(value)}>{show}</div>
+    <div style={{ border: `1px solid ${COLORS.border}`, borderRadius: 12, padding: 16, display: 'flex', flexDirection: 'column', justifyContent: 'center', background: COLORS.white }}>
+      <div style={{ color: COLORS.textSecondary, fontWeight: 600, marginBottom: 8, fontSize: 14 }}>{title}</div>
+      <div style={{ fontWeight: 800, lineHeight: 1.1, fontSize: isText ? 14 : 'clamp(24px, 4vw, 28px)', color: COLORS.text }} title={String(value)}>{show}</div>
     </div>
   );
 }
@@ -1249,7 +1197,7 @@ function KpiBox({ title, value, formatter, resetKey, isText }) {
 function InvoicesTable({ rows, onRowClick }) {
   const [sort, setSort] = useState({ key: 'closedAt', dir: 'desc' });
   const [pageSize, setPageSize] = useState(20);
-  if (!rows || !rows.length) return <div className="loading-placeholder">Sin facturas para los filtros seleccionados.</div>;
+  if (!rows || !rows.length) return <div style={{ textAlign: 'center', padding: 24, color: COLORS.textMuted }}>Sin facturas para los filtros seleccionados.</div>;
 
   const sorted = [...rows].sort((a, b) => {
     const { key, dir } = sort;
@@ -1267,7 +1215,7 @@ function InvoicesTable({ rows, onRowClick }) {
     <div style={{ overflowX: 'auto' }}>
       <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 720 }}>
         <thead>
-          <tr style={{ textAlign: 'left', color: '#6b7280' }}>
+          <tr style={{ textAlign: 'left', color: COLORS.textSecondary }}>
             <Th onClick={() => toggle('invoiceId')}>Factura {sort.key === 'invoiceId' ? (sort.dir === 'asc' ? '▲' : '▼') : ''}</Th>
             <Th onClick={() => toggle('closedAt')}>Cierre {sort.key === 'closedAt' ? (sort.dir === 'asc' ? '▲' : '▼') : ''}</Th>
             <Th onClick={() => toggle('table')}>Mesa {sort.key === 'table' ? (sort.dir === 'asc' ? '▲' : '▼') : ''}</Th>
@@ -1278,7 +1226,7 @@ function InvoicesTable({ rows, onRowClick }) {
         </thead>
         <tbody>
           {page.map((inv) => (
-            <tr key={inv.invoiceId} onClick={() => onRowClick && onRowClick(inv)} style={{ cursor: 'pointer', borderBottom: '1px solid #f1f5f9' }}>
+            <tr key={inv.invoiceId} onClick={() => onRowClick && onRowClick(inv)} style={{ cursor: 'pointer', borderBottom: `1px solid ${COLORS.border}` }}>
               <td style={{ padding: '12px 8px', fontFamily: 'ui-monospace, monospace' }}>{shortId(inv.invoiceId)}</td>
               <td style={{ padding: '12px 8px' }}>{fmtDateTime.format(safeDate(inv.closedAt))}</td>
               <td style={{ padding: '12px 8px' }}>{String(inv.table)}</td>
@@ -1290,7 +1238,12 @@ function InvoicesTable({ rows, onRowClick }) {
         </tbody>
       </table>
       {canMore && <div style={{ display: 'flex', justifyContent: 'center', marginTop: 16 }}>
-        <button onClick={() => setPageSize(s => s + 20)} className="period-btn">Cargar más</button>
+        <button
+          onClick={() => setPageSize(s => s + 20)}
+          style={{ padding: '8px 16px', borderRadius: 8, border: `1px solid ${COLORS.border}`, background: COLORS.white, cursor: 'pointer', fontWeight: 600, color: COLORS.textSecondary }}
+        >
+          Cargar más
+        </button>
       </div>}
     </div>
   );
@@ -1318,11 +1271,11 @@ function InvoiceDrawer({ open, onClose, invoice }) {
 
   return (
     <>
-      <div onClick={onClose} style={{ position: 'fixed', inset: 0, background: 'rgba(15,23,42,0.35)', zIndex: 40 }} />
-      <div role="dialog" aria-modal="true" style={{ position: 'fixed', top: 0, right: 0, height: '100dvh', width: 'min(560px, 95vw)', background: '#fff', borderLeft: '1px solid #e5e7eb', zIndex: 41, display: 'flex', flexDirection: 'column' }}>
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '14px 16px', borderBottom: '1px solid #e5e7eb' }}>
-          <div style={{ fontWeight: 800, fontSize: 18 }}>Factura {String(invoice.invoiceId).replace(/^fallback:/, '')}</div>
-          <button onClick={onClose} style={{ border: '1px solid #e5e7eb', borderRadius: 8, padding: '6px 10px', background: '#fff', cursor: 'pointer' }}>Cerrar</button>
+      <div onClick={onClose} style={{ position: 'fixed', inset: 0, background: 'rgba(9,9,11,0.35)', zIndex: 40 }} />
+      <div role="dialog" aria-modal="true" style={{ position: 'fixed', top: 0, right: 0, height: '100dvh', width: 'min(560px, 95vw)', background: COLORS.white, borderLeft: `1px solid ${COLORS.border}`, zIndex: 41, display: 'flex', flexDirection: 'column' }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '14px 16px', borderBottom: `1px solid ${COLORS.border}` }}>
+          <div style={{ fontWeight: 800, fontSize: 18, color: COLORS.text }}>Factura {String(invoice.invoiceId).replace(/^fallback:/, '')}</div>
+          <button onClick={onClose} style={{ border: `1px solid ${COLORS.border}`, borderRadius: 8, padding: '6px 10px', background: COLORS.white, cursor: 'pointer' }}>Cerrar</button>
         </div>
         <div style={{ padding: 16, overflow: 'auto' }}>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 16 }}>
@@ -1331,30 +1284,30 @@ function InvoiceDrawer({ open, onClose, invoice }) {
             <InfoRow label="Apertura" value={`${fmtDate.format(invoice.openedAt)} ${fmtTime.format(invoice.openedAt)}`} />
             <InfoRow label="Cierre" value={`${fmtDate.format(invoice.closedAt)} ${fmtTime.format(invoice.closedAt)}`} />
           </div>
-          <div style={{ border: '1px solid #e5e7eb', borderRadius: 10, padding: 12, marginBottom: 16 }}>
+          <div style={{ border: `1px solid ${COLORS.border}`, borderRadius: 10, padding: 12, marginBottom: 16 }}>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr auto', gap: 8 }}>
-              <div style={{ color: '#64748b' }}>Subtotal</div><div style={{ textAlign: 'right', fontWeight: 600 }}>{money0(subtotal)}</div>
-              <div style={{ color: '#64748b' }}>Descuentos</div><div style={{ textAlign: 'right', fontWeight: 600 }}>{discounts ? `- ${money0(discounts)}` : money0(0)}</div>
-              <div style={{ color: '#64748b' }}>Impuestos</div><div style={{ textAlign: 'right', fontWeight: 600 }}>{money0(taxes)}</div>
-              <div style={{ color: '#64748b' }}>Propina</div><div style={{ textAlign: 'right', fontWeight: 600 }}>{money0(tip)}</div>
-              <div style={{ borderTop: '1px dashed #e5e7eb', marginTop: 6 }}></div><div style={{ borderTop: '1px dashed #e5e7eb', marginTop: 6 }}></div>
-              <div style={{ fontWeight: 800 }}>Total</div><div style={{ textAlign: 'right', fontWeight: 800 }}>{money0(total)}</div>
+              <div style={{ color: COLORS.textSecondary }}>Subtotal</div><div style={{ textAlign: 'right', fontWeight: 600 }}>{money0(subtotal)}</div>
+              <div style={{ color: COLORS.textSecondary }}>Descuentos</div><div style={{ textAlign: 'right', fontWeight: 600 }}>{discounts ? `- ${money0(discounts)}` : money0(0)}</div>
+              <div style={{ color: COLORS.textSecondary }}>Impuestos</div><div style={{ textAlign: 'right', fontWeight: 600 }}>{money0(taxes)}</div>
+              <div style={{ color: COLORS.textSecondary }}>Propina</div><div style={{ textAlign: 'right', fontWeight: 600 }}>{money0(tip)}</div>
+              <div style={{ borderTop: `1px dashed ${COLORS.border}`, marginTop: 6 }}></div><div style={{ borderTop: `1px dashed ${COLORS.border}`, marginTop: 6 }}></div>
+              <div style={{ fontWeight: 800, color: COLORS.text }}>Total</div><div style={{ textAlign: 'right', fontWeight: 800, color: COLORS.text }}>{money0(total)}</div>
             </div>
           </div>
           <div style={{ marginBottom: 16 }}>
-            <div style={{ fontWeight: 700, marginBottom: 8 }}>Timeline</div>
+            <div style={{ fontWeight: 700, marginBottom: 8, color: COLORS.text }}>Timeline</div>
             <ul style={{ margin: 0, paddingLeft: 18 }}>
               <li>Abierta: {fmtDateTime.format(invoice.openedAt)}</li>
               {orderTimeline.map((order) => (
                 <li key={order.id} style={{ marginBottom: 8 }}>
                   Pedido #{order.id} — {order.order_status || order.status || '—'} — {fmtDateTime.format(safeDate(order.createdAt))} — {money0(order.total)}
                   {order.customerNotes && (
-                    <div style={{ marginTop: 4, color: '#7c2d12' }}>
+                    <div style={{ marginTop: 4, color: COLORS.error }}>
                       Cliente: {String(order.customerNotes)}
                     </div>
                   )}
                   {order.staffNotes && (
-                    <div style={{ marginTop: 4, color: '#1d4ed8', whiteSpace: 'pre-wrap' }}>
+                    <div style={{ marginTop: 4, color: COLORS.info, whiteSpace: 'pre-wrap' }}>
                       Staff: {String(order.staffNotes)}
                     </div>
                   )}
@@ -1364,28 +1317,28 @@ function InvoiceDrawer({ open, onClose, invoice }) {
             </ul>
           </div>
           <div>
-            <div style={{ fontWeight: 700, marginBottom: 8 }}>Items</div>
+            <div style={{ fontWeight: 700, marginBottom: 8, color: COLORS.text }}>Items</div>
             <div style={{ overflow: 'auto' }}>
               <table style={{ width: '100%', borderCollapse: 'collapse' }}>
                 <thead>
-                  <tr style={{ textAlign: 'left', color: '#6b7280' }}>
-                    <th style={{ padding: '8px 6px', borderBottom: '1px solid #e5e7eb' }}>Producto</th>
-                    <th style={{ padding: '8px 6px', borderBottom: '1px solid #e5e7eb', textAlign: 'right' }}>Cant.</th>
-                    <th style={{ padding: '8px 6px', borderBottom: '1px solid #e5e7eb', textAlign: 'right' }}>Precio</th>
-                    <th style={{ padding: '8px 6px', borderBottom: '1px solid #e5e7eb', textAlign: 'right' }}>Total</th>
+                  <tr style={{ textAlign: 'left', color: COLORS.textSecondary }}>
+                    <th style={{ padding: '8px 6px', borderBottom: `1px solid ${COLORS.border}` }}>Producto</th>
+                    <th style={{ padding: '8px 6px', borderBottom: `1px solid ${COLORS.border}`, textAlign: 'right' }}>Cant.</th>
+                    <th style={{ padding: '8px 6px', borderBottom: `1px solid ${COLORS.border}`, textAlign: 'right' }}>Precio</th>
+                    <th style={{ padding: '8px 6px', borderBottom: `1px solid ${COLORS.border}`, textAlign: 'right' }}>Total</th>
                   </tr>
                 </thead>
                 <tbody>
                   {items.map((it, i) => (
                     <tr key={it.name + '_' + i}>
-                      <td style={{ padding: '10px 6px', borderBottom: '1px solid #f1f5f9' }}>{it.name}</td>
-                      <td style={{ padding: '10px 6px', borderBottom: '1px solid #f1f5f9', textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>{it.qty}</td>
-                      <td style={{ padding: '10px 6px', borderBottom: '1px solid #f1f5f9', textAlign: 'right' }}>{money0(it.unitPrice)}</td>
-                      <td style={{ padding: '10px 6px', borderBottom: '1px solid #f1f5f9', textAlign: 'right', fontWeight: 700 }}>{money0(it.total)}</td>
+                      <td style={{ padding: '10px 6px', borderBottom: `1px solid ${COLORS.border}` }}>{it.name}</td>
+                      <td style={{ padding: '10px 6px', borderBottom: `1px solid ${COLORS.border}`, textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>{it.qty}</td>
+                      <td style={{ padding: '10px 6px', borderBottom: `1px solid ${COLORS.border}`, textAlign: 'right' }}>{money0(it.unitPrice)}</td>
+                      <td style={{ padding: '10px 6px', borderBottom: `1px solid ${COLORS.border}`, textAlign: 'right', fontWeight: 700 }}>{money0(it.total)}</td>
                     </tr>
                   ))}
                   {!items.length && (
-                    <tr><td colSpan={4} style={{ padding: 12, textAlign: 'center', color: '#64748b' }}>Sin desglose de items para esta factura.</td></tr>
+                    <tr><td colSpan={4} style={{ padding: 12, textAlign: 'center', color: COLORS.textMuted }}>Sin desglose de items para esta factura.</td></tr>
                   )}
                 </tbody>
               </table>
@@ -1399,29 +1352,29 @@ function InvoiceDrawer({ open, onClose, invoice }) {
 
 function InfoRow({ label, value }) {
   return (
-    <div style={{ border: '1px solid #e5e7eb', borderRadius: 10, padding: '10px 12px', background: '#fff' }}>
-      <div style={{ color: '#64748b', fontSize: 12, marginBottom: 4 }}>{label}</div>
-      <div style={{ fontWeight: 700 }}>{value}</div>
+    <div style={{ border: `1px solid ${COLORS.border}`, borderRadius: 10, padding: '10px 12px', background: COLORS.white }}>
+      <div style={{ color: COLORS.textSecondary, fontSize: 12, marginBottom: 4 }}>{label}</div>
+      <div style={{ fontWeight: 700, color: COLORS.text }}>{value}</div>
     </div>
   );
 }
 
 function TopProductsList({ rows }) {
-  if (!rows || !rows.length) return <div style={{ color: '#6b7280' }}>Sin datos de productos en este período.</div>;
+  if (!rows || !rows.length) return <div style={{ color: COLORS.textSecondary }}>Sin datos de productos en este período.</div>;
   return (
     <div style={{ overflow: 'auto' }}>
       <table style={{ width: '100%', borderCollapse: 'collapse' }}>
         <thead>
-          <tr style={{ textAlign: 'left', color: '#6b7280' }}>
-            <th style={{ padding: '8px 6px', borderBottom: '1px solid #e5e7eb' }}>Producto</th>
-            <th style={{ padding: '8px 6px', borderBottom: '1px solid #e5e7eb' }}>Cantidad</th>
+          <tr style={{ textAlign: 'left', color: COLORS.textSecondary }}>
+            <th style={{ padding: '8px 6px', borderBottom: `1px solid ${COLORS.border}` }}>Producto</th>
+            <th style={{ padding: '8px 6px', borderBottom: `1px solid ${COLORS.border}` }}>Cantidad</th>
           </tr>
         </thead>
         <tbody>
           {rows.map((r, i) => (
             <tr key={(r.name || 'producto') + '-' + i}>
-              <td style={{ padding: '10px 6px', borderBottom: '1px solid #f1f5f9' }}>{r.name}</td>
-              <td style={{ padding: '10px 6px', borderBottom: '1px solid #f1f5f9', fontWeight: 700 }}>
+              <td style={{ padding: '10px 6px', borderBottom: `1px solid ${COLORS.border}` }}>{r.name}</td>
+              <td style={{ padding: '10px 6px', borderBottom: `1px solid ${COLORS.border}`, fontWeight: 700 }}>
                 {r.qty}
               </td>
             </tr>
@@ -1443,8 +1396,8 @@ function Th({ children, onClick, style }) {
         userSelect: 'none',
         whiteSpace: 'nowrap',
         fontSize: 13,
-        color: '#475569',
-        borderBottom: '1px solid #e5e7eb',
+        color: COLORS.textSecondary,
+        borderBottom: `1px solid ${COLORS.border}`,
         ...style
       }}
     >

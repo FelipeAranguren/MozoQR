@@ -132,6 +132,7 @@ export default function ConfirmActionModal({
           disabled={loading}
           sx={{
             bgcolor: MARANA_COLORS.primary,
+            color: '#fff',
             textTransform: 'none',
             fontWeight: 600,
             '&:hover': {

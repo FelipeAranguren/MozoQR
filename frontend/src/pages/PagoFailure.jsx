@@ -1,9 +1,10 @@
 //frontend/src/pages/PagoFailure.jsx
 import React, { useEffect, useState } from "react";
 import { useNavigate, useParams, useSearchParams } from "react-router-dom";
-import { Container, Paper, Typography, Button, Box } from "@mui/material";
+import { Typography } from "@mui/material";
 import ErrorOutlineIcon from "@mui/icons-material/ErrorOutline";
 import { loadLastReceiptFromStorage } from "../utils/receipt";
+import StatusPage from "../components/ui/StatusPage";
 
 function normalizeSlug(value) {
   if (value == null) return "";
@@ -18,7 +19,7 @@ export default function PagoFailure() {
   const { slug: slugFromRoute } = useParams();
   const [searchParams] = useSearchParams();
   const orderId = searchParams.get("orderId");
-  const status = searchParams.get("status"); // failure/rejected
+  const status = searchParams.get("status");
   const [slugFromReceipt, setSlugFromReceipt] = useState(null);
 
   useEffect(() => {
@@ -32,43 +33,20 @@ export default function PagoFailure() {
     normalizeSlug(slugFromReceipt);
 
   return (
-    <Container maxWidth="sm" sx={{ py: 4, minHeight: "100vh", display: "flex", alignItems: "center" }}>
-      <Paper elevation={3} sx={{ p: 4, textAlign: "center", borderRadius: 3 }}>
-        <ErrorOutlineIcon sx={{ fontSize: 64, color: "error.main", mb: 2 }} />
-        <Typography variant="h5" gutterBottom sx={{ fontWeight: 600 }}>
-          El pago fue rechazado
+    <StatusPage
+      variant="error"
+      kicker="Pago"
+      icon={<ErrorOutlineIcon sx={{ fontSize: 56, color: '#dc2626' }} />}
+      title="El pago fue rechazado"
+      description="No se pudo completar el cobro. Puedes intentar nuevamente o resolverlo en el mostrador."
+      primaryAction={slug ? { label: "Volver al menú", onClick: () => navigate(`/${slug}/menu`) } : null}
+      secondaryAction={{ label: "Volver al inicio", onClick: () => navigate("/"), variant: slug ? "outlined" : "contained" }}
+    >
+      {orderId ? (
+        <Typography variant="body2" sx={{ color: '#52525b' }}>
+          Pedido: {orderId}
         </Typography>
-        <Typography variant="body1" color="text.secondary" sx={{ mb: 3 }}>
-          No se pudo completar el pago. Podés intentar de nuevo o pagar en el mostrador.
-        </Typography>
-        {orderId && (
-          <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-            Pedido: {orderId}
-          </Typography>
-        )}
-        <Box sx={{ display: "flex", flexDirection: "column", gap: 1, mt: 2 }}>
-          {slug && (
-            <Button
-              variant="contained"
-              size="large"
-              fullWidth
-              onClick={() => navigate(`/${slug}/menu`)}
-              sx={{ borderRadius: 2, py: 1.5, fontSize: "1rem", fontWeight: 600 }}
-            >
-              Volver al Menú
-            </Button>
-          )}
-          <Button
-            variant={slug ? "outlined" : "contained"}
-            size="large"
-            fullWidth
-            onClick={() => navigate("/")}
-            sx={{ borderRadius: 2, py: 1.5 }}
-          >
-            Volver al inicio
-          </Button>
-        </Box>
-      </Paper>
-    </Container>
+      ) : null}
+    </StatusPage>
   );
 }

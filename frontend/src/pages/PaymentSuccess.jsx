@@ -1,11 +1,10 @@
-// Página de retorno de Mercado Pago cuando el pago fue aprobado (auto_return: 'approved').
-// back_urls.success apunta aquí. MP envía por query: payment_id, status, preference_id, external_reference, etc.
 import React, { useEffect, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
-import { Box, Container, CircularProgress, Typography } from "@mui/material";
+import { Box, CircularProgress } from "@mui/material";
 import CheckCircleOutlineIcon from "@mui/icons-material/CheckCircleOutline";
 import ScheduleIcon from "@mui/icons-material/Schedule";
 import { LAST_RECEIPT_KEY } from "../utils/receipt";
+import StatusPage from "../components/ui/StatusPage";
 
 export default function PaymentSuccess() {
   const navigate = useNavigate();
@@ -61,49 +60,30 @@ export default function PaymentSuccess() {
       window.location.assign(target);
     }, 250);
   };
-  // MP también puede enviar payment_id, collection_id, preference_id, external_reference por query
 
   return (
-    <Container maxWidth="sm" sx={{ py: 6, minHeight: "100vh", display: "flex", alignItems: "center" }}>
-      <Box sx={{ textAlign: "center", width: "100%" }}>
-        {!done ? (
-          <CircularProgress size={56} sx={{ mb: 2 }} />
+    <StatusPage
+      variant={isPending ? "warning" : "success"}
+      kicker="Mercado Pago"
+      icon={
+        !done ? (
+          <CircularProgress size={48} sx={{ color: isPending ? '#d97706' : '#16a34a' }} />
         ) : isPending ? (
-          <ScheduleIcon sx={{ fontSize: 56, color: "warning.main", mb: 2 }} />
+          <ScheduleIcon sx={{ fontSize: 56, color: '#d97706' }} />
         ) : (
-          <CheckCircleOutlineIcon sx={{ fontSize: 56, color: "success.main", mb: 2 }} />
+          <CheckCircleOutlineIcon sx={{ fontSize: 56, color: '#16a34a' }} />
         )}
-        <Typography variant="h6" color="text.primary" gutterBottom>
-          {message}
-        </Typography>
-        <Typography variant="body2" color="text.secondary">
-          {isPending
-            ? "Te avisaremos cuando el pago se acredite."
-            : "El pedido se actualizará en el mostrador en unos segundos."}
-        </Typography>
-        {done && (
-          <Box sx={{ mt: 3, display: "flex", flexDirection: "column", gap: 1 }}>
-            {slug && (
-              <Typography
-                component="button"
-                variant="body2"
-                onClick={goToTableSelector}
-                sx={{ cursor: "pointer", color: "primary.main", textDecoration: "underline", border: "none", background: "none" }}
-              >
-                Volver al menú
-              </Typography>
-            )}
-            <Typography
-              component="button"
-              variant="body2"
-              onClick={goToTableSelector}
-              sx={{ cursor: "pointer", color: "primary.main", textDecoration: "underline", border: "none", background: "none" }}
-            >
-              Volver al inicio
-            </Typography>
-          </Box>
-        )}
-      </Box>
-    </Container>
+      title={isPending ? "Pago pendiente" : "Pago acreditado"}
+      description={message}
+      detail={
+        isPending
+          ? "Te avisaremos cuando el pago se acredite."
+          : "El pedido se actualizará en el mostrador en unos segundos."
+      }
+      primaryAction={done && slug ? { label: "Volver al menú", onClick: goToTableSelector } : null}
+      secondaryAction={done ? { label: "Volver al inicio", onClick: goToTableSelector, variant: slug ? "outlined" : "contained" } : null}
+    >
+      {!done ? <Box sx={{ height: 8 }} /> : null}
+    </StatusPage>
   );
 }

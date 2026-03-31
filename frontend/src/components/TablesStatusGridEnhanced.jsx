@@ -9,6 +9,7 @@ import CleaningServicesIcon from '@mui/icons-material/CleaningServices';
 import EventSeatIcon from '@mui/icons-material/EventSeat';
 import NotificationsActiveIcon from '@mui/icons-material/NotificationsActive';
 import AccountBalanceWalletIcon from '@mui/icons-material/AccountBalanceWallet';
+import { COLORS } from '../theme';
 
 /**
  * Indica si un pedido del sistema es "solicitud de cobro" (pago efectivo/tarjeta en mesa).
@@ -95,19 +96,16 @@ export default function TablesStatusGridEnhanced({
     }
   }, [systemOrders]);
 
-  /**
-   * Obtiene el color oscuro para el hover según el estado de la mesa
-   */
   const getHoverBorderColor = (status) => {
     switch (status) {
       case 'available':
-        return '#2e7d32'; // Verde más oscuro
+        return '#15803d';
       case 'occupied':
-        return '#0d47a1'; // Azul mucho más oscuro para contraste más notorio
+        return '#1e40af';
       case 'needs-cleaning':
-        return '#f57c00'; // Amarillo más oscuro
+        return COLORS.warning;
       default:
-        return '#424242'; // Gris oscuro por defecto
+        return COLORS.textSecondary;
     }
   };
 
@@ -127,35 +125,26 @@ export default function TablesStatusGridEnhanced({
       return matches;
     });
 
-    // Pedidos sin pagar (cualquier estado que no sea 'paid' ni 'cancelled')
-    // CRÍTICO: Los pedidos cancelados NO deben contarse como activos
     const unpaidOrders = tableOrders.filter(o => o.order_status !== 'paid' && o.order_status !== 'cancelled');
 
     const hasSystemCall = systemCalls.length > 0;
     const hasServed = unpaidOrders.some(o => o.order_status === 'served');
     const hasPaid = tableOrders.some(o => o.order_status === 'paid');
     
-    // PRIORIDAD 0: Estado por limpiar (máxima prioridad visual)
     if (table.status === 'por_limpiar') {
       return {
         status: 'needs-cleaning',
         label: 'Por limpiar',
-        color: '#ff9800', // Naranja/Amber
+        color: COLORS.warning,
         icon: <CleaningServicesIcon />,
         blinking: false,
         priority: 2
       };
     }
 
-    // PRIORIDAD 1: Si hay llamada del sistema (mozo) - MÁXIMA PRIORIDAD VISUAL
-    // Esto debe mostrarse incluso si la mesa está ocupada
     if (hasSystemCall) {
       const callType = systemCalls[0];
       const isPayRequest = callType?.items?.some(item => {
-        // El nombre del producto del sistema puede estar en:
-        // 1. item.product.name (producto real)
-        // 2. item.name (campo directo)
-        // 3. item.notes (para productos del sistema, el nombre se guarda en notes)
         const prodName = (item?.product?.name || item?.name || item?.notes || '').toUpperCase();
         return prodName.includes('SOLICITUD DE COBRO') || prodName.includes('💳');
       }) || (callType?.customerNotes || '').toUpperCase().includes('SOLICITA COBRAR') || (callType?.customerNotes || '').toUpperCase().includes('CUENTA');
@@ -164,7 +153,7 @@ export default function TablesStatusGridEnhanced({
         return {
           status: 'request-payment',
           label: 'Solicita pago',
-          color: '#9c27b0', // Púrpura
+          color: '#7c3aed',
           icon: <AccountBalanceWalletIcon />,
           blinking: true,
           priority: 1
@@ -174,19 +163,18 @@ export default function TablesStatusGridEnhanced({
       return {
         status: 'calling',
         label: 'Llama mozo',
-        color: '#ff1744', // Rojo vibrante
+        color: COLORS.error,
         icon: <NotificationsActiveIcon />,
         blinking: true,
         priority: 1
       };
     }
     
-    // REGLA CRÍTICA #1: Si hay pedidos sin pagar, la mesa SIEMPRE está ocupada
     if (unpaidOrders.length > 0) {
       return {
         status: 'occupied',
         label: hasServed && !hasPaid ? 'Espera pago' : 'Ocupada',
-        color: '#1976d2', // Azul
+        color: '#2563eb',
         icon: hasServed && !hasPaid ? <AccessTimeIcon /> : <RestaurantIcon />,
         blinking: false,
         priority: 1,
@@ -194,18 +182,12 @@ export default function TablesStatusGridEnhanced({
       };
     }
     
-    // REGLA CRÍTICA #2: Si NO hay pedidos sin pagar, la mesa está DISPONIBLE
-    // CRÍTICO: NO usar openSessions para determinar ocupación después de pagar
-    // Si activeOrders viene vacío (porque fetchActiveOrders solo trae pedidos no pagados),
-    // entonces la mesa está disponible, independientemente de si hay sesión abierta o no
-    // PRIORIDAD 5: Verificar estado del backend SOLO si no hay pedidos sin pagar ni sesión abierta
-    // El backend es la fuente de verdad después de pagar
     if (table.status) {
       if (table.status === 'ocupada') {
         return {
           status: 'occupied',
           label: 'Ocupada',
-          color: '#1976d2', // Azul
+          color: '#2563eb',
           icon: <RestaurantIcon />,
           blinking: false,
           priority: 3,
@@ -214,16 +196,13 @@ export default function TablesStatusGridEnhanced({
       }
       
       if (table.status === 'disponible') {
-        // Solo mostrar como disponible si NO hay pedidos sin pagar
-        // CRÍTICO: No verificar hasOpenSession porque las sesiones pueden quedar abiertas después de pagar
-        // La única fuente de verdad es si hay pedidos sin pagar o no
         const allOrdersPaid = tableOrders.length === 0 || tableOrders.every(o => o.order_status === 'paid');
         
         if (allOrdersPaid) {
           return {
             status: 'available',
             label: 'Disponible',
-            color: '#4caf50', // Verde
+            color: COLORS.success,
             icon: <CheckCircleIcon />,
             blinking: false,
             priority: 5
@@ -232,13 +211,10 @@ export default function TablesStatusGridEnhanced({
       }
     }
 
-    // PRIORIDAD 6: Mesa libre/disponible (sin pedidos sin pagar)
-    // CRÍTICO: Si llegamos aquí, significa que no hay pedidos sin pagar
-    // Por lo tanto, la mesa está disponible, independientemente de sesiones abiertas
     return {
       status: 'available',
       label: 'Disponible',
-      color: '#4caf50', // Verde
+      color: COLORS.success,
       icon: <CheckCircleIcon />,
       blinking: false,
       priority: 5
@@ -250,13 +226,13 @@ export default function TablesStatusGridEnhanced({
       <Card
         sx={{
           borderRadius: 3,
-          border: '1px solid #e0e0e0',
+          border: `1px solid ${COLORS.border}`,
           p: 4,
           textAlign: 'center',
-          bgcolor: '#fafafa'
+          bgcolor: 'background.default'
         }}
       >
-        <TableRestaurantIcon sx={{ fontSize: 48, color: '#9e9e9e', mb: 2, opacity: 0.5 }} />
+        <TableRestaurantIcon sx={{ fontSize: 48, color: COLORS.textMuted, mb: 2, opacity: 0.5 }} />
         <Typography variant="h6" sx={{ fontWeight: 600, mb: 1 }}>
           No hay mesas configuradas
         </Typography>
@@ -267,9 +243,7 @@ export default function TablesStatusGridEnhanced({
     );
   }
 
-  // Ordenar mesas numéricamente (1, 2, 3...) y NO por estado
   const sortedTables = [...tables].sort((a, b) => {
-    // Intentar extraer número si es string "Mesa 1"
     const numA = Number(a.number) || Number(a.name?.replace(/\D/g, '')) || 0;
     const numB = Number(b.number) || Number(b.name?.replace(/\D/g, '')) || 0;
     return numA - numB;
@@ -278,52 +252,43 @@ export default function TablesStatusGridEnhanced({
   return (
     <Box
       sx={{
-        // Asegurar que no aparezcan scrollbars que causen desplazamiento
         overflowX: 'hidden',
         width: '100%',
         position: 'relative',
       }}
     >
-      <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 2 }}>
-        <Box>
-          <Typography variant="h6" sx={{ fontWeight: 700, mb: 0.5 }}>
-            Estado de Mesas ({tables.length})
-          </Typography>
-          <Typography variant="body2" color="text.secondary">
-            Vista en tiempo real del estado de todas las mesas
-          </Typography>
-        </Box>
-        <Box sx={{ display: 'flex', gap: 0.75, flexWrap: 'wrap' }}>
-          <Chip
-            icon={<CheckCircleIcon sx={{ fontSize: 18 }} />}
-            label="Disponible"
-            size="small"
-            sx={{ bgcolor: '#4caf50', color: 'white', fontWeight: 600, fontSize: { xs: '0.75rem', sm: '0.8125rem' }, '& .MuiChip-label': { px: 0.75 } }}
-          />
-          <Chip
-            icon={<RestaurantIcon sx={{ fontSize: 18 }} />}
-            label="Ocupada"
-            size="small"
-            sx={{ bgcolor: '#1976d2', color: 'white', fontWeight: 600, fontSize: { xs: '0.75rem', sm: '0.8125rem' }, '& .MuiChip-label': { px: 0.75 } }}
-          />
-          <Chip
-            icon={<CleaningServicesIcon sx={{ fontSize: 18 }} />}
-            label="Por limpiar"
-            size="small"
-            sx={{ bgcolor: '#ff9800', color: 'white', fontWeight: 600, fontSize: { xs: '0.75rem', sm: '0.8125rem' }, '& .MuiChip-label': { px: 0.75 } }}
-          />
-          <Chip
-            icon={<NotificationsActiveIcon sx={{ fontSize: 18 }} />}
-            label="Llamando"
-            size="small"
-            sx={{ bgcolor: '#ff1744', color: 'white', fontWeight: 600, fontSize: { xs: '0.75rem', sm: '0.8125rem' }, '& .MuiChip-label': { px: 0.75 } }}
-          />
-          <Chip
-            icon={<AccountBalanceWalletIcon sx={{ fontSize: 18 }} />}
-            label="Solicita pago"
-            size="small"
-            sx={{ bgcolor: '#9c27b0', color: 'white', fontWeight: 600, fontSize: { xs: '0.75rem', sm: '0.8125rem' }, '& .MuiChip-label': { px: 0.75 } }}
-          />
+      <Box
+        sx={{
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          mb: 1,
+          px: 1.5,
+          py: 0.75,
+          bgcolor: 'background.paper',
+          borderRadius: 2,
+          border: `1px solid ${COLORS.border}`,
+        }}
+      >
+        <Typography variant="subtitle2" sx={{ fontWeight: 700 }}>
+          Mesas ({tables.length})
+        </Typography>
+        <Box sx={{ display: 'flex', gap: 0.5, flexWrap: 'wrap' }}>
+          {[
+            { icon: <CheckCircleIcon sx={{ fontSize: 14 }} />, label: 'Disponible', color: COLORS.success },
+            { icon: <RestaurantIcon sx={{ fontSize: 14 }} />, label: 'Ocupada', color: '#2563eb' },
+            { icon: <CleaningServicesIcon sx={{ fontSize: 14 }} />, label: 'Limpiar', color: COLORS.warning },
+            { icon: <NotificationsActiveIcon sx={{ fontSize: 14 }} />, label: 'Llamando', color: COLORS.error },
+            { icon: <AccountBalanceWalletIcon sx={{ fontSize: 14 }} />, label: 'Pago', color: '#7c3aed' },
+          ].map((s) => (
+            <Chip
+              key={s.label}
+              icon={s.icon}
+              label={s.label}
+              size="small"
+              sx={{ bgcolor: s.color, color: 'white', fontWeight: 600, fontSize: '0.675rem', height: 20, '& .MuiChip-label': { px: 0.5 }, '& .MuiChip-icon': { ml: 0.25 } }}
+            />
+          ))}
         </Box>
       </Box>
 
@@ -332,13 +297,11 @@ export default function TablesStatusGridEnhanced({
           width: '100%',
           maxWidth: '100%',
           overflow: 'hidden',
-          py: 0.25,
-          px: 0.25,
         }}
       >
         <Grid
           container
-          spacing={2}
+          spacing={1}
           sx={{
             width: '100%',
             margin: 0,
@@ -348,30 +311,26 @@ export default function TablesStatusGridEnhanced({
           const tableStatus = getTableStatus(table);
 
           const tableOrders = ordersByTable.get(table.number) || [];
-          // CRÍTICO: Excluir pedidos cancelados del contador - no deben aparecer en la burbuja roja
           const activeOrdersCount = tableOrders.filter(o =>
             o.order_status !== 'paid' && o.order_status !== 'cancelled'
           ).length;
 
           return (
-            <Grid item xs={6} sm={4} md={3} lg={2.4} key={table.id || table.number}>
+            <Grid item xs={4} sm={3} md={2} lg={1.5} key={table.id || table.number}>
               <Card
                 elevation={0}
                 onClick={() => onTableClick && onTableClick(table)}
                 title=""
                 sx={{
-                  border: `2px solid ${tableStatus.color}`,
+                  border: `1px solid ${tableStatus.color}`,
                   borderRadius: 2,
-                  p: { xs: 1.25, sm: 1.5, md: 2 },
+                  p: { xs: 0.75, sm: 1 },
                   textAlign: 'center',
                   cursor: onTableClick ? 'pointer' : 'default',
-                  // Transición solo para box-shadow, todos los colores cambian instantáneamente
                   transition: 'box-shadow 0.2s ease',
-                  // border-color, bgcolor, color sin transición para cambio instantáneo y simultáneo
-                  // Mantener borderWidth constante para no cambiar el tamaño
                   background: tableStatus.status === 'available'
-                    ? 'linear-gradient(135deg, #ffffff 0%, #f1f8e9 100%)'
-                    : `linear-gradient(135deg, ${tableStatus.color}15 0%, ${tableStatus.color}08 100%)`,
+                    ? COLORS.white
+                    : `linear-gradient(135deg, ${COLORS.white} 0%, ${tableStatus.color}10 100%)`,
                   position: 'relative',
                   overflow: 'hidden',
                   animation: tableStatus.blinking
@@ -383,36 +342,28 @@ export default function TablesStatusGridEnhanced({
                       transform: 'scale(1)'
                     },
                     '50%': {
-                      boxShadow: `0 0 0 8px ${tableStatus.color}00`,
-                      transform: 'scale(1.02)'
+                      boxShadow: `0 0 0 6px ${tableStatus.color}00`,
+                      transform: 'scale(1.01)'
                     }
                   },
                   '&:hover': onTableClick ? {
-                    // SOLO efectos visuales que NO cambian el tamaño ni causan scrollbars
-                    boxShadow: `0px 2px 8px ${tableStatus.color}40`,
-                    // Cambiar a color oscuro según el estado (instantáneo, sin transición)
+                    boxShadow: `0 4px 16px ${tableStatus.color}24`,
                     borderColor: getHoverBorderColor(tableStatus.status),
-                    // Mantener borderWidth en 2px para no cambiar el tamaño del casillero
-                    borderWidth: '2px',
-                    // NO usar transform, scale, ni translateY - mantiene el tamaño exacto
-                    // border-color cambia instantáneamente (sin transición)
+                    borderWidth: '1px',
                     zIndex: 1,
-                    // Cambiar color del Chip a color oscuro (sin transición)
                     '& .MuiChip-root': {
                       bgcolor: getHoverBorderColor(tableStatus.status),
-                      transition: 'none', // Sin transición para cambio instantáneo
+                      transition: 'none',
                     },
-                    // Cambiar color del Box del icono a color oscuro (sin transición)
                     '& .table-icon-box': {
                       bgcolor: `${getHoverBorderColor(tableStatus.status)}20`,
                       color: getHoverBorderColor(tableStatus.status),
-                      border: `2px solid ${getHoverBorderColor(tableStatus.status)}40`,
-                      transition: 'none', // Sin transición para cambio instantáneo
+                      border: `1px solid ${getHoverBorderColor(tableStatus.status)}40`,
+                      transition: 'none',
                     },
-                    // Cambiar color del Typography de estado (solo para 'calling', sin transición)
                     '& .table-status-text': {
                       color: getHoverBorderColor(tableStatus.status),
-                      transition: 'none', // Sin transición para cambio instantáneo
+                      transition: 'none',
                     }
                   } : {}
                 }}
@@ -422,41 +373,41 @@ export default function TablesStatusGridEnhanced({
                     display: 'flex',
                     alignItems: 'center',
                     justifyContent: 'center',
-                    mb: 1
+                    mb: 0.5,
                   }}
                 >
                   <Badge
                     badgeContent={activeOrdersCount > 0 ? activeOrdersCount : null}
                     color="error"
                     overlap="circular"
-                    // Deshabilitar cualquier tooltip automático
                     slotProps={{
                       badge: {
-                        // Deshabilitar tooltip
                         title: '',
                         'aria-label': '',
                       }
                     }}
                     sx={{
-                      // Asegurar que no aparezcan tooltips
                       '& .MuiBadge-badge': {
                         pointerEvents: 'none',
+                        fontSize: '0.65rem',
+                        minWidth: 16,
+                        height: 16,
                       }
                     }}
                   >
                     <Box
                       className="table-icon-box"
                       sx={{
-                        p: 1.5,
-                        borderRadius: 2,
+                        p: 0.75,
+                        borderRadius: 1.5,
                         bgcolor: `${tableStatus.color}20`,
                         color: tableStatus.color,
                         display: 'flex',
                         alignItems: 'center',
                         justifyContent: 'center',
-                        border: `2px solid ${tableStatus.color}40`,
-                        // Sin transición para cambio instantáneo de colores
+                        border: `1px solid ${tableStatus.color}40`,
                         transition: 'none',
+                        '& .MuiSvgIcon-root': { fontSize: 18 },
                       }}
                     >
                       {tableStatus.icon}
@@ -465,40 +416,35 @@ export default function TablesStatusGridEnhanced({
                 </Box>
 
                 <Typography
-                  variant="h6"
+                  variant="subtitle2"
                   sx={{
                     fontWeight: 700,
-                    mb: 0.5,
+                    fontSize: '0.8125rem',
+                    lineHeight: 1.2,
+                    mb: 0.25,
                     color: tableStatus.status === 'calling' ? tableStatus.color : 'text.primary'
                   }}
                 >
-                  Mesa {table.number || table.name || '—'}
+                  {table.number || table.name || '—'}
                 </Typography>
 
                 <Chip
-                  icon={tableStatus.icon}
-                  label={(() => {
-                    return tableStatus.label;
-                  })()}
+                  label={tableStatus.label}
                   size="small"
                   sx={{
                     bgcolor: tableStatus.color,
                     color: 'white',
                     fontWeight: 600,
-                    mb: 1,
-                    fontSize: '0.7rem',
-                    height: '24px',
-                    // Sin transición para cambio instantáneo de color
+                    fontSize: '0.6rem',
+                    height: 18,
                     transition: 'none',
-                    '& .MuiChip-icon': {
-                      color: 'white'
-                    }
+                    '& .MuiChip-label': { px: 0.5 },
                   }}
                 />
 
                 {tableStatus.status === 'occupied' && activeOrdersCount > 0 && (
-                  <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>
-                    {activeOrdersCount} pedido{activeOrdersCount > 1 ? 's' : ''} activo{activeOrdersCount > 1 ? 's' : ''}
+                  <Typography variant="caption" color="text.secondary" sx={{ display: 'block', fontSize: '0.65rem', mt: 0.25 }}>
+                    {activeOrdersCount} pedido{activeOrdersCount > 1 ? 's' : ''}
                   </Typography>
                 )}
 
@@ -510,12 +456,12 @@ export default function TablesStatusGridEnhanced({
                       display: 'block',
                       color: tableStatus.color,
                       fontWeight: 600,
-                      mt: 0.5,
-                      // Sin transición para cambio instantáneo de color
+                      fontSize: '0.65rem',
+                      mt: 0.25,
                       transition: 'none',
                     }}
                   >
-                    ⚠️ Atención requerida
+                    ⚠️ Atención
                   </Typography>
                 )}
               </Card>
@@ -527,4 +473,3 @@ export default function TablesStatusGridEnhanced({
     </Box>
   );
 }
-
