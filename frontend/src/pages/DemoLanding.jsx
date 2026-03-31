@@ -151,12 +151,15 @@ export default function DemoLanding() {
                                     variants={itemVariants}
                                     whileHover={{ y: -8 }}
                                     transition={{ type: 'spring', stiffness: 300 }}
+                                    style={{ height: '100%' }}
                                 >
                                     <Card
                                         elevation={0}
                                         sx={{
                                             p: { xs: 2.75, md: 4 },
                                             height: '100%',
+                                            display: 'flex',
+                                            flexDirection: 'column',
                                             borderRadius: '12px',
                                             border: `1px solid ${COLORS.border}`,
                                             bgcolor: 'background.paper',
@@ -188,7 +191,7 @@ export default function DemoLanding() {
                                             </Box>
                                         </Box>
 
-                                        <Box sx={{ mb: { xs: 3, md: 4 }, pl: { xs: 0, md: 2 } }}>
+                                        <Box sx={{ mb: { xs: 3, md: 4 }, pl: { xs: 0, md: 2 }, flex: 1 }}>
                                             {role.features.map((feature, idx) => (
                                                 <Box key={idx} sx={{ display: 'flex', alignItems: 'center', mb: 1 }}>
                                                     <CheckCircleIcon sx={{ fontSize: 18, color: role.color, mr: 1.5, opacity: 0.8 }} />
@@ -206,6 +209,7 @@ export default function DemoLanding() {
                                             onClick={role.action}
                                             endIcon={<ArrowForwardIcon />}
                                             sx={{
+                                                mt: 'auto',
                                                 bgcolor: role.color,
                                                 color: COLORS.white,
                                                 py: 1.45,
