@@ -4,6 +4,7 @@ import CheckCircleIcon from '@mui/icons-material/CheckCircle';
 import { api } from '../api';
 
 const PAID_LOOKBACK_MS = 45 * 60 * 1000;
+const MAX_VISIBLE_NOTIFICATIONS = 6;
 
 function getApiBaseForEventSource() {
   const base = (import.meta.env?.VITE_API_URL || 'http://localhost:1337/api').replace(/\/+$/, '');
@@ -54,7 +55,7 @@ export default function PagosRealtimeBar({ slug, localItems = [] }) {
   const push = (notif) => {
     if (!notif?.mesaNumber) return;
     setItems((prev) => {
-      const next = [notif, ...prev].slice(0, 3);
+      const next = [notif, ...prev].slice(0, MAX_VISIBLE_NOTIFICATIONS);
       return next;
     });
   };
@@ -65,7 +66,7 @@ export default function PagosRealtimeBar({ slug, localItems = [] }) {
       try {
         const res = await api.get(`/notificaciones/pagos?slug=${encodeURIComponent(slug || '')}`);
         const data = res?.data?.data ?? [];
-        setItems(Array.isArray(data) ? data.slice(0, 3) : []);
+        setItems(Array.isArray(data) ? data.slice(0, MAX_VISIBLE_NOTIFICATIONS) : []);
       } catch {
         if (opts.showSkeleton) setItems([]);
       } finally {
@@ -215,9 +216,19 @@ export default function PagosRealtimeBar({ slug, localItems = [] }) {
     }
 
     const eventKey = (c) => {
+      const paymentId =
+        c.mpPaymentId ??
+        c.mp_payment_id ??
+        c.paymentId ??
+        c.payment_id ??
+        c.collection_id ??
+        c.collectionId;
+      if (paymentId != null && String(paymentId).trim() !== '') {
+        return `pay:${String(paymentId).trim()}`;
+      }
       const d = c.documentId ?? c.document_id;
       if (d != null && String(d) !== '') return `doc:${String(d)}`;
-      return String(c.key || `${c.mesaNumber}|${c.paidAt || c._t}`);
+      return String(c.key || `${c.mesaNumber}|${c.paidAt || c._t}|${c.amount || 0}`);
     };
     const sorted = [...candidates].sort((a, b) => b._t - a._t);
     const seen = new Set();
@@ -227,7 +238,7 @@ export default function PagosRealtimeBar({ slug, localItems = [] }) {
       if (seen.has(k)) continue;
       seen.add(k);
       out.push(c);
-      if (out.length >= 3) break;
+      if (out.length >= MAX_VISIBLE_NOTIFICATIONS) break;
     }
     return out.map(({ _t, ...rest }) => rest);
   }, [localItems, paidRecent, items]);
@@ -236,6 +247,9 @@ export default function PagosRealtimeBar({ slug, localItems = [] }) {
     if (loading && !merged.length) {
       return (
         <Box sx={{ display: 'flex', gap: 0.5, flexWrap: 'wrap', alignItems: 'center' }}>
+          <Skeleton variant="rounded" width={56} height={10} />
+          <Skeleton variant="rounded" width={56} height={10} />
+          <Skeleton variant="rounded" width={56} height={10} />
           <Skeleton variant="rounded" width={56} height={10} />
           <Skeleton variant="rounded" width={56} height={10} />
           <Skeleton variant="rounded" width={56} height={10} />
@@ -252,7 +266,18 @@ export default function PagosRealtimeBar({ slug, localItems = [] }) {
     }
 
     return (
-      <Box sx={{ display: 'flex', gap: 0.5, flexWrap: 'wrap', alignItems: 'center' }}>
+      <Box
+        sx={{
+          display: 'flex',
+          gap: 0.5,
+          alignItems: 'center',
+          flexWrap: { xs: 'nowrap', sm: 'wrap' },
+          overflowX: { xs: 'auto', sm: 'visible' },
+          pr: 0.25,
+          '&::-webkit-scrollbar': { height: 4 },
+          '&::-webkit-scrollbar-thumb': { backgroundColor: 'rgba(0,0,0,0.15)', borderRadius: 999 },
+        }}
+      >
         {merged.map((n, idx) => {
           const label = `Mesa ${n.mesaNumber}`;
           return (
@@ -282,6 +307,7 @@ export default function PagosRealtimeBar({ slug, localItems = [] }) {
                   px: 0.5,
                   py: 0,
                 },
+                flexShrink: 0,
               }}
             />
           );
