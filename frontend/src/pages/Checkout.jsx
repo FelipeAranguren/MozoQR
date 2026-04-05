@@ -45,7 +45,7 @@ function MercadoPagoLogo() {
 }
 
 const PLAN_OPTIONS = [
-  { key: 'basic', planKey: 'BASIC', name: 'Básico', priceUsd: 0.0007, color: COLORS.textSecondary },
+  { key: 'basic', planKey: 'BASIC', name: 'Básico', priceUsd: PLAN_BASE_USD.BASIC, color: COLORS.textSecondary },
   { key: 'pro', planKey: 'PRO', name: 'Pro', priceUsd: PLAN_BASE_USD.PRO, color: COLORS.secondary },
   { key: 'ultra', planKey: 'ULTRA', name: 'Ultra', priceUsd: PLAN_BASE_USD.ULTRA, color: COLORS.primary },
 ];

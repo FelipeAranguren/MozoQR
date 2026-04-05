@@ -92,10 +92,7 @@ const planHierarchy = {
   ULTRA: 3
 };
 
-const getPlanUsd = (planKey) => {
-  if (planKey === 'BASIC') return 0.0007; // precio simbólico para pruebas
-  return PLAN_BASE_USD[planKey];
-};
+const getPlanUsd = (planKey) => PLAN_BASE_USD[planKey];
 
 export default function PlanComparison({ currentPlan, slug }) {
   const currentLevel = planHierarchy[currentPlan] || 1;

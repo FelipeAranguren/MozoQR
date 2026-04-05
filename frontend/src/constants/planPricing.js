@@ -3,7 +3,7 @@
  * Se convierten a ARS usando la cotización del dólar blue.
  */
 export const PLAN_BASE_USD = {
-  BASIC: 0.0007,
+  BASIC: 50,
   PRO: 80,
   ULTRA: 100
 };

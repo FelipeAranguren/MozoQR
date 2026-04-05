@@ -15,7 +15,7 @@ import StarIcon from '@mui/icons-material/Star'
 import { alpha } from '@mui/material/styles'
 import { COLORS } from '../theme'
 import { useDolarBlue } from '../hooks/useDolarBlue'
-import { formatPriceARS, formatPriceUSD } from '../constants/planPricing'
+import { PLAN_BASE_USD, formatPriceARS, formatPriceUSD } from '../constants/planPricing'
 import QrStarfieldHero from '../components/QrStarfieldHero'
 
 function FadeIn({ children, delay = 0, style }) {
@@ -69,7 +69,7 @@ export default function Home() {
 
   const plans = {
     BASIC: {
-      name: 'Básico', priceUsd: 0.0007, description: 'Control operacional esencial',
+      name: 'Básico', priceUsd: PLAN_BASE_USD.BASIC, description: 'Control operacional esencial',
       highlight: false, badge: null,
       features: [
         'KPIs básicos (ventas, pedidos, ticket promedio)',

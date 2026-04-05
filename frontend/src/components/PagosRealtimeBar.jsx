@@ -4,7 +4,7 @@ import CheckCircleIcon from '@mui/icons-material/CheckCircle';
 import { api } from '../api';
 
 const PAID_LOOKBACK_MS = 45 * 60 * 1000;
-const MAX_VISIBLE_NOTIFICATIONS = 6;
+const MAX_VISIBLE_NOTIFICATIONS = 7;
 
 function getApiBaseForEventSource() {
   const base = (import.meta.env?.VITE_API_URL || 'http://localhost:1337/api').replace(/\/+$/, '');

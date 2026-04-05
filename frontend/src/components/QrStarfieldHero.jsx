@@ -1,3 +1,4 @@
+// src/components/QrStarfieldHero.jsx
 import React, { useMemo, useRef, useState, useEffect, Suspense } from 'react'
 import { Canvas, useFrame, useThree } from '@react-three/fiber'
 import * as THREE from 'three'
@@ -159,7 +160,6 @@ function ZoomCamera({ progress }) {
 
 function AmbientStars({ progress, count = 900 }) {
   const ref = useRef()
-  const clockRef = useRef(0)
   const { base, radial, distN, colA, colB } = useMemo(() => {
     const base = new Float32Array(count * 3)
     const radial = new Float32Array(count * 3)
@@ -211,31 +211,26 @@ function AmbientStars({ progress, count = 900 }) {
     return g
   }, [count])
 
-  useFrame((_, delta) => {
-    clockRef.current += delta
-    const time = clockRef.current
+  useFrame(() => {
     const t = progress.get()
     const travel = THREE.MathUtils.smoothstep(t, 0, 0.98)
     const burst = travel * 5.2
     const pos = geom.attributes.position.array
     const col = geom.attributes.color.array
     const fade = THREE.MathUtils.smoothstep(t, 0.06, 0.32) * (1 - THREE.MathUtils.smoothstep(t, 0.96, 1) * 0.22)
-    const drift = THREE.MathUtils.smoothstep(t, 0.5, 1.0) * 0.25
     for (let i = 0; i < count; i++) {
       const dn = distN[i]
       const bx = base[i * 3]
       const by = base[i * 3 + 1]
       const bz = base[i * 3 + 2]
       const k = burst * (0.35 + dn * 0.65)
-      const seed = detRand(i, 15)
-      pos[i * 3] = bx + radial[i * 3] * k + Math.sin(time * (0.2 + seed * 0.15) + seed * 30) * drift
-      pos[i * 3 + 1] = by + radial[i * 3 + 1] * k + Math.cos(time * (0.18 + seed * 0.12) + seed * 50) * drift
-      pos[i * 3 + 2] = bz + radial[i * 3 + 2] * k * (0.9 + 0.35 * travel) + Math.sin(time * (0.12 + seed * 0.1) + seed * 70) * drift * 0.4
+      pos[i * 3] = bx + radial[i * 3] * k
+      pos[i * 3 + 1] = by + radial[i * 3 + 1] * k
+      pos[i * 3 + 2] = bz + radial[i * 3 + 2] * k * (0.9 + 0.35 * travel)
       const cm = THREE.MathUtils.smoothstep(t, 0.1, 0.72)
-      const twinkle = 0.75 + 0.25 * Math.sin(time * (2 + seed * 3) + seed * 200)
-      col[i * 3] = THREE.MathUtils.lerp(colA[i * 3], colB[i * 3], cm) * fade * twinkle
-      col[i * 3 + 1] = THREE.MathUtils.lerp(colA[i * 3 + 1], colB[i * 3 + 1], cm) * fade * twinkle
-      col[i * 3 + 2] = THREE.MathUtils.lerp(colA[i * 3 + 2], colB[i * 3 + 2], cm) * fade * twinkle
+      col[i * 3] = THREE.MathUtils.lerp(colA[i * 3], colB[i * 3], cm) * fade
+      col[i * 3 + 1] = THREE.MathUtils.lerp(colA[i * 3 + 1], colB[i * 3 + 1], cm) * fade
+      col[i * 3 + 2] = THREE.MathUtils.lerp(colA[i * 3 + 2], colB[i * 3 + 2], cm) * fade
     }
     geom.attributes.position.needsUpdate = true
     geom.attributes.color.needsUpdate = true
@@ -259,7 +254,6 @@ function AmbientStars({ progress, count = 900 }) {
 
 function QrParticleField({ progress, buffers }) {
   const ref = useRef()
-  const clockRef = useRef(0)
   const geom = useMemo(() => {
     const g = new THREE.BufferGeometry()
     const pos = new Float32Array(buffers.n * 3)
@@ -269,36 +263,28 @@ function QrParticleField({ progress, buffers }) {
     return g
   }, [buffers])
 
-  useFrame((_, delta) => {
-    clockRef.current += delta
-    const time = clockRef.current
+  useFrame(() => {
     const t = progress.get()
     const pos = geom.attributes.position.array
     const col = geom.attributes.color.array
     const { n, basePos, radial, distNorm, startCol, endCol } = buffers
+    // Recorrido 0→1: el QR sigue abriéndose todo el scroll (no frena a mitad)
     const travel = THREE.MathUtils.smoothstep(t, 0, 0.98)
     const radialCap = QR_EXPLODE_RADIAL_MAX * travel
     const colorMix = THREE.MathUtils.smoothstep(t, 0.05, 0.78)
     const twinkle = THREE.MathUtils.smoothstep(t, 0.08, 0.82)
     const shrink = 1 - THREE.MathUtils.smoothstep(t, 0.62, 0.98) * 0.16
-    const driftStrength = THREE.MathUtils.smoothstep(t, 0.5, 1.0) * 0.35
 
     for (let i = 0; i < n; i++) {
       const dn = distNorm[i]
       const mag = radialCap * (0.2 + dn * 0.8)
-      const seed = detRand(i, 5)
-      const driftX = Math.sin(time * (0.15 + seed * 0.2) + seed * 40) * driftStrength
-      const driftY = Math.cos(time * (0.12 + seed * 0.18) + seed * 25) * driftStrength
-      const driftZ = Math.sin(time * (0.1 + seed * 0.15) + seed * 60) * driftStrength * 0.5
+      pos[i * 3] = basePos[i * 3] + radial[i * 3] * mag
+      pos[i * 3 + 1] = basePos[i * 3 + 1] + radial[i * 3 + 1] * mag
+      pos[i * 3 + 2] = basePos[i * 3 + 2] + radial[i * 3 + 2] * mag * (0.88 + 0.42 * travel)
 
-      pos[i * 3] = basePos[i * 3] + radial[i * 3] * mag + driftX
-      pos[i * 3 + 1] = basePos[i * 3 + 1] + radial[i * 3 + 1] * mag + driftY
-      pos[i * 3 + 2] = basePos[i * 3 + 2] + radial[i * 3 + 2] * mag * (0.88 + 0.42 * travel) + driftZ
-
-      const twinklePulse = 0.7 + 0.3 * Math.sin(time * (1.5 + seed * 2) + seed * 100)
-      col[i * 3] = THREE.MathUtils.lerp(startCol[i * 3], endCol[i * 3], colorMix) * shrink * twinklePulse
-      col[i * 3 + 1] = THREE.MathUtils.lerp(startCol[i * 3 + 1], endCol[i * 3 + 1], colorMix) * shrink * twinklePulse
-      col[i * 3 + 2] = THREE.MathUtils.lerp(startCol[i * 3 + 2], endCol[i * 3 + 2], colorMix) * shrink * twinklePulse
+      col[i * 3] = THREE.MathUtils.lerp(startCol[i * 3], endCol[i * 3], colorMix) * shrink
+      col[i * 3 + 1] = THREE.MathUtils.lerp(startCol[i * 3 + 1], endCol[i * 3 + 1], colorMix) * shrink
+      col[i * 3 + 2] = THREE.MathUtils.lerp(startCol[i * 3 + 2], endCol[i * 3 + 2], colorMix) * shrink
     }
     geom.attributes.position.needsUpdate = true
     geom.attributes.color.needsUpdate = true
@@ -359,13 +345,20 @@ export default function QrStarfieldHero({ progress }) {
   }, [])
 
   return (
-    <div style={{ position: 'absolute', inset: 0, background: '#000' }}>
+    <div
+      style={{
+        position: 'absolute',
+        inset: 0,
+        background: '#000',
+        pointerEvents: 'none',
+      }}
+    >
       <Suspense fallback={<CanvasFallback />}>
         <Canvas
           gl={{ antialias: true, alpha: false, powerPreference: 'high-performance' }}
           dpr={[1, Math.min(2, typeof window !== 'undefined' ? window.devicePixelRatio : 1)]}
           camera={{ position: [0, 0, CAMERA_Z_START], fov: 42, near: 0.05, far: 80 }}
-          style={{ width: '100%', height: '100%', display: 'block', touchAction: 'none' }}
+          style={{ width: '100%', height: '100%', display: 'block' }}
         >
           <Scene progress={progress} buffers={buffers} />
         </Canvas>
