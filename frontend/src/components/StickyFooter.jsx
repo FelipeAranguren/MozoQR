@@ -136,6 +136,7 @@ export default function StickyFooter({
   const [payOpen, setPayOpen] = useState(false);
   const [payMethod, setPayMethod] = useState(null); // 'card' | 'cash' — ningún método seleccionado por defecto
   const [payLoading, setPayLoading] = useState(false);
+  const [modoPayLoading, setModoPayLoading] = useState(false);
   const [payRequestSent, setPayRequestSent] = useState(false); // Prevenir múltiples solicitudes
   const [card, setCard] = useState({ number: '', expiry: '', cvv: '', name: '' });
   const [cardType, setCardType] = useState(null); // 'credit' | 'debit'
@@ -766,6 +767,7 @@ export default function StickyFooter({
       });
       return;
     }
+    if (modoPayLoading) return;
     try {
       setPayLoading(true);
 
@@ -833,6 +835,100 @@ export default function StickyFooter({
         'No se pudo iniciar el pago con Mercado Pago. Intentá de nuevo.';
       setSnack({ open: true, msg, severity: 'error' });
       setPayLoading(false);
+    }
+  };
+
+  /** Mismo patrón que Mercado Pago: un toque → checkout en la misma ventana (deep link a MODO / banco). */
+  const handleModoInstantCheckout = async () => {
+    if (!online) {
+      setSnack({
+        open: true,
+        msg: 'Sin conexión. Necesitás internet para pagar con MODO.',
+        severity: 'warning',
+        autoHideDuration: 6000,
+      });
+      return;
+    }
+    try {
+      setModoPayLoading(true);
+      const orderIds = (orderDetails || []).map((o) => o.id).filter((id) => id != null);
+      if (orderIds.length === 0) {
+        setSnack({
+          open: true,
+          msg: 'No hay pedidos en la cuenta para cobrar.',
+          severity: 'warning',
+        });
+        setModoPayLoading(false);
+        return;
+      }
+
+      let itemsForReceipt = (orderDetails || []).flatMap((o) =>
+        (o.items || []).map((it) => ({
+          name: it.name,
+          quantity: it.quantity,
+          unitPrice: it.unitPrice,
+          totalPrice: it.totalPrice ?? it.unitPrice * it.quantity,
+        })),
+      );
+      if (itemsForReceipt.length === 0 && openOrders?.length > 0) {
+        itemsForReceipt = openOrders.map((o, i) => ({
+          name: `Pedido #${o.id || i + 1}`,
+          quantity: 1,
+          unitPrice: Number(o.total) || 0,
+          totalPrice: Number(o.total) || 0,
+        }));
+      }
+      const subtotalFromItems = itemsForReceipt.reduce((s, it) => s + (Number(it.totalPrice) || 0), 0);
+      const subtotalBase = subtotalFromItems > 0 ? subtotalFromItems : accountTotal;
+      const discountBase = couponDiscount
+        ? couponDiscount.type === 'percent'
+          ? subtotalBase * (couponDiscount.value / 100)
+          : Math.min(couponDiscount.value, subtotalBase)
+        : 0;
+      const totalBase = roundMoney(Math.max(0, subtotalBase - discountBase + tipAmount));
+      const restaurantBase = { name: restaurantName || slug || 'Restaurante' };
+      const receiptItemsBase =
+        itemsForReceipt.length > 0
+          ? itemsForReceipt
+          : [{ name: 'Cuenta', quantity: 1, unitPrice: totalBase, totalPrice: totalBase }];
+
+      saveLastReceiptToStorage({
+        restaurant: restaurantBase,
+        slug,
+        mesaNumber: table,
+        items: receiptItemsBase,
+        subtotal: subtotalBase,
+        discount: discountBase,
+        tipAmount: tipAmount || 0,
+        total: totalBase,
+        paidAt: new Date().toISOString(),
+        paymentMethod: 'MODO / Homebanking',
+      });
+
+      const data = await createModoCheckout({
+        slug,
+        total: totalWithTip,
+        table,
+        tableSessionId,
+        orderIds,
+      });
+      const checkoutUrl = data.checkoutUrl;
+      const trxId = data.trx_id;
+      if (!checkoutUrl || !trxId) {
+        throw new Error('El servidor no devolvió el link de pago.');
+      }
+      sessionStorage.setItem(
+        'mozoqr_modo_pending',
+        JSON.stringify({ trxId, slug, ts: Date.now() }),
+      );
+      window.location.href = checkoutUrl;
+    } catch (err) {
+      console.error(err);
+      const msg =
+        err?.message ||
+        'No se pudo iniciar el pago con MODO. Intentá de nuevo.';
+      setSnack({ open: true, msg, severity: 'error' });
+      setModoPayLoading(false);
     }
   };
 
@@ -934,58 +1030,7 @@ export default function StickyFooter({
       return;
     }
 
-    // MODO PCT: checkout en servidor + redirección / deep link + polling
-    if (payMethod === 'modo') {
-      try {
-        setPayLoading(true);
-        const orderIds = (orderDetails || []).map((o) => o.id).filter((id) => id != null);
-        if (orderIds.length === 0) {
-          setSnack({
-            open: true,
-            msg: 'No hay pedidos en la cuenta para cobrar.',
-            severity: 'warning',
-          });
-          return;
-        }
-        const data = await createModoCheckout({
-          slug,
-          total: totalWithTip,
-          table,
-          tableSessionId,
-          orderIds,
-        });
-        const checkoutUrl = data.checkoutUrl;
-        const trxId = data.trx_id;
-        if (!checkoutUrl || !trxId) {
-          throw new Error('El servidor no devolvió el link de pago.');
-        }
-        sessionStorage.setItem(
-          'mozoqr_modo_pending',
-          JSON.stringify({ trxId, slug, ts: Date.now() }),
-        );
-        setPayOpen(false);
-        setPayMethod(null);
-        setModoWait({ open: true, trxId, timedOut: false });
-        setPayLoading(false);
-        requestAnimationFrame(() => {
-          if (isMobile) {
-            window.location.href = checkoutUrl;
-          } else {
-            const w = window.open(checkoutUrl, '_blank', 'noopener,noreferrer');
-            if (!w) window.location.href = checkoutUrl;
-          }
-        });
-      } catch (err) {
-        console.error(err);
-        const apiMsg =
-          err?.response?.data?.error?.message ||
-          err?.message ||
-          'No se pudo iniciar el pago con MODO.';
-        setSnack({ open: true, msg: apiMsg, severity: 'error' });
-        setPayLoading(false);
-      }
-      return;
-    }
+    // MODO: solo vía handleModoInstantCheckout (un toque, igual que MP)
 
     // Efectivo / tarjeta: solicitud de cobro al staff en mesa
     try {
@@ -995,7 +1040,6 @@ export default function StickyFooter({
         cash: 'efectivo',
         card: 'tarjeta',
         mp: 'Mercado Pago',
-        modo: 'MODO / Homebanking',
       };
 
       if (payMethod === 'cash' || payMethod === 'card') {
@@ -1803,7 +1847,7 @@ export default function StickyFooter({
                         size="small"
                         variant="outlined"
                         onClick={handlePayWithMercadoPago}
-                        disabled={payLoading || !online}
+                        disabled={payLoading || modoPayLoading || !online}
                         sx={{ textTransform: 'none' }}
                         startIcon={payLoading ? <CircularProgress size={16} color="inherit" /> : null}
                       >
@@ -1817,12 +1861,21 @@ export default function StickyFooter({
                     {hasModoHomebanking && (
                       <Button
                         size="small"
-                        variant={payMethod === 'modo' ? 'contained' : 'outlined'}
-                        onClick={() => setPayMethod('modo')}
-                        startIcon={<AccountBalanceWalletIcon sx={{ fontSize: 18 }} />}
+                        variant="outlined"
+                        onClick={() => void handleModoInstantCheckout()}
+                        disabled={modoPayLoading || payLoading || !online}
+                        startIcon={
+                          modoPayLoading ? <CircularProgress size={16} color="inherit" /> : (
+                            <AccountBalanceWalletIcon sx={{ fontSize: 18 }} />
+                          )
+                        }
                         sx={{ textTransform: 'none' }}
                       >
-                        Homebanking / MODO
+                        {!online
+                          ? 'Esperando conexión…'
+                          : modoPayLoading
+                            ? 'Abriendo MODO…'
+                            : 'Homebanking / MODO'}
                       </Button>
                     )}
                     <Button
@@ -1852,13 +1905,6 @@ export default function StickyFooter({
                   {payMethod === 'card' && (
                     <Typography variant="body2" color="text.secondary">
                       Se enviará una solicitud al staff para cobrar con tarjeta en la mesa.
-                    </Typography>
-                  )}
-
-                  {payMethod === 'modo' && (
-                    <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
-                      Al tocar &quot;Solicitar pago&quot; abrimos el checkout de MODO o tu banco. Volvé a esta pestaña
-                      cuando termines: verificamos el pago automáticamente.
                     </Typography>
                   )}
                 </>
@@ -2344,6 +2390,7 @@ export default function StickyFooter({
               onClick={handlePay}
               disabled={
                 payLoading ||
+                modoPayLoading ||
                 payRequestSent ||
                 (orderDetails.length === 0 && accountTotal === 0) ||
                 !payMethod ||
@@ -2366,7 +2413,7 @@ export default function StickyFooter({
                   ? 'Procesando…'
                   : payRequestSent
                     ? 'Solicitud enviada'
-                    : payMethod === 'cash' || payMethod === 'card' || payMethod === 'modo'
+                    : payMethod === 'cash' || payMethod === 'card'
                       ? 'Solicitar pago'
                       : `Pagar ${money(totalWithTip)}`
               }

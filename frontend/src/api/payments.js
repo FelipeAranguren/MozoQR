@@ -184,8 +184,15 @@ export async function createModoCheckout({ slug, total, table, tableSessionId, o
   } catch (e) {
     const responseData = e?.response?.data;
     const serverMsg = responseData && typeof responseData.error === 'string' ? responseData.error : null;
+    const missing = Array.isArray(responseData?.missing) ? responseData.missing : [];
+    const missingLine =
+      missing.length > 0 ? ` Faltan o están vacías: ${missing.join(', ')}.` : '';
+    const hint =
+      typeof responseData?.hint === 'string' && responseData.hint ? ` ${responseData.hint}` : '';
     const fallbackMsg = e && typeof e.message === 'string' ? e.message : null;
-    throw new Error(serverMsg || fallbackMsg || 'No se pudo iniciar el pago con MODO.');
+    throw new Error(
+      (serverMsg || fallbackMsg || 'No se pudo iniciar el pago con MODO.') + missingLine + hint,
+    );
   }
   const data = res?.data;
   if (!data || data.ok === false) {

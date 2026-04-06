@@ -5,6 +5,7 @@ import {
   extractCheckoutUrl,
   getModoPaymentStatus,
   getModoPctConfigFromEnv,
+  getModoPctEnvMissingKeys,
   getPendingModoCheckout,
   isModoTrxWebhookApproved,
   markModoTrxApprovedByWebhook,
@@ -113,11 +114,15 @@ async function createModoCheckout(ctx: any) {
 
   const config = getModoPctConfigFromEnv();
   if (!config) {
+    const missing = getModoPctEnvMissingKeys();
     ctx.status = 503;
     ctx.body = {
       ok: false,
       error:
-        'MODO no configurado en el servidor: MODO_BASE_URL, MODO_CLIENT_ID, MODO_CLIENT_SECRET, MODO_BEARER_TOKEN.',
+        'MODO no está listo en el servidor: completá el .env del backend (Strapi), guardá y reiniciá el proceso.',
+      missing,
+      hint:
+        'En tu .env definí al menos: MODO_BASE_URL, MODO_CLIENT_ID, MODO_CLIENT_SECRET y MODO_BEARER_TOKEN (JWT de MODO Conexiones).',
     };
     return;
   }
@@ -223,8 +228,8 @@ async function createPayment(ctx: any) {
     ctx.status = 503;
     ctx.body = {
       ok: false,
-      error:
-        'MODO no configurado: definí MODO_BASE_URL (o MODO_PCP_BASE_URL), MODO_CLIENT_ID, MODO_CLIENT_SECRET y MODO_BEARER_TOKEN.',
+      error: 'MODO no configurado en el servidor.',
+      missing: getModoPctEnvMissingKeys(),
     };
     return;
   }
@@ -262,8 +267,8 @@ async function getPaymentStatus(ctx: any) {
     ctx.status = 503;
     ctx.body = {
       ok: false,
-      error:
-        'MODO no configurado: definí MODO_BASE_URL (o MODO_PCP_BASE_URL), MODO_CLIENT_ID, MODO_CLIENT_SECRET y MODO_BEARER_TOKEN.',
+      error: 'MODO no configurado en el servidor.',
+      missing: getModoPctEnvMissingKeys(),
     };
     return;
   }

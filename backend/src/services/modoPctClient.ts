@@ -114,10 +114,25 @@ function trimEnv(key: string): string {
   return v.trim();
 }
 
+/** Lista qué variables de entorno faltan o están vacías (para mensajes de error claros). */
+export function getModoPctEnvMissingKeys(): string[] {
+  const missing: string[] = [];
+  if (!trimEnv('MODO_PCP_BASE_URL') && !trimEnv('MODO_BASE_URL')) {
+    missing.push('MODO_BASE_URL (o MODO_PCP_BASE_URL)');
+  }
+  if (!trimEnv('MODO_CLIENT_ID')) missing.push('MODO_CLIENT_ID');
+  if (!trimEnv('MODO_CLIENT_SECRET')) missing.push('MODO_CLIENT_SECRET');
+  if (!trimEnv('MODO_BEARER_TOKEN') && !trimEnv('MODO_ACCESS_TOKEN')) {
+    missing.push('MODO_BEARER_TOKEN (o MODO_ACCESS_TOKEN)');
+  }
+  return missing;
+}
+
 /**
  * Resuelve configuración desde env. Falta de credenciales → null.
  */
 export function getModoPctConfigFromEnv(): ModoPctConfig | null {
+  if (getModoPctEnvMissingKeys().length > 0) return null;
   const base =
     trimEnv('MODO_PCP_BASE_URL') ||
     trimEnv('MODO_BASE_URL') ||
@@ -125,7 +140,6 @@ export function getModoPctConfigFromEnv(): ModoPctConfig | null {
   const clientId = trimEnv('MODO_CLIENT_ID');
   const clientSecret = trimEnv('MODO_CLIENT_SECRET');
   const bearerToken = trimEnv('MODO_BEARER_TOKEN') || trimEnv('MODO_ACCESS_TOKEN');
-  if (!base || !clientId || !clientSecret || !bearerToken) return null;
   return {
     pcpBaseUrl: base.replace(/\/+$/, ''),
     clientId,
