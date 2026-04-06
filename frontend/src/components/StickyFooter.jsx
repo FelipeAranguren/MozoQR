@@ -11,6 +11,7 @@ import LocalOfferIcon from '@mui/icons-material/LocalOffer';
 import CheckCircleIcon from '@mui/icons-material/CheckCircle';
 import CancelIcon from '@mui/icons-material/Cancel';
 import ContentCopyIcon from '@mui/icons-material/ContentCopy';
+import AccountBalanceWalletIcon from '@mui/icons-material/AccountBalanceWallet';
 import { alpha, useTheme } from '@mui/material/styles';
 import useMediaQuery from '@mui/material/useMediaQuery';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -105,7 +106,15 @@ function fingerprintCartItemsForOrder(items) {
   );
 }
 
-export default function StickyFooter({ table, tableSessionId, restaurantName, sessionReady = true, hasMercadoPago = false }) {
+export default function StickyFooter({
+  table,
+  tableSessionId,
+  restaurantName,
+  sessionReady = true,
+  hasMercadoPago = false,
+  hasModoHomebanking = false,
+  pctMerchantCbuAlias = '',
+}) {
   const { items, subtotal, addItem, removeItem, clearCart } = useCart();
   const { slug } = useParams();
   const navigate = useNavigate();
@@ -397,7 +406,9 @@ export default function StickyFooter({ table, tableSessionId, restaurantName, se
         ? 'Tarjeta'
         : payMethod === 'cash'
           ? 'Efectivo'
-          : 'Sin método seleccionado';
+          : payMethod === 'modo'
+            ? 'MODO / Homebanking'
+            : 'Sin método seleccionado';
     const payload = {
       restaurant,
       slug,
@@ -871,10 +882,11 @@ export default function StickyFooter({ table, tableSessionId, restaurantName, se
         cash: 'efectivo',
         card: 'tarjeta',
         mp: 'Mercado Pago',
+        modo: 'MODO / Homebanking',
       };
 
-      // Efectivo o tarjeta: pago presencial (solicitud de cobro al staff; tarjeta = cobro con Point en mesa)
-      if (payMethod === 'cash' || payMethod === 'card') {
+      // Efectivo, tarjeta o MODO: solicitud de cobro al staff (transferencia / app en mesa según corresponda)
+      if (payMethod === 'cash' || payMethod === 'card' || payMethod === 'modo') {
         // Prevenir múltiples solicitudes
         if (payRequestSent) {
           setSnack({
@@ -885,7 +897,8 @@ export default function StickyFooter({ table, tableSessionId, restaurantName, se
           return;
         }
 
-        const metodoPago = payMethod === 'cash' ? 'efectivo' : 'tarjeta';
+        const metodoPago =
+          payMethod === 'cash' ? 'efectivo' : payMethod === 'card' ? 'tarjeta' : 'modo_homebanking';
         // Para pago presencial, NO cerramos la cuenta aún. Enviamos una solicitud de cobro al mostrador.
         setPayRequestSent(true);
         try {
@@ -898,16 +911,19 @@ export default function StickyFooter({ table, tableSessionId, restaurantName, se
               name: '💳 SOLICITUD DE COBRO',
               price: 0,
               qty: 1,
-              notes: `Pago con ${methodNames[payMethod] || 'Efectivo'}`
+              notes: `Pago con ${methodNames[payMethod] || 'efectivo'}`
             }],
-            notes: `Mesa ${table} solicita cobrar en ${methodNames[payMethod] || 'Efectivo'}`
+            notes: `Mesa ${table} solicita cobrar en ${methodNames[payMethod] || 'efectivo'}`
           });
 
           setSnack({
             open: true,
-            msg: payMethod === 'card'
-              ? 'Se envió la solicitud. Un mozo se acercará con el Point para cobrar con tarjeta en la mesa. ✅'
-              : `Solicitud enviada. Un mozo se acercará a cobrarte en ${methodNames[payMethod]}. ✅`,
+            msg:
+              payMethod === 'card'
+                ? 'Se envió la solicitud. Un mozo se acercará con el Point para cobrar con tarjeta en la mesa. ✅'
+                : payMethod === 'modo'
+                  ? 'Solicitud enviada. El staff validará tu pago por MODO o transferencia. ✅'
+                  : `Solicitud enviada. Un mozo se acercará a cobrarte en ${methodNames[payMethod]}. ✅`,
             severity: 'success',
           });
 
@@ -1667,7 +1683,16 @@ export default function StickyFooter({ table, tableSessionId, restaurantName, se
                   <Typography variant="subtitle2" sx={{ fontWeight: 600 }}>
                     Método de pago
                   </Typography>
-                  <Box sx={{ display: 'grid', gridTemplateColumns: hasMercadoPago ? '1fr 1fr 1fr' : '1fr 1fr', gap: 1 }}>
+                  <Box
+                    sx={{
+                      display: 'grid',
+                      gridTemplateColumns: {
+                        xs: '1fr',
+                        sm: 'repeat(auto-fill, minmax(128px, 1fr))',
+                      },
+                      gap: 1,
+                    }}
+                  >
                     {hasMercadoPago && (
                       <Button
                         size="small"
@@ -1682,6 +1707,17 @@ export default function StickyFooter({ table, tableSessionId, restaurantName, se
                           : payLoading
                             ? 'Redirigiendo…'
                             : 'Mercado Pago'}
+                      </Button>
+                    )}
+                    {hasModoHomebanking && (
+                      <Button
+                        size="small"
+                        variant={payMethod === 'modo' ? 'contained' : 'outlined'}
+                        onClick={() => setPayMethod('modo')}
+                        startIcon={<AccountBalanceWalletIcon sx={{ fontSize: 18 }} />}
+                        sx={{ textTransform: 'none' }}
+                      >
+                        Homebanking / MODO
                       </Button>
                     )}
                     <Button
@@ -1712,6 +1748,47 @@ export default function StickyFooter({ table, tableSessionId, restaurantName, se
                     <Typography variant="body2" color="text.secondary">
                       Se enviará una solicitud al staff para cobrar con tarjeta en la mesa.
                     </Typography>
+                  )}
+
+                  {payMethod === 'modo' && (
+                    <Box
+                      sx={{
+                        mt: 1,
+                        p: 1.5,
+                        borderRadius: 2,
+                        bgcolor: (theme) => alpha(theme.palette.primary.main, 0.06),
+                        border: '1px solid',
+                        borderColor: 'divider',
+                      }}
+                    >
+                      <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
+                        Transferí el total indicado arriba usando el CBU o alias del restaurante. Luego solicitá el
+                        pago para que el local confirme.
+                      </Typography>
+                      {pctMerchantCbuAlias ? (
+                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap' }}>
+                          <Typography variant="body2" sx={{ fontWeight: 600, wordBreak: 'break-all', flex: 1, minWidth: 0 }}>
+                            {pctMerchantCbuAlias}
+                          </Typography>
+                          <Tooltip title="Copiar CBU o alias">
+                            <IconButton
+                              size="small"
+                              aria-label="Copiar CBU o alias"
+                              onClick={async () => {
+                                try {
+                                  await navigator.clipboard.writeText(pctMerchantCbuAlias);
+                                  setSnack({ open: true, msg: 'Copiado al portapapeles', severity: 'info' });
+                                } catch {
+                                  setSnack({ open: true, msg: 'No se pudo copiar', severity: 'warning' });
+                                }
+                              }}
+                            >
+                              <ContentCopyIcon fontSize="small" />
+                            </IconButton>
+                          </Tooltip>
+                        </Box>
+                      ) : null}
+                    </Box>
                   )}
                 </>
               )}
@@ -2218,7 +2295,7 @@ export default function StickyFooter({ table, tableSessionId, restaurantName, se
                   ? 'Procesando…'
                   : payRequestSent
                     ? 'Solicitud enviada'
-                    : (payMethod === 'cash' || payMethod === 'card')
+                    : payMethod === 'cash' || payMethod === 'card' || payMethod === 'modo'
                       ? 'Solicitar pago'
                       : `Pagar ${money(totalWithTip)}`
               }

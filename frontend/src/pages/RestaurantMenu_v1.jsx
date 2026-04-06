@@ -91,6 +91,8 @@ export default function RestaurantMenu() {
   const [isTableValid, setIsTableValid] = useState(undefined); // undefined = chequeando, true = ok, false = no existe
   const [sessionReady, setSessionReady] = useState(false); // true cuando openSession completó o no hay mesa
   const [hasMercadoPago, setHasMercadoPago] = useState(false); // desde MetodosPago del restaurante
+  const [hasModoHomebanking, setHasModoHomebanking] = useState(false);
+  const [pctMerchantCbuAlias, setPctMerchantCbuAlias] = useState('');
 
   const { items, addItem, removeItem } = useCart();
   const [productOrderStatusByProductId, setProductOrderStatusByProductId] = useState({});
@@ -457,10 +459,13 @@ export default function RestaurantMenu() {
         let nombreRest = '';
         try {
           const { data } = await http.get(`/restaurants/${slug}/menus`);
-          if (data?.data?.restaurant?.name) {
-            nombreRest = data.data.restaurant.name;
+          const r = data?.data?.restaurant;
+          if (r?.name) {
+            nombreRest = r.name;
             setNombreRestaurante(nombreRest);
           }
+          setHasModoHomebanking(Boolean(r?.hasModoHomebanking));
+          setPctMerchantCbuAlias(typeof r?.pctMerchantCbuAlias === 'string' ? r.pctMerchantCbuAlias : '');
         } catch (e) {
           console.warn('No se pudo obtener nombre desde endpoint namespaced:', e);
         }
@@ -759,7 +764,15 @@ export default function RestaurantMenu() {
             No se encontró el restaurante o no tiene productos disponibles.
           </Typography>
         )}
-        <StickyFooter table={table} tableSessionId={tableSessionId} restaurantName={nombreRestaurante} sessionReady={sessionReady} hasMercadoPago={hasMercadoPago} />
+        <StickyFooter
+          table={table}
+          tableSessionId={tableSessionId}
+          restaurantName={nombreRestaurante}
+          sessionReady={sessionReady}
+          hasMercadoPago={hasMercadoPago}
+          hasModoHomebanking={hasModoHomebanking}
+          pctMerchantCbuAlias={pctMerchantCbuAlias}
+        />
       </Container>
     );
   }
@@ -1301,7 +1314,15 @@ export default function RestaurantMenu() {
         <Box sx={{ height: { xs: 150, sm: 160 } }} />
 
         {/* Footer con resumen y confirmación */}
-        <StickyFooter table={table} tableSessionId={tableSessionId} restaurantName={nombreRestaurante} sessionReady={sessionReady} hasMercadoPago={hasMercadoPago} />
+        <StickyFooter
+          table={table}
+          tableSessionId={tableSessionId}
+          restaurantName={nombreRestaurante}
+          sessionReady={sessionReady}
+          hasMercadoPago={hasMercadoPago}
+          hasModoHomebanking={hasModoHomebanking}
+          pctMerchantCbuAlias={pctMerchantCbuAlias}
+        />
 
         {/* Diálogo confirmar cambiar mesa */}
         <Dialog open={changeTableDialog} onClose={() => setChangeTableDialog(false)} maxWidth="xs" fullWidth>

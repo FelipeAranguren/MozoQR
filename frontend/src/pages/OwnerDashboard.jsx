@@ -1,7 +1,7 @@
 // src/pages/OwnerDashboard.jsx
 import React, { useEffect, useMemo, useState, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { Box, Grid, Typography, Button, ToggleButtonGroup, ToggleButton, Chip } from '@mui/material';
+import { Box, Grid, Typography, Button, ToggleButtonGroup, ToggleButton, Chip, TextField, Alert } from '@mui/material';
 import SalesByDayChart from '../components/SalesByDayChart';
 import KpiCardEnhanced from '../components/KpiCardEnhanced';
 import PlanGate from '../components/PlanGate';
@@ -27,6 +27,7 @@ import { fetchTables, fetchActiveOrders } from '../api/tables';
 import { fetchCategories } from '../api/menu';
 import { client } from '../api/client';
 import { createOwnerComment } from '../api/comments';
+import { fetchRestaurant, updateRestaurant } from '../api/restaurant';
 // Aliases for compatibility with existing code
 const api = client;
 const http = client;
@@ -37,6 +38,7 @@ import ShoppingCartIcon from '@mui/icons-material/ShoppingCart';
 import PeopleIcon from '@mui/icons-material/People';
 import TrendingUpIcon from '@mui/icons-material/TrendingUp';
 import OpenInNewIcon from '@mui/icons-material/OpenInNew';
+import PaymentOutlinedIcon from '@mui/icons-material/PaymentOutlined';
 
 /* ========== Formatos ========== */
 const money = (n) =>
@@ -341,6 +343,15 @@ export default function OwnerDashboard() {
   const [commentSuccess, setCommentSuccess] = useState(false);
   const [commentError, setCommentError] = useState(null);
 
+  const [payCfg, setPayCfg] = useState({
+    modo_store_id: '',
+    modo_terminal_id: '',
+    pct_merchant_cbu_alias: '',
+  });
+  const [payCfgLoading, setPayCfgLoading] = useState(false);
+  const [payCfgSaving, setPayCfgSaving] = useState(false);
+  const [payCfgMessage, setPayCfgMessage] = useState(null);
+
   const end = useMemo(() => {
     return isCustom ? endOfDay(fromISODateInputLocal(customEnd)) : endOfDay(new Date());
   }, [periodKey, customEnd, isCustom]);
@@ -626,6 +637,55 @@ export default function OwnerDashboard() {
     return () => window.removeEventListener('keydown', onKey);
   }, []);
 
+  useEffect(() => {
+    if (!slug) return;
+    let cancelled = false;
+    setPayCfgLoading(true);
+    setPayCfgMessage(null);
+    fetchRestaurant(slug)
+      .then((r) => {
+        if (cancelled || !r) return;
+        setPayCfg({
+          modo_store_id: r.modo_store_id ?? '',
+          modo_terminal_id: r.modo_terminal_id ?? '',
+          pct_merchant_cbu_alias: r.pct_merchant_cbu_alias ?? '',
+        });
+      })
+      .catch(() => {
+        if (!cancelled) setPayCfgMessage({ type: 'error', text: 'No se pudo cargar la configuración de pagos.' });
+      })
+      .finally(() => {
+        if (!cancelled) setPayCfgLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [slug]);
+
+  const handleSavePayConfig = async (e) => {
+    e.preventDefault();
+    if (!slug) return;
+    setPayCfgSaving(true);
+    setPayCfgMessage(null);
+    try {
+      await updateRestaurant(slug, {
+        modo_store_id: payCfg.modo_store_id.trim(),
+        modo_terminal_id: payCfg.modo_terminal_id.trim(),
+        pct_merchant_cbu_alias: payCfg.pct_merchant_cbu_alias.trim(),
+      });
+      setPayCfgMessage({ type: 'success', text: 'Configuración de pagos guardada.' });
+    } catch (err) {
+      const text =
+        err?.response?.data?.error?.message ||
+        err?.response?.data?.message ||
+        err?.message ||
+        'Error al guardar.';
+      setPayCfgMessage({ type: 'error', text });
+    } finally {
+      setPayCfgSaving(false);
+    }
+  };
+
   const handleSubmitComment = async (e) => {
     e.preventDefault();
     if (!commentText.trim() || !restaurantInfo.id) {
@@ -829,6 +889,88 @@ export default function OwnerDashboard() {
               </Box>
             )}
           </Box>
+        </Box>
+      </Box>
+
+      <Box
+        component="section"
+        sx={{
+          border: `1px solid ${COLORS.border}`,
+          borderRadius: 3,
+          bgcolor: 'background.paper',
+          p: 3,
+          boxShadow: COLORS.shadow2,
+          mb: 3,
+          mt: 1,
+        }}
+        aria-labelledby="owner-pay-config-heading"
+      >
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1 }}>
+          <PaymentOutlinedIcon sx={{ color: 'text.secondary', fontSize: 22 }} />
+          <Typography id="owner-pay-config-heading" variant="h6" sx={{ fontWeight: 600 }}>
+            Configuración de Pagos
+          </Typography>
+        </Box>
+        <Typography variant="body2" color="text.secondary" sx={{ mb: 2, maxWidth: 720 }}>
+          MODO y transferencias (API PCT): completá los tres datos para mostrar a los clientes la opción
+          &quot;Pagar con Homebanking/MODO&quot; en la cuenta. El CBU o alias es el de la cuenta del comercio
+          que recibirá el pago.
+        </Typography>
+        {payCfgMessage && (
+          <Alert severity={payCfgMessage.type} sx={{ mb: 2 }} onClose={() => setPayCfgMessage(null)}>
+            {payCfgMessage.text}
+          </Alert>
+        )}
+        <Box component="form" onSubmit={handleSavePayConfig}>
+          <Grid container spacing={2}>
+            <Grid item xs={12} md={4}>
+              <TextField
+                fullWidth
+                size="small"
+                label="MODO Store ID"
+                name="modo_store_id"
+                value={payCfg.modo_store_id}
+                onChange={(ev) => setPayCfg((p) => ({ ...p, modo_store_id: ev.target.value }))}
+                disabled={payCfgLoading || payCfgSaving}
+                placeholder="Ej. store provisto por MODO"
+              />
+            </Grid>
+            <Grid item xs={12} md={4}>
+              <TextField
+                fullWidth
+                size="small"
+                label="MODO Terminal ID"
+                name="modo_terminal_id"
+                value={payCfg.modo_terminal_id}
+                onChange={(ev) => setPayCfg((p) => ({ ...p, modo_terminal_id: ev.target.value }))}
+                disabled={payCfgLoading || payCfgSaving}
+                placeholder="Ej. terminal provisto por MODO"
+              />
+            </Grid>
+            <Grid item xs={12} md={4}>
+              <TextField
+                fullWidth
+                size="small"
+                label="CBU o alias del restaurante"
+                name="pct_merchant_cbu_alias"
+                value={payCfg.pct_merchant_cbu_alias}
+                onChange={(ev) => setPayCfg((p) => ({ ...p, pct_merchant_cbu_alias: ev.target.value }))}
+                disabled={payCfgLoading || payCfgSaving}
+                placeholder="CBU o alias para transferencias"
+                helperText="Se muestra al cliente si los tres campos están completos."
+              />
+            </Grid>
+            <Grid item xs={12}>
+              <Button
+                type="submit"
+                variant="contained"
+                disabled={payCfgLoading || payCfgSaving}
+                sx={{ textTransform: 'none', borderRadius: 2 }}
+              >
+                {payCfgSaving ? 'Guardando…' : 'Guardar configuración de pagos'}
+              </Button>
+            </Grid>
+          </Grid>
         </Box>
       </Box>
 

@@ -10,6 +10,14 @@ import { getStrapiPublicBase } from '../utils/strapiPublicBase';
  * @param {Array|undefined} metodosPagos - restaurante.metodos_pagos (puede ser .data o array)
  * @returns {{ hasMercadoPago: boolean, mp_public_key: string|null, mpMethod: object|null }}
  */
+/** True si el restaurante tiene MODO Store, Terminal y CBU/Alias (PCT merchant) completos. */
+export function hasModoHomebankingConfigured(restaurantLike) {
+  if (!restaurantLike || typeof restaurantLike !== 'object') return false;
+  const a = restaurantLike.attributes ?? restaurantLike;
+  const s = (v) => typeof v === 'string' && v.trim().length > 0;
+  return s(a.modo_store_id) && s(a.modo_terminal_id) && s(a.pct_merchant_cbu_alias);
+}
+
 export function getMercadoPagoFromMetodos(metodosPagos) {
   const raw = metodosPagos?.data ?? metodosPagos;
   const list = Array.isArray(raw) ? raw : [];
@@ -174,6 +182,10 @@ export async function fetchRestaurant(slug) {
       logo: logoUrl,
       logoId: logoId,
       suscripcion: attr.Suscripcion || attr.suscripcion || 'BASIC',
+      modo_store_id: attr.modo_store_id ?? '',
+      modo_terminal_id: attr.modo_terminal_id ?? '',
+      pct_merchant_cbu_alias: attr.pct_merchant_cbu_alias ?? '',
+      hasModoHomebanking: hasModoHomebankingConfigured(attr),
       mp_public_key: mpPublicKey,
       hasMercadoPago,
        // Identificador del método Mercado Pago, si existe (se usa para actualizar en lugar de crear uno nuevo)
@@ -294,8 +306,17 @@ export async function updateRestaurant(slug, restaurantData) {
     const payload = {
       data: {
         ...(restaurantData.name !== undefined && { name: restaurantData.name }),
-        ...(logoUpdate !== undefined && { logo: logoUpdate })
-      }
+        ...(logoUpdate !== undefined && { logo: logoUpdate }),
+        ...(restaurantData.modo_store_id !== undefined && {
+          modo_store_id: restaurantData.modo_store_id,
+        }),
+        ...(restaurantData.modo_terminal_id !== undefined && {
+          modo_terminal_id: restaurantData.modo_terminal_id,
+        }),
+        ...(restaurantData.pct_merchant_cbu_alias !== undefined && {
+          pct_merchant_cbu_alias: restaurantData.pct_merchant_cbu_alias,
+        }),
+      },
     };
 
     // Construir URL de forma segura usando el ID numérico limpio

@@ -119,6 +119,15 @@
     },
     "weekly_ai_generated_at": {
       "type": "datetime"
+    },
+    "modo_store_id": {
+      "type": "string"
+    },
+    "modo_terminal_id": {
+      "type": "string"
+    },
+    "pct_merchant_cbu_alias": {
+      "type": "string"
     }
   }
 }

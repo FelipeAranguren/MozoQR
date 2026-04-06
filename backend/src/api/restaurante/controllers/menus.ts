@@ -44,7 +44,15 @@ export default {
 
                 const [restauranteFallback] = await strapi.entityService.findMany('api::restaurante.restaurante', {
                     filters: { slug },
-                    fields: ['id', 'name', 'slug', 'Suscripcion'],
+                    fields: [
+                        'id',
+                        'name',
+                        'slug',
+                        'Suscripcion',
+                        'modo_store_id',
+                        'modo_terminal_id',
+                        'pct_merchant_cbu_alias',
+                    ],
                     publicationState: 'live',
                     limit: 1,
                 });
@@ -62,7 +70,14 @@ export default {
             // Obtener información del restaurante (nombre, slug)
             // Si ya lo tenemos del fallback, lo reusamos o lo buscamos de nuevo (entityService.findOne es rápido)
             const restaurante = await strapi.entityService.findOne('api::restaurante.restaurante', restauranteId, {
-                fields: ['id', 'name', 'slug'],
+                fields: [
+                    'id',
+                    'name',
+                    'slug',
+                    'modo_store_id',
+                    'modo_terminal_id',
+                    'pct_merchant_cbu_alias',
+                ],
                 publicationState: 'live',
             });
 
@@ -327,6 +342,13 @@ export default {
 
             const totalProductos = sanitized.reduce((sum, cat) => sum + cat.productos.length, 0);
 
+            const rAttr = restaurante as any;
+            const trimStr = (v: unknown) => (typeof v === 'string' ? v.trim() : '');
+            const storeId = trimStr(rAttr?.modo_store_id);
+            const termId = trimStr(rAttr?.modo_terminal_id);
+            const cbuAlias = trimStr(rAttr?.pct_merchant_cbu_alias);
+            const hasModoHomebanking = Boolean(storeId && termId && cbuAlias);
+
             ctx.body = {
                 data: {
                     restaurant: {
@@ -334,6 +356,8 @@ export default {
                         name: restaurante?.name || null,
                         slug: restaurante?.slug || ctx.params?.slug || null,
                         plan: plan,
+                        hasModoHomebanking,
+                        pctMerchantCbuAlias: hasModoHomebanking ? cbuAlias : null,
                     },
                     categories: sanitized,
                 },
