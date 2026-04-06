@@ -41,6 +41,27 @@ export default {
       handler: 'payments.confirm',
       config: { auth: false, policies: [], middlewares: [] },
     },
+    /** MODO PCT Online — crear pago (POST hacia API MODO con Bearer + client_id/secret) */
+    {
+      method: 'POST',
+      path: '/payments/modo/payment',
+      handler: 'modo-pct.createPayment',
+      config: { auth: false, policies: [], middlewares: [] },
+    },
+    /** MODO PCT — consultar estado por trx_id */
+    {
+      method: 'GET',
+      path: '/payments/modo/payment/:trxId',
+      handler: 'modo-pct.getPaymentStatus',
+      config: { auth: false, policies: [], middlewares: [] },
+    },
+    /** MODO — webhook (notificaciones; APPROVED + orderId simula update de pedido) */
+    {
+      method: 'POST',
+      path: '/payments/modo/webhook',
+      handler: 'modo-pct.webhook',
+      config: { auth: false, policies: [], middlewares: [] },
+    },
     {
       method: 'POST',
       path: '/restaurants/:slug/payments',

@@ -1,0 +1,317 @@
+{
+    "openapi": "3.0.0",
+    "info": {
+      "title": "PCT Online - Servicio para Merchants",
+      "version": "1.0.0"
+    },
+    "paths": {
+      "/pcp/{bcra_id}/payment": {
+        "post": {
+          "tags": [
+            "Payment"
+          ],
+          "summary": "Realiza un pago",
+          "description": "Realiza un pago desde la cuenta bancaria indicada hacia el Merchant indicado en el token y devuelve la transacción realizada con el estado de la misma.",
+          "parameters": [
+            {
+              "name": "bcra_id",
+              "in": "path",
+              "description": "ID del BCRA",
+              "required": true,
+              "style": "simple",
+              "explode": false,
+              "schema": {
+                "type": "string"
+              },
+              "example": 999
+            },
+            {
+              "name": "client_id",
+              "in": "header",
+              "description": "Client ID otorgado por MODO Conexiones",
+              "required": true,
+              "style": "simple",
+              "explode": false,
+              "schema": {
+                "type": "string"
+              }
+            },
+            {
+              "name": "client_secret",
+              "in": "header",
+              "description": "Client Secret otorgado por MODO Conexiones",
+              "required": true,
+              "style": "simple",
+              "explode": false,
+              "schema": {
+                "type": "string"
+              }
+            }
+          ],
+          "requestBody": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CreatePayment"
+                }
+              }
+            }
+          },
+          "security": [
+            {
+              "bearerAuth": []
+            }
+          ],
+          "responses": {
+            "201": {
+              "description": "Pago realizado",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/CreatePaymentResponse"
+                  }
+                }
+              }
+            },
+            "400": {
+              "description": "Datos inválidos. Ej: Token expirado, body con formato inválido, etc.",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/Error"
+                  },
+                  "example": {
+                    "error": "invalid_grant"
+                  }
+                }
+              }
+            },
+            "500": {
+              "description": "Error realizando el pago",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/Error"
+                  },
+                  "example": {
+                    "error": "Something failed"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "/pcp/{bcra_id}/payment/{trx_id}": {
+        "get": {
+          "tags": [
+            "Payment"
+          ],
+          "summary": "Obtiene el estado de un pago",
+          "description": "Obtiene el estado de un pago usando el ID de la transacción. Se utiliza principalmente para conocer el estado actual de un pago PCT Online.",
+          "parameters": [
+            {
+              "name": "trx_id",
+              "in": "path",
+              "description": "ID de la transacción",
+              "required": true,
+              "schema": {
+                "type": "string"
+              }
+            },
+            {
+              "name": "bcra_id",
+              "in": "path",
+              "description": "ID del BCRA",
+              "required": true,
+              "style": "simple",
+              "explode": false,
+              "schema": {
+                "type": "string"
+              },
+              "example": 999
+            },
+            {
+              "name": "client_id",
+              "in": "header",
+              "description": "Client ID otorgado por MODO Conexiones",
+              "required": true,
+              "style": "simple",
+              "explode": false,
+              "schema": {
+                "type": "string"
+              }
+            },
+            {
+              "name": "client_secret",
+              "in": "header",
+              "description": "Client Secret otorgado por MODO Conexiones",
+              "required": true,
+              "style": "simple",
+              "explode": false,
+              "schema": {
+                "type": "string"
+              }
+            }
+          ],
+          "security": [
+            {
+              "bearerAuth": []
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "Estado del pago obtenido",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/Status"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "components": {
+      "schemas": {
+        "CreatePayment": {
+          "type": "object",
+          "properties": {
+            "trx_id": {
+              "type": "string"
+            },
+            "qr_raw": {
+              "type": "string"
+            },
+            "amount": {
+              "$ref": "#/components/schemas/PaymentAmount"
+            },
+            "payer": {
+              "$ref": "#/components/schemas/PaymentPayer"
+            },
+            "merchant": {
+              "$ref": "#/components/schemas/PaymentMerchant"
+            },
+            "acquirer": {
+              "$ref": "#/components/schemas/PaymentAcquirer"
+            }
+          }
+        },
+        "CreatePaymentResponse": {
+          "type": "object",
+          "properties": {
+            "payment": {
+              "$ref": "#/components/schemas/Payment"
+            },
+            "status": {
+              "$ref": "#/components/schemas/Status"
+            }
+          }
+        },
+        "Payment": {
+          "type": "object",
+          "properties": {
+            "trx_id": {
+              "type": "string",
+              "description": "ID de la transacción"
+            },
+            "qr_raw": {
+              "type": "string"
+            },
+            "amount": {
+              "$ref": "#/components/schemas/PaymentAmount"
+            },
+            "payer": {
+              "$ref": "#/components/schemas/PaymentPayer"
+            },
+            "merchant": {
+              "$ref": "#/components/schemas/PaymentMerchant"
+            },
+            "acquirer": {
+              "$ref": "#/components/schemas/PaymentAcquirer"
+            }
+          }
+        },
+        "Status": {
+          "type": "object",
+          "properties": {
+            "code": {
+              "type": "string",
+              "description": "Estado del pago",
+              "example": "IN_PROCESS | APPROVED | REJECTED "
+            },
+            "message": {
+              "type": "string",
+              "description": "Descripción del pago"
+            }
+          }
+        },
+        "PaymentAmount": {
+          "type": "object",
+          "properties": {
+            "value": {
+              "type": "number",
+              "description": "Monto de la operación",
+              "example": 1234.45
+            }
+          }
+        },
+        "PaymentPayer": {
+          "type": "object",
+          "properties": {
+            "account": {
+              "type": "string",
+              "description": "CBU/CVU de la cuenta elegida por el usuario"
+            },
+            "cuit": {
+              "type": "string"
+            }
+          }
+        },
+        "PaymentMerchant": {
+          "type": "object",
+          "properties": {
+            "account": {
+              "type": "string"
+            },
+            "cuit": {
+              "type": "string"
+            }
+          }
+        },
+        "PaymentAcquirer": {
+          "type": "object",
+          "properties": {
+            "reverse_domain": {
+              "type": "string"
+            },
+            "cuit": {
+              "type": "string"
+            }
+          }
+        },
+        "Error": {
+          "required": [
+            "error"
+          ],
+          "type": "object",
+          "properties": {
+            "error": {
+              "type": "string",
+              "description": "Mensaje de error",
+              "example": "something failed"
+            }
+          }
+        }
+      },
+      "securitySchemes": {
+        "bearerAuth": {
+          "type": "http",
+          "scheme": "bearer",
+          "bearerFormat": "JWT"
+        }
+      }
+    }
+  }
