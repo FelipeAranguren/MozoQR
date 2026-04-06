@@ -1,10 +1,9 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { randomUUID } from 'node:crypto';
 import {
-  createModoPayment,
+  createModoPaymentWithConfigRefresh,
   extractCheckoutUrl,
-  getModoPaymentStatus,
-  getModoPctConfigFromEnv,
+  getModoPaymentStatusWithConfigRefresh,
   getModoPctEnvMissingKeys,
   getPendingModoCheckout,
   isModoTrxWebhookApproved,
@@ -25,11 +24,25 @@ function getStrapi(ctx: any): any {
 function respondModoError(ctx: any, err: unknown) {
   if (err instanceof ModoPctError) {
     ctx.status = err.statusCode;
-    ctx.body = {
+    const rb = err.rawBody;
+    const missingFromErr =
+      rb && typeof rb === 'object' && Array.isArray((rb as { missing?: unknown }).missing)
+        ? (rb as { missing: string[] }).missing
+        : undefined;
+    const body: Record<string, unknown> = {
       ok: false,
-      error: err.modoError ?? err.message,
+      error: err.message,
+      modoError: err.modoError ?? undefined,
       details: err.rawBody ?? undefined,
     };
+    if (missingFromErr?.length) {
+      body.missing = missingFromErr;
+      body.hint =
+        'En el .env del backend: MODO_BASE_URL, MODO_CLIENT_ID y MODO_CLIENT_SECRET. Si MODO_BEARER_TOKEN está vacío, el token se obtiene por OAuth (client_credentials). Opcional: MODO_AUTH_URL.';
+    } else if (err.statusCode === 503) {
+      body.missing = getModoPctEnvMissingKeys();
+    }
+    ctx.body = body;
     return;
   }
   const strapi = getStrapi(ctx);
@@ -112,21 +125,6 @@ async function createModoCheckout(ctx: any) {
     return;
   }
 
-  const config = getModoPctConfigFromEnv();
-  if (!config) {
-    const missing = getModoPctEnvMissingKeys();
-    ctx.status = 503;
-    ctx.body = {
-      ok: false,
-      error:
-        'MODO no está listo en el servidor: completá el .env del backend (Strapi), guardá y reiniciá el proceso.',
-      missing,
-      hint:
-        'En tu .env definí al menos: MODO_BASE_URL, MODO_CLIENT_ID, MODO_CLIENT_SECRET y MODO_BEARER_TOKEN (JWT de MODO Conexiones).',
-    };
-    return;
-  }
-
   if (!strapi?.db) {
     ctx.status = 500;
     ctx.body = { ok: false, error: 'Servidor no disponible.' };
@@ -185,7 +183,7 @@ async function createModoCheckout(ctx: any) {
   (modoBody as Record<string, unknown>).order_ids = orderIds;
 
   try {
-    const data = await createModoPayment(modoBody, config);
+    const data = await createModoPaymentWithConfigRefresh(modoBody);
     const pay = data.payment && typeof data.payment === 'object' ? (data.payment as Record<string, unknown>) : {};
     const trxFromApi = typeof pay.trx_id === 'string' && pay.trx_id.trim() ? pay.trx_id.trim() : trx_id;
     const checkoutUrl = extractCheckoutUrl(data);
@@ -223,20 +221,9 @@ async function createModoCheckout(ctx: any) {
  * Proxy al POST MODO /pcp/{bcra}/payment con Bearer + client_id + client_secret.
  */
 async function createPayment(ctx: any) {
-  const config = getModoPctConfigFromEnv();
-  if (!config) {
-    ctx.status = 503;
-    ctx.body = {
-      ok: false,
-      error: 'MODO no configurado en el servidor.',
-      missing: getModoPctEnvMissingKeys(),
-    };
-    return;
-  }
-
   const body = (ctx.request.body ?? {}) as ModoCreatePaymentBody;
   try {
-    const data = await createModoPayment(body, config);
+    const data = await createModoPaymentWithConfigRefresh(body);
     ctx.status = 201;
     ctx.body = { ok: true, ...data };
   } catch (e) {
@@ -262,19 +249,8 @@ async function getPaymentStatus(ctx: any) {
     return;
   }
 
-  const config = getModoPctConfigFromEnv();
-  if (!config) {
-    ctx.status = 503;
-    ctx.body = {
-      ok: false,
-      error: 'MODO no configurado en el servidor.',
-      missing: getModoPctEnvMissingKeys(),
-    };
-    return;
-  }
-
   try {
-    const status = await getModoPaymentStatus(trxId, config);
+    const status = await getModoPaymentStatusWithConfigRefresh(trxId);
     ctx.status = 200;
     ctx.body = { ok: true, status, source: 'modo' };
   } catch (e) {

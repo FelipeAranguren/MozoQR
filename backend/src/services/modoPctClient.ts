@@ -1,6 +1,7 @@
 /**
  * Cliente HTTP para PCT Online (MODO) según modo-pct-api.json.
- * Requiere: MODO_BASE_URL (o MODO_PCP_BASE_URL), MODO_CLIENT_ID, MODO_CLIENT_SECRET, MODO_BEARER_TOKEN.
+ * Requiere: MODO_BASE_URL (o MODO_PCP_BASE_URL), MODO_CLIENT_ID, MODO_CLIENT_SECRET.
+ * Bearer: si MODO_BEARER_TOKEN está vacío, se obtiene con OAuth2 client_credentials (getModoToken) y se cachea en memoria.
  * MODO_BASE_URL: prefijo hasta /pcp/{bcra_id} sin "/payment" (ej. https://.../connections/pcp/999).
  */
 
@@ -114,7 +115,9 @@ function trimEnv(key: string): string {
   return v.trim();
 }
 
-/** Lista qué variables de entorno faltan o están vacías (para mensajes de error claros). */
+const DEFAULT_MODO_AUTH_URL = 'https://development.api.modo.com.ar/v1/auth/token';
+
+/** Lista variables de entorno obligatorias (sin contar el bearer: se obtiene por OAuth si no está en .env). */
 export function getModoPctEnvMissingKeys(): string[] {
   const missing: string[] = [];
   if (!trimEnv('MODO_PCP_BASE_URL') && !trimEnv('MODO_BASE_URL')) {
@@ -122,30 +125,167 @@ export function getModoPctEnvMissingKeys(): string[] {
   }
   if (!trimEnv('MODO_CLIENT_ID')) missing.push('MODO_CLIENT_ID');
   if (!trimEnv('MODO_CLIENT_SECRET')) missing.push('MODO_CLIENT_SECRET');
-  if (!trimEnv('MODO_BEARER_TOKEN') && !trimEnv('MODO_ACCESS_TOKEN')) {
-    missing.push('MODO_BEARER_TOKEN (o MODO_ACCESS_TOKEN)');
-  }
   return missing;
 }
 
+function getStaticBearerFromEnv(): string {
+  return trimEnv('MODO_BEARER_TOKEN') || trimEnv('MODO_ACCESS_TOKEN');
+}
+
+/** Caché en memoria del access_token OAuth (evita golpear /auth/token en cada request). */
+let modoTokenCache: { accessToken: string; expiresAtMs: number } | null = null;
+let modoTokenInflight: Promise<string> | null = null;
+
+const TOKEN_REFRESH_SKEW_SEC = 120;
+
+export function invalidateModoTokenCache(): void {
+  modoTokenCache = null;
+}
+
 /**
- * Resuelve configuración desde env. Falta de credenciales → null.
+ * POST a la URL de login MODO (client_credentials). No usa caché.
+ * @see https://development.api.modo.com.ar/v1/auth/token (configurable con MODO_AUTH_URL)
  */
-export function getModoPctConfigFromEnv(): ModoPctConfig | null {
-  if (getModoPctEnvMissingKeys().length > 0) return null;
+export async function getModoToken(): Promise<{ accessToken: string; expiresInSec: number }> {
+  const clientId = trimEnv('MODO_CLIENT_ID');
+  const clientSecret = trimEnv('MODO_CLIENT_SECRET');
+  if (!clientId || !clientSecret) {
+    throw new ModoPctError('Faltan MODO_CLIENT_ID o MODO_CLIENT_SECRET', 503, undefined, {
+      missing: getModoPctEnvMissingKeys(),
+    });
+  }
+  const { token, expiresInSec } = await fetchFreshModoAccessToken(clientId, clientSecret);
+  return { accessToken: token, expiresInSec };
+}
+
+async function fetchFreshModoAccessToken(
+  clientId: string,
+  clientSecret: string,
+): Promise<{ token: string; expiresInSec: number }> {
+  const authUrl = trimEnv('MODO_AUTH_URL') || DEFAULT_MODO_AUTH_URL;
+
+  const formBody = new URLSearchParams({
+    grant_type: 'client_credentials',
+    client_id: clientId,
+    client_secret: clientSecret,
+  }).toString();
+
+  let res = await fetch(authUrl, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/x-www-form-urlencoded',
+      Accept: 'application/json',
+    },
+    body: formBody,
+  });
+  let text = await res.text();
+  let data = (await parseJsonSafe(text)) as Record<string, unknown>;
+
+  if (!res.ok && (res.status === 415 || res.status === 406)) {
+    res = await fetch(authUrl, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Accept: 'application/json',
+      },
+      body: JSON.stringify({
+        grant_type: 'client_credentials',
+        client_id: clientId,
+        client_secret: clientSecret,
+      }),
+    });
+    text = await res.text();
+    data = (await parseJsonSafe(text)) as Record<string, unknown>;
+  }
+
+  if (!res.ok) {
+    const msg =
+      (typeof data.error_description === 'string' && data.error_description) ||
+      (typeof data.error === 'string' && data.error) ||
+      res.statusText;
+    throw new ModoPctError(`Auth MODO falló (${res.status})`, res.status >= 500 ? 502 : 503, msg, data);
+  }
+
+  const access =
+    (typeof data.access_token === 'string' && data.access_token) ||
+    (typeof data.accessToken === 'string' && data.accessToken) ||
+    (typeof data.token === 'string' && data.token) ||
+    '';
+  if (!access.trim()) {
+    throw new ModoPctError('Auth MODO: la respuesta no incluye access_token', 502, undefined, data);
+  }
+
+  let expiresIn = Number(data.expires_in ?? data.expiresIn);
+  if (!Number.isFinite(expiresIn) || expiresIn < 60) {
+    expiresIn = 3600;
+  }
+
+  return { token: access.trim(), expiresInSec: expiresIn };
+}
+
+async function getModoAccessTokenCached(clientId: string, clientSecret: string): Promise<string> {
+  const staticBearer = getStaticBearerFromEnv();
+  if (staticBearer) return staticBearer;
+
+  const now = Date.now();
+  const skewMs = TOKEN_REFRESH_SKEW_SEC * 1000;
+  if (modoTokenCache && modoTokenCache.expiresAtMs > now + skewMs) {
+    return modoTokenCache.accessToken;
+  }
+
+  if (modoTokenInflight) return modoTokenInflight;
+
+  modoTokenInflight = (async () => {
+    try {
+      const { token, expiresInSec } = await fetchFreshModoAccessToken(clientId, clientSecret);
+      const t = Date.now();
+      modoTokenCache = {
+        accessToken: token,
+        expiresAtMs: t + Math.max(TOKEN_REFRESH_SKEW_SEC, expiresInSec - TOKEN_REFRESH_SKEW_SEC) * 1000,
+      };
+      return token;
+    } finally {
+      modoTokenInflight = null;
+    }
+  })();
+
+  return modoTokenInflight;
+}
+
+/**
+ * Config lista para llamar PCT: base URL + client_id/secret en headers + Bearer (env estático u OAuth cacheado).
+ */
+export async function getModoPctConfigAsync(): Promise<ModoPctConfig> {
+  const missing = getModoPctEnvMissingKeys();
+  if (missing.length > 0) {
+    throw new ModoPctError(
+      'MODO no está listo: faltan variables en el .env del backend (Strapi). Guardá y reiniciá el proceso.',
+      503,
+      undefined,
+      { missing },
+    );
+  }
+
   const base =
     trimEnv('MODO_PCP_BASE_URL') ||
     trimEnv('MODO_BASE_URL') ||
     '';
   const clientId = trimEnv('MODO_CLIENT_ID');
   const clientSecret = trimEnv('MODO_CLIENT_SECRET');
-  const bearerToken = trimEnv('MODO_BEARER_TOKEN') || trimEnv('MODO_ACCESS_TOKEN');
+
+  const bearerToken = await getModoAccessTokenCached(clientId, clientSecret);
+
   return {
     pcpBaseUrl: base.replace(/\/+$/, ''),
     clientId,
     clientSecret,
     bearerToken,
   };
+}
+
+/** true si el Bearer no viene de .env (se usa OAuth + caché). */
+export function modoPctUsesOAuthBearer(): boolean {
+  return !getStaticBearerFromEnv();
 }
 
 function buildAuthHeaders(config: ModoPctConfig): Record<string, string> {
@@ -203,6 +343,9 @@ export async function createModoPayment(
 
   const modoErr = extractModoError(payload) ?? res.statusText;
 
+  if (res.status === 401) {
+    throw new ModoPctError('No autorizado ante MODO (401)', 401, modoErr, payload);
+  }
   if (res.status === 400) {
     throw new ModoPctError('Datos inválidos o token inválido/expirado (MODO 400)', 400, modoErr, payload);
   }
@@ -238,6 +381,9 @@ export async function getModoPaymentStatus(trxId: string, config: ModoPctConfig)
 
   const modoErr = extractModoError(payload) ?? res.statusText;
 
+  if (res.status === 401) {
+    throw new ModoPctError('No autorizado ante MODO (401)', 401, modoErr, payload);
+  }
   if (res.status === 400) {
     throw new ModoPctError('Solicitud inválida al consultar pago (MODO 400)', 400, modoErr, payload);
   }
@@ -246,6 +392,36 @@ export async function getModoPaymentStatus(trxId: string, config: ModoPctConfig)
   }
 
   throw new ModoPctError(`Respuesta inesperada de MODO (${res.status})`, res.status >= 500 ? 502 : 400, modoErr, payload);
+}
+
+/** Crea pago PCT resolviendo config (OAuth si hace falta) y reintenta una vez tras 401 si el token era OAuth cacheado. */
+export async function createModoPaymentWithConfigRefresh(
+  body: ModoCreatePaymentBody,
+): Promise<ModoCreatePaymentResponse> {
+  const run = async () => createModoPayment(body, await getModoPctConfigAsync());
+  try {
+    return await run();
+  } catch (e) {
+    if (e instanceof ModoPctError && e.statusCode === 401 && modoPctUsesOAuthBearer()) {
+      invalidateModoTokenCache();
+      return await run();
+    }
+    throw e;
+  }
+}
+
+/** GET estado con la misma lógica de token y reintento en 401. */
+export async function getModoPaymentStatusWithConfigRefresh(trxId: string): Promise<ModoStatus> {
+  const run = async () => getModoPaymentStatus(trxId, await getModoPctConfigAsync());
+  try {
+    return await run();
+  } catch (e) {
+    if (e instanceof ModoPctError && e.statusCode === 401 && modoPctUsesOAuthBearer()) {
+      invalidateModoTokenCache();
+      return await run();
+    }
+    throw e;
+  }
 }
 
 /** Simulación de persistencia de pedidos actualizados por webhook (reemplazar por Strapi entityService). */
