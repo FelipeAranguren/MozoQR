@@ -27,6 +27,67 @@ export interface ModoCreatePaymentResponse {
   status?: ModoStatus;
 }
 
+/** Intenta obtener URL de checkout / deep link desde la respuesta PCT (nombres habituales de MODO). */
+export function extractCheckoutUrl(res: ModoCreatePaymentResponse): string | null {
+  const pay = res.payment;
+  const tryVal = (v: unknown): string | null => {
+    if (typeof v !== 'string') return null;
+    const t = v.trim();
+    if (!t) return null;
+    if (/^https?:\/\//i.test(t)) return t;
+    if (/^[a-z][a-z0-9+.-]*:/i.test(t)) return t;
+    return null;
+  };
+  if (pay && typeof pay === 'object') {
+    const keys = [
+      'checkoutUrl',
+      'checkout_url',
+      'checkoutURL',
+      'deep_link',
+      'deepLink',
+      'redirectUrl',
+      'redirect_url',
+      'payment_url',
+      'url',
+    ];
+    for (const k of keys) {
+      const u = tryVal((pay as Record<string, unknown>)[k]);
+      if (u) return u;
+    }
+  }
+  const top = res as unknown as Record<string, unknown>;
+  for (const k of ['checkoutUrl', 'checkout_url', 'deep_link']) {
+    const u = tryVal(top[k]);
+    if (u) return u;
+  }
+  return null;
+}
+
+export type PendingModoCheckout = { orderIds: string[]; slug: string; createdAt: number };
+
+const pendingModoByTrx = new Map<string, PendingModoCheckout>();
+const webhookApprovedTrxs = new Set<string>();
+
+export function registerPendingModoCheckout(trxId: string, meta: { orderIds: string[]; slug: string }): void {
+  pendingModoByTrx.set(trxId, { ...meta, createdAt: Date.now() });
+}
+
+export function getPendingModoCheckout(trxId: string): PendingModoCheckout | undefined {
+  return pendingModoByTrx.get(trxId);
+}
+
+export function clearPendingModoCheckout(trxId: string): void {
+  pendingModoByTrx.delete(trxId);
+}
+
+export function markModoTrxApprovedByWebhook(trxId: string): void {
+  webhookApprovedTrxs.add(trxId);
+}
+
+export function isModoTrxWebhookApproved(trxId: string): boolean {
+  return webhookApprovedTrxs.has(trxId);
+}
+
 export interface ModoPctConfig {
   /** URL base sin trailing slash; debe incluir /pcp/{bcra_id} */
   pcpBaseUrl: string;

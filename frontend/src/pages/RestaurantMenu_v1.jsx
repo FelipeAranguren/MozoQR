@@ -92,7 +92,6 @@ export default function RestaurantMenu() {
   const [sessionReady, setSessionReady] = useState(false); // true cuando openSession completó o no hay mesa
   const [hasMercadoPago, setHasMercadoPago] = useState(false); // desde MetodosPago del restaurante
   const [hasModoHomebanking, setHasModoHomebanking] = useState(false);
-  const [pctMerchantCbuAlias, setPctMerchantCbuAlias] = useState('');
 
   const { items, addItem, removeItem } = useCart();
   const [productOrderStatusByProductId, setProductOrderStatusByProductId] = useState({});
@@ -465,7 +464,6 @@ export default function RestaurantMenu() {
             setNombreRestaurante(nombreRest);
           }
           setHasModoHomebanking(Boolean(r?.hasModoHomebanking));
-          setPctMerchantCbuAlias(typeof r?.pctMerchantCbuAlias === 'string' ? r.pctMerchantCbuAlias : '');
         } catch (e) {
           console.warn('No se pudo obtener nombre desde endpoint namespaced:', e);
         }
@@ -771,7 +769,6 @@ export default function RestaurantMenu() {
           sessionReady={sessionReady}
           hasMercadoPago={hasMercadoPago}
           hasModoHomebanking={hasModoHomebanking}
-          pctMerchantCbuAlias={pctMerchantCbuAlias}
         />
       </Container>
     );
@@ -1321,7 +1318,6 @@ export default function RestaurantMenu() {
           sessionReady={sessionReady}
           hasMercadoPago={hasMercadoPago}
           hasModoHomebanking={hasModoHomebanking}
-          pctMerchantCbuAlias={pctMerchantCbuAlias}
         />
 
         {/* Diálogo confirmar cambiar mesa */}

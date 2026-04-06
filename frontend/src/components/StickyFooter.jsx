@@ -18,7 +18,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useCart } from '../context/CartContext';
 import { createOrder, closeAccount, hasOpenAccount, fetchOrderDetails } from '../api/tenant';
-import { createMobbexCheckout, createMpPreference } from '../api/payments';
+import { createMobbexCheckout, createMpPreference, createModoCheckout, fetchModoPaymentStatus } from '../api/payments';
 import { saveLastReceiptToStorage } from '../utils/receipt';
 import { customerOrderListStatusLabel } from '../utils/orderStatusEs';
 import { useNetworkStatus } from '../hooks/useNetworkStatus';
@@ -113,7 +113,6 @@ export default function StickyFooter({
   sessionReady = true,
   hasMercadoPago = false,
   hasModoHomebanking = false,
-  pctMerchantCbuAlias = '',
 }) {
   const { items, subtotal, addItem, removeItem, clearCart } = useCart();
   const { slug } = useParams();
@@ -152,6 +151,9 @@ export default function StickyFooter({
   const [validatingCoupon, setValidatingCoupon] = useState(false);
   const [showMobileCoupon, setShowMobileCoupon] = useState(false);
   const [mobilePayStep, setMobilePayStep] = useState(1);
+
+  /** Overlay post-checkout MODO: polling hasta APPROVED o cierre manual */
+  const [modoWait, setModoWait] = useState({ open: false, trxId: null, timedOut: false });
 
   const cardOptionsRef = useRef(null);
 
@@ -360,6 +362,66 @@ export default function StickyFooter({
       setMobilePayStep(1);
     }
   }, [payOpen, slug, table, tableSessionId, tipPercentage]);
+
+  // Reanudar espera MODO si el usuario volvió del banco (misma pestaña / recarga)
+  useEffect(() => {
+    if (!slug) return;
+    try {
+      const raw = sessionStorage.getItem('mozoqr_modo_pending');
+      if (!raw) return;
+      const p = JSON.parse(raw);
+      if (p.slug !== slug || !p.trxId) return;
+      setModoWait({ open: true, trxId: p.trxId, timedOut: false });
+    } catch (_) {
+      /* ignore */
+    }
+  }, [slug]);
+
+  // Polling estado pago MODO (API + webhook marcado en backend)
+  useEffect(() => {
+    if (!modoWait.open || !modoWait.trxId) return undefined;
+    let cancelled = false;
+    const ticksRef = { n: 0 };
+    let timedOutShown = false;
+    const maxTicks = 120;
+    const trx = modoWait.trxId;
+
+    const poll = async () => {
+      if (cancelled) return;
+      ticksRef.n += 1;
+      try {
+        const data = await fetchModoPaymentStatus(trx);
+        const code = String(data?.status?.code || '').toUpperCase();
+        if (code === 'APPROVED') {
+          cancelled = true;
+          sessionStorage.removeItem('mozoqr_modo_pending');
+          setModoWait({ open: false, trxId: null, timedOut: false });
+          setSnack({ open: true, msg: 'Pago confirmado ✅', severity: 'success' });
+          navigate(`/thank-you?type=modo${slug ? `&slug=${encodeURIComponent(slug)}` : ''}`);
+          return;
+        }
+        if (code === 'REJECTED') {
+          cancelled = true;
+          sessionStorage.removeItem('mozoqr_modo_pending');
+          setModoWait({ open: false, trxId: null, timedOut: false });
+          setSnack({ open: true, msg: 'El pago no se completó.', severity: 'error' });
+        }
+      } catch (_) {
+        /* seguir intentando */
+      }
+      if (ticksRef.n >= maxTicks && !cancelled && !timedOutShown) {
+        timedOutShown = true;
+        setModoWait((w) => (w.trxId === trx ? { ...w, timedOut: true } : w));
+      }
+    };
+
+    poll();
+    const id = setInterval(poll, 2500);
+    return () => {
+      cancelled = true;
+      clearInterval(id);
+    };
+  }, [modoWait.open, modoWait.trxId, slug, navigate]);
 
   // Resetear propina cuando cambia el total (ej. al cargar orderDetails); conservar centavos
   useEffect(() => {
@@ -872,9 +934,60 @@ export default function StickyFooter({
       return;
     }
 
-    // Flujo tarjeta: deshabilitado Mobbex — se trata como solicitud de cobro en mesa (igual que efectivo)
-    // Si en el futuro se reactiva Mobbex, descomentar el bloque anterior y quitar el flujo unificado para 'card' abajo.
+    // MODO PCT: checkout en servidor + redirección / deep link + polling
+    if (payMethod === 'modo') {
+      try {
+        setPayLoading(true);
+        const orderIds = (orderDetails || []).map((o) => o.id).filter((id) => id != null);
+        if (orderIds.length === 0) {
+          setSnack({
+            open: true,
+            msg: 'No hay pedidos en la cuenta para cobrar.',
+            severity: 'warning',
+          });
+          return;
+        }
+        const data = await createModoCheckout({
+          slug,
+          total: totalWithTip,
+          table,
+          tableSessionId,
+          orderIds,
+        });
+        const checkoutUrl = data.checkoutUrl;
+        const trxId = data.trx_id;
+        if (!checkoutUrl || !trxId) {
+          throw new Error('El servidor no devolvió el link de pago.');
+        }
+        sessionStorage.setItem(
+          'mozoqr_modo_pending',
+          JSON.stringify({ trxId, slug, ts: Date.now() }),
+        );
+        setPayOpen(false);
+        setPayMethod(null);
+        setModoWait({ open: true, trxId, timedOut: false });
+        setPayLoading(false);
+        requestAnimationFrame(() => {
+          if (isMobile) {
+            window.location.href = checkoutUrl;
+          } else {
+            const w = window.open(checkoutUrl, '_blank', 'noopener,noreferrer');
+            if (!w) window.location.href = checkoutUrl;
+          }
+        });
+      } catch (err) {
+        console.error(err);
+        const apiMsg =
+          err?.response?.data?.error?.message ||
+          err?.message ||
+          'No se pudo iniciar el pago con MODO.';
+        setSnack({ open: true, msg: apiMsg, severity: 'error' });
+        setPayLoading(false);
+      }
+      return;
+    }
 
+    // Efectivo / tarjeta: solicitud de cobro al staff en mesa
     try {
       setPayLoading(true);
 
@@ -885,9 +998,7 @@ export default function StickyFooter({
         modo: 'MODO / Homebanking',
       };
 
-      // Efectivo, tarjeta o MODO: solicitud de cobro al staff (transferencia / app en mesa según corresponda)
-      if (payMethod === 'cash' || payMethod === 'card' || payMethod === 'modo') {
-        // Prevenir múltiples solicitudes
+      if (payMethod === 'cash' || payMethod === 'card') {
         if (payRequestSent) {
           setSnack({
             open: true,
@@ -897,9 +1008,7 @@ export default function StickyFooter({
           return;
         }
 
-        const metodoPago =
-          payMethod === 'cash' ? 'efectivo' : payMethod === 'card' ? 'tarjeta' : 'modo_homebanking';
-        // Para pago presencial, NO cerramos la cuenta aún. Enviamos una solicitud de cobro al mostrador.
+        const metodoPago = payMethod === 'cash' ? 'efectivo' : 'tarjeta';
         setPayRequestSent(true);
         try {
           await createOrder(slug, {
@@ -918,16 +1027,12 @@ export default function StickyFooter({
 
           setSnack({
             open: true,
-            msg:
-              payMethod === 'card'
-                ? 'Se envió la solicitud. Un mozo se acercará con el Point para cobrar con tarjeta en la mesa. ✅'
-                : payMethod === 'modo'
-                  ? 'Solicitud enviada. El staff validará tu pago por MODO o transferencia. ✅'
-                  : `Solicitud enviada. Un mozo se acercará a cobrarte en ${methodNames[payMethod]}. ✅`,
+            msg: payMethod === 'card'
+              ? 'Se envió la solicitud. Un mozo se acercará con el Point para cobrar con tarjeta en la mesa. ✅'
+              : `Solicitud enviada. Un mozo se acercará a cobrarte en ${methodNames[payMethod]}. ✅`,
             severity: 'success',
           });
 
-          // No cerramos la cuenta localmente ni en backend, esperamos al mozo.
           setPayOpen(false);
           setPayMethod(null);
           setPayRequestSent(false);
@@ -1751,44 +1856,10 @@ export default function StickyFooter({
                   )}
 
                   {payMethod === 'modo' && (
-                    <Box
-                      sx={{
-                        mt: 1,
-                        p: 1.5,
-                        borderRadius: 2,
-                        bgcolor: (theme) => alpha(theme.palette.primary.main, 0.06),
-                        border: '1px solid',
-                        borderColor: 'divider',
-                      }}
-                    >
-                      <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
-                        Transferí el total indicado arriba usando el CBU o alias del restaurante. Luego solicitá el
-                        pago para que el local confirme.
-                      </Typography>
-                      {pctMerchantCbuAlias ? (
-                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap' }}>
-                          <Typography variant="body2" sx={{ fontWeight: 600, wordBreak: 'break-all', flex: 1, minWidth: 0 }}>
-                            {pctMerchantCbuAlias}
-                          </Typography>
-                          <Tooltip title="Copiar CBU o alias">
-                            <IconButton
-                              size="small"
-                              aria-label="Copiar CBU o alias"
-                              onClick={async () => {
-                                try {
-                                  await navigator.clipboard.writeText(pctMerchantCbuAlias);
-                                  setSnack({ open: true, msg: 'Copiado al portapapeles', severity: 'info' });
-                                } catch {
-                                  setSnack({ open: true, msg: 'No se pudo copiar', severity: 'warning' });
-                                }
-                              }}
-                            >
-                              <ContentCopyIcon fontSize="small" />
-                            </IconButton>
-                          </Tooltip>
-                        </Box>
-                      ) : null}
-                    </Box>
+                    <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
+                      Al tocar &quot;Solicitar pago&quot; abrimos el checkout de MODO o tu banco. Volvé a esta pestaña
+                      cuando termines: verificamos el pago automáticamente.
+                    </Typography>
                   )}
                 </>
               )}
@@ -2302,6 +2373,52 @@ export default function StickyFooter({
             </Button>
           </DialogActions>
         )}
+      </Dialog>
+
+      <Dialog
+        fullScreen
+        open={modoWait.open}
+        onClose={() => {}}
+        disableEscapeKeyDown
+        PaperProps={{ sx: { bgcolor: 'background.default' } }}
+      >
+        <DialogContent
+          sx={{
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'center',
+            justifyContent: 'center',
+            gap: 2,
+            minHeight: '100%',
+            py: 6,
+            px: 3,
+          }}
+        >
+          <CircularProgress size={48} />
+          <Typography variant="h6" sx={{ fontWeight: 700, textAlign: 'center' }}>
+            Procesando pago…
+          </Typography>
+          <Typography variant="body2" color="text.secondary" sx={{ textAlign: 'center', maxWidth: 360 }}>
+            Completá el pago en MODO o en la app de tu banco. En celular, el enlace suele abrir la app correspondiente.
+            Esta pantalla se actualiza sola cuando el pago queda confirmado.
+          </Typography>
+          {modoWait.timedOut ? (
+            <Alert severity="warning" sx={{ maxWidth: 420 }}>
+              Llevamos varios minutos esperando. Si ya pagaste, el restaurante puede verlo en su sistema; podés cerrar
+              esta pantalla y seguir en el menú.
+            </Alert>
+          ) : null}
+          <Button
+            variant="outlined"
+            sx={{ mt: 2, textTransform: 'none' }}
+            onClick={() => {
+              sessionStorage.removeItem('mozoqr_modo_pending');
+              setModoWait({ open: false, trxId: null, timedOut: false });
+            }}
+          >
+            Cerrar y volver al menú
+          </Button>
+        </DialogContent>
       </Dialog>
     </>
   );

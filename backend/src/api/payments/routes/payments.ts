@@ -41,6 +41,13 @@ export default {
       handler: 'payments.confirm',
       config: { auth: false, policies: [], middlewares: [] },
     },
+    /** Checkout MODO PCT: crea pago en MODO y devuelve checkoutUrl + trx_id */
+    {
+      method: 'POST',
+      path: '/payments/create-modo-checkout',
+      handler: 'modo-pct.createModoCheckout',
+      config: { auth: false, policies: [], middlewares: [] },
+    },
     /** MODO PCT Online — crear pago (POST hacia API MODO con Bearer + client_id/secret) */
     {
       method: 'POST',

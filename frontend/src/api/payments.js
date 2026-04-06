@@ -168,4 +168,35 @@ export async function createMobbexCheckout({
   return data;
 }
 
+/**
+ * Crea checkout MODO PCT en el backend. Respuesta: { ok, trx_id, checkoutUrl, status? }.
+ */
+export async function createModoCheckout({ slug, total, table, tableSessionId, orderIds }) {
+  let res;
+  try {
+    res = await client.post('/payments/create-modo-checkout', {
+      slug,
+      total,
+      table,
+      tableSessionId,
+      orderIds,
+    });
+  } catch (e) {
+    const responseData = e?.response?.data;
+    const serverMsg = responseData && typeof responseData.error === 'string' ? responseData.error : null;
+    const fallbackMsg = e && typeof e.message === 'string' ? e.message : null;
+    throw new Error(serverMsg || fallbackMsg || 'No se pudo iniciar el pago con MODO.');
+  }
+  const data = res?.data;
+  if (!data || data.ok === false) {
+    throw new Error((data && data.error) || 'Error al crear el checkout MODO.');
+  }
+  return data;
+}
 
+/** Consulta estado del pago MODO (y webhook interno) por trx_id. */
+export async function fetchModoPaymentStatus(trxId) {
+  if (!trxId) throw new Error('trxId requerido');
+  const res = await client.get(`/payments/modo/payment/${encodeURIComponent(trxId)}`);
+  return res?.data;
+}
