@@ -115,7 +115,8 @@ function trimEnv(key: string): string {
   return v.trim();
 }
 
-const DEFAULT_MODO_AUTH_URL = 'https://development.api.modo.com.ar/v1/auth/token';
+const DEFAULT_MODO_AUTH_V2 = 'https://development.api.modo.com.ar/v2/auth/token';
+const DEFAULT_MODO_AUTH_V1 = 'https://development.api.modo.com.ar/v1/auth/token';
 
 /** Lista variables de entorno obligatorias (sin contar el bearer: se obtiene por OAuth si no está en .env). */
 export function getModoPctEnvMissingKeys(): string[] {
@@ -144,7 +145,7 @@ export function invalidateModoTokenCache(): void {
 
 /**
  * POST a la URL de login MODO (client_credentials). No usa caché.
- * @see https://development.api.modo.com.ar/v1/auth/token (configurable con MODO_AUTH_URL)
+ * @see MODO_AUTH_URL o por defecto v2 (MODO Conexiones desarrollo).
  */
 export async function getModoToken(): Promise<{ accessToken: string; expiresInSec: number }> {
   const clientId = trimEnv('MODO_CLIENT_ID');
@@ -158,69 +159,122 @@ export async function getModoToken(): Promise<{ accessToken: string; expiresInSe
   return { accessToken: token, expiresInSec };
 }
 
-async function fetchFreshModoAccessToken(
+function deriveModoApiOriginFromEnv(): string | null {
+  const raw = trimEnv('MODO_PCP_BASE_URL') || trimEnv('MODO_BASE_URL');
+  if (!raw) return null;
+  try {
+    const withProto = /^https?:\/\//i.test(raw) ? raw : `https://${raw}`;
+    return new URL(withProto).origin;
+  } catch {
+    return null;
+  }
+}
+
+/** Orden: explícita (MODO_AUTH_URL), v2/v1 por defecto, mismo host que MODO_BASE_URL (modo-pct-api.json usa paths bajo el API de conexiones). */
+function resolveModoAuthUrlCandidates(): string[] {
+  const explicit = trimEnv('MODO_AUTH_URL');
+  const fromBase: string[] = [];
+  const origin = deriveModoApiOriginFromEnv();
+  if (origin) {
+    const base = origin.replace(/\/+$/, '');
+    fromBase.push(`${base}/v2/auth/token`, `${base}/v1/auth/token`);
+  }
+  const seeds = explicit
+    ? [explicit, DEFAULT_MODO_AUTH_V2, DEFAULT_MODO_AUTH_V1, ...fromBase]
+    : [DEFAULT_MODO_AUTH_V2, DEFAULT_MODO_AUTH_V1, ...fromBase];
+  return [...new Set(seeds)];
+}
+
+async function fetchModoTokenAtUrl(
+  authUrl: string,
   clientId: string,
   clientSecret: string,
-): Promise<{ token: string; expiresInSec: number }> {
-  const authUrl = trimEnv('MODO_AUTH_URL') || DEFAULT_MODO_AUTH_URL;
-
-  const formBody = new URLSearchParams({
+): Promise<{ res: Response; data: Record<string, unknown> }> {
+  const jsonBody = JSON.stringify({
     grant_type: 'client_credentials',
     client_id: clientId,
     client_secret: clientSecret,
-  }).toString();
+  });
+
+  console.log('URL de Auth usada:', authUrl);
 
   let res = await fetch(authUrl, {
     method: 'POST',
     headers: {
-      'Content-Type': 'application/x-www-form-urlencoded',
+      'Content-Type': 'application/json',
       Accept: 'application/json',
     },
-    body: formBody,
+    body: jsonBody,
   });
   let text = await res.text();
   let data = (await parseJsonSafe(text)) as Record<string, unknown>;
 
   if (!res.ok && (res.status === 415 || res.status === 406)) {
+    const formBody = new URLSearchParams({
+      grant_type: 'client_credentials',
+      client_id: clientId,
+      client_secret: clientSecret,
+    }).toString();
+    console.log('URL de Auth usada (retry application/x-www-form-urlencoded):', authUrl);
     res = await fetch(authUrl, {
       method: 'POST',
       headers: {
-        'Content-Type': 'application/json',
+        'Content-Type': 'application/x-www-form-urlencoded',
         Accept: 'application/json',
       },
-      body: JSON.stringify({
-        grant_type: 'client_credentials',
-        client_id: clientId,
-        client_secret: clientSecret,
-      }),
+      body: formBody,
     });
     text = await res.text();
     data = (await parseJsonSafe(text)) as Record<string, unknown>;
   }
 
-  if (!res.ok) {
-    const msg =
-      (typeof data.error_description === 'string' && data.error_description) ||
-      (typeof data.error === 'string' && data.error) ||
-      res.statusText;
-    throw new ModoPctError(`Auth MODO falló (${res.status})`, res.status >= 500 ? 502 : 503, msg, data);
+  return { res, data };
+}
+
+async function fetchFreshModoAccessToken(
+  clientId: string,
+  clientSecret: string,
+): Promise<{ token: string; expiresInSec: number }> {
+  const urls = resolveModoAuthUrlCandidates();
+  let last: { res: Response; data: Record<string, unknown> } | null = null;
+
+  for (const authUrl of urls) {
+    const { res, data } = await fetchModoTokenAtUrl(authUrl, clientId, clientSecret);
+    last = { res, data };
+
+    if (res.ok) {
+      const access =
+        (typeof data.access_token === 'string' && data.access_token) ||
+        (typeof data.accessToken === 'string' && data.accessToken) ||
+        (typeof data.token === 'string' && data.token) ||
+        '';
+      if (!access.trim()) {
+        throw new ModoPctError('Auth MODO: la respuesta no incluye access_token', 502, undefined, data);
+      }
+
+      let expiresIn = Number(data.expires_in ?? data.expiresIn);
+      if (!Number.isFinite(expiresIn) || expiresIn < 60) {
+        expiresIn = 3600;
+      }
+
+      return { token: access.trim(), expiresInSec: expiresIn };
+    }
+
+    if (res.status !== 404) {
+      const msg =
+        (typeof data.error_description === 'string' && data.error_description) ||
+        (typeof data.error === 'string' && data.error) ||
+        res.statusText;
+      throw new ModoPctError(`Auth MODO falló (${res.status})`, res.status >= 500 ? 502 : 503, msg, data);
+    }
   }
 
-  const access =
-    (typeof data.access_token === 'string' && data.access_token) ||
-    (typeof data.accessToken === 'string' && data.accessToken) ||
-    (typeof data.token === 'string' && data.token) ||
-    '';
-  if (!access.trim()) {
-    throw new ModoPctError('Auth MODO: la respuesta no incluye access_token', 502, undefined, data);
-  }
-
-  let expiresIn = Number(data.expires_in ?? data.expiresIn);
-  if (!Number.isFinite(expiresIn) || expiresIn < 60) {
-    expiresIn = 3600;
-  }
-
-  return { token: access.trim(), expiresInSec: expiresIn };
+  const { res, data } = last!;
+  const msg =
+    (typeof data.error_description === 'string' && data.error_description) ||
+    (typeof data.error === 'string' && data.error) ||
+    res.statusText;
+  throw new ModoPctError(`Auth MODO falló (${res.status})`, res.status >= 500 ? 502 : 503, msg, data);
 }
 
 async function getModoAccessTokenCached(clientId: string, clientSecret: string): Promise<string> {
