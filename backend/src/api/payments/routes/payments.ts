@@ -69,13 +69,6 @@ export default {
       handler: 'modo-pct.webhook',
       config: { auth: false, policies: [], middlewares: [] },
     },
-    /** Confirma pago simulado (MODO_SIMULATE_ON_FAILURE); misma lógica que webhook APPROVED */
-    {
-      method: 'POST',
-      path: '/payments/modo/confirm-simulated',
-      handler: 'modo-pct.confirmSimulatedModo',
-      config: { auth: false, policies: [], middlewares: [] },
-    },
     {
       method: 'POST',
       path: '/restaurants/:slug/payments',

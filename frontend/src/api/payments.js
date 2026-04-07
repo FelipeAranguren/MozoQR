@@ -183,6 +183,7 @@ export async function createModoCheckout({ slug, total, table, tableSessionId, o
     });
   } catch (e) {
     const responseData = e?.response?.data;
+    console.error('[MODO create-modo-checkout] respuesta cruda del backend:', responseData ?? e);
     const serverMsg = responseData && typeof responseData.error === 'string' ? responseData.error : null;
     const missing = Array.isArray(responseData?.missing) ? responseData.missing : [];
     const missingLine =
@@ -208,9 +209,3 @@ export async function fetchModoPaymentStatus(trxId) {
   return res?.data;
 }
 
-/** Confirma checkout MODO simulado (equivale a webhook APPROVED en servidor). */
-export async function confirmSimulatedModo(trxId) {
-  if (!trxId) throw new Error('trxId requerido');
-  const res = await client.post('/payments/modo/confirm-simulated', { trx_id: trxId });
-  return res?.data;
-}

@@ -17,7 +17,6 @@ import PagoPending from './pages/PagoPending';
 import PaymentSuccess from './pages/PaymentSuccess';
 import PaymentFailure from './pages/PaymentFailure';
 import ThankYou from './pages/ThankYou';
-import PagoSimulado from './pages/PagoSimulado';
 import OrderPlaced from './pages/OrderPlaced';
 import OnboardingRestaurante from './pages/OnboardingRestaurante';
 import OwnerDashboard from './pages/OwnerDashboard';
@@ -80,7 +79,6 @@ export default function App() {
           <Route path="/" element={<Home />} />
           <Route path="/demo" element={<DemoLanding />} />
           <Route path="/checkout" element={<Checkout />} />
-          <Route path="/pago-simulado" element={<PagoSimulado />} />
           {/* Legacy global: sin slug en path; debe ir ANTES de /:slug o "pago-success" se toma como slug */}
           <Route path="/pago-success" element={<PagoSuccess />} />
           <Route path="/pago-failure" element={<PagoFailure />} />
