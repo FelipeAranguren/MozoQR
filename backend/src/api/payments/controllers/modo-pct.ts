@@ -38,7 +38,7 @@ function respondModoError(ctx: any, err: unknown) {
     if (missingFromErr?.length) {
       body.missing = missingFromErr;
       body.hint =
-        'Definí esas variables en el entorno del servidor (en Railway: Variables del servicio que corre Strapi; el .env de tu máquina no se sube al deploy). MODO_BEARER_TOKEN es opcional: si está vacío, el token se pide por OAuth. Opcional: MODO_AUTH_URL.';
+        'Definí esas variables en el entorno del servidor (en Railway: Variables del servicio que corre Strapi; el .env de tu máquina no se sube al deploy). MODO_BEARER_TOKEN es opcional: si está vacío, el token se pide por OAuth (URL fija desarrollo v2 en el código).';
     } else if (err.statusCode === 503) {
       body.missing = getModoPctEnvMissingKeys();
     }

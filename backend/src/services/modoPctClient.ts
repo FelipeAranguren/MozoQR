@@ -117,9 +117,9 @@ function trimEnv(key: string): string {
   return v.trim();
 }
 
-/** Desarrollo MODO Conexiones — debe incluir `/v2/`. */
-const MODO_AUTH_URL_DEV_V2 = 'https://development.api.modo.com.ar/v2/auth/token';
-const MODO_AUTH_URL_DEV_V1 = 'https://development.api.modo.com.ar/v1/auth/token';
+/** Token OAuth desarrollo: fija, no se deriva de MODO_BASE_URL ni de rutas PCP. */
+const MODO_AUTH_URL_DEVELOPMENT = 'https://development.api.modo.com.ar/v2/auth/token';
+const MODO_AUTH_FETCH_TIMEOUT_MS = 10_000;
 
 /** Lista variables de entorno obligatorias (sin contar el bearer: se obtiene por OAuth si no está en .env). */
 export function getModoPctEnvMissingKeys(): string[] {
@@ -148,7 +148,7 @@ export function invalidateModoTokenCache(): void {
 
 /**
  * POST a la URL de login MODO (client_credentials). No usa caché.
- * @see MODO_AUTH_URL o por defecto v2 (MODO Conexiones desarrollo).
+ * URL fija desarrollo: MODO_AUTH_URL_DEVELOPMENT (v2).
  */
 export async function getModoToken(): Promise<{ accessToken: string; expiresInSec: number }> {
   const clientId = trimEnv('MODO_CLIENT_ID');
@@ -187,14 +187,14 @@ function modoAuthErrorFromResponse(res: Response, data: Record<string, unknown>)
 }
 
 /**
- * POST JSON: grant_type, client_id, client_secret (desde env).
- * Loguea la URL completa en consola (Railway / Strapi).
+ * POST JSON únicamente (sin Authorization). Timeout 10s.
+ * client_id / client_secret vienen de process.env vía getModoToken → trimEnv.
  */
 async function postModoAuthTokenRequest(
-  authUrl: string,
   clientId: string,
   clientSecret: string,
 ): Promise<{ token: string; expiresInSec: number }> {
+  const authUrl = MODO_AUTH_URL_DEVELOPMENT;
   console.log('[MODO Auth] URL completa intentada:', authUrl);
 
   let res: Response;
@@ -203,15 +203,24 @@ async function postModoAuthTokenRequest(
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        Accept: 'application/json',
       },
       body: JSON.stringify({
         grant_type: 'client_credentials',
         client_id: clientId,
         client_secret: clientSecret,
       }),
+      signal: AbortSignal.timeout(MODO_AUTH_FETCH_TIMEOUT_MS),
     });
-  } catch (netErr) {
+  } catch (netErr: unknown) {
+    const name = netErr instanceof Error ? netErr.name : '';
+    if (name === 'AbortError' || name === 'TimeoutError') {
+      throw new ModoPctError(
+        'Auth MODO: timeout esperando respuesta del token (10s)',
+        504,
+        undefined,
+        netErr,
+      );
+    }
     throw new ModoPctError('Auth MODO: error de red al contactar el endpoint de token', 502, undefined, netErr);
   }
 
@@ -219,6 +228,9 @@ async function postModoAuthTokenRequest(
   const data = (await parseJsonSafe(text)) as Record<string, unknown>;
 
   if (!res.ok) {
+    if (res.status === 404) {
+      console.error('URL de Auth fallida: ' + authUrl);
+    }
     throw modoAuthErrorFromResponse(res, data);
   }
 
@@ -229,21 +241,7 @@ async function fetchFreshModoAccessToken(
   clientId: string,
   clientSecret: string,
 ): Promise<{ token: string; expiresInSec: number }> {
-  const explicitAuth = trimEnv('MODO_AUTH_URL');
-  const primaryUrl = explicitAuth || MODO_AUTH_URL_DEV_V2;
-
-  try {
-    return await postModoAuthTokenRequest(primaryUrl, clientId, clientSecret);
-  } catch (firstErr) {
-    if (explicitAuth) {
-      throw firstErr;
-    }
-    try {
-      return await postModoAuthTokenRequest(MODO_AUTH_URL_DEV_V1, clientId, clientSecret);
-    } catch (secondErr) {
-      throw secondErr;
-    }
-  }
+  return postModoAuthTokenRequest(clientId, clientSecret);
 }
 
 async function getModoAccessTokenCached(clientId: string, clientSecret: string): Promise<string> {
