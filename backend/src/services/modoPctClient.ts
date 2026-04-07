@@ -65,12 +65,30 @@ export function extractCheckoutUrl(res: ModoCreatePaymentResponse): string | nul
   return null;
 }
 
-export type PendingModoCheckout = { orderIds: string[]; slug: string; createdAt: number };
+export type PendingModoCheckout = {
+  orderIds: string[];
+  slug: string;
+  createdAt: number;
+  /** Opcional: para simulación (liberar mesa tras “webhook”). */
+  table?: number;
+  tableSessionId?: string;
+};
 
 const pendingModoByTrx = new Map<string, PendingModoCheckout>();
 const webhookApprovedTrxs = new Set<string>();
 
-export function registerPendingModoCheckout(trxId: string, meta: { orderIds: string[]; slug: string }): void {
+/** Si MODO falla (404/timeout/etc.), create-modo-checkout puede devolver checkout simulado en lugar de error. */
+export function isModoSimulateOnFailureEnabled(): boolean {
+  const v = process.env.MODO_SIMULATE_ON_FAILURE;
+  if (v == null) return false;
+  const s = String(v).trim().toLowerCase();
+  return s === 'true' || s === '1' || s === 'yes';
+}
+
+export function registerPendingModoCheckout(
+  trxId: string,
+  meta: { orderIds: string[]; slug: string; table?: number; tableSessionId?: string },
+): void {
   pendingModoByTrx.set(trxId, { ...meta, createdAt: Date.now() });
 }
 

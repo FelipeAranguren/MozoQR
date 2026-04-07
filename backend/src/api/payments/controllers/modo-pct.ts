@@ -6,6 +6,7 @@ import {
   getModoPaymentStatusWithConfigRefresh,
   getModoPctEnvMissingKeys,
   getPendingModoCheckout,
+  isModoSimulateOnFailureEnabled,
   isModoTrxWebhookApproved,
   markModoTrxApprovedByWebhook,
   ModoPctError,
@@ -14,6 +15,8 @@ import {
   verifyModoWebhookSecret,
   type ModoCreatePaymentBody,
 } from '../../../services/modoPctClient';
+import { getFrontendUrl } from '../../../config/urls';
+import { notifyPagoMercadoPagoForOrder } from '../../notificaciones/services/pagosNotifier';
 
 const ORDER_UID = 'api::pedido.pedido';
 
@@ -93,6 +96,171 @@ async function resolveOrderPk(strapi: any, ref: string | number | null): Promise
   return null;
 }
 
+function buildModoSimulatedCheckoutUrl(slug: string, trxId: string): string {
+  const base = getFrontendUrl().replace(/\/+$/, '');
+  const safeSlug = String(slug).trim().replace(/^\/+|\/+$/g, '') || 'menu';
+  return `${base}/${safeSlug}/pago-exitoso-simulado?trx=${encodeURIComponent(trxId)}`;
+}
+
+/** Best-effort: misma idea que release en tenant (cerrar sesión + mesa disponible). */
+async function tryReleaseTableAfterSimulatedModo(
+  strapi: any,
+  slug: string,
+  table?: number,
+  tableSessionId?: string | null,
+) {
+  if (!strapi?.db) return;
+  const tNum = table != null ? Number(table) : NaN;
+  if (!Number.isFinite(tNum) || tNum <= 0) return;
+  const sid = tableSessionId != null ? String(tableSessionId).trim() : '';
+  if (!sid) return;
+
+  try {
+    const rest = await strapi.db.query('api::restaurante.restaurante').findOne({
+      where: { slug: String(slug).trim() },
+      select: ['id'],
+    });
+    const restauranteId = rest?.id != null ? Number(rest.id) : NaN;
+    if (!Number.isFinite(restauranteId) || restauranteId <= 0) return;
+
+    const mesa = await strapi.db.query('api::mesa.mesa').findOne({
+      where: { restaurante: restauranteId, number: tNum },
+      select: ['id', 'status', 'activeSessionCode'],
+    });
+    if (!mesa?.id) return;
+
+    const activeCode =
+      mesa.activeSessionCode != null && String(mesa.activeSessionCode).trim()
+        ? String(mesa.activeSessionCode).trim()
+        : null;
+    if (activeCode && sid !== activeCode) {
+      strapi?.log?.warn?.(`[modo sim] skip mesa release: session mismatch`);
+      return;
+    }
+
+    const mesaId = Number(mesa.id);
+    const whereOpen: Record<string, unknown> = { mesa: mesaId, session_status: 'open' };
+    if (activeCode) whereOpen.code = activeCode;
+
+    try {
+      await strapi.db.query('api::mesa-sesion.mesa-sesion').updateMany({
+        where: whereOpen,
+        data: { session_status: 'closed', closedAt: new Date(), publishedAt: new Date() },
+      });
+    } catch (e: unknown) {
+      strapi?.log?.warn?.('[modo sim] close sessions:', e instanceof Error ? e.message : e);
+    }
+
+    const data: Record<string, unknown> = {
+      status: 'disponible',
+      activeSessionCode: null,
+      publishedAt: new Date(),
+    };
+    const knex = strapi.db?.connection;
+    try {
+      if (knex?.schema?.hasColumn && (await knex.schema.hasColumn('mesas', 'occupied_at'))) {
+        data.occupiedAt = null;
+      }
+    } catch {
+      /* */
+    }
+
+    await strapi.db.query('api::mesa.mesa').update({
+      where: { id: mesaId },
+      data,
+    });
+  } catch (e: unknown) {
+    strapi?.log?.warn?.('[modo sim] tryReleaseTableAfterSimulatedModo:', e instanceof Error ? e.message : e);
+  }
+}
+
+async function applyModoSimulatedApproved(
+  strapi: any,
+  trxId: string,
+  orderIds: string[],
+  slug: string,
+  table?: number,
+  tableSessionId?: string,
+) {
+  markModoTrxApprovedByWebhook(trxId);
+  const ids = Array.from(new Set(orderIds.filter(Boolean)));
+
+  if (strapi?.entityService && ids.length > 0) {
+    for (const ref of ids) {
+      const pk = await resolveOrderPk(strapi, ref);
+      if (pk != null) {
+        await markOrderPaid(strapi, pk);
+        await notifyPagoMercadoPagoForOrder(strapi, pk, { currency: 'ARS' });
+      }
+    }
+  }
+
+  if (ids.length > 0) {
+    for (const ref of ids) {
+      simulateModoApprovedOrderUpdate(ref, trxId);
+    }
+  }
+
+  strapi?.log?.info?.(`[modo sim webhook] APPROVED trx=${trxId} orders=${ids.join(',') || 'none'}`);
+  await tryReleaseTableAfterSimulatedModo(strapi, slug, table, tableSessionId);
+}
+
+function scheduleSimulatedModoWebhook(
+  strapi: any,
+  trxId: string,
+  orderIds: string[],
+  slug: string,
+  table?: number,
+  tableSessionId?: string,
+) {
+  setTimeout(() => {
+    void applyModoSimulatedApproved(strapi, trxId, orderIds, slug, table, tableSessionId).catch((e: unknown) => {
+      console.warn('[MODO] applyModoSimulatedApproved failed:', e);
+      strapi?.log?.error?.('[modo sim] apply failed', e);
+    });
+  }, 3000);
+}
+
+function respondWithModoSimulatedCheckout(
+  ctx: any,
+  strapi: any,
+  opts: {
+    slug: string;
+    orderIds: string[];
+    table?: number;
+    tableSessionId?: string;
+    err: unknown;
+  },
+) {
+  const trx_id = `mzqr-sim-${randomUUID()}`;
+  console.warn('[MODO] MODO_SIMULATE_ON_FAILURE: checkout simulado tras error:', opts.err);
+  const tableMeta =
+    opts.table != null && Number.isFinite(Number(opts.table))
+      ? { table: Number(opts.table), tableSessionId: opts.tableSessionId?.trim() || undefined }
+      : {};
+  registerPendingModoCheckout(trx_id, {
+    orderIds: opts.orderIds,
+    slug: opts.slug,
+    ...tableMeta,
+  });
+  scheduleSimulatedModoWebhook(
+    strapi,
+    trx_id,
+    opts.orderIds,
+    opts.slug,
+    tableMeta.table,
+    tableMeta.tableSessionId,
+  );
+  ctx.status = 200;
+  ctx.body = {
+    ok: true,
+    trx_id,
+    checkoutUrl: buildModoSimulatedCheckoutUrl(opts.slug, trx_id),
+    status: { code: 'SIMULATED', message: 'modo_unavailable_fallback' },
+    simulated: true,
+  };
+}
+
 /**
  * POST /api/payments/create-modo-checkout
  * Crea el pago en MODO PCT y devuelve checkoutUrl + trx_id para el cliente.
@@ -104,6 +272,10 @@ async function createModoCheckout(ctx: any) {
   const total = Number(body.total);
   const table = body.table != null ? body.table : undefined;
   const tableSessionId = body.tableSessionId != null ? body.tableSessionId : undefined;
+  const tableNum =
+    body.table != null && Number.isFinite(Number(body.table)) ? Number(body.table) : undefined;
+  const tableSessionStr =
+    body.tableSessionId != null ? String(body.tableSessionId).trim() || undefined : undefined;
   const orderIdsRaw = body.orderIds;
   const orderIds = Array.isArray(orderIdsRaw)
     ? orderIdsRaw.map((x) => String(x)).filter((s) => s.length > 0)
@@ -192,6 +364,16 @@ async function createModoCheckout(ctx: any) {
       strapi?.log?.warn?.('[createModoCheckout] MODO no devolvió checkoutUrl reconocible', {
         keys: pay ? Object.keys(pay) : [],
       });
+      if (isModoSimulateOnFailureEnabled()) {
+        respondWithModoSimulatedCheckout(ctx, strapi, {
+          slug,
+          orderIds,
+          table: tableNum,
+          tableSessionId: tableSessionStr,
+          err: new Error('no checkoutUrl'),
+        });
+        return;
+      }
       ctx.status = 502;
       ctx.body = {
         ok: false,
@@ -202,7 +384,11 @@ async function createModoCheckout(ctx: any) {
       return;
     }
 
-    registerPendingModoCheckout(trxFromApi, { orderIds, slug });
+    registerPendingModoCheckout(trxFromApi, {
+      orderIds,
+      slug,
+      ...(tableNum != null ? { table: tableNum, tableSessionId: tableSessionStr } : {}),
+    });
 
     ctx.status = 200;
     ctx.body = {
@@ -212,6 +398,16 @@ async function createModoCheckout(ctx: any) {
       status: data.status ?? null,
     };
   } catch (e) {
+    if (isModoSimulateOnFailureEnabled()) {
+      respondWithModoSimulatedCheckout(ctx, strapi, {
+        slug,
+        orderIds,
+        table: tableNum,
+        tableSessionId: tableSessionStr,
+        err: e,
+      });
+      return;
+    }
     respondModoError(ctx, e);
   }
 }
@@ -246,6 +442,17 @@ async function getPaymentStatus(ctx: any) {
   if (isModoTrxWebhookApproved(trxId)) {
     ctx.status = 200;
     ctx.body = { ok: true, status: { code: 'APPROVED', message: 'confirmed_by_webhook' }, source: 'webhook' };
+    return;
+  }
+
+  const pendingSim = getPendingModoCheckout(trxId);
+  if (pendingSim && trxId.startsWith('mzqr-sim-')) {
+    ctx.status = 200;
+    ctx.body = {
+      ok: true,
+      status: { code: 'PENDING', message: 'simulated_checkout' },
+      source: 'simulated',
+    };
     return;
   }
 
