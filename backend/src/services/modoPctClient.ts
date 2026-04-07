@@ -1,7 +1,7 @@
 /**
  * Cliente HTTP para PCT Online (MODO) según modo-pct-api.json.
  * Requiere: MODO_BASE_URL (o MODO_PCP_BASE_URL), MODO_CLIENT_ID, MODO_CLIENT_SECRET.
- * Bearer: si MODO_BEARER_TOKEN está vacío, se obtiene con OAuth2 client_credentials (getModoToken) y se cachea en memoria.
+ * Bearer: si MODO_BEARER_TOKEN está vacío, OAuth2 client_credentials contra …/connections/pcp/{bcra_id}/token (misma base que PCP) o MODO_TOKEN_URL.
  * MODO_BASE_URL: prefijo hasta /pcp/{bcra_id} sin "/payment" (ej. https://.../connections/pcp/999).
  */
 
@@ -117,9 +117,42 @@ function trimEnv(key: string): string {
   return v.trim();
 }
 
-/** Token OAuth desarrollo: fija, no se deriva de MODO_BASE_URL ni de rutas PCP. */
-const MODO_AUTH_URL_DEVELOPMENT = 'https://development.api.modo.com.ar/v2/auth/token';
 const MODO_AUTH_FETCH_TIMEOUT_MS = 10_000;
+
+/**
+ * Token PCP (MODO Conexiones): POST {MODO_BASE_URL}/token — no existe en /v2/auth/token (404).
+ * Override: MODO_TOKEN_URL (URL completa).
+ */
+function resolveModoTokenUrl(): string {
+  const override = trimEnv('MODO_TOKEN_URL');
+  if (override) {
+    return override.replace(/\/+$/, '');
+  }
+
+  const base = trimEnv('MODO_PCP_BASE_URL') || trimEnv('MODO_BASE_URL');
+  if (!base) {
+    throw new ModoPctError(
+      'Falta MODO_BASE_URL para armar la URL del token PCP (…/connections/pcp/{bcra_id}/token).',
+      503,
+      undefined,
+      { missing: getModoPctEnvMissingKeys() },
+    );
+  }
+  const trimmed = base.replace(/\/+$/, '');
+  if (!/\/pcp\/[^/]+$/i.test(trimmed)) {
+    throw new ModoPctError(
+      'MODO_BASE_URL debe terminar en …/connections/pcp/{bcra_id} para derivar el token, o definí MODO_TOKEN_URL con la URL completa.',
+      503,
+      undefined,
+      {
+        missing: [
+          'MODO_BASE_URL (formato …/pcp/{bcra_id}) o MODO_TOKEN_URL',
+        ],
+      },
+    );
+  }
+  return `${trimmed}/token`;
+}
 
 /** Lista variables de entorno obligatorias (sin contar el bearer: se obtiene por OAuth si no está en .env). */
 export function getModoPctEnvMissingKeys(): string[] {
@@ -147,8 +180,8 @@ export function invalidateModoTokenCache(): void {
 }
 
 /**
- * POST a la URL de login MODO (client_credentials). No usa caché.
- * URL fija desarrollo: MODO_AUTH_URL_DEVELOPMENT (v2).
+ * POST token PCP (client_credentials). No usa caché.
+ * URL: MODO_TOKEN_URL o {MODO_BASE_URL}/token.
  */
 export async function getModoToken(): Promise<{ accessToken: string; expiresInSec: number }> {
   const clientId = trimEnv('MODO_CLIENT_ID');
@@ -187,28 +220,35 @@ function modoAuthErrorFromResponse(res: Response, data: Record<string, unknown>)
 }
 
 /**
- * POST JSON únicamente (sin Authorization). Timeout 10s.
- * client_id / client_secret vienen de process.env vía getModoToken → trimEnv.
+ * POST sin Authorization. Primero x-www-form-urlencoded (doc MODO PCP); si 415/406, JSON. Timeout 10s por intento.
  */
 async function postModoAuthTokenRequest(
   clientId: string,
   clientSecret: string,
 ): Promise<{ token: string; expiresInSec: number }> {
-  const authUrl = MODO_AUTH_URL_DEVELOPMENT;
+  const authUrl = resolveModoTokenUrl();
   console.log('[MODO Auth] URL completa intentada:', authUrl);
+
+  const formBody = new URLSearchParams({
+    grant_type: 'client_credentials',
+    client_id: clientId,
+    client_secret: clientSecret,
+  }).toString();
+
+  const jsonBody = JSON.stringify({
+    grant_type: 'client_credentials',
+    client_id: clientId,
+    client_secret: clientSecret,
+  });
 
   let res: Response;
   try {
     res = await fetch(authUrl, {
       method: 'POST',
       headers: {
-        'Content-Type': 'application/json',
+        'Content-Type': 'application/x-www-form-urlencoded',
       },
-      body: JSON.stringify({
-        grant_type: 'client_credentials',
-        client_id: clientId,
-        client_secret: clientSecret,
-      }),
+      body: formBody,
       signal: AbortSignal.timeout(MODO_AUTH_FETCH_TIMEOUT_MS),
     });
   } catch (netErr: unknown) {
@@ -224,8 +264,35 @@ async function postModoAuthTokenRequest(
     throw new ModoPctError('Auth MODO: error de red al contactar el endpoint de token', 502, undefined, netErr);
   }
 
-  const text = await res.text();
-  const data = (await parseJsonSafe(text)) as Record<string, unknown>;
+  let text = await res.text();
+  let data = (await parseJsonSafe(text)) as Record<string, unknown>;
+
+  if (!res.ok && (res.status === 415 || res.status === 406)) {
+    console.log('[MODO Auth] reintento application/json, URL:', authUrl);
+    try {
+      res = await fetch(authUrl, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: jsonBody,
+        signal: AbortSignal.timeout(MODO_AUTH_FETCH_TIMEOUT_MS),
+      });
+    } catch (netErr: unknown) {
+      const name = netErr instanceof Error ? netErr.name : '';
+      if (name === 'AbortError' || name === 'TimeoutError') {
+        throw new ModoPctError(
+          'Auth MODO: timeout esperando respuesta del token (10s)',
+          504,
+          undefined,
+          netErr,
+        );
+      }
+      throw new ModoPctError('Auth MODO: error de red al contactar el endpoint de token', 502, undefined, netErr);
+    }
+    text = await res.text();
+    data = (await parseJsonSafe(text)) as Record<string, unknown>;
+  }
 
   if (!res.ok) {
     if (res.status === 404) {
