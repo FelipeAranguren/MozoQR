@@ -207,3 +207,10 @@ export async function fetchModoPaymentStatus(trxId) {
   const res = await client.get(`/payments/modo/payment/${encodeURIComponent(trxId)}`);
   return res?.data;
 }
+
+/** Confirma checkout MODO simulado (equivale a webhook APPROVED en servidor). */
+export async function confirmSimulatedModo(trxId) {
+  if (!trxId) throw new Error('trxId requerido');
+  const res = await client.post('/payments/modo/confirm-simulated', { trx_id: trxId });
+  return res?.data;
+}

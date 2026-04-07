@@ -17,7 +17,7 @@ import PagoPending from './pages/PagoPending';
 import PaymentSuccess from './pages/PaymentSuccess';
 import PaymentFailure from './pages/PaymentFailure';
 import ThankYou from './pages/ThankYou';
-import PagoExitosoSimulado from './pages/PagoExitosoSimulado';
+import PagoSimulado from './pages/PagoSimulado';
 import OrderPlaced from './pages/OrderPlaced';
 import OnboardingRestaurante from './pages/OnboardingRestaurante';
 import OwnerDashboard from './pages/OwnerDashboard';
@@ -80,6 +80,7 @@ export default function App() {
           <Route path="/" element={<Home />} />
           <Route path="/demo" element={<DemoLanding />} />
           <Route path="/checkout" element={<Checkout />} />
+          <Route path="/pago-simulado" element={<PagoSimulado />} />
           {/* Legacy global: sin slug en path; debe ir ANTES de /:slug o "pago-success" se toma como slug */}
           <Route path="/pago-success" element={<PagoSuccess />} />
           <Route path="/pago-failure" element={<PagoFailure />} />
@@ -88,7 +89,6 @@ export default function App() {
           <Route path="/:slug/pago-success" element={<PagoSuccess />} />
           <Route path="/:slug/pago-failure" element={<PagoFailure />} />
           <Route path="/:slug/pago-pending" element={<PagoPending />} />
-          <Route path="/:slug/pago-exitoso-simulado" element={<PagoExitosoSimulado />} />
           <Route path="/:slug/pedido/:orderId" element={<OrderPlaced />} />
           <Route path="/:slug/menu" element={<RestaurantMenuEntry />} />
           <Route path="/:slug" element={<RestaurantMenuEntry />} />

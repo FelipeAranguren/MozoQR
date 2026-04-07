@@ -5,6 +5,7 @@ import {
   extractCheckoutUrl,
   getModoPaymentStatusWithConfigRefresh,
   getModoPctEnvMissingKeys,
+  clearPendingModoCheckout,
   getPendingModoCheckout,
   isModoSimulateOnFailureEnabled,
   isModoTrxWebhookApproved,
@@ -96,10 +97,13 @@ async function resolveOrderPk(strapi: any, ref: string | number | null): Promise
   return null;
 }
 
-function buildModoSimulatedCheckoutUrl(slug: string, trxId: string): string {
+function buildModoSimulatedCheckoutUrl(slug: string, trxId: string, monto: number): string {
   const base = getFrontendUrl().replace(/\/+$/, '');
-  const safeSlug = String(slug).trim().replace(/^\/+|\/+$/g, '') || 'menu';
-  return `${base}/${safeSlug}/pago-exitoso-simulado?trx=${encodeURIComponent(trxId)}`;
+  const safeSlug = String(slug).trim().replace(/^\/+|\/+$/g, '') || '';
+  const m = Number.isFinite(monto) ? Math.round(monto * 100) / 100 : 0;
+  const q = new URLSearchParams({ trx: trxId, monto: String(m) });
+  if (safeSlug) q.set('slug', safeSlug);
+  return `${base}/pago-simulado?${q.toString()}`;
 }
 
 /** Best-effort: misma idea que release en tenant (cerrar sesión + mesa disponible). */
@@ -205,28 +209,13 @@ async function applyModoSimulatedApproved(
   await tryReleaseTableAfterSimulatedModo(strapi, slug, table, tableSessionId);
 }
 
-function scheduleSimulatedModoWebhook(
-  strapi: any,
-  trxId: string,
-  orderIds: string[],
-  slug: string,
-  table?: number,
-  tableSessionId?: string,
-) {
-  setTimeout(() => {
-    void applyModoSimulatedApproved(strapi, trxId, orderIds, slug, table, tableSessionId).catch((e: unknown) => {
-      console.warn('[MODO] applyModoSimulatedApproved failed:', e);
-      strapi?.log?.error?.('[modo sim] apply failed', e);
-    });
-  }, 3000);
-}
-
 function respondWithModoSimulatedCheckout(
   ctx: any,
   strapi: any,
   opts: {
     slug: string;
     orderIds: string[];
+    total: number;
     table?: number;
     tableSessionId?: string;
     err: unknown;
@@ -243,22 +232,57 @@ function respondWithModoSimulatedCheckout(
     slug: opts.slug,
     ...tableMeta,
   });
-  scheduleSimulatedModoWebhook(
-    strapi,
-    trx_id,
-    opts.orderIds,
-    opts.slug,
-    tableMeta.table,
-    tableMeta.tableSessionId,
-  );
   ctx.status = 200;
   ctx.body = {
     ok: true,
     trx_id,
-    checkoutUrl: buildModoSimulatedCheckoutUrl(opts.slug, trx_id),
+    checkoutUrl: buildModoSimulatedCheckoutUrl(opts.slug, trx_id, opts.total),
     status: { code: 'SIMULATED', message: 'modo_unavailable_fallback' },
     simulated: true,
   };
+}
+
+/**
+ * POST /api/payments/modo/confirm-simulated
+ * Confirma un checkout simulado (misma lógica que webhook APPROVED + notificación mozo + liberar mesa).
+ */
+async function confirmSimulatedModo(ctx: any) {
+  const strapi = getStrapi(ctx);
+  const body = (ctx.request.body ?? {}) as Record<string, unknown>;
+  const trxId = String(body.trx_id ?? body.trxId ?? '').trim();
+  if (!trxId.startsWith('mzqr-sim-')) {
+    ctx.status = 400;
+    ctx.body = { ok: false, error: 'trx_id inválido para simulación.' };
+    return;
+  }
+  if (isModoTrxWebhookApproved(trxId)) {
+    ctx.status = 200;
+    ctx.body = { ok: true, alreadyConfirmed: true };
+    return;
+  }
+  const pending = getPendingModoCheckout(trxId);
+  if (!pending) {
+    ctx.status = 404;
+    ctx.body = { ok: false, error: 'Transacción no encontrada o expirada.' };
+    return;
+  }
+  try {
+    await applyModoSimulatedApproved(
+      strapi,
+      trxId,
+      pending.orderIds,
+      pending.slug,
+      pending.table,
+      pending.tableSessionId,
+    );
+    clearPendingModoCheckout(trxId);
+    ctx.status = 200;
+    ctx.body = { ok: true };
+  } catch (e: unknown) {
+    strapi?.log?.error?.('[confirmSimulatedModo]', e);
+    ctx.status = 500;
+    ctx.body = { ok: false, error: e instanceof Error ? e.message : 'Error al confirmar.' };
+  }
 }
 
 /**
@@ -368,6 +392,7 @@ async function createModoCheckout(ctx: any) {
         respondWithModoSimulatedCheckout(ctx, strapi, {
           slug,
           orderIds,
+          total,
           table: tableNum,
           tableSessionId: tableSessionStr,
           err: new Error('no checkoutUrl'),
@@ -402,6 +427,7 @@ async function createModoCheckout(ctx: any) {
       respondWithModoSimulatedCheckout(ctx, strapi, {
         slug,
         orderIds,
+        total,
         table: tableNum,
         tableSessionId: tableSessionStr,
         err: e,
@@ -564,4 +590,5 @@ export default {
   createPayment,
   getPaymentStatus,
   webhook,
+  confirmSimulatedModo,
 };
