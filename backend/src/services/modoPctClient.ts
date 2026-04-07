@@ -259,7 +259,7 @@ export async function getModoPctConfigAsync(): Promise<ModoPctConfig> {
   const missing = getModoPctEnvMissingKeys();
   if (missing.length > 0) {
     throw new ModoPctError(
-      'MODO no está listo: faltan variables en el .env del backend (Strapi). Guardá y reiniciá el proceso.',
+      'MODO no está listo: faltan variables de entorno en el servidor (Strapi). En Railway u otro host, cargalas en el panel de Variables y redeploy; el archivo .env local no se incluye en el deploy.',
       503,
       undefined,
       { missing },

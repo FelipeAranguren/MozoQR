@@ -6,6 +6,15 @@ console.log("MP_ACCESS_TOKEN:", process.env.MP_ACCESS_TOKEN ? "SÍ (len=" + proc
 console.log("MERCADOPAGO_ACCESS_TOKEN:", process.env.MERCADOPAGO_ACCESS_TOKEN ? "SÍ" : "NO");
 console.log("MERCADO_PAGO_ACCESS_TOKEN:", process.env.MERCADO_PAGO_ACCESS_TOKEN ? "SÍ" : "NO");
 
+function envSet(name) {
+  const v = process.env[name];
+  return typeof v === "string" && v.trim().length > 0;
+}
+console.log("MODO_BASE_URL / MODO_PCP_BASE_URL:", envSet("MODO_BASE_URL") || envSet("MODO_PCP_BASE_URL") ? "SÍ" : "NO");
+console.log("MODO_CLIENT_ID:", envSet("MODO_CLIENT_ID") ? "SÍ" : "NO");
+console.log("MODO_CLIENT_SECRET:", envSet("MODO_CLIENT_SECRET") ? "SÍ" : "NO");
+console.log("MODO_BEARER_TOKEN (opcional si OAuth):", envSet("MODO_BEARER_TOKEN") || envSet("MODO_ACCESS_TOKEN") ? "SÍ" : "NO");
+
 const fs = require('fs');
 const path = require('path');
 
