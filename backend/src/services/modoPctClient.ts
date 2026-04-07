@@ -5,7 +5,8 @@
  * MODO_BASE_URL: prefijo hasta /pcp/{bcra_id} sin "/payment" (ej. https://.../connections/pcp/999).
  */
 
-import type { IncomingHttpHeaders } from 'node:http';
+/** Cabeceras de request (compatible con Koa/Strapi y Node). */
+export type ModoWebhookRequestHeaders = Record<string, string | string[] | undefined>;
 
 /** Cuerpo POST /pcp/{bcra_id}/payment (subset del OpenAPI). */
 export interface ModoCreatePaymentBody {
@@ -110,7 +111,8 @@ export class ModoPctError extends Error {
 }
 
 function trimEnv(key: string): string {
-  const v = process.env[key];
+  const env = process.env as Record<string, string | undefined>;
+  const v = env[key];
   if (v == null || typeof v !== 'string') return '';
   return v.trim();
 }
@@ -465,7 +467,7 @@ export function getSimulatedModoOrderSnapshot(trxId: string) {
 }
 
 /** Intenta leer el secret del webhook desde header (opcional). */
-export function verifyModoWebhookSecret(headers: IncomingHttpHeaders): boolean {
+export function verifyModoWebhookSecret(headers: ModoWebhookRequestHeaders): boolean {
   const expected = trimEnv('MODO_WEBHOOK_SECRET');
   if (!expected) return true;
   const got =
