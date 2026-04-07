@@ -190,91 +190,165 @@ function parseModoTokenFromPayload(data: Record<string, unknown>): { token: stri
 }
 
 function modoAuthErrorFromResponse(res: Response, data: Record<string, unknown>): ModoPctError {
-  const msg =
+  const modoLine =
+    (typeof data.message === 'string' && data.message.trim()) ||
     (typeof data.error_description === 'string' && data.error_description) ||
     (typeof data.error === 'string' && data.error) ||
     res.statusText;
-  return new ModoPctError(`Auth MODO falló (${res.status})`, res.status >= 500 ? 502 : 503, msg, data);
+  const extra =
+    typeof data.status_code === 'number' && data.status_code !== res.status
+      ? `; MODO status_code=${data.status_code}`
+      : '';
+  const userText = `Auth MODO falló (HTTP ${res.status})${extra}: ${modoLine}`;
+  return new ModoPctError(userText, res.status >= 500 ? 502 : 503, modoLine, data);
 }
 
-async function fetchModoAuthTokenAtUrl(
-  url: string,
-  jsonBody: string,
-): Promise<{ res: Response; data: Record<string, unknown> }> {
-  console.log('[MODO Auth] URL intentada:', url);
-  let res: Response;
-  try {
-    res = await fetch(url, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: jsonBody,
-      signal: AbortSignal.timeout(MODO_AUTH_FETCH_TIMEOUT_MS),
-    });
-  } catch (netErr: unknown) {
-    console.error('[MODO Auth] excepción al solicitar token:', netErr);
-    const name = netErr instanceof Error ? netErr.name : '';
-    if (name === 'AbortError' || name === 'TimeoutError') {
-      throw new ModoPctError(
-        'Auth MODO: timeout esperando respuesta del token (10s)',
-        504,
-        undefined,
-        netErr,
-      );
-    }
-    throw new ModoPctError('Auth MODO: error de red al contactar el endpoint de token', 502, undefined, netErr);
-  }
+/** Reintentar con otro formato si el servidor no reconoce credenciales en el body (401/400/415/406). */
+const MODO_AUTH_RETRY_STATUSES = new Set([401, 400, 415, 406]);
 
-  const text = await res.text();
-  const data = (await parseJsonSafe(text)) as Record<string, unknown>;
-
-  if (!res.ok) {
-    console.error('Cuerpo del error de MODO:', text);
-    if (res.status === 404) {
-      console.error('URL de Auth fallida: ' + url);
-    }
-  }
-
-  return { res, data };
-}
+type ModoTokenStrategiesResult =
+  | { success: true; token: string; expiresInSec: number }
+  | { success: false; res: Response; data: Record<string, unknown>; saw404: boolean };
 
 /**
- * Solo Content-Type: application/json y body con grant_type, client_id, client_secret.
+ * Varias formas de enviar client_credentials (JSON, form, o client_id/secret en headers como en modo-pct-api).
  */
+function isModoTokenFail(
+  r: ModoTokenStrategiesResult,
+): r is Extract<ModoTokenStrategiesResult, { success: false }> {
+  return r.success === false;
+}
+
+async function tryModoTokenStrategiesAtUrl(
+  url: string,
+  clientId: string,
+  clientSecret: string,
+): Promise<ModoTokenStrategiesResult> {
+  const strategies: { label: string; headers: Record<string, string>; body: string }[] = [
+    {
+      label: 'JSON body (grant_type + client_id + client_secret)',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        grant_type: 'client_credentials',
+        client_id: clientId,
+        client_secret: clientSecret,
+      }),
+    },
+    {
+      label: 'application/x-www-form-urlencoded',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({
+        grant_type: 'client_credentials',
+        client_id: clientId,
+        client_secret: clientSecret,
+      }).toString(),
+    },
+    {
+      label: 'headers client_id + client_secret (como PCT) + JSON solo grant_type',
+      headers: {
+        'Content-Type': 'application/json',
+        client_id: clientId,
+        client_secret: clientSecret,
+      },
+      body: JSON.stringify({ grant_type: 'client_credentials' }),
+    },
+    {
+      label: 'headers client_id + client_secret + form solo grant_type',
+      headers: {
+        'Content-Type': 'application/x-www-form-urlencoded',
+        client_id: clientId,
+        client_secret: clientSecret,
+      },
+      body: new URLSearchParams({ grant_type: 'client_credentials' }).toString(),
+    },
+  ];
+
+  let saw404 = false;
+  let last: { res: Response; data: Record<string, unknown>; text: string } | null = null;
+
+  for (const s of strategies) {
+    console.log(`[MODO Auth] URL: ${url} · ${s.label}`);
+    let res: Response;
+    try {
+      res = await fetch(url, {
+        method: 'POST',
+        headers: s.headers,
+        body: s.body,
+        signal: AbortSignal.timeout(MODO_AUTH_FETCH_TIMEOUT_MS),
+      });
+    } catch (netErr: unknown) {
+      console.error(`[MODO Auth] excepción (${s.label}):`, netErr);
+      const name = netErr instanceof Error ? netErr.name : '';
+      if (name === 'AbortError' || name === 'TimeoutError') {
+        throw new ModoPctError(
+          'Auth MODO: timeout esperando respuesta del token (10s)',
+          504,
+          undefined,
+          netErr,
+        );
+      }
+      throw new ModoPctError('Auth MODO: error de red al contactar el endpoint de token', 502, undefined, netErr);
+    }
+
+    const text = await res.text();
+    const data = (await parseJsonSafe(text)) as Record<string, unknown>;
+    last = { res, data, text };
+
+    if (!res.ok) {
+      console.error('Cuerpo del error de MODO:', text);
+      if (res.status === 404) {
+        console.error('URL de Auth fallida: ' + url);
+        saw404 = true;
+        break;
+      }
+      if (!MODO_AUTH_RETRY_STATUSES.has(res.status)) {
+        break;
+      }
+      continue;
+    }
+
+    try {
+      const parsed = parseModoTokenFromPayload(data);
+      return { success: true as const, token: parsed.token, expiresInSec: parsed.expiresInSec };
+    } catch {
+      console.error(`[MODO Auth] HTTP 200 pero sin access_token (${s.label}):`, text);
+      break;
+    }
+  }
+
+  if (!last) {
+    throw new ModoPctError('Auth MODO: sin respuesta del servidor', 503);
+  }
+  return { success: false as const, res: last.res, data: last.data, saw404 };
+}
+
 async function postModoAuthTokenRequest(
   clientId: string,
   clientSecret: string,
 ): Promise<{ token: string; expiresInSec: number }> {
-  const jsonBody = JSON.stringify({
-    grant_type: 'client_credentials',
-    client_id: clientId,
-    client_secret: clientSecret,
-  });
-
   const urls = modoAuthTokenUrls();
 
   if (urls.length === 1) {
-    const { res, data } = await fetchModoAuthTokenAtUrl(urls[0], jsonBody);
-    if (res.ok) {
-      return parseModoTokenFromPayload(data);
+    const r = await tryModoTokenStrategiesAtUrl(urls[0], clientId, clientSecret);
+    if (isModoTokenFail(r)) {
+      throw modoAuthErrorFromResponse(r.res, r.data);
     }
-    throw modoAuthErrorFromResponse(res, data);
+    return { token: r.token, expiresInSec: r.expiresInSec };
   }
 
-  const first = await fetchModoAuthTokenAtUrl(urls[0], jsonBody);
-  if (first.res.ok) {
-    return parseModoTokenFromPayload(first.data);
+  const first = await tryModoTokenStrategiesAtUrl(urls[0], clientId, clientSecret);
+  if (!isModoTokenFail(first)) {
+    return { token: first.token, expiresInSec: first.expiresInSec };
   }
-  if (first.res.status !== 404) {
+  if (!first.saw404) {
     throw modoAuthErrorFromResponse(first.res, first.data);
   }
 
-  const second = await fetchModoAuthTokenAtUrl(urls[1], jsonBody);
-  if (second.res.ok) {
-    return parseModoTokenFromPayload(second.data);
+  const second = await tryModoTokenStrategiesAtUrl(urls[1], clientId, clientSecret);
+  if (isModoTokenFail(second)) {
+    throw modoAuthErrorFromResponse(second.res, second.data);
   }
-  throw modoAuthErrorFromResponse(second.res, second.data);
+  return { token: second.token, expiresInSec: second.expiresInSec };
 }
 
 async function fetchFreshModoAccessToken(
