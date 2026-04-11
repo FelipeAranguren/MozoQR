@@ -5,6 +5,7 @@
  * Token OAuth (API Conexiones): POST …/connections/oauth/token (no usar /backend/v1/auth ni /v2/auth — devuelven 404 en los hosts oficiales).
  * Base PCP: …/connections/pcp/{bcra_id} sin "/payment" (sin prefijo /backend/v1).
  * MODO_BASE_URL: si no está definido: development.api.modo.com.ar o api.modo.com.ar según NODE_ENV.
+ * Opcional: MODO_API_KEY (header x-api-key en API Gateway; suele ser obligatorio si el token responde 403 Missing Authentication Token).
  */
 
 /** Cabeceras de request (compatible con Koa/Strapi y Node). */
@@ -141,6 +142,17 @@ function normalizeModoApiHostname(hostname: string): string {
 function defaultPcpBcraId(): string {
   const b = trimEnv('MODO_PCP_BCRA_ID');
   return b && /^\d+$/.test(b) ? b : '999';
+}
+
+/** API Gateway (MODO) suele exigir `x-api-key` además de client_id/secret en el body. */
+function modoApiGatewayExtraHeaders(): Record<string, string> {
+  const k = trimEnv('MODO_API_KEY') || trimEnv('MODO_X_API_KEY');
+  if (!k) return {};
+  return { 'x-api-key': k };
+}
+
+function hasModoApiKeyInEnv(): boolean {
+  return Boolean(trimEnv('MODO_API_KEY') || trimEnv('MODO_X_API_KEY'));
 }
 
 /** No producción — OAuth client_credentials (ruta real en API Conexiones). */
@@ -369,8 +381,13 @@ function modoAuthErrorFromResponse(
       : '';
   let userText = `Auth MODO falló (HTTP ${res.status})${extra}: ${modoLine}`;
   if (res.status === 403 && /missing authentication token/i.test(modoLine)) {
-    userText +=
-      ' Suele pasar con credenciales de desarrollo mientras NODE_ENV=production apunta a api.modo.com.ar. Definí MODO_TOKEN_URL=https://development.api.modo.com.ar/connections/oauth/token y MODO_BASE_URL=https://development.api.modo.com.ar/connections/pcp/999 (o el BCRA que te asignó MODO).';
+    if (hasModoApiKeyInEnv()) {
+      userText +=
+        ' Revisá que MODO_API_KEY sea la API key del mismo entorno que MODO_CLIENT_ID (portal MODO Conexiones / API Gateway).';
+    } else {
+      userText +=
+        ' Suele faltar el header x-api-key del API Gateway: definí MODO_API_KEY en Railway con la clave que te da MODO (además de client_id/secret). Si usás credenciales de desarrollo con NODE_ENV=production, fijá también MODO_TOKEN_URL y MODO_BASE_URL al host development.';
+    }
   }
   const details: Record<string, unknown> = {
     ...data,
@@ -399,8 +416,6 @@ function isModoTokenFail(
 
 type ModoTokenStrategy = {
   label: string;
-  /** Si true, no se envían X-Client-Id / X-Client-Secret (p. ej. Basic Auth). */
-  skipClientHeaders?: boolean;
   headers: Record<string, string>;
   body: string;
 };
@@ -410,8 +425,6 @@ async function tryModoTokenStrategiesAtUrl(
   clientId: string,
   clientSecret: string,
 ): Promise<ModoTokenStrategiesResult> {
-  const basicAuth = Buffer.from(`${clientId}:${clientSecret}`, 'utf8').toString('base64');
-
   const strategies: ModoTokenStrategy[] = [
     {
       label: 'JSON body (grant_type + client_id + client_secret) + X-Client-Id / X-Client-Secret',
@@ -449,40 +462,19 @@ async function tryModoTokenStrategiesAtUrl(
       },
       body: new URLSearchParams({ grant_type: 'client_credentials' }).toString(),
     },
-    {
-      skipClientHeaders: true,
-      label: 'Basic Auth + urlencoded grant_type=client_credentials (sin X-Client-*)',
-      headers: {
-        'Content-Type': 'application/x-www-form-urlencoded',
-        Authorization: `Basic ${basicAuth}`,
-      },
-      body: new URLSearchParams({ grant_type: 'client_credentials' }).toString(),
-    },
-    {
-      skipClientHeaders: true,
-      label: 'Basic Auth + JSON grant_type=client_credentials (sin X-Client-*)',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Basic ${basicAuth}`,
-      },
-      body: JSON.stringify({ grant_type: 'client_credentials' }),
-    },
   ];
 
   let last: { res: Response; data: Record<string, unknown>; text: string } | null = null;
 
   console.log(
-    `[MODO Auth] Inicio OAuth client_credentials · URL completa: ${url} · NODE_ENV=${String(process.env.NODE_ENV)} · client_id=${maskClientId(clientId)} · client_secret=(no logueado)`,
+    `[MODO Auth] Inicio OAuth client_credentials · URL completa: ${url} · NODE_ENV=${String(process.env.NODE_ENV)} · client_id=${maskClientId(clientId)} · x-api-key=${hasModoApiKeyInEnv() ? '(definido)' : '(no definido — si ves Missing Authentication Token, agregá MODO_API_KEY)'}`,
   );
 
   for (const s of strategies) {
     const headers: Record<string, string> = {
-      ...(s.skipClientHeaders
-        ? {}
-        : {
-            'X-Client-Id': clientId,
-            'X-Client-Secret': clientSecret,
-          }),
+      ...modoApiGatewayExtraHeaders(),
+      'X-Client-Id': clientId,
+      'X-Client-Secret': clientSecret,
       ...s.headers,
     };
     console.log(`[MODO Auth] Intento · URL: ${url} · estrategia: ${s.label}`);
@@ -619,7 +611,7 @@ export async function getModoPctConfigAsync(): Promise<ModoPctConfig> {
 
   const tokenUrlResolved = modoAuthTokenUrl();
   console.log(
-    `[MODO PCP config] NODE_ENV=${String(process.env.NODE_ENV)} · pcpBaseUrl=${base} · tokenUrl=${tokenUrlResolved} · client_id=${maskClientId(clientId)}`,
+    `[MODO PCP config] NODE_ENV=${String(process.env.NODE_ENV)} · pcpBaseUrl=${base} · tokenUrl=${tokenUrlResolved} · client_id=${maskClientId(clientId)} · x-api-key=${hasModoApiKeyInEnv() ? '(definido)' : '(no)'}`,
   );
 
   const bearerToken = await getModoAccessTokenCached(clientId, clientSecret);
@@ -639,6 +631,7 @@ export function modoPctUsesOAuthBearer(): boolean {
 
 function buildAuthHeaders(config: ModoPctConfig): Record<string, string> {
   return {
+    ...modoApiGatewayExtraHeaders(),
     Authorization: `Bearer ${config.bearerToken}`,
     client_id: config.clientId,
     client_secret: config.clientSecret,
