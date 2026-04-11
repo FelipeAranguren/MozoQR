@@ -1,8 +1,9 @@
 /**
  * Cliente HTTP para PCT Online (MODO) según modo-pct-api.json.
  * Requiere: MODO_BASE_URL (o MODO_PCP_BASE_URL), MODO_CLIENT_ID, MODO_CLIENT_SECRET.
- * Bearer: si MODO_BEARER_TOKEN está vacío, OAuth2 client_credentials contra MODO_TOKEN_URL o por defecto https://api.modo.com.ar/v2/auth/token.
- * MODO_BASE_URL: prefijo hasta /pcp/{bcra_id} sin "/payment"; si no está definido se usa development …/pcp/999.
+ * Bearer: si MODO_BEARER_TOKEN está vacío, OAuth2 client_credentials contra MODO_TOKEN_URL o el default según NODE_ENV (Sandbox vs producción).
+ * Las rutas públicas incluyen el segmento /backend antes de /v1|/v2 (p. ej. …/backend/v1/auth/token).
+ * MODO_BASE_URL: prefijo hasta /pcp/{bcra_id} sin "/payment"; si no está definido: Sandbox o producción según NODE_ENV.
  */
 
 /** Cabeceras de request (compatible con Koa/Strapi y Node). */
@@ -122,16 +123,96 @@ function trimEnv(key: string): string {
 
 const MODO_AUTH_FETCH_TIMEOUT_MS = 10_000;
 
-/** Token OAuth MODO (v2). MODO_TOKEN_URL en .env debe coincidir con esta URL si la fijás explícitamente. */
-export const MODO_DEFAULT_TOKEN_URL = 'https://api.modo.com.ar/v2/auth/token';
+/** Sandbox — token OAuth (incluye /backend/v1). */
+export const MODO_SANDBOX_TOKEN_URL = 'https://sandbox.api.modo.com.ar/backend/v1/auth/token';
 
-/** PCP sandbox/development por defecto (sin trailing slash). */
-export const MODO_DEFAULT_PCP_BASE_URL = 'https://development.api.modo.com.ar/connections/pcp/999';
+/** Producción — token OAuth (incluye /backend/v1). */
+export const MODO_PRODUCTION_TOKEN_URL = 'https://api.modo.com.ar/backend/v1/auth/token';
+
+/** Sandbox — base PCP hasta /pcp/{bcra_id} sin "/payment". */
+export const MODO_SANDBOX_PCP_BASE_URL = 'https://sandbox.api.modo.com.ar/backend/v1/connections/pcp/999';
+
+/** Producción — base PCP hasta /pcp/{bcra_id} sin "/payment". */
+export const MODO_PRODUCTION_PCP_BASE_URL = 'https://api.modo.com.ar/backend/v1/connections/pcp/999';
+
+/**
+ * Default de token según NODE_ENV (production → API prod; cualquier otro → Sandbox).
+ * MODO_TOKEN_URL en .env tiene prioridad (se normaliza si falta /backend/).
+ */
+export const MODO_DEFAULT_TOKEN_URL = MODO_SANDBOX_TOKEN_URL;
+
+/** Default PCP cuando no hay MODO_BASE_URL / MODO_PCP_BASE_URL (misma regla que token). */
+export const MODO_DEFAULT_PCP_BASE_URL = MODO_SANDBOX_PCP_BASE_URL;
+
+function isProductionNodeEnv(): boolean {
+  return process.env.NODE_ENV === 'production';
+}
+
+/** Enmascara client_id para logs (no exponer secret). */
+function maskClientId(id: string): string {
+  const t = id.trim();
+  if (!t) return '(vacío)';
+  if (t.length <= 6) return `(len=${t.length})`;
+  return `${t.slice(0, 4)}…${t.slice(-2)} (len=${t.length})`;
+}
+
+/**
+ * Corrige URLs de auth en host *.modo.com.ar si vinieron sin /backend/… (404 típico).
+ * Ej.: …/v1/auth/token → …/backend/v1/auth/token
+ */
+export function ensureModoAuthUrlHasBackend(url: string): string {
+  const trimmed = url.replace(/\/+$/, '');
+  try {
+    const u = new URL(trimmed);
+    if (!/\.modo\.com\.ar$/i.test(u.hostname)) return trimmed;
+    let p = u.pathname.replace(/\/+$/, '') || '/';
+    if (p.includes('/backend/')) return trimmed;
+    const m = p.match(/^\/(v\d+)\/(auth\/token)$/i);
+    if (m) {
+      u.pathname = `/backend/${m[1]}/${m[2]}`;
+      return u.toString().replace(/\/+$/, '');
+    }
+    return trimmed;
+  } catch {
+    return trimmed;
+  }
+}
+
+/**
+ * Corrige base PCP si falta /backend/v1 antes de /connections/… (URLs legacy).
+ */
+export function ensureModoPcpBaseUrlHasBackend(url: string): string {
+  const trimmed = url.replace(/\/+$/, '');
+  try {
+    const u = new URL(trimmed);
+    if (!/\.modo\.com\.ar$/i.test(u.hostname)) return trimmed;
+    let p = u.pathname.replace(/\/+$/, '') || '/';
+    if (p.includes('/backend/')) return trimmed;
+    if (/^\/connections\//i.test(p)) {
+      u.pathname = '/backend/v1' + p;
+      return u.toString().replace(/\/+$/, '');
+    }
+    const vm = p.match(/^\/(v\d+)\/(connections\/.*)$/i);
+    if (vm) {
+      u.pathname = '/backend/' + vm[1] + '/' + vm[2];
+      return u.toString().replace(/\/+$/, '');
+    }
+    return trimmed;
+  } catch {
+    return trimmed;
+  }
+}
 
 function modoAuthTokenUrl(): string {
   const override = trimEnv('MODO_TOKEN_URL');
-  if (override) return override.replace(/\/+$/, '');
-  return MODO_DEFAULT_TOKEN_URL;
+  if (override) return ensureModoAuthUrlHasBackend(override.replace(/\/+$/, ''));
+  return ensureModoAuthUrlHasBackend(
+    isProductionNodeEnv() ? MODO_PRODUCTION_TOKEN_URL : MODO_SANDBOX_TOKEN_URL,
+  );
+}
+
+function modoDefaultPcpBaseUrl(): string {
+  return isProductionNodeEnv() ? MODO_PRODUCTION_PCP_BASE_URL : MODO_SANDBOX_PCP_BASE_URL;
 }
 
 /** Lista variables de entorno obligatorias (sin contar el bearer: se obtiene por OAuth si no está en .env). Base PCP y token tienen defaults en código. */
@@ -158,7 +239,8 @@ export function invalidateModoTokenCache(): void {
 
 /**
  * POST token (client_credentials). No usa caché.
- * URL: MODO_TOKEN_URL o por defecto https://api.modo.com.ar/v2/auth/token (headers X-Client-Id / X-Client-Secret + body).
+ * URL: MODO_TOKEN_URL o default Sandbox/producción (NODE_ENV) con path …/backend/v1/auth/token.
+ * Body: grant_type, client_id, client_secret (JSON o form; reintentos con headers X-Client-*).
  */
 export async function getModoToken(): Promise<{ accessToken: string; expiresInSec: number }> {
   const clientId = trimEnv('MODO_CLIENT_ID');
@@ -274,13 +356,17 @@ async function tryModoTokenStrategiesAtUrl(
 
   let last: { res: Response; data: Record<string, unknown>; text: string } | null = null;
 
+  console.log(
+    `[MODO Auth] Inicio OAuth client_credentials · URL completa: ${url} · NODE_ENV=${String(process.env.NODE_ENV)} · client_id=${maskClientId(clientId)} · client_secret=(no logueado)`,
+  );
+
   for (const s of strategies) {
     const headers: Record<string, string> = {
       'X-Client-Id': clientId,
       'X-Client-Secret': clientSecret,
       ...s.headers,
     };
-    console.log(`[MODO Auth] URL: ${url} · ${s.label}`);
+    console.log(`[MODO Auth] Intento · URL: ${url} · estrategia: ${s.label}`);
     let res: Response;
     try {
       res = await fetch(url, {
@@ -392,17 +478,23 @@ export async function getModoPctConfigAsync(): Promise<ModoPctConfig> {
     );
   }
 
-  const base =
+  const rawBase =
     trimEnv('MODO_PCP_BASE_URL') ||
     trimEnv('MODO_BASE_URL') ||
-    MODO_DEFAULT_PCP_BASE_URL;
+    modoDefaultPcpBaseUrl();
+  const base = ensureModoPcpBaseUrlHasBackend(rawBase).replace(/\/+$/, '');
   const clientId = trimEnv('MODO_CLIENT_ID');
   const clientSecret = trimEnv('MODO_CLIENT_SECRET');
+
+  const tokenUrlResolved = modoAuthTokenUrl();
+  console.log(
+    `[MODO PCP config] NODE_ENV=${String(process.env.NODE_ENV)} · pcpBaseUrl=${base} · tokenUrl=${tokenUrlResolved} · client_id=${maskClientId(clientId)}`,
+  );
 
   const bearerToken = await getModoAccessTokenCached(clientId, clientSecret);
 
   return {
-    pcpBaseUrl: base.replace(/\/+$/, ''),
+    pcpBaseUrl: base,
     clientId,
     clientSecret,
     bearerToken,
@@ -461,6 +553,9 @@ export async function createModoPayment(
   config: ModoPctConfig,
 ): Promise<ModoCreatePaymentResponse> {
   const url = `${config.pcpBaseUrl}/payment`;
+  console.log(
+    `[MODO PCP] POST crear pago · URL completa: ${url} · client_id=${maskClientId(config.clientId)} · client_secret=(no logueado)`,
+  );
   let res: Response;
   try {
     res = await fetch(url, {
@@ -506,6 +601,9 @@ export async function createModoPayment(
 export async function getModoPaymentStatus(trxId: string, config: ModoPctConfig): Promise<ModoStatus> {
   const id = encodeURIComponent(String(trxId).trim());
   const url = `${config.pcpBaseUrl}/payment/${id}`;
+  console.log(
+    `[MODO PCP] GET estado pago · URL completa: ${url} · client_id=${maskClientId(config.clientId)} · client_secret=(no logueado)`,
+  );
   let res: Response;
   try {
     res = await fetch(url, {

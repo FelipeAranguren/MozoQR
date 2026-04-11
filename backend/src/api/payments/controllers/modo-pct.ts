@@ -39,7 +39,7 @@ function respondModoError(ctx: any, err: unknown) {
     if (missingFromErr?.length) {
       body.missing = missingFromErr;
       body.hint =
-        'Definí esas variables en el entorno del servidor (Railway, etc.). MODO_BEARER_TOKEN es opcional: si no está, se usa OAuth contra MODO_TOKEN_URL o https://api.modo.com.ar/v2/auth/token.';
+        'Definí esas variables en el entorno del servidor (Railway, etc.). MODO_BEARER_TOKEN es opcional: si no está, se usa OAuth contra MODO_TOKEN_URL o el endpoint por defecto según NODE_ENV (Sandbox: sandbox.api.modo.com.ar/backend/v1/auth/token; producción: api.modo.com.ar/backend/v1/auth/token).';
     } else if (err.statusCode === 503) {
       body.missing = getModoPctEnvMissingKeys();
     }
@@ -168,6 +168,10 @@ async function createModoCheckout(ctx: any) {
     typeof process.env.MODO_MERCHANT_CUIT === 'string' ? process.env.MODO_MERCHANT_CUIT.trim() : '';
 
   const trx_id = `mzqr-${randomUUID()}`;
+
+  strapi?.log?.info?.(
+    `[createModoCheckout] slug=${slug} trx_id=${trx_id} NODE_ENV=${String(process.env.NODE_ENV)} (URLs MODO en logs [MODO PCP config] / [MODO Auth])`,
+  );
 
   const modoBody: ModoCreatePaymentBody = {
     trx_id,
