@@ -1,6 +1,6 @@
 // frontend/src/pages/owner/settings/RestaurantSettings.jsx
 import React, { useState, useEffect, useRef } from 'react';
-import { useParams } from 'react-router-dom';
+import { useParams, useSearchParams } from 'react-router-dom';
 import {
   Box,
   Typography,
@@ -20,10 +20,12 @@ import { MARANA_COLORS } from '../../../theme';
 import { fetchRestaurant, updateRestaurant } from '../../../api/restaurant';
 import { fetchMercadoPagoMethodBySlug, saveMercadoPagoMethodBySlug } from '../../../api/paymentMethods';
 import { useDemoAccess } from '../../../context/DemoAccessContext';
+import { buildMercadoPagoAuthorizationUrl, getMercadoPagoOAuthRedirectUri } from '../../../utils/mercadopagoOAuthUrl';
 
 export default function RestaurantSettings() {
   const { isDemoAccess } = useDemoAccess();
   const { slug } = useParams();
+  const [searchParams, setSearchParams] = useSearchParams();
   const fileInputRef = useRef(null);
   const logoObjectUrlRef = useRef(null); // Ref para almacenar la URL del objeto y poder acceder desde cualquier función
   
@@ -44,6 +46,43 @@ export default function RestaurantSettings() {
   useEffect(() => {
     loadRestaurant();
   }, [slug]);
+
+  /** Tras volver de Mercado Pago OAuth (?mp_oauth=success|error) */
+  useEffect(() => {
+    const oauth = searchParams.get('mp_oauth');
+    if (!oauth) return;
+
+    if (oauth === 'success') {
+      setMessage({
+        type: 'success',
+        text: 'Mercado Pago conectado correctamente. Las credenciales ya están asociadas a este restaurante.',
+      });
+    } else if (oauth === 'error') {
+      const detail = searchParams.get('mp_msg') || 'Error al conectar con Mercado Pago';
+      setMessage({
+        type: 'error',
+        text: `No se pudo conectar con Mercado Pago: ${detail}`,
+      });
+    }
+
+    const next = new URLSearchParams(searchParams.toString());
+    next.delete('mp_oauth');
+    next.delete('mp_msg');
+    setSearchParams(next, { replace: true });
+    // Recargar método de pago por si el token llegó por OAuth
+    if (slug && oauth === 'success') {
+      (async () => {
+        try {
+          const metodo = await fetchMercadoPagoMethodBySlug(slug);
+          setMpPublicKey(metodo?.mp_public_key ?? '');
+          setMpAccessToken(metodo?.mp_access_token ?? '');
+          setMpHasAccessToken(metodo?.has_access_token ?? false);
+        } catch {
+          /* ignorar */
+        }
+      })();
+    }
+  }, [slug, searchParams, setSearchParams]);
 
   // Limpiar URL de objeto al desmontar
   useEffect(() => {
@@ -284,6 +323,62 @@ export default function RestaurantSettings() {
                 y nunca se muestran completas.
               </Typography>
               <Divider sx={{ mb: 2 }} />
+
+              <Box
+                sx={{
+                  mb: 2,
+                  p: 2,
+                  borderRadius: 2,
+                  bgcolor: 'rgba(0, 158, 227, 0.06)',
+                  border: '1px solid rgba(0, 158, 227, 0.25)',
+                }}
+              >
+                <Typography variant="subtitle2" sx={{ fontWeight: 700, mb: 0.5 }}>
+                  Conectar cuenta de Mercado Pago
+                </Typography>
+                <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+                  Abrí el login de Mercado Pago para autorizar a MozoQR. Al finalizar, guardamos el access token y el
+                  refresh token en <strong>Métodos de pago</strong> de este restaurante (sin reemplazar tu public key
+                  manual si ya la tenés).
+                </Typography>
+                <Button
+                  variant="contained"
+                  disabled={
+                    isDemoAccess ||
+                    mpLoading ||
+                    !restaurant ||
+                    !(restaurant.documentId ?? restaurant.id) ||
+                    !import.meta.env.VITE_MP_CLIENT_ID?.trim()
+                  }
+                  onClick={() => {
+                    const state = String(restaurant.documentId ?? restaurant.id ?? '');
+                    const url = buildMercadoPagoAuthorizationUrl({ state });
+                    if (!url) {
+                      setMessage({
+                        type: 'error',
+                        text: 'Falta configurar VITE_MP_CLIENT_ID en el frontend (mismo Application ID que en Mercado Pago).',
+                      });
+                      return;
+                    }
+                    window.location.href = url;
+                  }}
+                  sx={{
+                    textTransform: 'none',
+                    bgcolor: '#009EE3',
+                    '&:hover': { bgcolor: '#008ed0' },
+                  }}
+                >
+                  Conectar con Mercado Pago
+                </Button>
+                {!import.meta.env.VITE_MP_CLIENT_ID?.trim() && (
+                  <Typography variant="caption" color="text.secondary" display="block" sx={{ mt: 1.5 }}>
+                    Definí <code>VITE_MP_CLIENT_ID</code> en el build del frontend (Panel de MP → Credenciales → Client
+                    ID). Si el backend está en otro dominio que el del proxy de Vite, configurá también{' '}
+                    <code>VITE_MP_OAUTH_REDIRECT_URI</code> con la URL exacta del callback (
+                    {getMercadoPagoOAuthRedirectUri()}).
+                  </Typography>
+                )}
+              </Box>
 
               <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
                 <TextField
