@@ -45,11 +45,40 @@ async function findRestauranteByState(strapi: any, state: string): Promise<{ id:
   return null;
 }
 
+/**
+ * La respuesta de POST /oauth/token suele traer public_key junto al access_token.
+ * Si no, intentamos GET /users/me con el token del vendedor.
+ */
+async function resolveMercadoPagoPublicKey(tokenJson: any, accessToken: string): Promise<string | null> {
+  const fromOAuth =
+    tokenJson?.public_key ??
+    tokenJson?.publicKey;
+  if (typeof fromOAuth === 'string' && fromOAuth.trim().length > 0) {
+    return fromOAuth.trim();
+  }
+  try {
+    const res = await fetch('https://api.mercadopago.com/users/me', {
+      method: 'GET',
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        Accept: 'application/json',
+      },
+    });
+    const j = await res.json().catch(() => ({}));
+    const pk = j?.public_key;
+    if (typeof pk === 'string' && pk.trim().length > 0) return pk.trim();
+  } catch {
+    /* ignore */
+  }
+  return null;
+}
+
 async function upsertMercadoPagoTokens(
   strapi: any,
   restauranteId: number,
   accessToken: string,
   refreshToken: string | undefined,
+  mpPublicKey: string | null,
 ): Promise<void> {
   const rows = await strapi.entityService.findMany(METODOS_PAGO_UID, {
     filters: { restaurante: restauranteId, provider: 'mercado_pago' },
@@ -65,6 +94,9 @@ async function upsertMercadoPagoTokens(
   };
   if (refreshToken != null && String(refreshToken).length > 0) {
     data.mp_refresh_token = refreshToken;
+  }
+  if (mpPublicKey != null && mpPublicKey.length > 0) {
+    data.mp_public_key = mpPublicKey;
   }
 
   if (existing?.id != null) {
@@ -156,6 +188,9 @@ export default {
       return;
     }
 
+    const accessTrimmed = accessToken.trim();
+    const mpPublicKey = await resolveMercadoPagoPublicKey(tokenJson, accessTrimmed);
+
     const restaurante = await findRestauranteByState(strapi, String(state));
     if (!restaurante?.id) {
       redirectFrontend(ctx, '/owner', { mp_oauth: 'error', mp_msg: 'restaurant_not_found' });
@@ -166,8 +201,9 @@ export default {
       await upsertMercadoPagoTokens(
         strapi,
         restaurante.id,
-        accessToken.trim(),
+        accessTrimmed,
         typeof refreshToken === 'string' ? refreshToken.trim() : undefined,
+        mpPublicKey,
       );
     } catch (e: any) {
       strapi?.log?.error?.('[auth.mercadoPagoCallback] persist tokens', e?.message);

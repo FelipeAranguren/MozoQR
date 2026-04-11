@@ -319,8 +319,9 @@ export default function RestaurantSettings() {
                 Credenciales de Pago
               </Typography>
               <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-                Configurá las credenciales de Mercado Pago para este restaurante. Estas claves se usan para generar pagos
-                y nunca se muestran completas.
+                Podés usar el botón de abajo para conectar tu cuenta (recomendado) o cargar la Public Key y el Access
+                Token a mano. Los pagos del menú usan las credenciales de <strong>este</strong> restaurante; el access
+                token no se muestra completo por seguridad.
               </Typography>
               <Divider sx={{ mb: 2 }} />
 
@@ -337,9 +338,9 @@ export default function RestaurantSettings() {
                   Conectar cuenta de Mercado Pago
                 </Typography>
                 <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-                  Abrí el login de Mercado Pago para autorizar a MozoQR. Al finalizar, guardamos el access token y el
-                  refresh token en <strong>Métodos de pago</strong> de este restaurante (sin reemplazar tu public key
-                  manual si ya la tenés).
+                  Iniciá sesión en Mercado Pago y autorizá la aplicación. Guardamos en <strong>Métodos de pago</strong> la
+                  Public Key, el Access Token y el Refresh Token de la cuenta conectada: los cobros de clientes en este
+                  restaurante se hacen contra esa cuenta de Mercado Pago.
                 </Typography>
                 <Button
                   variant="contained"
@@ -387,7 +388,7 @@ export default function RestaurantSettings() {
                   value={mpPublicKey}
                   onChange={(e) => setMpPublicKey(e.target.value)}
                   placeholder="Ejemplo: APP_USR-6632523e-xxxx-4b8d-b4c1-0f3cxxxxxxx"
-                  helperText="Clave pública de tu aplicación de Mercado Pago."
+                  helperText="Si conectaste con el botón de arriba, suele completarse sola. Si no, pegala desde el panel de Mercado Pago."
                   InputProps={{
                     sx: {
                       bgcolor: 'white',

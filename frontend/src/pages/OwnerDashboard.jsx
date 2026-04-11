@@ -51,6 +51,9 @@ const fmtDate = new Intl.DateTimeFormat('es-AR', { dateStyle: 'short' });
 const fmtTime = new Intl.DateTimeFormat('es-AR', { timeStyle: 'short' });
 const fmtDateTime = new Intl.DateTimeFormat('es-AR', { dateStyle: 'short', timeStyle: 'short' });
 
+/** MODO/PCT: oculto hasta terminar la integración. Pasar a true para mostrar el bloque en el dashboard. */
+const SHOW_OWNER_PAYMENT_CONFIG = false;
+
 /* ========== Períodos ========== */
 const PERIODS = [
   { key: '7d', label: '7 días', computeStart: (end) => addDays(end, -6) },
@@ -638,7 +641,7 @@ export default function OwnerDashboard() {
   }, []);
 
   useEffect(() => {
-    if (!slug) return;
+    if (!SHOW_OWNER_PAYMENT_CONFIG || !slug) return;
     let cancelled = false;
     setPayCfgLoading(true);
     setPayCfgMessage(null);
@@ -892,87 +895,89 @@ export default function OwnerDashboard() {
         </Box>
       </Box>
 
-      <Box
-        component="section"
-        sx={{
-          border: `1px solid ${COLORS.border}`,
-          borderRadius: 3,
-          bgcolor: 'background.paper',
-          p: 3,
-          boxShadow: COLORS.shadow2,
-          mb: 3,
-          mt: 1,
-        }}
-        aria-labelledby="owner-pay-config-heading"
-      >
-        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1 }}>
-          <PaymentOutlinedIcon sx={{ color: 'text.secondary', fontSize: 22 }} />
-          <Typography id="owner-pay-config-heading" variant="h6" sx={{ fontWeight: 600 }}>
-            Configuración de Pagos
+      {SHOW_OWNER_PAYMENT_CONFIG && (
+        <Box
+          component="section"
+          sx={{
+            border: `1px solid ${COLORS.border}`,
+            borderRadius: 3,
+            bgcolor: 'background.paper',
+            p: 3,
+            boxShadow: COLORS.shadow2,
+            mb: 3,
+            mt: 1,
+          }}
+          aria-labelledby="owner-pay-config-heading"
+        >
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1 }}>
+            <PaymentOutlinedIcon sx={{ color: 'text.secondary', fontSize: 22 }} />
+            <Typography id="owner-pay-config-heading" variant="h6" sx={{ fontWeight: 600 }}>
+              Configuración de Pagos
+            </Typography>
+          </Box>
+          <Typography variant="body2" color="text.secondary" sx={{ mb: 2, maxWidth: 720 }}>
+            MODO y transferencias (API PCT): completá los tres datos para mostrar a los clientes la opción
+            &quot;Pagar con Homebanking/MODO&quot; en la cuenta. El CBU o alias es el de la cuenta del comercio
+            que recibirá el pago.
           </Typography>
+          {payCfgMessage && (
+            <Alert severity={payCfgMessage.type} sx={{ mb: 2 }} onClose={() => setPayCfgMessage(null)}>
+              {payCfgMessage.text}
+            </Alert>
+          )}
+          <Box component="form" onSubmit={handleSavePayConfig}>
+            <Grid container spacing={2}>
+              <Grid item xs={12} md={4}>
+                <TextField
+                  fullWidth
+                  size="small"
+                  label="MODO Store ID"
+                  name="modo_store_id"
+                  value={payCfg.modo_store_id}
+                  onChange={(ev) => setPayCfg((p) => ({ ...p, modo_store_id: ev.target.value }))}
+                  disabled={payCfgLoading || payCfgSaving}
+                  placeholder="Ej. store provisto por MODO"
+                />
+              </Grid>
+              <Grid item xs={12} md={4}>
+                <TextField
+                  fullWidth
+                  size="small"
+                  label="MODO Terminal ID"
+                  name="modo_terminal_id"
+                  value={payCfg.modo_terminal_id}
+                  onChange={(ev) => setPayCfg((p) => ({ ...p, modo_terminal_id: ev.target.value }))}
+                  disabled={payCfgLoading || payCfgSaving}
+                  placeholder="Ej. terminal provisto por MODO"
+                />
+              </Grid>
+              <Grid item xs={12} md={4}>
+                <TextField
+                  fullWidth
+                  size="small"
+                  label="CBU o alias del restaurante"
+                  name="pct_merchant_cbu_alias"
+                  value={payCfg.pct_merchant_cbu_alias}
+                  onChange={(ev) => setPayCfg((p) => ({ ...p, pct_merchant_cbu_alias: ev.target.value }))}
+                  disabled={payCfgLoading || payCfgSaving}
+                  placeholder="CBU o alias para transferencias"
+                  helperText="Se muestra al cliente si los tres campos están completos."
+                />
+              </Grid>
+              <Grid item xs={12}>
+                <Button
+                  type="submit"
+                  variant="contained"
+                  disabled={payCfgLoading || payCfgSaving}
+                  sx={{ textTransform: 'none', borderRadius: 2 }}
+                >
+                  {payCfgSaving ? 'Guardando…' : 'Guardar configuración de pagos'}
+                </Button>
+              </Grid>
+            </Grid>
+          </Box>
         </Box>
-        <Typography variant="body2" color="text.secondary" sx={{ mb: 2, maxWidth: 720 }}>
-          MODO y transferencias (API PCT): completá los tres datos para mostrar a los clientes la opción
-          &quot;Pagar con Homebanking/MODO&quot; en la cuenta. El CBU o alias es el de la cuenta del comercio
-          que recibirá el pago.
-        </Typography>
-        {payCfgMessage && (
-          <Alert severity={payCfgMessage.type} sx={{ mb: 2 }} onClose={() => setPayCfgMessage(null)}>
-            {payCfgMessage.text}
-          </Alert>
-        )}
-        <Box component="form" onSubmit={handleSavePayConfig}>
-          <Grid container spacing={2}>
-            <Grid item xs={12} md={4}>
-              <TextField
-                fullWidth
-                size="small"
-                label="MODO Store ID"
-                name="modo_store_id"
-                value={payCfg.modo_store_id}
-                onChange={(ev) => setPayCfg((p) => ({ ...p, modo_store_id: ev.target.value }))}
-                disabled={payCfgLoading || payCfgSaving}
-                placeholder="Ej. store provisto por MODO"
-              />
-            </Grid>
-            <Grid item xs={12} md={4}>
-              <TextField
-                fullWidth
-                size="small"
-                label="MODO Terminal ID"
-                name="modo_terminal_id"
-                value={payCfg.modo_terminal_id}
-                onChange={(ev) => setPayCfg((p) => ({ ...p, modo_terminal_id: ev.target.value }))}
-                disabled={payCfgLoading || payCfgSaving}
-                placeholder="Ej. terminal provisto por MODO"
-              />
-            </Grid>
-            <Grid item xs={12} md={4}>
-              <TextField
-                fullWidth
-                size="small"
-                label="CBU o alias del restaurante"
-                name="pct_merchant_cbu_alias"
-                value={payCfg.pct_merchant_cbu_alias}
-                onChange={(ev) => setPayCfg((p) => ({ ...p, pct_merchant_cbu_alias: ev.target.value }))}
-                disabled={payCfgLoading || payCfgSaving}
-                placeholder="CBU o alias para transferencias"
-                helperText="Se muestra al cliente si los tres campos están completos."
-              />
-            </Grid>
-            <Grid item xs={12}>
-              <Button
-                type="submit"
-                variant="contained"
-                disabled={payCfgLoading || payCfgSaving}
-                sx={{ textTransform: 'none', borderRadius: 2 }}
-              >
-                {payCfgSaving ? 'Guardando…' : 'Guardar configuración de pagos'}
-              </Button>
-            </Grid>
-          </Grid>
-        </Box>
-      </Box>
+      )}
 
       {isOperativa ? (
         <>
