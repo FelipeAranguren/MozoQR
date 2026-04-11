@@ -69,43 +69,43 @@ export default function Home() {
 
   const plans = {
     BASIC: {
-      name: 'Básico', priceUsd: PLAN_BASE_USD.BASIC, description: 'Control operacional esencial',
+      name: 'Básico', priceUsd: PLAN_BASE_USD.BASIC, description: 'Lo esencial para ordenar el día a día',
       highlight: false, badge: null,
       features: [
-        'KPIs básicos (ventas, pedidos, ticket promedio)',
-        'Estado de mesas en tiempo real',
-        'Gestión de productos, categorías y mesas',
-        'Logo y colores personalizados',
-        'Actividad reciente e insights simples',
+        'Números claros: ventas, pedidos y ticket promedio',
+        'Mesas libres u ocupadas al instante',
+        'Cargá platos, rubros y mesas como quieras',
+        'Tu logo y los colores de tu marca',
+        'Resumen simple de lo que pasó hoy',
       ],
-      limitations: ['Sin análisis avanzados ni predicciones', 'Sin exportaciones ni múltiples sucursales'],
+      limitations: ['Sin proyecciones ni estudios muy detallados', 'Sin bajar reportes ni varias sucursales'],
       cta: 'Elegir plan', ctaAction: () => navigate('/checkout?plan=basic'),
     },
     PRO: {
-      name: 'Pro', priceUsd: 80, description: 'Datos y análisis avanzados',
+      name: 'Pro', priceUsd: PLAN_BASE_USD.PRO, description: 'Más reportes para decidir con datos',
       highlight: false, badge: 'Popular',
       features: [
-        'Todo lo de Básico',
-        'Analytics avanzados y comparativas',
-        'Top productos, horas pico, tendencias',
-        'Predicciones de ventas y demanda',
-        'Roles de personal y reporte de caja',
-        'Historial de transacciones completo',
+        'Todo lo del plan Básico',
+        'Gráficos y comparativas por día, semana o mes',
+        'Platos más pedidos, horas con más movimiento y tendencias',
+        'Estimaciones de ventas y de qué va a pedirse más',
+        'Roles para el equipo y cierre de caja',
+        'Historial completo de cobros y pedidos',
       ],
-      limitations: ['Sin IA integrada ni múltiples sucursales'],
+      limitations: ['Sin sugerencias automáticas con IA ni varias sucursales'],
       cta: 'Elegir plan', ctaAction: () => navigate('/checkout?plan=pro'),
     },
     ULTRA: {
-      name: 'Ultra', priceUsd: 100, description: 'Inteligencia y automatización total',
+      name: 'Ultra', priceUsd: PLAN_BASE_USD.ULTRA, description: 'Sugerencias inteligentes y todo integrado',
       highlight: true, badge: 'Mejor valor',
       features: [
-        'Todo lo de Pro',
-        'IA integrada: sugerencias de menú, combos, detección',
-        'Análisis de rentabilidad completo',
-        'Heatmap de horas pico y ranking de mesas',
-        'Múltiples sucursales con panel consolidado',
-        'Exportaciones CSV/PDF y auditorías',
-        'Pagos online integrados',
+        'Todo lo del plan Pro',
+        'Sugerencias automáticas: platos, combos y alertas',
+        'Ves qué plato te deja más ganancia',
+        'Horarios más cargados y mesas que más facturan',
+        'Varias sucursales y un solo lugar para verlas',
+        'Bajar datos en Excel o PDF y registro de cambios',
+        'Cobros online desde el sistema',
       ],
       limitations: [],
       cta: 'Comenzar con Ultra', ctaAction: () => navigate('/checkout?plan=ultra'),
@@ -402,45 +402,56 @@ export default function Home() {
                           )}
                         </Box>
 
-                        <Box sx={{ mb: 2, height: 1, bgcolor: isUltra ? 'rgba(255,255,255,0.12)' : COLORS.border }} />
-
-                        <List dense disablePadding sx={{ mb: plan.limitations?.length ? 1.5 : 'auto', flex: plan.limitations?.length ? 'none' : 1 }}>
-                          {plan.features.map((f, idx) => (
-                            <ListItem key={idx} disableGutters sx={{ py: 0.25, alignItems: 'flex-start' }}>
-                              <ListItemIcon sx={{ minWidth: 24, mt: 0.3 }}>
-                                <CheckIcon sx={{ fontSize: 15, color: isUltra ? COLORS.secondaryLight : COLORS.secondary }} />
-                              </ListItemIcon>
-                              <ListItemText
-                                primary={f}
-                                primaryTypographyProps={{
-                                  variant: 'body2',
-                                  sx: { fontSize: '0.8125rem', lineHeight: 1.5, color: isUltra ? 'rgba(255,255,255,0.85)' : COLORS.text },
-                                }}
-                              />
-                            </ListItem>
-                          ))}
-                        </List>
-
-                        {plan.limitations?.length > 0 && (
-                          <List dense disablePadding sx={{ mb: 2.5, flex: 1 }}>
-                            {plan.limitations.map((l, idx) => (
+                        <Box
+                          sx={{
+                            flex: 1,
+                            display: 'flex',
+                            flexDirection: 'column',
+                            minHeight: 0,
+                            pt: 2,
+                            mt: 1,
+                            borderTop: '1px solid',
+                            borderColor: isUltra ? 'rgba(255,255,255,0.2)' : COLORS.border,
+                          }}
+                        >
+                          <List dense disablePadding sx={{ mb: plan.limitations?.length ? 1.5 : 0 }}>
+                            {plan.features.map((f, idx) => (
                               <ListItem key={idx} disableGutters sx={{ py: 0.25, alignItems: 'flex-start' }}>
                                 <ListItemIcon sx={{ minWidth: 24, mt: 0.3 }}>
-                                  <CloseIcon sx={{ fontSize: 14, color: isUltra ? 'rgba(255,255,255,0.3)' : COLORS.textMuted }} />
+                                  <CheckIcon sx={{ fontSize: 15, color: isUltra ? COLORS.secondaryLight : COLORS.secondary }} />
                                 </ListItemIcon>
                                 <ListItemText
-                                  primary={l}
+                                  primary={f}
                                   primaryTypographyProps={{
                                     variant: 'body2',
-                                    sx: { fontSize: '0.8125rem', color: isUltra ? 'rgba(255,255,255,0.5)' : COLORS.textMuted },
+                                    sx: { fontSize: '0.8125rem', lineHeight: 1.5, color: isUltra ? 'rgba(255,255,255,0.85)' : COLORS.text },
                                   }}
                                 />
                               </ListItem>
                             ))}
                           </List>
-                        )}
 
-                        <Box sx={{ mt: 'auto' }}>
+                          {plan.limitations?.length > 0 && (
+                            <List dense disablePadding>
+                              {plan.limitations.map((l, idx) => (
+                                <ListItem key={idx} disableGutters sx={{ py: 0.25, alignItems: 'flex-start' }}>
+                                  <ListItemIcon sx={{ minWidth: 24, mt: 0.3 }}>
+                                    <CloseIcon sx={{ fontSize: 14, color: isUltra ? 'rgba(255,255,255,0.3)' : COLORS.textMuted }} />
+                                  </ListItemIcon>
+                                  <ListItemText
+                                    primary={l}
+                                    primaryTypographyProps={{
+                                      variant: 'body2',
+                                      sx: { fontSize: '0.8125rem', color: isUltra ? 'rgba(255,255,255,0.5)' : COLORS.textMuted },
+                                    }}
+                                  />
+                                </ListItem>
+                              ))}
+                            </List>
+                          )}
+                        </Box>
+
+                        <Box sx={{ mt: 'auto', pt: 2.5 }}>
                           <Button
                             variant="contained"
                             fullWidth
