@@ -1,0 +1,1358 @@
+// src/pages/RestaurantMenu.jsx
+import React, { useEffect, useState, useMemo, useRef } from 'react';
+import { useParams, useNavigate, useLocation } from 'react-router-dom';
+import {
+  Box,
+  Container,
+  Typography,
+  Button,
+  TextField,
+  InputAdornment,
+  Chip,
+  Skeleton,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
+  Fab,
+} from '@mui/material';
+import SearchIcon from '@mui/icons-material/Search';
+import SwapHorizIcon from '@mui/icons-material/SwapHoriz';
+import KeyboardArrowUpIcon from '@mui/icons-material/KeyboardArrowUp';
+import { motion, AnimatePresence } from 'framer-motion';
+
+import { useCart } from '../context/CartContext';
+import { fetchMenus, openSession, releaseTableIfNoOrders, fetchOrderDetails } from '../api/tenant_v1';
+import { fetchTables, fetchTable } from '../api/tables';
+import { fetchRestaurant } from '../api/restaurant';
+import { http } from '../api/tenant_v1';
+import useTableSession from '../hooks/useTableSession';
+import StickyFooter from '../components/StickyFooter';
+import { devLog } from '../utils/devLog';
+import { withRetry } from '../utils/retry';
+import TableSelector from '../components/TableSelector';
+import AddIcon from '@mui/icons-material/Add';
+import RemoveIcon from '@mui/icons-material/Remove';
+import { buildProductOrderStatusMap, menuBadgeLabelForOrderStatus } from '../utils/orderStatusEs';
+import { getStrapiPublicBase } from '../utils/strapiPublicBase';
+
+const PLACEHOLDER = 'https://via.placeholder.com/600x400?text=No+Image';
+const money = (n) =>
+  new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS' }).format(Number(n) || 0);
+
+// ---- Helper: convierte Rich Text (Blocks) de Strapi a texto plano
+const blocksToText = (blocks) => {
+  if (!Array.isArray(blocks)) return '';
+  const walk = (nodes) =>
+    nodes
+      .map((n) => {
+        if (typeof n?.text === 'string') return n.text;
+        if (Array.isArray(n?.children)) return walk(n.children);
+        return '';
+      })
+      .join('');
+  return walk(blocks).replace(/\s+/g, ' ').trim();
+};
+
+// ---- Helper: normaliza una media url de Strapi (string | {url} | {data:{attributes:{url}}})
+const getMediaUrl = (img, base) => {
+  const url =
+    typeof img === 'string'
+      ? img
+      : img?.url
+        ? img.url
+        : img?.data?.attributes?.url
+          ? img.data.attributes.url
+          : null;
+  if (!url) return null;
+  return String(url).startsWith('http') ? url : (base ? base + url : url);
+};
+
+export default function RestaurantMenu() {
+  const { slug } = useParams();
+  const { table, tableSessionId } = useTableSession();
+  const navigate = useNavigate();
+  const location = useLocation();
+
+  const mesaOcupadaAlert =
+    location.state?.mesaOcupada != null && location.state?.mesaOcupada !== ''
+      ? { number: Number(location.state.mesaOcupada) }
+      : null;
+
+  const [productos, setProductos] = useState(null);
+  const [productosTodos, setProductosTodos] = useState([]);
+  const [nombreRestaurante, setNombreRestaurante] = useState('');
+  const [categorias, setCategorias] = useState([]);
+  const [categoriaSeleccionada, setCategoriaSeleccionada] = useState(null);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [loading, setLoading] = useState(true);
+  const [menuLoadError, setMenuLoadError] = useState(null);
+  const [menuRetryKey, setMenuRetryKey] = useState(0);
+  const [isTableValid, setIsTableValid] = useState(undefined); // undefined = chequeando, true = ok, false = no existe
+  const [sessionReady, setSessionReady] = useState(false); // true cuando openSession completó o no hay mesa
+  const [hasMercadoPago, setHasMercadoPago] = useState(false); // desde MetodosPago del restaurante
+  const [hasModoHomebanking, setHasModoHomebanking] = useState(false);
+
+  const { items, addItem, removeItem } = useCart();
+  const [productOrderStatusByProductId, setProductOrderStatusByProductId] = useState({});
+  const [changeTableDialog, setChangeTableDialog] = useState(false);
+  const [showScrollTop, setShowScrollTop] = useState(false);
+  const availablePollHitsRef = useRef(0);
+
+  useEffect(() => {
+    const onScroll = () => setShowScrollTop(window.scrollY > 300);
+    window.addEventListener('scroll', onScroll, { passive: true });
+    return () => window.removeEventListener('scroll', onScroll);
+  }, []);
+
+  useEffect(() => {
+    const base = nombreRestaurante || slug || 'Menú';
+    document.title = table ? `${base} | Mesa ${table}` : `${base} | MozoQR`;
+    return () => { document.title = 'MozoQR'; };
+  }, [nombreRestaurante, slug, table]);
+
+  // Encontrar categoría por id numérico o documentId (Strapi 5 puede devolver uno u otro)
+  const findCategoria = (categoriaIdOrDocId) => {
+    if (categoriaIdOrDocId == null) return null;
+    return categorias.find(
+      (c) =>
+        c.id === categoriaIdOrDocId ||
+        c.documentId === categoriaIdOrDocId ||
+        String(c.id) === String(categoriaIdOrDocId)
+    ) ?? null;
+  };
+
+  // Filtrar productos según búsqueda
+  const productosFiltrados = useMemo(() => {
+    if (!searchQuery.trim()) return productos || [];
+    const query = searchQuery.toLowerCase().trim();
+    // Si hay búsqueda, buscar en todos los productos de todas las categorías
+    const todosLosProductos = categorias.flatMap((cat) => cat.productos || []);
+    return todosLosProductos.filter(
+      (p) =>
+        p.nombre.toLowerCase().includes(query) ||
+        p.descripcion?.toLowerCase().includes(query)
+    );
+  }, [productos, searchQuery, categorias]);
+
+  // Contar items en carrito por categoría
+  const getCategoryItemCount = (categoriaId) => {
+    if (!categoriaId) return 0;
+    const categoria = findCategoria(categoriaId);
+    if (!categoria) return 0;
+    return categoria.productos.reduce((sum, prod) => {
+      const item = items.find((i) => i.id === prod.id);
+      return sum + (item?.qty || 0);
+    }, 0);
+  };
+
+  // Función para obtener categorías desde Strapi
+  const fetchCategorias = async (restaurantSlug) => {
+    try {
+      const { data } = await withRetry(
+        () => http.get(`/restaurants/${restaurantSlug}/menus`),
+        { maxRetries: 2, delayMs: 1500 }
+      );
+
+      // El endpoint devuelve: { data: { restaurant: {...}, categories: [...] } }
+      const categories = data?.data?.categories || [];
+      const totalProductos = categories.reduce((sum, cat) => sum + (cat.productos?.length || 0), 0);
+
+      if (categories.length === 0) {
+        console.warn('⚠️ No se encontraron categorías en el endpoint namespaced');
+        return [];
+      }
+      
+      // Si hay categorías pero ninguna tiene productos, también retornar vacío
+      if (totalProductos === 0) {
+        console.warn('⚠️ Se encontraron categorías pero ninguna tiene productos disponibles');
+        return [];
+      }
+
+      // Mapear categorías con sus productos
+      const categoriasMapeadas = categories.map((cat) => {
+        // Los productos ya vienen en cat.productos (no cat.attributes.productos)
+        const productosCat = (cat.productos || []).map((p) => {
+          const baseApi = getStrapiPublicBase();
+          // El endpoint namespaced ya devuelve la URL completa de la imagen si el plan es PRO
+          const img = p.image || PLACEHOLDER;
+          const descripcion = Array.isArray(p.description)
+            ? blocksToText(p.description)
+            : typeof p.description === 'string'
+              ? p.description
+              : '';
+
+          return {
+            id: p.id,
+            nombre: p.name,
+            precio: p.price,
+            imagen: img,
+            descripcion,
+            categoriaId: cat.id,
+          };
+        });
+
+        return {
+          id: cat.id,
+          name: cat.name,
+          slug: cat.slug,
+          productos: productosCat || [],
+        };
+      });
+      return categoriasMapeadas;
+    } catch (err) {
+      console.error('❌ Error obteniendo categorías desde endpoint namespaced:', err);
+      console.error('Status:', err?.response?.status);
+      console.error('Response:', err?.response?.data);
+      console.error('Message:', err?.message);
+
+      return [];
+    }
+  };
+
+  // Validar que la mesa exista en la BD cuando viene en la URL (?t=...)
+  useEffect(() => {
+    let cancelled = false;
+
+    async function validateTable() {
+      // Si no hay mesa en la URL, no hay nada que validar
+      if (!table || !slug) {
+        setIsTableValid(true);
+        return;
+      }
+
+      try {
+        const mesas = await fetchTables(slug);
+        const exists = Array.isArray(mesas)
+          ? mesas.some((m) => Number(m.number) === Number(table))
+          : false;
+        if (!cancelled) {
+          setIsTableValid(exists);
+        }
+      } catch (err) {
+        console.error('Error validando mesa seleccionada:', err);
+        if (!cancelled) {
+          setIsTableValid(false);
+        }
+      }
+    }
+
+    validateTable();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [slug, table]);
+
+  // Sin mesa no hay sesión que esperar
+  useEffect(() => {
+    if (!table || !slug) setSessionReady(true);
+    else setSessionReady(false);
+  }, [table, slug]);
+
+  // Cuando el cliente abandona el menú, intentamos liberar la mesa si no tiene pedidos activos.
+  // Lo hacemos en 3 situaciones:
+  // - Unmount del componente (cambio de ruta interno)
+  // - beforeunload (cierre de pestaña/ventana o recarga)
+  // - visibilitychange → hidden (algunos navegadores matan la pestaña poco después)
+  useEffect(() => {
+    if (!slug || !table || !tableSessionId) return;
+
+    const payload = { table, tableSessionId };
+
+    const tryRelease = () => {
+      try {
+        releaseTableIfNoOrders(slug, payload);
+      } catch {
+        // best-effort: ignorar errores
+      }
+    };
+
+    const handleBeforeUnload = () => {
+      tryRelease();
+    };
+
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'hidden') {
+        tryRelease();
+      }
+    };
+
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+
+    // También al hacer unmount normal del componente
+    return () => {
+      window.removeEventListener('beforeunload', handleBeforeUnload);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+      tryRelease();
+    };
+  }, [slug, table, tableSessionId]);
+
+  // Abrir sesión de mesa cuando el cliente entra (marca la mesa como ocupada)
+  // Solo habilitamos "Confirmar pedido" cuando openSession termina para evitar error "mesa no asociada"
+  useEffect(() => {
+    let cancelled = false;
+
+    async function openTableSession(retryCount = 0) {
+      if (!table || !slug) return false;
+      const maxRetries = 2;
+
+      try {
+        devLog(`[RestaurantMenu] Abriendo sesión para Mesa ${table}${retryCount > 0 ? ` (reintento ${retryCount})` : ''}...`);
+        const result = await openSession(slug, { table, tableSessionId });
+        devLog(`[RestaurantMenu] Sesión abierta para Mesa ${table}`, result);
+        if (result?.status === 'ignored' || result?.status === 'partial') {
+          console.warn(`[RestaurantMenu] ⚠️ Sesión para Mesa ${table} tuvo estado: ${result.status}`);
+        }
+        return true;
+      } catch (err) {
+        if (err?.response?.status === 409) {
+          console.warn(`[RestaurantMenu] Mesa ${table} ocupada (409). Volviendo al selector.`);
+          navigate(`/${slug}/menu`, {
+            replace: true,
+            state: { mesaOcupada: table },
+          });
+          return false;
+        }
+        if (err?.response?.status === 404) {
+          console.warn(`[RestaurantMenu] Mesa ${table} no existe (404).`);
+          navigate(`/${slug}/menu`);
+          return false;
+        }
+        console.error(`[RestaurantMenu] Error al abrir sesión Mesa ${table}:`, err?.response?.data || err?.message);
+        if (retryCount < maxRetries && err?.response?.status !== 403) {
+          await new Promise(r => setTimeout(r, 1500));
+          if (!cancelled) return openTableSession(retryCount + 1);
+        }
+        return false;
+      }
+    }
+
+    if (table && slug) {
+      openTableSession().then((ok) => {
+        if (!cancelled && ok) setSessionReady(true);
+      });
+    }
+
+    return () => {
+      cancelled = true;
+    };
+  }, [slug, table, tableSessionId, navigate]);
+
+  useEffect(() => {
+    if (!slug || !table || !sessionReady) return;
+
+    let cancelled = false;
+    const refresh = async () => {
+      try {
+        const orders = await fetchOrderDetails(slug, { table, tableSessionId });
+        if (cancelled) return;
+        setProductOrderStatusByProductId(buildProductOrderStatusMap(orders));
+      } catch (e) {
+        console.warn('[RestaurantMenu_v1] order status refresh:', e);
+      }
+    };
+
+    const onOrdersUpdated = () => {
+      // Refresco inmediato si el footer envió un pedido.
+      if (cancelled) return;
+      refresh();
+    };
+
+    refresh();
+    window.addEventListener('orders-updated', onOrdersUpdated);
+    const id = setInterval(refresh, 12000);
+    return () => {
+      cancelled = true;
+      clearInterval(id);
+      window.removeEventListener('orders-updated', onOrdersUpdated);
+    };
+  }, [slug, table, tableSessionId, sessionReady]);
+
+  // POLLING DE "KICK": Expulsar solo si el staff cerró la sesión desde el mostrador.
+  // NO kickear en los primeros 6 segundos: da tiempo al claim y evita falsos positivos.
+  useEffect(() => {
+    if (!slug || !table || !tableSessionId) return;
+
+    const enteredAt = Date.now();
+
+    const checkIfShouldEject = async () => {
+      if ((Date.now() - enteredAt) / 1000 < 6) return;
+      try {
+        // Método 1: Verificar directamente el estado de la sesión usando tableSessionId
+        // Esto es más confiable porque verifica la sesión específica del cliente
+        try {
+          const { http } = await import('../api/tenant_v1');
+          const sesionRes = await http.get(
+            `/mesa-sesions?filters[code][$eq]=${encodeURIComponent(tableSessionId)}&publicationState=preview&fields[0]=id&fields[1]=session_status&fields[2]=code&pagination[pageSize]=1`
+          );
+          const sesiones = sesionRes?.data?.data || [];
+          if (sesiones.length > 0) {
+            const sesion = sesiones[0];
+            const sesionAttrs = sesion.attributes || sesion;
+            const sessionStatus = sesionAttrs.session_status || sesion.session_status;
+            
+            // Si la sesión está cerrada o pagada, expulsar inmediatamente
+            if (sessionStatus === 'closed' || sessionStatus === 'paid') {
+              devLog(`[RestaurantMenu] KICK: Sesión ${tableSessionId} ${sessionStatus}`);
+              navigate(`/${slug}/menu`);
+              return;
+            }
+          } else {
+            devLog(`[RestaurantMenu] Sesión ${tableSessionId} no encontrada`);
+          }
+        } catch (sesionErr) {
+          // Si no se puede verificar la sesión (403, 404, etc.), continuar con el método 2
+          // Esto es normal si el endpoint requiere autenticación
+          if (sesionErr?.response?.status !== 403 && sesionErr?.response?.status !== 404) {
+            console.warn("[RestaurantMenu] Error verificando estado de sesión:", sesionErr?.response?.status || sesionErr?.message);
+          }
+        }
+
+        // Método 2: fallback por estado de mesa.
+        // Si por permisos no podemos leer mesa-sesions, igual expulsamos cuando staff libera la mesa.
+        // Requerimos 2 lecturas consecutivas en "disponible" para evitar falsos positivos transitorios.
+        try {
+          const myMesa = await fetchTable(slug, table);
+          if (myMesa) {
+            const status = String(myMesa.status || '').toLowerCase();
+            devLog(`[RestaurantMenu] Mesa ${table} status=${status}`);
+            if (status === 'disponible') {
+              availablePollHitsRef.current += 1;
+              if (availablePollHitsRef.current >= 2) {
+                devLog(`[RestaurantMenu] KICK: Mesa ${table} liberada por staff`);
+                navigate(`/${slug}/menu`);
+                return;
+              }
+            } else {
+              availablePollHitsRef.current = 0;
+            }
+          }
+        } catch (_e) {
+          // ignorar
+        }
+      } catch (err) {
+        console.warn("[RestaurantMenu] Error polling table status:", err);
+        // NO expulsar si hay error - comportamiento conservador
+      }
+    };
+
+    availablePollHitsRef.current = 0;
+    // Ejecutar inmediatamente y luego cada 10s.
+    checkIfShouldEject();
+    const interval = setInterval(checkIfShouldEject, 10000);
+    return () => clearInterval(interval);
+  }, [slug, table, tableSessionId, navigate]);
+
+  useEffect(() => {
+    async function loadMenu() {
+      setLoading(true);
+      setMenuLoadError(null);
+      try {
+        // Obtener categorías con productos
+        const categoriasData = await fetchCategorias(slug);
+        setCategorias(categoriasData);
+
+        // Obtener nombre del restaurante desde el endpoint de categorías primero
+        let nombreRest = '';
+        try {
+          const { data } = await http.get(`/restaurants/${slug}/menus`);
+          const r = data?.data?.restaurant;
+          if (r?.name) {
+            nombreRest = r.name;
+            setNombreRestaurante(nombreRest);
+          }
+          setHasModoHomebanking(Boolean(r?.hasModoHomebanking));
+        } catch (e) {
+          console.warn('No se pudo obtener nombre desde endpoint namespaced:', e);
+        }
+
+        // Fallback: obtener nombre del restaurante
+        if (!nombreRest) {
+          try {
+            const menus = await fetchMenus(slug);
+            if (menus?.restaurantName) {
+              setNombreRestaurante(menus.restaurantName);
+            }
+          } catch (e) {
+            console.warn('Error obteniendo nombre del restaurante:', e);
+          }
+        }
+
+        // Mercado Pago: solo si existe en restaurante.metodos_pagos (provider === 'mercado_pago' y active === true)
+        try {
+          const rest = await fetchRestaurant(slug);
+          setHasMercadoPago(Boolean(rest?.hasMercadoPago));
+        } catch (e) {
+          console.warn('Error obteniendo métodos de pago del restaurante:', e);
+        }
+
+        // Si hay categorías, mostrar todos los productos inicialmente
+        if (categoriasData.length > 0) {
+          // Mostrar todos los productos de todas las categorías inicialmente
+          const todosLosProductos = categoriasData.flatMap((cat) => cat.productos || []);
+          setProductosTodos(todosLosProductos);
+          setProductos(todosLosProductos);
+          setCategoriaSeleccionada(null);
+        } else {
+          const menus = await fetchMenus(slug);
+
+          // NUEVO: Si fetchMenus nos devuelve categorías reconstruidas, las usamos
+          if (menus?.categories && menus.categories.length > 0) {
+            // Mapear propiedades de inglés (tenant.js) a español (RestaurantMenu.jsx)
+            const categoriasMapeadas = menus.categories.map(cat => ({
+              ...cat,
+              productos: (cat.productos || []).map(p => {
+                const descripcion = Array.isArray(p.description)
+                  ? blocksToText(p.description)
+                  : typeof p.description === 'string'
+                    ? p.description
+                    : '';
+
+                return {
+                  id: p.id,
+                  nombre: p.name, // name -> nombre
+                  precio: p.price, // price -> precio
+                  imagen: p.image || PLACEHOLDER, // image -> imagen
+                  descripcion: descripcion, // description -> descripcion
+                  categoriaId: cat.id
+                };
+              })
+            }));
+
+            setCategorias(categoriasMapeadas);
+
+            const todosLosProductos = categoriasMapeadas.flatMap((cat) => cat.productos || []);
+            setProductosTodos(todosLosProductos);
+            setProductos(todosLosProductos);
+            setCategoriaSeleccionada(null);
+          } else {
+            // Si realmente no hay categorías, mostramos lista plana
+            const baseApi = getStrapiPublicBase();
+            const list = Array.isArray(menus)
+              ? menus.flatMap((m) => m.products || m.productos || [])
+              : menus?.products || menus?.productos || [];
+
+            const productosProcesados = list.map((raw) => {
+              const p = raw?.attributes ? { id: raw.id, ...raw.attributes } : (raw || {});
+              const img = getMediaUrl(p.image, baseApi) || PLACEHOLDER;
+              const descripcion = Array.isArray(p.description)
+                ? blocksToText(p.description)
+                : typeof p.description === 'string'
+                  ? p.description
+                  : '';
+
+              return {
+                id: p.id,
+                nombre: p.name,
+                precio: p.price,
+                imagen: img,
+                descripcion,
+              };
+            });
+
+            devLog('Productos del fallback (sin categorías):', productosProcesados.length);
+            setProductosTodos(productosProcesados);
+            setProductos(productosProcesados);
+          }
+        }
+      } catch (err) {
+        console.error('Error cargando menú:', err);
+        // Intentar fallback completo
+        try {
+          const menus = await fetchMenus(slug);
+          if (menus?.restaurantName) setNombreRestaurante(menus.restaurantName);
+
+          // Si fetchMenus devuelve categorías (gracias a nuestra mejora), usarlas
+          if (menus?.categories && menus.categories.length > 0) {
+            setCategorias(menus.categories);
+            const todosLosProductos = menus.categories.flatMap((cat) => cat.productos || []);
+            setProductosTodos(todosLosProductos);
+            setProductos(todosLosProductos);
+            devLog('Categorías cargadas desde fallback:', menus.categories.length);
+          } else {
+            // Fallback antiguo: lista plana
+            const baseApi = getStrapiPublicBase();
+            const list = Array.isArray(menus)
+              ? menus.flatMap((m) => m.products || m.productos || [])
+              : menus?.products || menus?.productos || [];
+
+            const productosProcesados = list.map((raw) => {
+              const p = raw?.attributes ? { id: raw.id, ...raw.attributes } : (raw || {});
+              const img = getMediaUrl(p.image, baseApi) || PLACEHOLDER;
+              const descripcion = Array.isArray(p.description)
+                ? blocksToText(p.description)
+                : typeof p.description === 'string'
+                  ? p.description
+                  : '';
+
+              return {
+                id: p.id,
+                nombre: p.name,
+                precio: p.price,
+                imagen: img,
+                descripcion,
+              };
+            });
+
+            setProductosTodos(productosProcesados);
+            setProductos(productosProcesados);
+          }
+        } catch (fallbackErr) {
+          console.error('Error en fallback completo:', fallbackErr);
+          setProductos([]);
+          setProductosTodos([]);
+          setMenuLoadError(fallbackErr?.message || 'No se pudo cargar el menú. Revisá tu conexión.');
+        }
+      } finally {
+        setLoading(false);
+      }
+    }
+
+    loadMenu();
+  }, [slug, menuRetryKey]);
+
+  const retryLoadMenu = () => {
+    setMenuLoadError(null);
+    setMenuRetryKey((k) => k + 1);
+  };
+
+  // Manejar cambio de categoría
+  const handleCategoriaClick = (categoriaId) => {
+    setCategoriaSeleccionada(categoriaId);
+    setSearchQuery(''); // Limpiar búsqueda al cambiar categoría
+    const categoria = findCategoria(categoriaId);
+    if (categoria) {
+      setProductos(categoria.productos || []);
+      // Scroll suave a la sección de productos
+      setTimeout(() => {
+        const productosSection = document.getElementById('productos-section');
+        if (productosSection) {
+          productosSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }
+      }, 100);
+    }
+  };
+
+  // Componente de skeleton loader para productos
+  const ProductSkeleton = () => (
+    <Box
+      sx={{
+        display: 'flex',
+        alignItems: 'center',
+        gap: 2,
+        px: 2,
+        py: 2,
+      }}
+    >
+      <Skeleton variant="rectangular" width={72} height={72} sx={{ borderRadius: 1.5, flexShrink: 0 }} />
+      <Box sx={{ flex: 1, minWidth: 0 }}>
+        <Skeleton variant="text" width="60%" height={22} />
+        <Skeleton variant="text" width="30%" height={18} sx={{ mt: 0.25 }} />
+      </Box>
+      <Skeleton variant="circular" width={36} height={36} />
+    </Box>
+  );
+
+  // Si hay número de mesa en la URL pero no existe en la BD -> mostrar mensaje de error
+  if (table && isTableValid === false) {
+    return (
+      <Container
+        component="main"
+        maxWidth="sm"
+        disableGutters
+        sx={{
+          px: { xs: 1.25, sm: 2 },
+          py: { xs: 3, sm: 4 },
+          textAlign: 'center',
+          mt: 8,
+        }}
+      >
+        <Typography variant="h6" color="text.secondary" sx={{ mb: 2 }}>
+          La mesa {table} no existe en este restaurante.
+        </Typography>
+        <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
+          Volvé atrás y elegí una mesa válida de la lista.
+        </Typography>
+        <Button
+          variant="contained"
+          onClick={() => navigate(`/${slug}/menu`)}
+          sx={{ textTransform: 'none', borderRadius: 999 }}
+        >
+          Volver a seleccionar mesa
+        </Button>
+      </Container>
+    );
+  }
+
+  // Si no hay mesa seleccionada, mostrar el selector de mesas
+  if (!table) {
+    return (
+      <TableSelector
+        mesaOcupadaAlert={mesaOcupadaAlert}
+        onDismissMesaOcupadaAlert={() => navigate(`/${slug}/menu`, { replace: true, state: {} })}
+      />
+    );
+  }
+
+  // --------- Estados de carga / vacío
+  if (loading && productos === null) {
+    return (
+      <Container
+        component="main"
+        maxWidth="sm"
+        disableGutters
+        sx={{
+          px: { xs: 1.25, sm: 2 },
+          py: { xs: 3, sm: 4 },
+        }}
+      >
+        <Box sx={{ mb: 3, px: 0.5 }}>
+          <Skeleton variant="text" width="55%" height={36} />
+          <Skeleton variant="text" width="30%" height={20} sx={{ mt: 0.5 }} />
+        </Box>
+        <Box sx={{ display: 'flex', gap: 1, mb: 2, overflowX: 'auto', pb: 1 }}>
+          {[1, 2, 3, 4].map((i) => (
+            <Skeleton key={i} variant="rounded" width={80} height={32} sx={{ flexShrink: 0, borderRadius: 4 }} />
+          ))}
+        </Box>
+        <Box sx={{ bgcolor: 'background.paper', borderRadius: 2, border: '1px solid', borderColor: 'divider', overflow: 'hidden' }}>
+          {[1, 2, 3, 4, 5].map((i) => (
+            <React.Fragment key={i}>
+              {i > 1 && <Box sx={{ mx: 2, borderBottom: '1px solid', borderColor: 'divider' }} />}
+              <ProductSkeleton />
+            </React.Fragment>
+          ))}
+        </Box>
+      </Container>
+    );
+  }
+
+  // Mostrar pantalla de "sin restaurante/productos" solo cuando realmente no hay datos (carga inicial).
+  // No mostrarla al seleccionar una categoría que tiene 0 productos (ahí se muestra el menú con lista vacía y chips).
+  const noDataAtAll = !loading && productos !== null && productos.length === 0 && productosTodos.length === 0;
+  if (noDataAtAll) {
+    return (
+      <Container
+        component="main"
+        maxWidth="sm"
+        disableGutters
+        sx={{
+          px: { xs: 1.25, sm: 2 },
+          py: { xs: 3, sm: 4 },
+          textAlign: 'center',
+          mt: 8,
+        }}
+      >
+        {menuLoadError ? (
+          <>
+            <Typography variant="h6" color="error" sx={{ mb: 2 }}>
+              Error al cargar el menú
+            </Typography>
+            <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
+              {menuLoadError}
+            </Typography>
+            <Button variant="contained" onClick={retryLoadMenu} sx={{ textTransform: 'none' }}>
+              Reintentar
+            </Button>
+          </>
+        ) : (
+          <Typography variant="h6" color="text.secondary">
+            No se encontró el restaurante o no tiene productos disponibles.
+          </Typography>
+        )}
+        <StickyFooter
+          table={table}
+          tableSessionId={tableSessionId}
+          restaurantName={nombreRestaurante}
+          sessionReady={sessionReady}
+          hasMercadoPago={hasMercadoPago}
+          hasModoHomebanking={hasModoHomebanking}
+        />
+      </Container>
+    );
+  }
+
+  // --------- UI principal
+  return (
+    <Box
+      sx={{
+        width: '100%',
+        position: 'relative',
+        minHeight: '100vh',
+        bgcolor: '#ffffff',
+      }}
+    >
+      <Container
+        component="main"
+        maxWidth="sm"
+        disableGutters
+        sx={{
+          px: { xs: 1.5, sm: 2.5 },
+          py: { xs: 3, sm: 4.5 },
+          position: 'relative',
+          borderRadius: 0,
+          bgcolor: 'transparent',
+          boxShadow: 'none',
+        }}
+      >
+        {/* Header — estilo clásico limpio */}
+        <Box sx={{ mb: 2, px: 0.5 }}>
+          <Typography
+            component="h1"
+            sx={{
+              fontWeight: 800,
+              lineHeight: 1.1,
+              fontSize: 'clamp(24px, 5vw, 34px)',
+              letterSpacing: '-0.01em',
+              wordBreak: 'break-word',
+              color: 'text.primary',
+            }}
+          >
+            {nombreRestaurante || slug}
+          </Typography>
+          {table && (
+            <Button
+              size="small"
+              onClick={() => (items.length > 0 ? setChangeTableDialog(true) : navigate(`/${slug}/menu`))}
+              startIcon={<SwapHorizIcon sx={{ fontSize: 16 }} />}
+              sx={{
+                mt: 0.5,
+                textTransform: 'none',
+                color: 'text.secondary',
+                fontSize: '0.8125rem',
+                fontWeight: 500,
+                minWidth: 0,
+                px: 0,
+                '&:hover': { color: 'primary.main', bgcolor: 'transparent' },
+              }}
+            >
+              Mesa {table} · Cambiar
+            </Button>
+          )}
+        </Box>
+
+        {/* Barra de búsqueda */}
+        <Box sx={{ mt: 1, mb: 2.5 }}>
+          <TextField
+            fullWidth
+            placeholder="Buscar productos..."
+            aria-label="Buscar productos en el menú"
+            value={searchQuery}
+            onChange={(e) => {
+              setSearchQuery(e.target.value);
+              if (e.target.value) {
+                // Si hay búsqueda, mostrar todos los productos
+                const todosLosProductos = categorias.flatMap((cat) => cat.productos || []);
+                setProductosTodos(todosLosProductos);
+                setProductos(todosLosProductos);
+              } else {
+                // Si se limpia la búsqueda, volver a la categoría seleccionada
+                if (categoriaSeleccionada) {
+                  const categoria = findCategoria(categoriaSeleccionada);
+                  if (categoria) {
+                    setProductos(categoria.productos || []);
+                  }
+                } else {
+                  // Mostrar todos si no hay categoría seleccionada
+                  const todosLosProductos = categorias.flatMap((cat) => cat.productos || []);
+                  setProductosTodos(todosLosProductos);
+                  setProductos(todosLosProductos);
+                }
+              }
+            }}
+            InputProps={{
+              startAdornment: (
+                <InputAdornment position="start">
+                  <SearchIcon sx={{ color: 'text.secondary' }} />
+                </InputAdornment>
+              ),
+            }}
+            sx={{
+              '& .MuiOutlinedInput-root': {
+                borderRadius: 999,
+                backgroundColor: (theme) =>
+                  theme.palette.mode === 'light' ? '#ffffff' : 'rgba(255,255,255,0.05)',
+                '&:hover': {
+                  backgroundColor: (theme) =>
+                    theme.palette.mode === 'light' ? '#ffffff' : 'rgba(255,255,255,0.08)',
+                },
+                '&.Mui-focused': {
+                  backgroundColor: (theme) =>
+                    theme.palette.mode === 'light' ? '#ffffff' : 'rgba(255,255,255,0.08)',
+                },
+                boxShadow: '0 16px 32px rgba(9,9,11,0.06)',
+              },
+            }}
+          />
+        </Box>
+
+        {/* Filtro de categorías - Chips similares a ProductsManagement - Siempre visible */}
+        {categorias.length > 0 && (
+          <Box
+            sx={{
+              mb: 3,
+              mt: -1,
+              display: 'flex',
+              gap: 1,
+              flexWrap: 'wrap',
+              overflowX: 'auto',
+              pb: 1,
+              px: { xs: 0.5, sm: 0 },
+              // Asegurar visibilidad
+              minHeight: 40,
+              alignItems: 'center',
+            }}
+          >
+            <Chip
+              label="Todas"
+              onClick={() => {
+                setSearchQuery(''); // Limpiar búsqueda
+                const todosLosProductos = categorias.flatMap((cat) => cat.productos || []);
+                setProductosTodos(todosLosProductos);
+                setProductos(todosLosProductos);
+                setCategoriaSeleccionada(null);
+              }}
+              color={categoriaSeleccionada === null ? 'primary' : 'default'}
+              sx={{
+                  bgcolor: categoriaSeleccionada === null ? 'primary.main' : 'background.paper',
+                color: categoriaSeleccionada === null ? 'white' : 'text.primary',
+                fontWeight: categoriaSeleccionada === null ? 600 : 400,
+                cursor: 'pointer',
+                '&:hover': {
+                  bgcolor: categoriaSeleccionada === null ? 'primary.dark' : 'action.hover',
+                },
+              }}
+            />
+            {categorias.map((cat) => (
+              <Chip
+                key={cat.id ?? cat.documentId ?? cat.name}
+                label={`${cat.name} ${cat.productos && cat.productos.length > 0 ? `(${cat.productos.length})` : ''}`}
+                onClick={() => {
+                  const id = cat.id ?? cat.documentId;
+                  setCategoriaSeleccionada(id);
+                  setSearchQuery(''); // Limpiar búsqueda al cambiar categoría
+                  setProductos(cat.productos || []);
+                  setTimeout(() => {
+                    const productosSection = document.getElementById('productos-section');
+                    if (productosSection) {
+                      productosSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                    }
+                  }, 100);
+                }}
+                color={categoriaSeleccionada === (cat.id ?? cat.documentId) ? 'primary' : 'default'}
+                sx={{
+                  bgcolor: categoriaSeleccionada === (cat.id ?? cat.documentId) ? 'primary.main' : 'background.paper',
+                  color: categoriaSeleccionada === (cat.id ?? cat.documentId) ? 'white' : 'text.primary',
+                  fontWeight: categoriaSeleccionada === (cat.id ?? cat.documentId) ? 600 : 400,
+                  cursor: 'pointer',
+                  '&:hover': {
+                    bgcolor: categoriaSeleccionada === (cat.id ?? cat.documentId) ? 'primary.dark' : 'action.hover',
+                  },
+                }}
+              />
+            ))}
+          </Box>
+        )}
+
+        {/* Navegación de categorías - Tabs horizontales deslizables (Opcional - duplicado con chips arriba) */}
+        {false && categorias.length > 0 && !searchQuery && categoriaSeleccionada && (
+          <Box
+            sx={{
+              mt: 2,
+              mb: 3,
+              position: 'sticky',
+              top: 0,
+              zIndex: 10,
+              backgroundColor: 'background.default',
+              pb: 2,
+              pt: 1,
+            }}
+          >
+            <Box
+              sx={{
+                display: 'flex',
+                gap: 1,
+                overflowX: 'auto',
+                overflowY: 'hidden',
+                scrollbarWidth: 'thin',
+                '&::-webkit-scrollbar': {
+                  height: 6,
+                },
+                '&::-webkit-scrollbar-track': {
+                  backgroundColor: 'transparent',
+                },
+                '&::-webkit-scrollbar-thumb': {
+                  backgroundColor: 'rgba(0,0,0,0.2)',
+                  borderRadius: 3,
+                },
+                px: { xs: 0.5, sm: 0 },
+                pb: 1,
+              }}
+            >
+              {categorias.map((categoria) => {
+                const itemCount = getCategoryItemCount(categoria.id);
+                const isSelected = categoriaSeleccionada === categoria.id;
+                return (
+                  <motion.div
+                    key={categoria.id}
+                    whileHover={{ scale: 1.02 }}
+                    whileTap={{ scale: 0.98 }}
+                    style={{ flexShrink: 0 }}
+                  >
+                    <Button
+                      onClick={() => handleCategoriaClick(categoria.id)}
+                      variant={isSelected ? 'contained' : 'outlined'}
+                      sx={{
+                        minWidth: 'auto',
+                        px: 2.5,
+                        py: 1,
+                        borderRadius: 4,
+                        textTransform: 'none',
+                        fontWeight: isSelected ? 600 : 500,
+                        fontSize: '0.9375rem',
+                        boxShadow: isSelected ? 3 : 0,
+                        position: 'relative',
+                        whiteSpace: 'nowrap',
+                        '&:hover': {
+                          boxShadow: isSelected ? 4 : 2,
+                        },
+                        transition: 'all 0.2s ease-in-out',
+                      }}
+                    >
+                      {categoria.name}
+                      {itemCount > 0 && (
+                        <Chip
+                          label={itemCount}
+                          size="small"
+                          sx={{
+                            ml: 1,
+                            height: 20,
+                            minWidth: 20,
+                            fontSize: '0.7rem',
+                            fontWeight: 700,
+                            backgroundColor: isSelected ? 'rgba(255,255,255,0.3)' : 'primary.main',
+                            color: isSelected ? 'inherit' : 'white',
+                          }}
+                        />
+                      )}
+                    </Button>
+                  </motion.div>
+                );
+              })}
+            </Box>
+          </Box>
+        )}
+
+        {/* Indicador de resultados de búsqueda */}
+        {searchQuery && (
+          <Box sx={{ mb: 2, mt: -1 }}>
+            <Typography variant="body2" color="text.secondary">
+              {productosFiltrados.length === 0
+                ? 'No se encontraron productos'
+                : `${productosFiltrados.length} producto${productosFiltrados.length !== 1 ? 's' : ''} encontrado${productosFiltrados.length !== 1 ? 's' : ''}`}
+            </Typography>
+          </Box>
+        )}
+
+        {/* Nombre de categoría como título */}
+        {!searchQuery && categoriaSeleccionada && (
+          <Typography
+            sx={{
+              fontWeight: 700,
+              fontSize: '1.125rem',
+              color: 'text.primary',
+              mb: 1.5,
+              px: 0.5,
+            }}
+          >
+            {findCategoria(categoriaSeleccionada)?.name || ''}
+          </Typography>
+        )}
+
+        {/* Lista de productos — estilo clásico (filas con thumbnail) */}
+        <Box
+          id="productos-section"
+          sx={{
+            width: '100%',
+            mt: searchQuery ? 2 : 0,
+            bgcolor: 'background.paper',
+            borderRadius: 2,
+            border: '1px solid',
+            borderColor: 'divider',
+            overflow: 'hidden',
+          }}
+        >
+          <AnimatePresence mode="wait">
+            {productosFiltrados.length === 0 && searchQuery ? (
+              <motion.div
+                key="empty"
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0 }}
+              >
+                <Box sx={{ textAlign: 'center', py: 8, px: 2 }}>
+                  <Typography variant="h6" color="text.secondary" gutterBottom>
+                    No se encontraron productos
+                  </Typography>
+                  <Typography variant="body2" color="text.secondary">
+                    Intenta con otros términos de búsqueda
+                  </Typography>
+                </Box>
+              </motion.div>
+            ) : (
+              <motion.div
+                key="list"
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+              >
+                {productosFiltrados.map((plato, index) => {
+                  const qty = items.find((i) => i.id === plato.id)?.qty || 0;
+                  const orderSt = productOrderStatusByProductId[String(plato.id)];
+                  const orderBadge = menuBadgeLabelForOrderStatus(orderSt);
+                  return (
+                    <Box key={plato.id}>
+                      {index > 0 && (
+                        <Box sx={{ mx: 2, borderBottom: '1px solid', borderColor: 'divider' }} />
+                      )}
+                      <motion.div
+                        initial={{ opacity: 0 }}
+                        animate={{ opacity: 1 }}
+                        transition={{ duration: 0.2, delay: index * 0.03 }}
+                      >
+                        <Box
+                          sx={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: 2,
+                            px: 2,
+                            py: 2,
+                            cursor: 'pointer',
+                            transition: 'background-color 150ms',
+                            '&:active': { bgcolor: 'action.hover' },
+                          }}
+                          onClick={() => {
+                            if (qty === 0) addItem({ id: plato.id, nombre: plato.nombre, precio: plato.precio });
+                          }}
+                        >
+                          {/* Thumbnail */}
+                          <Box
+                            sx={{
+                              width: 72,
+                              height: 72,
+                              borderRadius: 1.5,
+                              overflow: 'hidden',
+                              flexShrink: 0,
+                              bgcolor: 'background.default',
+                            }}
+                          >
+                            {plato.imagen && plato.imagen !== PLACEHOLDER ? (
+                              <img
+                                src={plato.imagen}
+                                alt={plato.nombre}
+                                loading="lazy"
+                                style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
+                              />
+                            ) : (
+                              <Box
+                                sx={{
+                                  width: '100%',
+                                  height: '100%',
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  justifyContent: 'center',
+                                }}
+                              >
+                                <Typography variant="caption" color="text.muted" sx={{ fontSize: '0.6rem' }}>
+                                  Sin foto
+                                </Typography>
+                              </Box>
+                            )}
+                          </Box>
+
+                          {/* Info */}
+                          <Box sx={{ flex: 1, minWidth: 0 }}>
+                            <Typography
+                              sx={{
+                                fontWeight: 700,
+                                fontSize: '0.9375rem',
+                                lineHeight: 1.3,
+                                color: 'text.primary',
+                                overflow: 'hidden',
+                                textOverflow: 'ellipsis',
+                                display: '-webkit-box',
+                                WebkitLineClamp: 2,
+                                WebkitBoxOrient: 'vertical',
+                              }}
+                            >
+                              {plato.nombre}
+                            </Typography>
+                            <Typography
+                              sx={{
+                                fontWeight: 600,
+                                fontSize: '0.875rem',
+                                color: 'text.secondary',
+                                mt: 0.25,
+                              }}
+                            >
+                              {money(plato.precio)}
+                            </Typography>
+                            {orderBadge && (
+                              <Typography
+                                variant="caption"
+                                sx={{
+                                  mt: 0.5,
+                                  display: 'inline-block',
+                                  px: 1,
+                                  py: 0.25,
+                                  borderRadius: 1,
+                                  fontWeight: 600,
+                                  fontSize: '0.65rem',
+                                  bgcolor: orderBadge === 'En preparación' ? 'primary.main' : 'warning.main',
+                                  color: '#fff',
+                                }}
+                              >
+                                {orderBadge}
+                              </Typography>
+                            )}
+                          </Box>
+
+                          {/* Qty controls */}
+                          <Box sx={{ flexShrink: 0, display: 'flex', alignItems: 'center' }}>
+                            {qty === 0 ? (
+                              <Button
+                                variant="outlined"
+                                size="small"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  addItem({ id: plato.id, nombre: plato.nombre, precio: plato.precio });
+                                }}
+                                sx={{
+                                  minWidth: 36,
+                                  width: 36,
+                                  height: 36,
+                                  p: 0,
+                                  borderRadius: '50%',
+                                  borderColor: 'divider',
+                                  color: 'text.primary',
+                                }}
+                                aria-label={`Agregar ${plato.nombre}`}
+                              >
+                                <AddIcon sx={{ fontSize: 20 }} />
+                              </Button>
+                            ) : (
+                              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                                <Button
+                                  size="small"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    removeItem(plato.id);
+                                  }}
+                                  sx={{
+                                    minWidth: 32,
+                                    width: 32,
+                                    height: 32,
+                                    p: 0,
+                                    borderRadius: '50%',
+                                    bgcolor: 'background.default',
+                                    color: 'text.primary',
+                                    '&:hover': { bgcolor: 'action.hover' },
+                                  }}
+                                  aria-label={`Quitar ${plato.nombre}`}
+                                >
+                                  <RemoveIcon sx={{ fontSize: 18 }} />
+                                </Button>
+                                <Typography
+                                  sx={{
+                                    fontWeight: 700,
+                                    fontSize: '0.9375rem',
+                                    minWidth: 20,
+                                    textAlign: 'center',
+                                  }}
+                                >
+                                  {qty}
+                                </Typography>
+                                <Button
+                                  size="small"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    addItem({ id: plato.id, nombre: plato.nombre, precio: plato.precio });
+                                  }}
+                                  sx={{
+                                    minWidth: 32,
+                                    width: 32,
+                                    height: 32,
+                                    p: 0,
+                                    borderRadius: '50%',
+                                    bgcolor: 'primary.main',
+                                    color: 'primary.contrastText',
+                                    '&:hover': { bgcolor: 'primary.dark' },
+                                  }}
+                                  aria-label={`Sumar ${plato.nombre}`}
+                                >
+                                  <AddIcon sx={{ fontSize: 18 }} />
+                                </Button>
+                              </Box>
+                            )}
+                          </Box>
+                        </Box>
+                      </motion.div>
+                    </Box>
+                  );
+                })}
+              </motion.div>
+            )}
+          </AnimatePresence>
+        </Box>
+
+        {/* Espacio en blanco para que el StickyFooter no tape productos al scrollear */}
+        <Box sx={{ height: { xs: 150, sm: 160 } }} />
+
+        {/* Footer con resumen y confirmación */}
+        <StickyFooter
+          table={table}
+          tableSessionId={tableSessionId}
+          restaurantName={nombreRestaurante}
+          sessionReady={sessionReady}
+          hasMercadoPago={hasMercadoPago}
+          hasModoHomebanking={hasModoHomebanking}
+        />
+
+        {/* Diálogo confirmar cambiar mesa */}
+        <Dialog open={changeTableDialog} onClose={() => setChangeTableDialog(false)} maxWidth="xs" fullWidth>
+          <DialogTitle>Cambiar de mesa</DialogTitle>
+          <DialogContent>
+            <Typography variant="body2" color="text.secondary">
+              Tenés {items.length} {items.length === 1 ? 'ítem' : 'ítems'} en el carrito. Al cambiar de mesa se pierde el carrito actual. ¿Continuar?
+            </Typography>
+          </DialogContent>
+          <DialogActions>
+            <Button onClick={() => setChangeTableDialog(false)}>Cancelar</Button>
+            <Button variant="contained" color="primary" onClick={() => { setChangeTableDialog(false); navigate(`/${slug}/menu`); }}>
+              Cambiar mesa
+            </Button>
+          </DialogActions>
+        </Dialog>
+      </Container>
+
+      {showScrollTop && (
+        <Fab
+          size="small"
+          color="primary"
+          onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}
+          sx={{
+            position: 'fixed',
+            bottom: 100,
+            right: 16,
+            zIndex: 1200,
+          }}
+          aria-label="Volver arriba"
+        >
+          <KeyboardArrowUpIcon />
+        </Fab>
+      )}
+    </Box>
+  );
+}

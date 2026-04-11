@@ -1,0 +1,106 @@
+// frontend/src/hooks/useRestaurantes.js
+import { useState, useEffect } from 'react';
+import axios from 'axios';
+import { getMercadoPagoFromMetodos } from '../api/restaurant';
+import { getStrapiPublicBase } from '../utils/strapiPublicBase';
+
+const API_URL = import.meta.env?.VITE_API_URL || 'http://localhost:1337/api';
+
+// Helper para obtener token
+function getToken() {
+  return localStorage.getItem('strapi_jwt') || localStorage.getItem('jwt') || null;
+}
+
+/**
+ * Hook para obtener todos los restaurantes desde Strapi
+ * @returns {Object} { restaurantes, loading, error, refetch }
+ */
+export function useRestaurantes() {
+  const [restaurantes, setRestaurantes] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+
+  const fetchRestaurantes = async () => {
+    try {
+      setLoading(true);
+      setError(null);
+
+      const token = getToken();
+      const headers = {
+        'Content-Type': 'application/json',
+      };
+
+      if (token) {
+        headers.Authorization = `Bearer ${token}`;
+      }
+
+      // Obtener todos los restaurantes con populate (metodos_pagos para clave pública MP; mp_access_token no se expone)
+      const res = await axios.get(`${API_URL}/restaurantes?populate=*&populate[metodos_pagos]=true`, { headers });
+
+      // Mapear los datos de Strapi a un formato más usable
+      const data = res.data?.data || [];
+      const base = getStrapiPublicBase();
+
+      const mappedRestaurantes = data.map((r) => {
+        // Strapi v4 puede tener datos en r.attributes o directamente en r
+        const attr = r.attributes || r;
+
+        // Construir URL del logo si existe (similar a Restaurants.jsx)
+        let logoUrl = null;
+        if (attr.logo?.data) {
+          const logoData = attr.logo.data;
+          const logo = logoData.attributes || logoData;
+          const urlRel =
+            logo.formats?.small?.url ||
+            logo.formats?.thumbnail?.url ||
+            logo.url ||
+            null;
+          logoUrl = urlRel ? (urlRel.startsWith('http') ? urlRel : `${base}${urlRel}`) : null;
+        }
+
+        const { hasMercadoPago: hasMP, mp_public_key: mpPublicKey } = getMercadoPagoFromMetodos(attr.metodos_pagos);
+
+        return {
+          id: r.id,
+          name: attr.name || r.name || `Restaurante ${r.id}`,
+          slug: attr.slug || r.slug || String(r.id),
+          owner_email: attr.owner_email || null,
+          suscripcion: attr.Suscripcion || attr.suscripcion || 'basic',
+          mp_public_key: mpPublicKey || null,
+          hasMercadoPago: hasMP,
+          logo: logoUrl,
+          mesas: attr.mesas?.data?.length || (Array.isArray(attr.mesas) ? attr.mesas.length : 0) || 0,
+          mesa_sesions: attr.mesa_sesions?.data?.length || (Array.isArray(attr.mesa_sesions) ? attr.mesa_sesions.length : 0) || 0,
+          restaurant_members: attr.restaurant_members?.data?.length || (Array.isArray(attr.restaurant_members) ? attr.restaurant_members.length : 0) || 0,
+          createdAt: attr.createdAt || null,
+          createdAt: attr.createdAt || null,
+          updatedAt: attr.updatedAt || null,
+          subscriptions: attr.subscriptions?.data?.map(s => ({
+            id: s.id,
+            ...(s.attributes || s)
+          })) || attr.subscriptions || [],
+        };
+      });
+
+      setRestaurantes(mappedRestaurantes);
+    } catch (err) {
+      console.error('Error fetching restaurantes:', err);
+      setError(err.response?.data?.error?.message || err.message || 'Error al cargar restaurantes');
+      setRestaurantes([]);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchRestaurantes();
+  }, []);
+
+  return {
+    restaurantes,
+    loading,
+    error,
+    refetch: fetchRestaurantes,
+  };
+}
+

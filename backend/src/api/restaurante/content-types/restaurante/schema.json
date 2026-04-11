@@ -1,0 +1,133 @@
+{
+  "kind": "collectionType",
+  "collectionName": "restaurantes",
+  "info": {
+    "singularName": "restaurante",
+    "pluralName": "restaurantes",
+    "displayName": "Restaurante"
+  },
+  "options": {
+    "draftAndPublish": true
+  },
+  "pluginOptions": {},
+  "attributes": {
+    "name": {
+      "type": "string",
+      "required": true
+    },
+    "productos": {
+      "type": "relation",
+      "relation": "oneToMany",
+      "target": "api::producto.producto",
+      "mappedBy": "restaurante"
+    },
+    "logo": {
+      "type": "media",
+      "multiple": false,
+      "allowedTypes": [
+        "images",
+        "files",
+        "videos",
+        "audios"
+      ]
+    },
+    "slug": {
+      "type": "uid",
+      "targetField": "name"
+    },
+    "primaryColoraccentColor": {
+      "type": "string"
+    },
+    "tipografia": {
+      "type": "string"
+    },
+    "pedidos": {
+      "type": "relation",
+      "relation": "oneToMany",
+      "target": "api::pedido.pedido",
+      "mappedBy": "restaurante"
+    },
+    "mesas": {
+      "type": "relation",
+      "relation": "oneToMany",
+      "target": "api::mesa.mesa",
+      "mappedBy": "restaurante"
+    },
+    "mesa_sesions": {
+      "type": "relation",
+      "relation": "oneToMany",
+      "target": "api::mesa-sesion.mesa-sesion",
+      "mappedBy": "restaurante"
+    },
+    "restaurant_members": {
+      "type": "relation",
+      "relation": "oneToMany",
+      "target": "api::restaurant-member.restaurant-member",
+      "mappedBy": "restaurante"
+    },
+    "Suscripcion": {
+      "type": "enumeration",
+      "required": true,
+      "default": "basic",
+      "enum": [
+        "basic",
+        "pro",
+        "ultra"
+      ]
+    },
+    "categorias": {
+      "type": "relation",
+      "relation": "oneToMany",
+      "target": "api::categoria.categoria",
+      "mappedBy": "restaurante"
+    },
+    "is_demo": {
+      "type": "boolean",
+      "default": false
+    },
+    "owner_email": {
+      "type": "email"
+    },
+    "owner_comments": {
+      "type": "relation",
+      "relation": "oneToMany",
+      "target": "api::owner-comment.owner-comment",
+      "mappedBy": "restaurante"
+    },
+    "subscriptions": {
+      "type": "relation",
+      "relation": "oneToMany",
+      "target": "api::subscription.subscription",
+      "mappedBy": "restaurante"
+    },
+    "metodos_pagos": {
+      "type": "relation",
+      "relation": "oneToMany",
+      "target": "api::metodos-pago.metodos-pago",
+      "mappedBy": "restaurante"
+    },
+    "menu_design": {
+      "type": "enumeration",
+      "enum": [
+        "v1",
+        "v2"
+      ],
+      "default": "v2"
+    },
+    "weekly_ai_report_markdown": {
+      "type": "text"
+    },
+    "weekly_ai_generated_at": {
+      "type": "datetime"
+    },
+    "modo_store_id": {
+      "type": "string"
+    },
+    "modo_terminal_id": {
+      "type": "string"
+    },
+    "pct_merchant_cbu_alias": {
+      "type": "string"
+    }
+  }
+}

@@ -1,0 +1,7 @@
+/**
+ * metodos-pago service
+ */
+
+import { factories } from '@strapi/strapi';
+
+export default factories.createCoreService('api::metodos-pago.metodos-pago');

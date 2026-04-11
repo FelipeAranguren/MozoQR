@@ -1,0 +1,88 @@
+/**
+ * Rutas de pagos. auth: false evita que users-permissions exija JWT.
+ * En Admin: Settings > Users & Permissions > Permissions > Payment,
+ * marcar createPreference (y ping, card-pay, confirm) como Public si hace falta.
+ */
+export default {
+  routes: [
+    {
+      method: 'GET',
+      path: '/payments/ping',
+      handler: 'payments.ping',
+      config: { auth: false, policies: [], middlewares: [] },
+    },
+    {
+      method: 'GET',
+      path: '/payments/mercado-pago-available',
+      handler: 'payments.getMercadoPagoAvailable',
+      config: { auth: false, policies: [], middlewares: [] },
+    },
+    {
+      method: 'POST',
+      path: '/payments/create-preference',
+      handler: 'payments.createPreference',
+      config: { auth: false, policies: [], middlewares: [] },
+    },
+    {
+      method: 'POST',
+      path: '/payments/create-subscription-preference',
+      handler: 'payments.createSubscriptionPreference',
+      config: { auth: false, policies: [], middlewares: [] },
+    },
+    {
+      method: 'POST',
+      path: '/payments/card-pay',
+      handler: 'payments.cardPay',
+      config: { auth: false, policies: [], middlewares: [] },
+    },
+    {
+      method: 'GET',
+      path: '/payments/confirm',
+      handler: 'payments.confirm',
+      config: { auth: false, policies: [], middlewares: [] },
+    },
+    /** Checkout MODO PCT: crea pago en MODO y devuelve checkoutUrl + trx_id */
+    {
+      method: 'POST',
+      path: '/payments/create-modo-checkout',
+      handler: 'modo-pct.createModoCheckout',
+      config: { auth: false, policies: [], middlewares: [] },
+    },
+    /** MODO PCT Online — crear pago (POST hacia API MODO con Bearer + client_id/secret) */
+    {
+      method: 'POST',
+      path: '/payments/modo/payment',
+      handler: 'modo-pct.createPayment',
+      config: { auth: false, policies: [], middlewares: [] },
+    },
+    /** MODO PCT — consultar estado por trx_id */
+    {
+      method: 'GET',
+      path: '/payments/modo/payment/:trxId',
+      handler: 'modo-pct.getPaymentStatus',
+      config: { auth: false, policies: [], middlewares: [] },
+    },
+    /** MODO — webhook (notificaciones; APPROVED + orderId simula update de pedido) */
+    {
+      method: 'POST',
+      path: '/payments/modo/webhook',
+      handler: 'modo-pct.webhook',
+      config: { auth: false, policies: [], middlewares: [] },
+    },
+    {
+      method: 'POST',
+      path: '/restaurants/:slug/payments',
+      handler: 'payments.create',
+      config: {
+        policies: ['global::by-restaurant'],
+      },
+    },
+    // Si luego agregás webhook, sumá aquí:
+    // {
+    //   method: 'POST',
+    //   path: '/payments/webhook',
+    //   handler: 'payments.webhook',
+    //   config: { auth: false },
+    // },
+  ],
+};

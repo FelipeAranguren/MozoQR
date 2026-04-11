@@ -1,0 +1,35 @@
+{
+  "collectionName": "payments",
+  "info": {
+    "singularName": "payment",
+    "pluralName": "payments",
+    "displayName": "Payment",
+    "description": "Pagos Mercado Pago vinculados a pedidos"
+  },
+  "options": {
+    "draftAndPublish": false
+  },
+  "pluginOptions": {},
+  "attributes": {
+    "order": {
+      "type": "relation",
+      "relation": "manyToOne",
+      "target": "api::pedido.pedido"
+    },
+    "status": { "type": "string" },
+    "amount": {
+      "type": "decimal",
+      "options": { "precision": 20, "scale": 2 }
+    },
+    "currency_id": { "type": "string" },
+    "external_reference": { "type": "string" },
+    "mp_preference_id": { "type": "string" },
+    "init_point": { "type": "text" },
+    "sandbox_init_point": { "type": "text" },
+    "mp_payment_id": { "type": "string" },
+    "paid_at": { "type": "datetime" },
+    "raw_preference": { "type": "json" },
+    "raw_notification": { "type": "json" },
+    "raw_payment": { "type": "json" }
+  }
+}
