@@ -26,6 +26,10 @@
       "type": "string",
       "private": true
     },
+    "mp_refresh_token": {
+      "type": "string",
+      "private": true
+    },
     "mp_webhook_secret": {
       "type": "string"
     },
