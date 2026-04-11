@@ -264,6 +264,28 @@ export function expandIncompleteModoPcpBaseUrl(url: string): string {
   }
 }
 
+/**
+ * Si MODO_BASE_URL quedó con un placeholder (ej. &lt;BCRA_PROD&gt;) en lugar de un BCRA numérico, reemplaza por MODO_PCP_BCRA_ID o 999.
+ */
+function sanitizeModoPcpBcraSegmentInUrl(url: string): string {
+  try {
+    const u = new URL(url);
+    if (!/\.modo\.com\.ar$/i.test(u.hostname)) return url;
+    const m = u.pathname.match(/^(\/connections\/pcp\/)([^/]+)$/i);
+    if (!m) return url;
+    const seg = m[2];
+    if (/^\d+$/.test(seg)) return url.replace(/\/+$/, '');
+    const bcra = defaultPcpBcraId();
+    console.warn(
+      `[MODO PCP] BCRA inválido en la URL (${seg}); usando ${bcra}. Corregí MODO_BASE_URL / MODO_PCP_BASE_URL en Railway (solo dígitos tras …/pcp/).`,
+    );
+    u.pathname = `/connections/pcp/${bcra}`;
+    return u.toString().replace(/\/+$/, '');
+  } catch {
+    return url;
+  }
+}
+
 function modoAuthTokenUrl(): string {
   const override = trimEnv('MODO_TOKEN_URL');
   if (override) return ensureModoAuthUrlHasBackend(override.replace(/\/+$/, ''));
@@ -345,7 +367,11 @@ function modoAuthErrorFromResponse(
     typeof data.status_code === 'number' && data.status_code !== res.status
       ? `; MODO status_code=${data.status_code}`
       : '';
-  const userText = `Auth MODO falló (HTTP ${res.status})${extra}: ${modoLine}`;
+  let userText = `Auth MODO falló (HTTP ${res.status})${extra}: ${modoLine}`;
+  if (res.status === 403 && /missing authentication token/i.test(modoLine)) {
+    userText +=
+      ' Suele pasar con credenciales de desarrollo mientras NODE_ENV=production apunta a api.modo.com.ar. Definí MODO_TOKEN_URL=https://development.api.modo.com.ar/connections/oauth/token y MODO_BASE_URL=https://development.api.modo.com.ar/connections/pcp/999 (o el BCRA que te asignó MODO).';
+  }
   const details: Record<string, unknown> = {
     ...data,
     _modoHttpStatus: res.status,
@@ -355,8 +381,8 @@ function modoAuthErrorFromResponse(
   return new ModoPctError(userText, clientStatus, modoLine, details);
 }
 
-/** Reintentar con otro formato si el servidor no reconoce credenciales en el body (401/400/415/406). */
-const MODO_AUTH_RETRY_STATUSES = new Set([401, 400, 415, 406]);
+/** Reintentar con otro formato si el servidor no reconoce credenciales (403 a veces es formato/host incorrecto). */
+const MODO_AUTH_RETRY_STATUSES = new Set([401, 400, 403, 415, 406]);
 
 type ModoTokenStrategiesResult =
   | { success: true; token: string; expiresInSec: number }
@@ -371,12 +397,22 @@ function isModoTokenFail(
   return r.success === false;
 }
 
+type ModoTokenStrategy = {
+  label: string;
+  /** Si true, no se envían X-Client-Id / X-Client-Secret (p. ej. Basic Auth). */
+  skipClientHeaders?: boolean;
+  headers: Record<string, string>;
+  body: string;
+};
+
 async function tryModoTokenStrategiesAtUrl(
   url: string,
   clientId: string,
   clientSecret: string,
 ): Promise<ModoTokenStrategiesResult> {
-  const strategies: { label: string; headers: Record<string, string>; body: string }[] = [
+  const basicAuth = Buffer.from(`${clientId}:${clientSecret}`, 'utf8').toString('base64');
+
+  const strategies: ModoTokenStrategy[] = [
     {
       label: 'JSON body (grant_type + client_id + client_secret) + X-Client-Id / X-Client-Secret',
       headers: { 'Content-Type': 'application/json' },
@@ -413,6 +449,24 @@ async function tryModoTokenStrategiesAtUrl(
       },
       body: new URLSearchParams({ grant_type: 'client_credentials' }).toString(),
     },
+    {
+      skipClientHeaders: true,
+      label: 'Basic Auth + urlencoded grant_type=client_credentials (sin X-Client-*)',
+      headers: {
+        'Content-Type': 'application/x-www-form-urlencoded',
+        Authorization: `Basic ${basicAuth}`,
+      },
+      body: new URLSearchParams({ grant_type: 'client_credentials' }).toString(),
+    },
+    {
+      skipClientHeaders: true,
+      label: 'Basic Auth + JSON grant_type=client_credentials (sin X-Client-*)',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Basic ${basicAuth}`,
+      },
+      body: JSON.stringify({ grant_type: 'client_credentials' }),
+    },
   ];
 
   let last: { res: Response; data: Record<string, unknown>; text: string } | null = null;
@@ -423,8 +477,12 @@ async function tryModoTokenStrategiesAtUrl(
 
   for (const s of strategies) {
     const headers: Record<string, string> = {
-      'X-Client-Id': clientId,
-      'X-Client-Secret': clientSecret,
+      ...(s.skipClientHeaders
+        ? {}
+        : {
+            'X-Client-Id': clientId,
+            'X-Client-Secret': clientSecret,
+          }),
       ...s.headers,
     };
     console.log(`[MODO Auth] Intento · URL: ${url} · estrategia: ${s.label}`);
@@ -553,9 +611,8 @@ export async function getModoPctConfigAsync(): Promise<ModoPctConfig> {
     trimEnv('MODO_PCP_BASE_URL') ||
     trimEnv('MODO_BASE_URL') ||
     modoDefaultPcpBaseUrl();
-  const base = expandIncompleteModoPcpBaseUrl(ensureModoPcpBaseUrlHasBackend(rawBase)).replace(
-    /\/+$/,
-    '',
+  const base = sanitizeModoPcpBcraSegmentInUrl(
+    expandIncompleteModoPcpBaseUrl(ensureModoPcpBaseUrlHasBackend(rawBase)).replace(/\/+$/, ''),
   );
   const clientId = trimEnv('MODO_CLIENT_ID');
   const clientSecret = trimEnv('MODO_CLIENT_SECRET');
