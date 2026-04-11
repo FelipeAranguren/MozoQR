@@ -39,7 +39,7 @@ function respondModoError(ctx: any, err: unknown) {
     if (missingFromErr?.length) {
       body.missing = missingFromErr;
       body.hint =
-        'Definí esas variables en el entorno del servidor (Railway, etc.). MODO_BEARER_TOKEN es opcional: si no está, se usa OAuth contra MODO_TOKEN_URL o el default según NODE_ENV (no prod: development.api.modo.com.ar/backend/v1/auth/token; producción: api.modo.com.ar/backend/v1/auth/token). No uses sandbox.api.modo.com.ar (no resuelve DNS).';
+        'Definí esas variables en el entorno del servidor (Railway, etc.). MODO_BEARER_TOKEN es opcional: si no está, se usa OAuth contra MODO_TOKEN_URL o el default según NODE_ENV (…/connections/oauth/token). No uses sandbox.api.modo.com.ar (no resuelve DNS).';
     } else if (err.statusCode === 503) {
       body.missing = getModoPctEnvMissingKeys();
     }
