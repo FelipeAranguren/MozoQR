@@ -337,7 +337,7 @@ export default function RestaurantSettings() {
                   variant="subtitle1"
                   sx={{
                     fontWeight: 800,
-                    mb: 0.75,
+                    mb: 1,
                     letterSpacing: '0.04em',
                     fontSize: '0.8125rem',
                     color: 'text.primary',
@@ -345,9 +345,12 @@ export default function RestaurantSettings() {
                 >
                   CONECTAR CUENTA DE MERCADO PAGO
                 </Typography>
-                
+                <Typography variant="body2" color="text.secondary" sx={{ mb: 2, lineHeight: 1.5, maxWidth: 520 }}>
+                  Así los clientes pueden abonar desde el menú y el dinero va a tu cuenta. Te pedimos que inicies sesión
+                  en Mercado Pago y confirmes: listo en un momento.
+                </Typography>
                 <Button
-                  variant="contained"
+                  variant="outlined"
                   disabled={
                     isDemoAccess ||
                     mpLoading ||
@@ -390,9 +393,22 @@ export default function RestaurantSettings() {
                     py: 1.25,
                     px: 2.5,
                     gap: 1,
-                    bgcolor: '#009EE3',
-                    boxShadow: '0 2px 8px rgba(0, 158, 227, 0.35)',
-                    '&:hover': { bgcolor: '#008ed0', boxShadow: '0 4px 12px rgba(0, 158, 227, 0.4)' },
+                    bgcolor: '#fff',
+                    color: '#009EE3',
+                    borderWidth: 2,
+                    borderColor: '#009EE3',
+                    boxShadow: '0 1px 3px rgba(0, 0, 0, 0.06)',
+                    '&:hover': {
+                      bgcolor: 'rgba(0, 158, 227, 0.06)',
+                      borderColor: '#008ed0',
+                      borderWidth: 2,
+                    },
+                    '&.Mui-disabled': {
+                      bgcolor: '#fafafa',
+                      color: 'action.disabled',
+                      borderColor: 'action.disabledBackground',
+                      borderWidth: 2,
+                    },
                     '& .MuiButton-startIcon': { ml: 0, mr: 0 },
                   }}
                 >
