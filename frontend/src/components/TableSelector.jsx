@@ -27,12 +27,28 @@ import ContentCopyIcon from '@mui/icons-material/ContentCopy';
 import { fetchTables, fetchRestaurantName } from '../api/tables';
 import { withRetry } from '../utils/retry';
 
+/** Supera remontajes (Strict Mode / cambio de rama v1↔v2) sin volver al skeleton si ya hay datos para este slug. */
+const tablesBySlugCache = new Map();
+
+function readTablesCache(slug) {
+  return slug ? tablesBySlugCache.get(slug) : undefined;
+}
+
+async function fetchTablesPayload(slug) {
+  const [tablesData, name] = await withRetry(
+    () => Promise.all([fetchTables(slug), fetchRestaurantName(slug)]),
+    { maxRetries: 2, delayMs: 1500 }
+  );
+  return { tables: tablesData || [], restaurantName: name || '' };
+}
+
 export default function TableSelector({ mesaOcupadaAlert = null, onDismissMesaOcupadaAlert }) {
   const { slug } = useParams();
   const navigate = useNavigate();
-  const [tables, setTables] = useState([]);
-  const [restaurantName, setRestaurantName] = useState('');
-  const [loading, setLoading] = useState(true);
+  const cached = readTablesCache(slug);
+  const [tables, setTables] = useState(() => cached?.tables ?? []);
+  const [restaurantName, setRestaurantName] = useState(() => cached?.restaurantName ?? '');
+  const [loading, setLoading] = useState(() => !cached);
   const [loadError, setLoadError] = useState(null);
   const [customTableDialog, setCustomTableDialog] = useState(false);
   const [customTableNumber, setCustomTableNumber] = useState('');
@@ -63,32 +79,69 @@ export default function TableSelector({ mesaOcupadaAlert = null, onDismissMesaOc
   };
 
   useEffect(() => {
-    loadTables();
-  }, [slug]);
-
-  useEffect(() => {
     document.title = restaurantName ? `${restaurantName} | MozoQR` : 'Seleccionar mesa | MozoQR';
     return () => { document.title = 'MozoQR'; };
   }, [restaurantName]);
 
   const loadTables = async () => {
+    setLoading(true);
+    setLoadError(null);
     try {
-      setLoading(true);
-      setLoadError(null);
-      const [tablesData, name] = await withRetry(() => Promise.all([
-        fetchTables(slug),
-        fetchRestaurantName(slug),
-      ]), { maxRetries: 2, delayMs: 1500 });
-      setTables(tablesData || []);
-      setRestaurantName(name || '');
+      const payload = await fetchTablesPayload(slug);
+      tablesBySlugCache.set(slug, payload);
+      setTables(payload.tables);
+      setRestaurantName(payload.restaurantName);
     } catch (error) {
       console.error('Error loading tables:', error);
       setTables([]);
+      setRestaurantName('');
       setLoadError(error?.message || 'No se pudieron cargar las mesas. Revisá tu conexión.');
     } finally {
       setLoading(false);
     }
   };
+
+  useEffect(() => {
+    const initial = readTablesCache(slug);
+    if (initial) {
+      setTables(initial.tables);
+      setRestaurantName(initial.restaurantName);
+      setLoading(false);
+    } else {
+      setTables([]);
+      setRestaurantName('');
+      setLoading(true);
+    }
+    setLoadError(null);
+
+    let cancelled = false;
+    (async () => {
+      try {
+        const payload = await fetchTablesPayload(slug);
+        tablesBySlugCache.set(slug, payload);
+        if (!cancelled) {
+          setTables(payload.tables);
+          setRestaurantName(payload.restaurantName);
+          setLoadError(null);
+        }
+      } catch (error) {
+        console.error('Error loading tables:', error);
+        if (!cancelled) {
+          if (!readTablesCache(slug)) {
+            setTables([]);
+            setRestaurantName('');
+          }
+          setLoadError(error?.message || 'No se pudieron cargar las mesas. Revisá tu conexión.');
+        }
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [slug]);
 
   const handleTableSelect = (tableNumber) => {
     if (blockedTableNumber != null && Number(tableNumber) === blockedTableNumber) return;
@@ -112,7 +165,9 @@ export default function TableSelector({ mesaOcupadaAlert = null, onDismissMesaOc
     }
   };
 
-  if (loading) {
+  const showSkeleton = loading && tables.length === 0 && !restaurantName;
+
+  if (showSkeleton) {
     return (
       <Container maxWidth="md" sx={{ py: { xs: 4, sm: 6 } }}>
         <Box sx={{ bgcolor: 'background.paper', border: '1px solid', borderColor: 'divider', borderRadius: 3, boxShadow: '0 1px 3px rgba(9,9,11,0.08)', p: { xs: 3, sm: 4 }, mb: 4, textAlign: 'center' }}>

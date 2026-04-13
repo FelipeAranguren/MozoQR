@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import {
-  Paper, Typography, Button, Dialog, DialogTitle, DialogContent,
+  Paper, Typography, Button, ButtonBase, Dialog, DialogTitle, DialogContent,
   DialogActions, List, ListItem, ListItemText, Box, Snackbar, Alert,
   TextField, Tabs, Tab, Divider, Chip, CircularProgress, IconButton, Tooltip
 } from '@mui/material';
@@ -51,6 +51,153 @@ const getStatusColor = (status) => {
   };
   return map[status] || 'default';
 };
+
+/** Listado de pedidos e ítems para el modal de cuenta (reutilizado en popup de resumen). */
+function PayAccountOrdersList({ loadingOrders, orderDetails, accountTotal }) {
+  if (loadingOrders) {
+    return (
+      <Box sx={{ display: 'flex', justifyContent: 'center', py: 4 }}>
+        <CircularProgress />
+      </Box>
+    );
+  }
+  if (orderDetails.length === 0 && accountTotal === 0) {
+    return (
+      <Box sx={{ textAlign: 'center', py: 4 }}>
+        <Typography variant="body2" color="text.secondary">
+          No hay pedidos para pagar
+        </Typography>
+      </Box>
+    );
+  }
+  return (
+    <Box>
+      {orderDetails.length === 0 && accountTotal > 0 && (
+        <Box sx={{ p: 2, mb: 2, borderRadius: 2, bgcolor: 'background.paper', border: '1px solid', borderColor: 'divider' }}>
+          <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
+            Total acumulado: {money(accountTotal)}
+          </Typography>
+          <Typography variant="caption" color="text.secondary">
+            No se pudieron cargar los detalles de los pedidos. El total se calculará correctamente.
+          </Typography>
+        </Box>
+      )}
+      <AnimatePresence>
+        {(orderDetails.length > 0 ? orderDetails : []).map((order, orderIndex) => (
+          <motion.div
+            key={order.id || `order-${orderIndex}`}
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0 }}
+            transition={{ delay: orderIndex * 0.1 }}
+          >
+            <Box
+              sx={{
+                mb: 2,
+                p: 2,
+                borderRadius: 2,
+                backgroundColor: (t) =>
+                  t.palette.mode === 'light'
+                    ? alpha(t.palette.primary.main, 0.03)
+                    : alpha(t.palette.primary.main, 0.08),
+                border: '1px solid',
+                borderColor: 'divider',
+              }}
+            >
+              <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 1 }}>
+                <Typography variant="caption" color="text.secondary">
+                  Pedido #{order.id || orderIndex + 1}
+                </Typography>
+                {order.createdAt && (
+                  <Typography variant="caption" color="text.secondary">
+                    {new Date(order.createdAt).toLocaleTimeString('es-AR', {
+                      hour: '2-digit',
+                      minute: '2-digit',
+                    })}
+                  </Typography>
+                )}
+              </Box>
+
+              <Box sx={{ mb: 1.5 }}>
+                <Chip
+                  label={getStatusLabel(order.order_status)}
+                  color={getStatusColor(order.order_status)}
+                  size="small"
+                  variant="outlined"
+                  sx={{ fontWeight: 600 }}
+                />
+              </Box>
+
+              {order.items && order.items.length > 0 ? (
+                <Box sx={{ mt: 1.5 }}>
+                  {order.items.map((item, itemIndex) => (
+                    <Box
+                      key={item.id || `item-${itemIndex}`}
+                      sx={{
+                        display: 'flex',
+                        justifyContent: 'space-between',
+                        alignItems: 'flex-start',
+                        mb: 1,
+                        pb: 1,
+                        borderBottom: '1px solid',
+                        borderColor: 'divider',
+                        '&:last-child': {
+                          borderBottom: 'none',
+                          mb: 0,
+                          pb: 0,
+                        },
+                      }}
+                    >
+                      <Box sx={{ flex: 1, minWidth: 0 }}>
+                        <Typography variant="body2" sx={{ fontWeight: 500 }}>
+                          {item.name || 'Producto'}
+                        </Typography>
+                        {item.notes && (
+                          <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 0.25 }}>
+                            Nota: {item.notes}
+                          </Typography>
+                        )}
+                      </Box>
+                      <Box sx={{ textAlign: 'right', ml: 2 }}>
+                        <Typography variant="body2" color="text.secondary">
+                          {item.quantity || 1} × {money(item.unitPrice || item.totalPrice || 0)}
+                        </Typography>
+                        <Typography variant="body2" sx={{ fontWeight: 600 }}>
+                          {money(item.totalPrice || item.unitPrice || 0)}
+                        </Typography>
+                      </Box>
+                    </Box>
+                  ))}
+                </Box>
+              ) : (
+                <Typography variant="body2" color="text.secondary" sx={{ mt: 1.5 }}>
+                  Sin items detallados
+                </Typography>
+              )}
+
+              {order.customerNotes && (
+                <Box sx={{ mt: 1, pt: 1, borderTop: '1px solid', borderColor: 'divider' }}>
+                  <Typography variant="caption" color="text.secondary">
+                    Nota del pedido: {order.customerNotes}
+                  </Typography>
+                </Box>
+              )}
+
+              <Box sx={{ display: 'flex', justifyContent: 'space-between', mt: 1.5, pt: 1, borderTop: '1px solid', borderColor: 'divider' }}>
+                <Typography variant="body2" sx={{ fontWeight: 600 }}>
+                  Subtotal pedido
+                </Typography>
+                <Typography variant="body2" sx={{ fontWeight: 700 }}>
+                  {money(order.total)}
+                </Typography>
+              </Box>
+            </Box>
+          </motion.div>
+        ))}
+      </AnimatePresence>
+    </Box>
+  );
+}
 
 // --- Claves de storage (para acumular totales de pedidos abiertos por mesa y restaurante)
 const openOrdersKey = (slug, table) => `OPEN_ORDERS_${slug}_${table}`;
@@ -152,6 +299,7 @@ export default function StickyFooter({
   const [validatingCoupon, setValidatingCoupon] = useState(false);
   const [showMobileCoupon, setShowMobileCoupon] = useState(false);
   const [mobilePayStep, setMobilePayStep] = useState(1);
+  const [summaryOrdersOpen, setSummaryOrdersOpen] = useState(false);
 
   const cardOptionsRef = useRef(null);
 
@@ -220,6 +368,10 @@ export default function StickyFooter({
 
     return () => { cancelled = true; };
   }, [slug, table, tableSessionId]);
+
+  useEffect(() => {
+    if (!payOpen) setSummaryOrdersOpen(false);
+  }, [payOpen]);
 
   // Total mostrado en el modal de pago (suma de pedidos registrados localmente)
   // CRÍTICO: Si tenemos orderDetails (del backend), usarlos como fuente de verdad
@@ -1119,7 +1271,7 @@ export default function StickyFooter({
                 backgroundColor: '#DCE3E7',
                 border: '1px solid',
                 borderColor: 'rgba(0,0,0,0.08)',
-                '@keyframes mozoqr-orderbar-scan': {
+                '@keyframes mozoqr-orderbar-shimmer': {
                   '0%': { backgroundPosition: '0% 50%' },
                   '100%': { backgroundPosition: '200% 50%' },
                 },
@@ -1130,10 +1282,12 @@ export default function StickyFooter({
                   flex: 1,
                   backgroundColor: '#DCE3E7',
                   backgroundImage: effectiveHasPending
-                    ? 'linear-gradient(90deg, #2EC4CE 0%, #8EDEE8 50%, #2EC4CE 100%)'
+                    ? 'linear-gradient(90deg, #000000 0%, #000000 38%, #e8e8e8 50%, #000000 62%, #000000 100%)'
                     : 'none',
                   backgroundSize: effectiveHasPending ? '200% 100%' : undefined,
-                  animation: effectiveHasPending ? 'mozoqr-orderbar-scan 1.6s linear infinite' : 'none',
+                  animation: effectiveHasPending
+                    ? 'mozoqr-orderbar-shimmer 2s linear infinite'
+                    : 'none',
                 }}
               />
               <Box sx={{ width: 2, backgroundColor: '#FFFFFF' }} />
@@ -1142,10 +1296,12 @@ export default function StickyFooter({
                   flex: 1,
                   backgroundColor: '#DCE3E7',
                   backgroundImage: effectiveHasPreparing
-                    ? 'linear-gradient(90deg, #2EC4CE 0%, #8EDEE8 50%, #2EC4CE 100%)'
+                    ? 'linear-gradient(90deg, #000000 0%, #000000 38%, #e8e8e8 50%, #000000 62%, #000000 100%)'
                     : 'none',
                   backgroundSize: effectiveHasPreparing ? '200% 100%' : undefined,
-                  animation: effectiveHasPreparing ? 'mozoqr-orderbar-scan 1.6s linear infinite' : 'none',
+                  animation: effectiveHasPreparing
+                    ? 'mozoqr-orderbar-shimmer 2s linear infinite'
+                    : 'none',
                 }}
               />
             </Box>
@@ -1657,7 +1813,30 @@ export default function StickyFooter({
           >
               {mobilePayStep === 1 ? (
                 <>
-                  <Box sx={{ p: 1.5, borderRadius: 2, border: '1px solid', borderColor: 'divider' }}>
+                  <ButtonBase
+                    component="div"
+                    focusRipple
+                    aria-label="Ver detalle de los pedidos del resumen"
+                    onClick={() => setSummaryOrdersOpen(true)}
+                    sx={{
+                      width: '100%',
+                      display: 'block',
+                      textAlign: 'left',
+                      borderRadius: 2,
+                      p: 1.5,
+                      border: '1px solid',
+                      borderColor: 'divider',
+                      transition: (t) =>
+                        t.transitions.create(['background-color', 'box-shadow', 'border-color'], {
+                          duration: t.transitions.duration.short,
+                        }),
+                      '&:hover': {
+                        bgcolor: 'action.hover',
+                        borderColor: 'text.secondary',
+                        boxShadow: 1,
+                      },
+                    }}
+                  >
                     <Typography variant="caption" color="text.secondary">
                       Resumen
                     </Typography>
@@ -1667,7 +1846,10 @@ export default function StickyFooter({
                     <Typography variant="h6" sx={{ mt: 1, fontWeight: 700 }}>
                       Subtotal: {money(orderDetails.length > 0 ? orderDetails.reduce((sum, o) => sum + (Number(o.total) || 0), 0) : accountTotal)}
                     </Typography>
-                  </Box>
+                    <Typography variant="caption" color="primary.main" sx={{ display: 'block', mt: 0.75, fontWeight: 500 }}>
+                      Ver detalle de pedidos
+                    </Typography>
+                  </ButtonBase>
 
                   <Box>
                     <Typography variant="body2" sx={{ mb: 1, fontWeight: 500 }}>
@@ -1847,150 +2029,14 @@ export default function StickyFooter({
           <Box sx={{ display: { xs: 'none', sm: 'block' } }}>
           {/* Resumen detallado de pedidos */}
           <Box sx={{ maxHeight: '50vh', overflowY: 'auto', p: 2 }}>
-            {loadingOrders ? (
-              <Box sx={{ display: 'flex', justifyContent: 'center', py: 4 }}>
-                <CircularProgress />
-              </Box>
-            ) : orderDetails.length === 0 && accountTotal === 0 ? (
-              <Box sx={{ textAlign: 'center', py: 4 }}>
-                <Typography variant="body2" color="text.secondary">
-                  No hay pedidos para pagar
-                </Typography>
-              </Box>
-            ) : (
-              <Box>
-                <Typography variant="subtitle2" sx={{ mb: 2, fontWeight: 600, color: 'text.secondary' }}>
-                  Resumen de pedidos
-                </Typography>
-                {orderDetails.length === 0 && accountTotal > 0 && (
-                  <Box sx={{ p: 2, mb: 2, borderRadius: 2, bgcolor: 'background.paper', border: '1px solid', borderColor: 'divider' }}>
-                    <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
-                      Total acumulado: {money(accountTotal)}
-                    </Typography>
-                    <Typography variant="caption" color="text.secondary">
-                      No se pudieron cargar los detalles de los pedidos. El total se calculará correctamente.
-                    </Typography>
-                  </Box>
-                )}
-                <AnimatePresence>
-                  {(orderDetails.length > 0 ? orderDetails : []).map((order, orderIndex) => {
-                    return (
-                      <motion.div
-                        key={order.id || `order-${orderIndex}`}
-                        initial={{ opacity: 0, y: 10 }}
-                        animate={{ opacity: 1, y: 0 }}
-                        exit={{ opacity: 0 }}
-                        transition={{ delay: orderIndex * 0.1 }}
-                      >
-                        <Box
-                          sx={{
-                            mb: 2,
-                            p: 2,
-                            borderRadius: 2,
-                            backgroundColor: (theme) =>
-                              theme.palette.mode === 'light'
-                                ? alpha(theme.palette.primary.main, 0.03)
-                                : alpha(theme.palette.primary.main, 0.08),
-                            border: '1px solid',
-                            borderColor: 'divider',
-                          }}
-                        >
-                          <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 1 }}>
-                            <Typography variant="caption" color="text.secondary">
-                              Pedido #{order.id || orderIndex + 1}
-                            </Typography>
-                            {order.createdAt && (
-                              <Typography variant="caption" color="text.secondary">
-                                {new Date(order.createdAt).toLocaleTimeString('es-AR', {
-                                  hour: '2-digit',
-                                  minute: '2-digit',
-                                })}
-                              </Typography>
-                            )}
-                          </Box>
-
-                          {/* Estado del pedido */}
-                          <Box sx={{ mb: 1.5 }}>
-                            <Chip
-                              label={getStatusLabel(order.order_status)}
-                              color={getStatusColor(order.order_status)}
-                              size="small"
-                              variant="outlined"
-                              sx={{ fontWeight: 600 }}
-                            />
-                          </Box>
-
-                          {/* Items del pedido */}
-                          {order.items && order.items.length > 0 ? (
-                            <Box sx={{ mt: 1.5 }}>
-                              {order.items.map((item, itemIndex) => (
-                                <Box
-                                  key={item.id || `item-${itemIndex}`}
-                                  sx={{
-                                    display: 'flex',
-                                    justifyContent: 'space-between',
-                                    alignItems: 'flex-start',
-                                    mb: 1,
-                                    pb: 1,
-                                    borderBottom: '1px solid',
-                                    borderColor: 'divider',
-                                    '&:last-child': {
-                                      borderBottom: 'none',
-                                      mb: 0,
-                                      pb: 0,
-                                    },
-                                  }}
-                                >
-                                  <Box sx={{ flex: 1, minWidth: 0 }}>
-                                    <Typography variant="body2" sx={{ fontWeight: 500 }}>
-                                      {item.name || 'Producto'}
-                                    </Typography>
-                                    {item.notes && (
-                                      <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 0.25 }}>
-                                        Nota: {item.notes}
-                                      </Typography>
-                                    )}
-                                  </Box>
-                                  <Box sx={{ textAlign: 'right', ml: 2 }}>
-                                    <Typography variant="body2" color="text.secondary">
-                                      {item.quantity || 1} × {money(item.unitPrice || item.totalPrice || 0)}
-                                    </Typography>
-                                    <Typography variant="body2" sx={{ fontWeight: 600 }}>
-                                      {money(item.totalPrice || item.unitPrice || 0)}
-                                    </Typography>
-                                  </Box>
-                                </Box>
-                              ))}
-                            </Box>
-                          ) : (
-                            <Typography variant="body2" color="text.secondary" sx={{ mt: 1.5 }}>
-                              Sin items detallados
-                            </Typography>
-                          )}
-
-                          {order.customerNotes && (
-                            <Box sx={{ mt: 1, pt: 1, borderTop: '1px solid', borderColor: 'divider' }}>
-                              <Typography variant="caption" color="text.secondary">
-                                Nota del pedido: {order.customerNotes}
-                              </Typography>
-                            </Box>
-                          )}
-
-                          <Box sx={{ display: 'flex', justifyContent: 'space-between', mt: 1.5, pt: 1, borderTop: '1px solid', borderColor: 'divider' }}>
-                            <Typography variant="body2" sx={{ fontWeight: 600 }}>
-                              Subtotal pedido
-                            </Typography>
-                            <Typography variant="body2" sx={{ fontWeight: 700 }}>
-                              {money(order.total)}
-                            </Typography>
-                          </Box>
-                        </Box>
-                      </motion.div>
-                    );
-                  })}
-                </AnimatePresence>
-              </Box>
-            )}
+            <Typography variant="subtitle2" sx={{ mb: 2, fontWeight: 600, color: 'text.secondary' }}>
+              Resumen de pedidos
+            </Typography>
+            <PayAccountOrdersList
+              loadingOrders={loadingOrders}
+              orderDetails={orderDetails}
+              accountTotal={accountTotal}
+            />
           </Box>
 
           {/* Totales y propina */}
@@ -2352,6 +2398,31 @@ export default function StickyFooter({
             </Button>
           </DialogActions>
         )}
+      </Dialog>
+
+      <Dialog
+        open={summaryOrdersOpen}
+        onClose={() => setSummaryOrdersOpen(false)}
+        maxWidth="sm"
+        fullWidth
+        aria-labelledby="summary-orders-title"
+        PaperProps={{ sx: { borderRadius: 4 } }}
+      >
+        <DialogTitle id="summary-orders-title" sx={{ fontWeight: 700 }}>
+          Pedidos en tu cuenta
+        </DialogTitle>
+        <DialogContent dividers sx={{ maxHeight: '70vh', p: 2 }}>
+          <PayAccountOrdersList
+            loadingOrders={loadingOrders}
+            orderDetails={orderDetails}
+            accountTotal={accountTotal}
+          />
+        </DialogContent>
+        <DialogActions sx={{ p: 2 }}>
+          <Button onClick={() => setSummaryOrdersOpen(false)} sx={{ textTransform: 'none' }}>
+            Cerrar
+          </Button>
+        </DialogActions>
       </Dialog>
     </>
   );
