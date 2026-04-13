@@ -24,24 +24,10 @@ import { useExchangeRate } from '../hooks/useExchangeRate';
 import { formatArs } from '../api/exchangeRate';
 import { PLAN_BASE_USD } from '../constants/planPricing';
 import { createSubscriptionPreference } from '../api/payments';
+import MercadoPagoMark from '../components/MercadoPagoMark';
 
-/** Ícono/logo Mercado Pago (SVG inline para que siempre cargue, sin depender de URLs externas) */
-const MP_BLUE = '#009EE3';
 function MercadoPagoLogo() {
-  return (
-    <Box
-      component="svg"
-      xmlns="http://www.w3.org/2000/svg"
-      viewBox="0 0 40 28"
-      sx={{ height: 28, width: 40, flexShrink: 0 }}
-      aria-hidden
-    >
-      <rect x="0" y="4" width="36" height="20" rx="3" ry="3" fill={MP_BLUE} opacity="0.15" stroke={MP_BLUE} strokeWidth="1.5" />
-      <rect x="4" y="8" width="28" height="4" rx="1" fill={MP_BLUE} opacity="0.4" />
-      <circle cx="8" cy="18" r="2" fill={MP_BLUE} />
-      <circle cx="14" cy="18" r="2" fill={MP_BLUE} opacity="0.6" />
-    </Box>
-  );
+  return <MercadoPagoMark sx={{ height: 28, width: 40 }} />;
 }
 
 const PLAN_OPTIONS = [

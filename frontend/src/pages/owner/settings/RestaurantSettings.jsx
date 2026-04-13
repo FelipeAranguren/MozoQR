@@ -21,6 +21,7 @@ import { fetchRestaurant, updateRestaurant } from '../../../api/restaurant';
 import { fetchMercadoPagoMethodBySlug, saveMercadoPagoMethodBySlug } from '../../../api/paymentMethods';
 import { useDemoAccess } from '../../../context/DemoAccessContext';
 import { buildMercadoPagoAuthorizationUrl, getMercadoPagoOAuthRedirectUri } from '../../../utils/mercadopagoOAuthUrl';
+import MercadoPagoMark from '../../../components/MercadoPagoMark';
 
 export default function RestaurantSettings() {
   const { isDemoAccess } = useDemoAccess();
@@ -338,8 +339,17 @@ export default function RestaurantSettings() {
                   border: '1px solid rgba(0, 158, 227, 0.25)',
                 }}
               >
-                <Typography variant="subtitle2" sx={{ fontWeight: 700, mb: 0.5 }}>
-                  Conectar cuenta de Mercado Pago
+                <Typography
+                  variant="subtitle1"
+                  sx={{
+                    fontWeight: 800,
+                    mb: 0.75,
+                    letterSpacing: '0.04em',
+                    fontSize: '0.8125rem',
+                    color: 'text.primary',
+                  }}
+                >
+                  CONECTAR CUENTA DE MERCADO PAGO
                 </Typography>
                 <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
                   Iniciá sesión en Mercado Pago y autorizá la aplicación. Guardamos en <strong>Métodos de pago</strong> la
@@ -367,13 +377,22 @@ export default function RestaurantSettings() {
                     }
                     window.location.href = url;
                   }}
+                  startIcon={<MercadoPagoMark onBrand />}
                   sx={{
                     textTransform: 'none',
+                    fontWeight: 700,
+                    letterSpacing: '0.06em',
+                    fontSize: '0.8125rem',
+                    py: 1.25,
+                    px: 2.5,
+                    gap: 1,
                     bgcolor: '#009EE3',
-                    '&:hover': { bgcolor: '#008ed0' },
+                    boxShadow: '0 2px 8px rgba(0, 158, 227, 0.35)',
+                    '&:hover': { bgcolor: '#008ed0', boxShadow: '0 4px 12px rgba(0, 158, 227, 0.4)' },
+                    '& .MuiButton-startIcon': { ml: 0, mr: 0 },
                   }}
                 >
-                  Conectar con Mercado Pago
+                  CONECTAR CUENTA
                 </Button>
                 {!import.meta.env.VITE_MP_CLIENT_ID?.trim() && (
                   <Typography variant="caption" color="text.secondary" display="block" sx={{ mt: 1.5 }}>
