@@ -61,7 +61,7 @@ export default function RestaurantSettings() {
       const raw = searchParams.get('mp_msg') || 'Error al conectar con Mercado Pago';
       const detail =
         raw === 'server_misconfigured'
-          ? 'el backend no tiene MP_CLIENT_ID y MP_CLIENT_SECRET (definilas en Railway u hosting de Strapi, no solo en Vercel).'
+          ? 'faltan en el servidor las credenciales de la aplicación en Mercado Pago (MP_CLIENT_ID y MP_CLIENT_SECRET): son las de tu app “MozoQR” en developers, no el Access Token de cada restaurante. Sin ellas el botón Conectar no puede canjear el código OAuth; podés usar Public Key y Access Token manualmente abajo.'
           : raw;
       setMessage({
         type: 'error',
