@@ -58,7 +58,11 @@ export default function RestaurantSettings() {
         text: 'Mercado Pago conectado correctamente. Las credenciales ya están asociadas a este restaurante.',
       });
     } else if (oauth === 'error') {
-      const detail = searchParams.get('mp_msg') || 'Error al conectar con Mercado Pago';
+      const raw = searchParams.get('mp_msg') || 'Error al conectar con Mercado Pago';
+      const detail =
+        raw === 'server_misconfigured'
+          ? 'el backend no tiene MP_CLIENT_ID y MP_CLIENT_SECRET (definilas en Railway u hosting de Strapi, no solo en Vercel).'
+          : raw;
       setMessage({
         type: 'error',
         text: `No se pudo conectar con Mercado Pago: ${detail}`,

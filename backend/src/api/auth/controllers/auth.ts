@@ -120,6 +120,33 @@ function redirectFrontend(ctx: any, path: string, query: Record<string, string>)
   ctx.redirect(u.toString());
 }
 
+function ownerPathFromRestaurante(r: { slug?: string } | null | undefined): string {
+  const slug = r?.slug && String(r.slug).trim().length > 0 ? String(r.slug).trim() : '';
+  return slug ? `/owner/${slug}/settings` : '/owner';
+}
+
+/** Redirige a /owner/:slug/settings cuando state identifica un restaurante (documentId, id o slug). */
+async function ownerPathFromOAuthState(strapi: any, state: unknown): Promise<string> {
+  const s = state != null && String(state).trim() ? String(state).trim() : '';
+  if (!s || !strapi?.db) return '/owner';
+  const r = await findRestauranteByState(strapi, s);
+  return ownerPathFromRestaurante(r);
+}
+
+function getMercadoPagoOAuthClientCredentials(): { clientId: string; clientSecret: string } {
+  const clientId =
+    process.env.MP_CLIENT_ID?.trim() ||
+    process.env.MERCADOPAGO_CLIENT_ID?.trim() ||
+    process.env.MERCADO_PAGO_CLIENT_ID?.trim() ||
+    '';
+  const clientSecret =
+    process.env.MP_CLIENT_SECRET?.trim() ||
+    process.env.MERCADOPAGO_CLIENT_SECRET?.trim() ||
+    process.env.MERCADO_PAGO_CLIENT_SECRET?.trim() ||
+    '';
+  return { clientId, clientSecret };
+}
+
 export default {
   async mercadoPagoCallback(ctx: any) {
     const strapi = getStrapi(ctx);
@@ -127,7 +154,8 @@ export default {
 
     if (q.error) {
       strapi?.log?.warn?.('[auth.mercadoPagoCallback] OAuth error:', q.error, q.error_description);
-      redirectFrontend(ctx, '/owner', {
+      const path = await ownerPathFromOAuthState(strapi, q.state);
+      redirectFrontend(ctx, path, {
         mp_oauth: 'error',
         mp_msg: String(q.error_description || q.error || 'oauth_error'),
       });
@@ -137,15 +165,18 @@ export default {
     const code = q.code;
     const state = q.state;
     if (!code || !state) {
-      redirectFrontend(ctx, '/owner', { mp_oauth: 'error', mp_msg: 'missing_code_or_state' });
+      const path = state ? await ownerPathFromOAuthState(strapi, state) : '/owner';
+      redirectFrontend(ctx, path, { mp_oauth: 'error', mp_msg: 'missing_code_or_state' });
       return;
     }
 
-    const clientId = process.env.MP_CLIENT_ID?.trim();
-    const clientSecret = process.env.MP_CLIENT_SECRET?.trim();
+    const { clientId, clientSecret } = getMercadoPagoOAuthClientCredentials();
     if (!clientId || !clientSecret) {
-      strapi?.log?.error?.('[auth.mercadoPagoCallback] MP_CLIENT_ID o MP_CLIENT_SECRET ausentes');
-      redirectFrontend(ctx, '/owner', { mp_oauth: 'error', mp_msg: 'server_misconfigured' });
+      strapi?.log?.error?.(
+        '[auth.mercadoPagoCallback] MP_CLIENT_ID/MP_CLIENT_SECRET (o alias MERCADOPAGO_*) ausentes en el servidor — definilas en Railway/hosting del backend.',
+      );
+      const path = await ownerPathFromOAuthState(strapi, state);
+      redirectFrontend(ctx, path, { mp_oauth: 'error', mp_msg: 'server_misconfigured' });
       return;
     }
 
@@ -169,7 +200,8 @@ export default {
       tokenJson = await res.json().catch(() => ({}));
       if (!res.ok) {
         strapi?.log?.warn?.('[auth.mercadoPagoCallback] token HTTP', res.status, tokenJson);
-        redirectFrontend(ctx, '/owner', {
+        const path = await ownerPathFromOAuthState(strapi, state);
+        redirectFrontend(ctx, path, {
           mp_oauth: 'error',
           mp_msg: String(tokenJson?.message || tokenJson?.error || `token_${res.status}`),
         });
@@ -177,14 +209,16 @@ export default {
       }
     } catch (e: any) {
       strapi?.log?.warn?.('[auth.mercadoPagoCallback] fetch token', e?.message);
-      redirectFrontend(ctx, '/owner', { mp_oauth: 'error', mp_msg: 'token_request_failed' });
+      const path = await ownerPathFromOAuthState(strapi, state);
+      redirectFrontend(ctx, path, { mp_oauth: 'error', mp_msg: 'token_request_failed' });
       return;
     }
 
     const accessToken = tokenJson?.access_token;
     const refreshToken = tokenJson?.refresh_token;
     if (!accessToken || typeof accessToken !== 'string') {
-      redirectFrontend(ctx, '/owner', { mp_oauth: 'error', mp_msg: 'invalid_token_response' });
+      const path = await ownerPathFromOAuthState(strapi, state);
+      redirectFrontend(ctx, path, { mp_oauth: 'error', mp_msg: 'invalid_token_response' });
       return;
     }
 
@@ -197,6 +231,8 @@ export default {
       return;
     }
 
+    const settingsPath = ownerPathFromRestaurante(restaurante);
+
     try {
       await upsertMercadoPagoTokens(
         strapi,
@@ -207,15 +243,10 @@ export default {
       );
     } catch (e: any) {
       strapi?.log?.error?.('[auth.mercadoPagoCallback] persist tokens', e?.message);
-      redirectFrontend(ctx, '/owner', { mp_oauth: 'error', mp_msg: 'persist_failed' });
+      redirectFrontend(ctx, settingsPath, { mp_oauth: 'error', mp_msg: 'persist_failed' });
       return;
     }
 
-    const slug = restaurante.slug && String(restaurante.slug).length > 0 ? String(restaurante.slug) : '';
-    if (slug) {
-      redirectFrontend(ctx, `/owner/${slug}/settings`, { mp_oauth: 'success' });
-    } else {
-      redirectFrontend(ctx, '/owner', { mp_oauth: 'success' });
-    }
+    redirectFrontend(ctx, settingsPath, { mp_oauth: 'success' });
   },
 };
