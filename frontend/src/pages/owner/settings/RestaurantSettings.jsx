@@ -21,7 +21,6 @@ import { fetchRestaurant, updateRestaurant } from '../../../api/restaurant';
 import { fetchMercadoPagoMethodBySlug, saveMercadoPagoMethodBySlug } from '../../../api/paymentMethods';
 import { useDemoAccess } from '../../../context/DemoAccessContext';
 import { buildMercadoPagoAuthorizationUrl, getMercadoPagoOAuthRedirectUri } from '../../../utils/mercadopagoOAuthUrl';
-import MercadoPagoMark from '../../../components/MercadoPagoMark';
 
 export default function RestaurantSettings() {
   const { isDemoAccess } = useDemoAccess();
@@ -323,11 +322,6 @@ export default function RestaurantSettings() {
               <Typography variant="h6" sx={{ fontWeight: 700, mb: 1.5 }}>
                 Credenciales de Pago
               </Typography>
-              <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-                Podés usar el botón de abajo para conectar tu cuenta (recomendado) o cargar la Public Key y el Access
-                Token a mano. Los pagos del menú usan las credenciales de <strong>este</strong> restaurante; el access
-                token no se muestra completo por seguridad.
-              </Typography>
               <Divider sx={{ mb: 2 }} />
 
               <Box
@@ -351,11 +345,7 @@ export default function RestaurantSettings() {
                 >
                   CONECTAR CUENTA DE MERCADO PAGO
                 </Typography>
-                <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-                  Iniciá sesión en Mercado Pago y autorizá la aplicación. Guardamos en <strong>Métodos de pago</strong> la
-                  Public Key, el Access Token y el Refresh Token de la cuenta conectada: los cobros de clientes en este
-                  restaurante se hacen contra esa cuenta de Mercado Pago.
-                </Typography>
+                
                 <Button
                   variant="contained"
                   disabled={
@@ -377,7 +367,21 @@ export default function RestaurantSettings() {
                     }
                     window.location.href = url;
                   }}
-                  startIcon={<MercadoPagoMark onBrand />}
+                  startIcon={
+                    <Box
+                      component="img"
+                      src={`${String(import.meta.env.BASE_URL || '/').replace(/\/?$/, '/')}images/mercadopago-handshake.png`}
+                      alt="Mercado Pago"
+                      sx={{
+                        height: 28,
+                        width: 'auto',
+                        maxWidth: 36,
+                        display: 'block',
+                        flexShrink: 0,
+                        objectFit: 'contain',
+                      }}
+                    />
+                  }
                   sx={{
                     textTransform: 'none',
                     fontWeight: 700,
