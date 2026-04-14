@@ -1,5 +1,5 @@
 import React from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, Link } from 'react-router-dom';
 import { Box, Container, Typography, Grid, Card, Button, alpha } from '@mui/material';
 import RestaurantMenuIcon from '@mui/icons-material/RestaurantMenu';
 import KitchenIcon from '@mui/icons-material/Kitchen';
@@ -245,6 +245,22 @@ export default function DemoLanding() {
                 }}>
                     <Typography variant="body2" sx={{ color: COLORS.textSecondary }}>
                         Para reiniciar la demo, puedes volver a esta página en cualquier momento.
+                    </Typography>
+                    <Typography
+                        component={Link}
+                        to="/admin/dashboard"
+                        variant="caption"
+                        sx={{
+                            mt: 1.5,
+                            display: 'inline-block',
+                            color: COLORS.textMuted || COLORS.textSecondary,
+                            opacity: 0.45,
+                            textDecoration: 'none',
+                            '&:hover': { opacity: 0.8, textDecoration: 'underline' },
+                            cursor: 'pointer',
+                        }}
+                    >
+                        Administración
                     </Typography>
                 </Box>
                 </Container>

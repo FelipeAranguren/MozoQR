@@ -23,6 +23,7 @@ import OwnerDashboard from './pages/OwnerDashboard';
 import OwnerDashboardList from './pages/OwnerDashboardList';
 import OwnerRouteGuard from './guards/OwnerRouteGuard';
 import AuthGuard from './guards/AuthGuard';
+import AdminGuard from './guards/AdminGuard';
 import NoAccess from './pages/NoAccess';
 import OwnerLayout from './layouts/OwnerLayout';
 import MenuManagement from './pages/owner/menu/MenuManagement';
@@ -103,7 +104,7 @@ export default function App() {
           <Route path="/owner" element={<AuthGuard><OwnerDashboardList /></AuthGuard>} />
 
           {/* Admin Dashboard - Dashboard de administración */}
-          <Route path="/admin/dashboard" element={<AuthGuard><AdminDashboard /></AuthGuard>} />
+          <Route path="/admin/dashboard" element={<AdminGuard><AdminDashboard /></AdminGuard>} />
           <Route path="/admin/impersonate" element={<ImpersonateCallback />} />
 
 

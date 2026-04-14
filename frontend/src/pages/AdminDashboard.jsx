@@ -65,6 +65,10 @@ import {
 } from '@mui/icons-material';
 import { useRestaurantes } from '../hooks/useRestaurantes';
 import { getAllOwnerComments } from '../api/comments';
+import {
+  fetchAdminUsers, createAdminUser, updateAdminUser, toggleBlockUser,
+  resetUserPassword, fetchAdminMemberships, updateMembership, createMembership,
+} from '../api/admin';
 import axios from 'axios';
 import { motion, AnimatePresence } from 'framer-motion';
 import { COLORS } from '../theme';
@@ -635,6 +639,7 @@ export default function AdminDashboard() {
           <Tab label="Gestión de Flota" icon={<DashboardIcon />} iconPosition="start" sx={{ fontWeight: 600, minHeight: 60 }} />
           <Tab label="Finanzas e Historial" icon={<ReceiptIcon />} iconPosition="start" sx={{ fontWeight: 600, minHeight: 60 }} />
           <Tab label="Centro de Comentarios" icon={<MessageIcon />} iconPosition="start" sx={{ fontWeight: 600, minHeight: 60 }} />
+          <Tab label="Usuarios" icon={<PeopleIcon />} iconPosition="start" sx={{ fontWeight: 600, minHeight: 60 }} />
         </Tabs>
 
         {/* TAB 0: FLEET MANAGEMENT */}
@@ -803,6 +808,9 @@ export default function AdminDashboard() {
 
         {/* TAB 2: COMMENTS */}
         {activeTab === 2 && <CommentsList />}
+
+        {/* TAB 3: USERS */}
+        {activeTab === 3 && <UsersPanel restaurantes={restaurantes || []} />}
       </Card>
 
       {/* MENÚ DE ACCIONES RÁPIDAS */}
@@ -858,6 +866,331 @@ export default function AdminDashboard() {
       />
 
     </Container>
+  );
+}
+
+// Subcomponente Usuarios
+function UsersPanel({ restaurantes }) {
+  const [users, setUsers] = useState([]);
+  const [memberships, setMemberships] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
+  const [search, setSearch] = useState('');
+  const [subTab, setSubTab] = useState(0);
+
+  const [createDialog, setCreateDialog] = useState(false);
+  const [editDialog, setEditDialog] = useState(null);
+  const [resetPwDialog, setResetPwDialog] = useState(null);
+  const [memberDialog, setMemberDialog] = useState(false);
+  const [saving, setSaving] = useState(false);
+
+  const [newUser, setNewUser] = useState({ email: '', fullname: '', password: '' });
+  const [editForm, setEditForm] = useState({});
+  const [newPassword, setNewPassword] = useState('');
+  const [newMember, setNewMember] = useState({ userId: '', restauranteId: '', role: 'staff' });
+
+  const loadUsers = async () => {
+    setLoading(true);
+    try {
+      const data = await fetchAdminUsers({ search: search || undefined, pageSize: 200 });
+      setUsers(data || []);
+    } catch (e) {
+      setError(e?.response?.data?.error?.message || 'Error al cargar usuarios');
+    }
+    setLoading(false);
+  };
+
+  const loadMemberships = async () => {
+    try {
+      const data = await fetchAdminMemberships({ pageSize: 500 });
+      setMemberships(data || []);
+    } catch { /* ignore */ }
+  };
+
+  useEffect(() => { loadUsers(); loadMemberships(); }, []);
+
+  const handleSearch = () => loadUsers();
+
+  const handleCreate = async () => {
+    if (!newUser.email || !newUser.password) return;
+    setSaving(true);
+    try {
+      await createAdminUser(newUser);
+      setCreateDialog(false);
+      setNewUser({ email: '', fullname: '', password: '' });
+      await loadUsers();
+    } catch (e) {
+      setError(e?.response?.data?.error?.message || 'Error al crear usuario');
+    }
+    setSaving(false);
+  };
+
+  const handleEdit = async () => {
+    if (!editDialog) return;
+    setSaving(true);
+    try {
+      await updateAdminUser(editDialog.id, editForm);
+      setEditDialog(null);
+      await loadUsers();
+    } catch (e) {
+      setError(e?.response?.data?.error?.message || 'Error al editar usuario');
+    }
+    setSaving(false);
+  };
+
+  const handleToggleBlock = async (user) => {
+    try {
+      await toggleBlockUser(user.id);
+      await loadUsers();
+    } catch (e) {
+      setError(e?.response?.data?.error?.message || 'Error');
+    }
+  };
+
+  const handleResetPw = async () => {
+    if (!resetPwDialog || !newPassword) return;
+    setSaving(true);
+    try {
+      await resetUserPassword(resetPwDialog.id, newPassword);
+      setResetPwDialog(null);
+      setNewPassword('');
+      alert('Password actualizada correctamente');
+    } catch (e) {
+      setError(e?.response?.data?.error?.message || 'Error al resetear password');
+    }
+    setSaving(false);
+  };
+
+  const handleToggleMemberActive = async (m) => {
+    try {
+      await updateMembership(m.id, { active: !m.active });
+      await loadMemberships();
+    } catch (e) {
+      setError(e?.response?.data?.error?.message || 'Error');
+    }
+  };
+
+  const handleChangeMemberRole = async (m, newRole) => {
+    try {
+      await updateMembership(m.id, { role: newRole });
+      await loadMemberships();
+    } catch (e) {
+      setError(e?.response?.data?.error?.message || 'Error');
+    }
+  };
+
+  const handleCreateMember = async () => {
+    if (!newMember.userId || !newMember.restauranteId) return;
+    setSaving(true);
+    try {
+      await createMembership(newMember);
+      setMemberDialog(false);
+      setNewMember({ userId: '', restauranteId: '', role: 'staff' });
+      await loadMemberships();
+    } catch (e) {
+      setError(e?.response?.data?.error?.message || 'Error al crear membership');
+    }
+    setSaving(false);
+  };
+
+  return (
+    <Box sx={{ p: 3 }}>
+      {error && <Alert severity="error" sx={{ mb: 2 }} onClose={() => setError('')}>{error}</Alert>}
+
+      <Tabs value={subTab} onChange={(_, v) => setSubTab(v)} sx={{ mb: 2 }}>
+        <Tab label={`Usuarios (${users.length})`} sx={{ fontWeight: 600 }} />
+        <Tab label={`Memberships (${memberships.length})`} sx={{ fontWeight: 600 }} />
+      </Tabs>
+
+      {subTab === 0 && (
+        <>
+          <Stack direction="row" spacing={2} sx={{ mb: 2 }}>
+            <TextField size="small" placeholder="Buscar por email, nombre..." value={search}
+              onChange={e => setSearch(e.target.value)} onKeyDown={e => e.key === 'Enter' && handleSearch()}
+              sx={{ flex: 1 }} />
+            <Button variant="outlined" onClick={handleSearch}>Buscar</Button>
+            <Button variant="contained" startIcon={<AddIcon />} onClick={() => setCreateDialog(true)}>Nuevo usuario</Button>
+          </Stack>
+
+          {loading ? <Box sx={{ display: 'flex', justifyContent: 'center', py: 4 }}><CircularProgress /></Box> : (
+            <TableContainer component={Paper} variant="outlined">
+              <Table size="small">
+                <TableHead sx={{ bgcolor: COLORS.bgAlt }}>
+                  <TableRow>
+                    <TableCell sx={{ fontWeight: 700 }}>ID</TableCell>
+                    <TableCell sx={{ fontWeight: 700 }}>Nombre</TableCell>
+                    <TableCell sx={{ fontWeight: 700 }}>Email</TableCell>
+                    <TableCell sx={{ fontWeight: 700 }}>Provider</TableCell>
+                    <TableCell sx={{ fontWeight: 700 }}>Estado</TableCell>
+                    <TableCell sx={{ fontWeight: 700 }}>Restaurantes</TableCell>
+                    <TableCell sx={{ fontWeight: 700 }}>Creado</TableCell>
+                    <TableCell align="right" sx={{ fontWeight: 700 }}>Acciones</TableCell>
+                  </TableRow>
+                </TableHead>
+                <TableBody>
+                  {users.length === 0 && (
+                    <TableRow><TableCell colSpan={8} align="center" sx={{ py: 3 }}>Sin usuarios</TableCell></TableRow>
+                  )}
+                  {users.map(u => (
+                    <TableRow key={u.id} hover>
+                      <TableCell>{u.id}</TableCell>
+                      <TableCell sx={{ fontWeight: 500 }}>{u.fullname || u.username || '-'}</TableCell>
+                      <TableCell sx={{ fontFamily: 'monospace', fontSize: '0.8rem' }}>{u.email}</TableCell>
+                      <TableCell><Chip label={u.provider || 'local'} size="small" variant="outlined" /></TableCell>
+                      <TableCell>
+                        {u.blocked ? <Chip label="Bloqueado" color="error" size="small" /> :
+                          u.confirmed ? <Chip label="Activo" color="success" size="small" /> :
+                          <Chip label="No confirmado" color="warning" size="small" />}
+                      </TableCell>
+                      <TableCell>
+                        {(u.restaurant_members || []).filter(m => m.active).map(m => (
+                          <Chip key={m.id} label={`${m.restaurante?.name || '?'} (${m.role})`}
+                            size="small" variant="outlined" sx={{ mr: 0.5, mb: 0.5 }} />
+                        ))}
+                        {(u.restaurant_members || []).filter(m => m.active).length === 0 && <Typography variant="caption" color="text.secondary">Sin acceso</Typography>}
+                      </TableCell>
+                      <TableCell sx={{ fontSize: '0.75rem' }}>{formatDate(u.createdAt)}</TableCell>
+                      <TableCell align="right">
+                        <Tooltip title="Editar"><IconButton size="small" onClick={() => { setEditDialog(u); setEditForm({ fullname: u.fullname || '', email: u.email, username: u.username }); }}><EditIcon fontSize="small" /></IconButton></Tooltip>
+                        <Tooltip title={u.blocked ? 'Desbloquear' : 'Bloquear'}><IconButton size="small" color={u.blocked ? 'success' : 'error'} onClick={() => handleToggleBlock(u)}>{u.blocked ? <CheckCircleIcon fontSize="small" /> : <CancelIcon fontSize="small" />}</IconButton></Tooltip>
+                        <Tooltip title="Resetear password"><IconButton size="small" onClick={() => { setResetPwDialog(u); setNewPassword(''); }}><EditIcon fontSize="small" sx={{ color: COLORS.warning }} /></IconButton></Tooltip>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </TableContainer>
+          )}
+        </>
+      )}
+
+      {subTab === 1 && (
+        <>
+          <Stack direction="row" justifyContent="flex-end" sx={{ mb: 2 }}>
+            <Button variant="contained" startIcon={<AddIcon />} onClick={() => setMemberDialog(true)}>Asignar usuario a restaurante</Button>
+          </Stack>
+          <TableContainer component={Paper} variant="outlined">
+            <Table size="small">
+              <TableHead sx={{ bgcolor: COLORS.bgAlt }}>
+                <TableRow>
+                  <TableCell sx={{ fontWeight: 700 }}>Usuario</TableCell>
+                  <TableCell sx={{ fontWeight: 700 }}>Email</TableCell>
+                  <TableCell sx={{ fontWeight: 700 }}>Restaurante</TableCell>
+                  <TableCell sx={{ fontWeight: 700 }}>Rol</TableCell>
+                  <TableCell sx={{ fontWeight: 700 }}>Estado</TableCell>
+                  <TableCell align="right" sx={{ fontWeight: 700 }}>Acciones</TableCell>
+                </TableRow>
+              </TableHead>
+              <TableBody>
+                {memberships.length === 0 && (
+                  <TableRow><TableCell colSpan={6} align="center" sx={{ py: 3 }}>Sin memberships</TableCell></TableRow>
+                )}
+                {memberships.map(m => (
+                  <TableRow key={m.id} hover sx={{ opacity: m.active ? 1 : 0.5 }}>
+                    <TableCell sx={{ fontWeight: 500 }}>{m.users_permissions_user?.fullname || m.users_permissions_user?.username || '-'}</TableCell>
+                    <TableCell sx={{ fontFamily: 'monospace', fontSize: '0.8rem' }}>{m.users_permissions_user?.email || '-'}</TableCell>
+                    <TableCell>{m.restaurante?.name || '-'} <Typography variant="caption" sx={{ fontFamily: 'monospace' }}>({m.restaurante?.slug})</Typography></TableCell>
+                    <TableCell>
+                      <TextField select size="small" value={m.role} onChange={e => handleChangeMemberRole(m, e.target.value)}
+                        sx={{ minWidth: 100 }} variant="standard">
+                        <MenuItem value="owner">Owner</MenuItem>
+                        <MenuItem value="staff">Staff</MenuItem>
+                      </TextField>
+                    </TableCell>
+                    <TableCell>
+                      <Chip label={m.active ? 'Activo' : 'Inactivo'} color={m.active ? 'success' : 'default'} size="small" />
+                    </TableCell>
+                    <TableCell align="right">
+                      <Button size="small" color={m.active ? 'error' : 'success'} onClick={() => handleToggleMemberActive(m)}>
+                        {m.active ? 'Desactivar' : 'Activar'}
+                      </Button>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </TableContainer>
+        </>
+      )}
+
+      {/* Dialog Crear Usuario */}
+      <Dialog open={createDialog} onClose={() => setCreateDialog(false)} maxWidth="sm" fullWidth>
+        <DialogTitle>Crear usuario nuevo</DialogTitle>
+        <DialogContent>
+          <TextField label="Email" fullWidth margin="normal" required value={newUser.email}
+            onChange={e => setNewUser(f => ({ ...f, email: e.target.value }))} />
+          <TextField label="Nombre completo" fullWidth margin="normal" value={newUser.fullname}
+            onChange={e => setNewUser(f => ({ ...f, fullname: e.target.value }))} />
+          <TextField label="Password" type="password" fullWidth margin="normal" required value={newUser.password}
+            onChange={e => setNewUser(f => ({ ...f, password: e.target.value }))} helperText="Mínimo 6 caracteres" />
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setCreateDialog(false)}>Cancelar</Button>
+          <Button variant="contained" onClick={handleCreate} disabled={saving || !newUser.email || !newUser.password}>
+            {saving ? 'Creando...' : 'Crear usuario'}
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Dialog Editar Usuario */}
+      <Dialog open={!!editDialog} onClose={() => setEditDialog(null)} maxWidth="sm" fullWidth>
+        <DialogTitle>Editar usuario: {editDialog?.email}</DialogTitle>
+        <DialogContent>
+          <TextField label="Nombre completo" fullWidth margin="normal" value={editForm.fullname || ''}
+            onChange={e => setEditForm(f => ({ ...f, fullname: e.target.value }))} />
+          <TextField label="Email" fullWidth margin="normal" value={editForm.email || ''}
+            onChange={e => setEditForm(f => ({ ...f, email: e.target.value }))} />
+          <TextField label="Username" fullWidth margin="normal" value={editForm.username || ''}
+            onChange={e => setEditForm(f => ({ ...f, username: e.target.value }))} />
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setEditDialog(null)}>Cancelar</Button>
+          <Button variant="contained" onClick={handleEdit} disabled={saving}>
+            {saving ? 'Guardando...' : 'Guardar'}
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Dialog Resetear Password */}
+      <Dialog open={!!resetPwDialog} onClose={() => setResetPwDialog(null)} maxWidth="xs" fullWidth>
+        <DialogTitle>Resetear password: {resetPwDialog?.email}</DialogTitle>
+        <DialogContent>
+          <TextField label="Nueva password" type="password" fullWidth margin="normal" autoFocus
+            value={newPassword} onChange={e => setNewPassword(e.target.value)} helperText="Mínimo 6 caracteres" />
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setResetPwDialog(null)}>Cancelar</Button>
+          <Button variant="contained" color="warning" onClick={handleResetPw} disabled={saving || newPassword.length < 6}>
+            {saving ? 'Reseteando...' : 'Resetear password'}
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Dialog Asignar Membership */}
+      <Dialog open={memberDialog} onClose={() => setMemberDialog(false)} maxWidth="sm" fullWidth>
+        <DialogTitle>Asignar usuario a restaurante</DialogTitle>
+        <DialogContent>
+          <TextField label="ID del usuario" type="number" fullWidth margin="normal" required
+            value={newMember.userId} onChange={e => setNewMember(f => ({ ...f, userId: e.target.value }))}
+            helperText="Copiá el ID de la tabla de usuarios" />
+          <TextField label="Restaurante" select fullWidth margin="normal" required
+            value={newMember.restauranteId} onChange={e => setNewMember(f => ({ ...f, restauranteId: e.target.value }))}>
+            {restaurantes.map(r => <MenuItem key={r.id} value={r.id}>{r.name} ({r.slug})</MenuItem>)}
+          </TextField>
+          <TextField label="Rol" select fullWidth margin="normal"
+            value={newMember.role} onChange={e => setNewMember(f => ({ ...f, role: e.target.value }))}>
+            <MenuItem value="owner">Owner</MenuItem>
+            <MenuItem value="staff">Staff</MenuItem>
+          </TextField>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setMemberDialog(false)}>Cancelar</Button>
+          <Button variant="contained" onClick={handleCreateMember} disabled={saving || !newMember.userId || !newMember.restauranteId}>
+            {saving ? 'Asignando...' : 'Asignar'}
+          </Button>
+        </DialogActions>
+      </Dialog>
+    </Box>
   );
 }
 
