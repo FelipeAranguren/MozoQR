@@ -24,3 +24,6 @@ Restart Strapi after copying. In **Users & Permissions**:
 
 Point your frontend to backend with `VITE_API_URL`.
 
+## Ops
+- 2026-04-14: Trigger-only commit to re-run Vercel deployment pipeline.
+
