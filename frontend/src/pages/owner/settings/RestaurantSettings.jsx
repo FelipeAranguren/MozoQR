@@ -493,7 +493,7 @@ export default function RestaurantSettings() {
                     <Box>
                       <CloudUploadIcon sx={{ fontSize: 48, color: MARANA_COLORS.textSecondary, mb: 1 }} />
                       <Typography variant="body2" color="text.secondary">
-                        Haz clic para subir un logo
+                        Haz clic para subir un logo. Recomendacion: subir logos en formato 1:1 (Ej: 1024x1024)
                       </Typography>
                       <Typography variant="caption" color="text.secondary">
                         PNG, JPG hasta 5MB

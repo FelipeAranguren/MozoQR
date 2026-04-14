@@ -283,7 +283,7 @@ const ProductForm = forwardRef(function ProductForm({ product, categories, onSav
               <Box>
                 <CloudUploadIcon sx={{ fontSize: 48, color: MARANA_COLORS.textSecondary, mb: 1 }} />
                 <Typography variant="body2" color="text.secondary">
-                  Haz clic para subir una imagen
+                  Haz clic para subir una imagen. Recomendacion: subir imagenes en formato 1:1 (Ej: 1024x1024)
                 </Typography>
                 <Typography variant="caption" color="text.secondary">
                   PNG, JPG hasta 5MB

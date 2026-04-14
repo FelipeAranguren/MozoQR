@@ -5,7 +5,6 @@ import CheckCircleIcon from '@mui/icons-material/CheckCircle';
 import WarningIcon from '@mui/icons-material/Warning';
 import ErrorIcon from '@mui/icons-material/Error';
 import PhotoCameraIcon from '@mui/icons-material/PhotoCamera';
-import AttachMoneyIcon from '@mui/icons-material/AttachMoney';
 import TableRestaurantIcon from '@mui/icons-material/TableRestaurant';
 import CategoryIcon from '@mui/icons-material/Category';
 import ImageIcon from '@mui/icons-material/Image';
@@ -22,7 +21,6 @@ export default function HealthCheckPanel({ metrics = {}, onActionClick }) {
   const {
     productsWithoutImage = 0,
     totalProducts = 0,
-    outdatedPrices = 0,
     missingTables = 0,
     totalTables = 0,
     hasLogo = false,
@@ -54,16 +52,6 @@ export default function HealthCheckPanel({ metrics = {}, onActionClick }) {
       icon: <PhotoCameraIcon />,
       count: `${totalProducts - productsWithoutImage}/${totalProducts}`,
       action: productsWithoutImage > 0 ? 'Agregar fotos' : null
-    },
-    {
-      id: 'prices',
-      title: 'Precios actualizados',
-      value: outdatedPrices === 0 ? '100%' : `${100 - Math.min(50, outdatedPrices * 10)}%`,
-      progress: outdatedPrices === 0 ? 100 : Math.max(50, 100 - (outdatedPrices * 10)),
-      status: outdatedPrices === 0 ? 'good' : outdatedPrices <= 2 ? 'warning' : 'error',
-      icon: <AttachMoneyIcon />,
-      count: outdatedPrices === 0 ? 'Todos actualizados' : `${outdatedPrices} desactualizados`,
-      action: outdatedPrices > 0 ? 'Revisar precios' : null
     },
     {
       id: 'tables',
