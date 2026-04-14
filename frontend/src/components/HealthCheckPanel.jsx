@@ -9,6 +9,7 @@ import AttachMoneyIcon from '@mui/icons-material/AttachMoney';
 import TableRestaurantIcon from '@mui/icons-material/TableRestaurant';
 import CategoryIcon from '@mui/icons-material/Category';
 import ImageIcon from '@mui/icons-material/Image';
+import AccountBalanceWalletIcon from '@mui/icons-material/AccountBalanceWallet';
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
 import ExpandLessIcon from '@mui/icons-material/ExpandLess';
 import { MARANA_COLORS } from '../theme';
@@ -25,6 +26,7 @@ export default function HealthCheckPanel({ metrics = {}, onActionClick }) {
     missingTables = 0,
     totalTables = 0,
     hasLogo = false,
+    hasMercadoPagoConnected = false,
     totalCategories = 0,
     productsWithoutCategory = 0
   } = metrics || {};
@@ -32,15 +34,15 @@ export default function HealthCheckPanel({ metrics = {}, onActionClick }) {
   // Calcular porcentajes
   const imageCoverage = totalProducts > 0 
     ? Math.round(((totalProducts - productsWithoutImage) / totalProducts) * 100) 
-    : 100;
+    : 0;
   
   const tableCoverage = totalTables > 0
     ? Math.round(((totalTables - missingTables) / totalTables) * 100)
-    : 100;
+    : 0;
 
   const categoryCoverage = totalProducts > 0
     ? Math.round(((totalProducts - productsWithoutCategory) / totalProducts) * 100)
-    : 100;
+    : 0;
 
   const healthItems = [
     {
@@ -92,10 +94,20 @@ export default function HealthCheckPanel({ metrics = {}, onActionClick }) {
       icon: <ImageIcon />,
       count: hasLogo ? 'Configurado' : 'Sin logo',
       action: !hasLogo ? 'Agregar logo' : null
+    },
+    {
+      id: 'mercado-pago',
+      title: 'Cuenta de MP',
+      value: hasMercadoPagoConnected ? '100%' : '0%',
+      progress: hasMercadoPagoConnected ? 100 : 0,
+      status: hasMercadoPagoConnected ? 'good' : 'error',
+      icon: <AccountBalanceWalletIcon />,
+      count: hasMercadoPagoConnected ? 'Conectada' : 'Sin conectar',
+      action: !hasMercadoPagoConnected ? 'Conectar MP' : null
     }
   ];
 
-  // Porcentaje global del Health Check (promedio de los 5 ítems)
+  // Porcentaje global del Health Check (promedio de los ítems)
   const overallPercent = Math.round(
     healthItems.reduce((sum, item) => sum + item.progress, 0) / healthItems.length
   );

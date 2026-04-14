@@ -27,7 +27,7 @@ import { fetchTables, fetchActiveOrders } from '../api/tables';
 import { fetchCategories } from '../api/menu';
 import { client } from '../api/client';
 import { createOwnerComment } from '../api/comments';
-import { fetchRestaurant, updateRestaurant } from '../api/restaurant';
+import { fetchRestaurant, updateRestaurant, getMercadoPagoFromMetodos } from '../api/restaurant';
 // Aliases for compatibility with existing code
 const api = client;
 const http = client;
@@ -330,6 +330,7 @@ export default function OwnerDashboard() {
     missingTables: 0,
     totalTables: 0,
     hasLogo: false,
+    hasMercadoPagoConnected: false,
     totalCategories: 0,
     productsWithoutCategory: 0
   });
@@ -446,7 +447,7 @@ export default function OwnerDashboard() {
           return [];
         }
       })(),
-      api.get(`/restaurantes?filters[slug][$eq]=${slug}&populate[mesas]=true&populate[categorias]=true&populate[logo]=true`).catch(() => ({ data: { data: [] } })),
+      api.get(`/restaurantes?filters[slug][$eq]=${slug}&populate[mesas]=true&populate[categorias]=true&populate[logo]=true&populate[metodos_pagos]=true`).catch(() => ({ data: { data: [] } })),
       fetchCategories(slug).catch(() => []),
       fetchTables(slug).catch((e) => { console.warn('Error fetching tables:', e); return []; }),
       fetchActiveOrders(slug).catch((e) => { console.warn('Error fetching active orders:', e); return []; }),
@@ -485,6 +486,7 @@ export default function OwnerDashboard() {
 
           const productsWithoutImage = productos.filter(p => !p.image).length;
           const productsWithoutCategory = productos.filter(p => !p.categoriaId).length;
+          const { hasMercadoPago } = getMercadoPagoFromMetodos(attr.metodos_pagos);
 
           setRestaurantMetrics({
             productsWithoutImage,
@@ -493,6 +495,7 @@ export default function OwnerDashboard() {
             missingTables: 0,
             totalTables: mesas.length,
             hasLogo: !!(attr.logo?.data || attr.logo),
+            hasMercadoPagoConnected: hasMercadoPago,
             totalCategories,
             productsWithoutCategory
           });
@@ -507,6 +510,7 @@ export default function OwnerDashboard() {
             missingTables: 0,
             totalTables: 0,
             hasLogo: false,
+            hasMercadoPagoConnected: false,
             totalCategories: 0,
             productsWithoutCategory
           });
