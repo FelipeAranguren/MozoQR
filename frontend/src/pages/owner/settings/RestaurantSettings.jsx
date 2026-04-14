@@ -18,7 +18,7 @@ import CloudUploadIcon from '@mui/icons-material/CloudUpload';
 import SaveIcon from '@mui/icons-material/Save';
 import { MARANA_COLORS } from '../../../theme';
 import { fetchRestaurant, updateRestaurant } from '../../../api/restaurant';
-import { fetchMercadoPagoMethodBySlug, saveMercadoPagoMethodBySlug } from '../../../api/paymentMethods';
+import { fetchMercadoPagoMethodBySlug } from '../../../api/paymentMethods';
 import { useDemoAccess } from '../../../context/DemoAccessContext';
 import { buildMercadoPagoAuthorizationUrl, getMercadoPagoOAuthRedirectUri } from '../../../utils/mercadopagoOAuthUrl';
 
@@ -34,9 +34,6 @@ export default function RestaurantSettings() {
   const [restaurant, setRestaurant] = useState(null);
   const [name, setName] = useState('');
   const [mpLoading, setMpLoading] = useState(false);
-  const [mpSaving, setMpSaving] = useState(false);
-  const [mpPublicKey, setMpPublicKey] = useState('');
-  const [mpAccessToken, setMpAccessToken] = useState('');
   const [mpHasAccessToken, setMpHasAccessToken] = useState(false);
   const [logoPreview, setLogoPreview] = useState(null);
   const [logoFile, setLogoFile] = useState(null);
@@ -61,7 +58,7 @@ export default function RestaurantSettings() {
       const raw = searchParams.get('mp_msg') || 'Error al conectar con Mercado Pago';
       const detail =
         raw === 'server_misconfigured'
-          ? 'faltan en el servidor las credenciales de la aplicación en Mercado Pago (MP_CLIENT_ID y MP_CLIENT_SECRET): son las de tu app “MozoQR” en developers, no el Access Token de cada restaurante. Sin ellas el botón Conectar no puede canjear el código OAuth; podés usar Public Key y Access Token manualmente abajo.'
+          ? 'faltan en el servidor las credenciales de la aplicación en Mercado Pago (MP_CLIENT_ID y MP_CLIENT_SECRET): son las de tu app “MozoQR” en developers. Sin ellas el botón Conectar no puede canjear el código OAuth.'
           : raw;
       setMessage({
         type: 'error',
@@ -78,8 +75,6 @@ export default function RestaurantSettings() {
       (async () => {
         try {
           const metodo = await fetchMercadoPagoMethodBySlug(slug);
-          setMpPublicKey(metodo?.mp_public_key ?? '');
-          setMpAccessToken(metodo?.mp_access_token ?? '');
           setMpHasAccessToken(metodo?.has_access_token ?? false);
         } catch {
           /* ignorar */
@@ -109,13 +104,9 @@ export default function RestaurantSettings() {
         try {
           setMpLoading(true);
           const metodo = await fetchMercadoPagoMethodBySlug(slug);
-          setMpPublicKey(metodo?.mp_public_key ?? '');
-          setMpAccessToken(metodo?.mp_access_token ?? '');
           setMpHasAccessToken(metodo?.has_access_token ?? false);
         } catch (e) {
           console.error('Error fetching Mercado Pago method:', e);
-          setMpPublicKey('');
-          setMpAccessToken('');
           setMpHasAccessToken(false);
           if (e?.response?.status === 403) {
             setMessage({ type: 'error', text: 'No tenés permiso para ver las credenciales de este restaurante.' });
@@ -412,7 +403,7 @@ export default function RestaurantSettings() {
                     '& .MuiButton-startIcon': { ml: 0, mr: 0 },
                   }}
                 >
-                  CONECTAR CUENTA
+                  {mpHasAccessToken ? 'CUENTA CONECTADA' : 'CONECTAR CUENTA'}
                 </Button>
                 {!import.meta.env.VITE_MP_CLIENT_ID?.trim() && (
                   <Typography variant="caption" color="text.secondary" display="block" sx={{ mt: 1.5 }}>
@@ -422,81 +413,6 @@ export default function RestaurantSettings() {
                     {getMercadoPagoOAuthRedirectUri()}).
                   </Typography>
                 )}
-              </Box>
-
-              <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-                <TextField
-                  label="Public Key de Mercado Pago"
-                  fullWidth
-                  value={mpPublicKey}
-                  onChange={(e) => setMpPublicKey(e.target.value)}
-                  placeholder="Ejemplo: APP_USR-6632523e-xxxx-4b8d-b4c1-0f3cxxxxxxx"
-                  helperText="Si conectaste con el botón de arriba, suele completarse sola. Si no, pegala desde el panel de Mercado Pago."
-                  InputProps={{
-                    sx: {
-                      bgcolor: 'white',
-                      borderRadius: 2,
-                    },
-                  }}
-                />
-
-                <TextField
-                  label="Access Token de Mercado Pago"
-                  fullWidth
-                  type="password"
-                  value={mpAccessToken}
-                  onChange={(e) => setMpAccessToken(e.target.value)}
-                  placeholder={mpHasAccessToken ? '•••••••• (ya cargado)' : 'Ejemplo: APP_USR-1136052360410590-xxxx-9e9e-xxxxxxxxxxxx'}
-                  helperText={mpHasAccessToken && !mpAccessToken
-                    ? 'Ya hay un token guardado (no se muestra por seguridad). Dejá vacío para mantenerlo; ingresá uno nuevo para reemplazarlo.'
-                    : 'Dejá este campo vacío para mantener el actual; ingresá uno nuevo solo si necesitás reemplazarlo.'}
-                  InputProps={{
-                    sx: {
-                      bgcolor: 'white',
-                      borderRadius: 2,
-                      fontFamily: 'monospace',
-                    },
-                  }}
-                />
-
-                <Box sx={{ display: 'flex', justifyContent: 'flex-end', mt: 1 }}>
-                  <Button
-                    variant="outlined"
-                    onClick={async () => {
-                      if (!slug) return;
-                      setMpSaving(true);
-                      try {
-                        await saveMercadoPagoMethodBySlug(slug, {
-                          mp_public_key: mpPublicKey.trim(),
-                          mp_access_token: mpAccessToken.trim() || undefined,
-                        });
-                        setMessage({ type: 'success', text: 'Credenciales de Mercado Pago guardadas correctamente' });
-                        // Sincronizar estado con backend (solo desde metodos_pagos)
-                        const metodo = await fetchMercadoPagoMethodBySlug(slug);
-                        setMpPublicKey(metodo?.mp_public_key ?? '');
-                        setMpAccessToken(metodo?.mp_access_token ?? '');
-                        setMpHasAccessToken(metodo?.has_access_token ?? false);
-                      } catch (error) {
-                        console.error('Error saving Mercado Pago credentials:', error);
-                        const errMsg =
-                          error?.response?.data?.error?.message
-                          || error?.response?.data?.message
-                          || (error?.response?.status === 403 ? 'No tenés permiso para editar este restaurante.' : null)
-                          || (error?.response?.status === 404 ? 'Ruta de pago no encontrada.' : null)
-                          || error?.message
-                          || 'Error al guardar las credenciales de Mercado Pago';
-                        setMessage({ type: 'error', text: errMsg });
-                      } finally {
-                        setMpSaving(false);
-                      }
-                    }}
-                    disabled={mpSaving || mpLoading}
-                    startIcon={mpSaving ? <CircularProgress size={18} sx={{ color: 'inherit' }} /> : null}
-                    sx={{ minWidth: 200 }}
-                  >
-                    {mpSaving ? 'Guardando credenciales...' : 'Guardar credenciales de pago'}
-                  </Button>
-                </Box>
               </Box>
             </CardContent>
           </Card>
