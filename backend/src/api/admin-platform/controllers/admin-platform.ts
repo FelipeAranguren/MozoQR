@@ -28,8 +28,14 @@ export default {
       populate: {
         role: { fields: ['id', 'name', 'type'] },
         restaurant_members: {
+          publicationState: 'preview',
           fields: ['id', 'role', 'active'],
-          populate: { restaurante: { fields: ['id', 'name', 'slug'] } },
+          populate: {
+            restaurante: {
+              publicationState: 'preview',
+              fields: ['id', 'name', 'slug'],
+            },
+          },
         },
       },
       sort: { createdAt: 'desc' },
@@ -49,8 +55,14 @@ export default {
       populate: {
         role: { fields: ['id', 'name', 'type'] },
         restaurant_members: {
+          publicationState: 'preview',
           fields: ['id', 'role', 'active'],
-          populate: { restaurante: { fields: ['id', 'name', 'slug'] } },
+          populate: {
+            restaurante: {
+              publicationState: 'preview',
+              fields: ['id', 'name', 'slug'],
+            },
+          },
         },
       },
     });
@@ -153,10 +165,14 @@ export default {
 
     const members = await strapi.entityService.findMany(MEMBER_UID, {
       filters,
+      publicationState: 'preview',
       fields: ['id', 'role', 'active', 'createdAt'],
       populate: {
         users_permissions_user: { fields: ['id', 'email', 'fullname', 'username'] },
-        restaurante: { fields: ['id', 'name', 'slug'] },
+        restaurante: {
+          publicationState: 'preview',
+          fields: ['id', 'name', 'slug'],
+        },
       },
       sort: { createdAt: 'desc' },
       start: (Number(page) - 1) * Number(pageSize),

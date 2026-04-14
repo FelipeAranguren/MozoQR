@@ -1,6 +1,6 @@
 // src/pages/Mostrador.jsx
 import React, { useEffect, useRef, useState, useMemo } from 'react';
-import { useParams } from 'react-router-dom';
+import { useParams, useNavigate } from 'react-router-dom';
 import { api } from '../api';
 import { closeAccount, openSession } from '../api/tenant';
 import { fetchTables, fetchActiveOrders } from '../api/tables';
@@ -65,6 +65,7 @@ const appendStaffTimelineNote = (previousNotes, note, stageLabel) => {
 
 export default function Mostrador() {
   const { slug } = useParams();
+  const navigate = useNavigate();
 
   // ----- estado principal ----
   const [pedidos, setPedidos] = useState([]);
@@ -2738,6 +2739,16 @@ export default function Mostrador() {
         >
           Mostrador — {slug?.toUpperCase?.()}
         </Typography>
+
+        <Button
+          variant="outlined"
+          size="small"
+          startIcon={<AccountBalanceWalletIcon />}
+          onClick={() => navigate(`/owner/${slug}/caja`)}
+          sx={{ textTransform: 'none', fontWeight: 600, flexShrink: 0 }}
+        >
+          Caja
+        </Button>
 
         {lastUpdateAt && (
           <Typography variant="caption" color="text.secondary" sx={{ whiteSpace: 'nowrap' }}>
