@@ -385,13 +385,13 @@ export default function RestaurantSettings() {
                     px: 2.5,
                     gap: 1,
                     bgcolor: '#fff',
-                    color: '#009EE3',
+                    color: mpHasAccessToken ? '#2E7D32' : '#009EE3',
                     borderWidth: 2,
-                    borderColor: '#009EE3',
+                    borderColor: mpHasAccessToken ? '#2E7D32' : '#009EE3',
                     boxShadow: '0 1px 3px rgba(0, 0, 0, 0.06)',
                     '&:hover': {
-                      bgcolor: 'rgba(0, 158, 227, 0.06)',
-                      borderColor: '#008ed0',
+                      bgcolor: mpHasAccessToken ? 'rgba(46, 125, 50, 0.08)' : 'rgba(0, 158, 227, 0.06)',
+                      borderColor: mpHasAccessToken ? '#1B5E20' : '#008ed0',
                       borderWidth: 2,
                     },
                     '&.Mui-disabled': {
