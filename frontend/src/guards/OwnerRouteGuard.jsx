@@ -2,7 +2,6 @@
 import { useEffect, useRef, useState } from "react";
 import { Navigate, useParams, useLocation } from "react-router-dom";
 import { DemoAccessProvider } from "../context/DemoAccessContext";
-import { isDemoStaffBypassEnabled } from "../utils/envPublic";
 
 // Misma base que el resto de la app para que el JWT sea válido en el mismo backend
 function getBaseUrl() {
@@ -71,11 +70,10 @@ export default function OwnerRouteGuard({ children }) {
           const restaurant = demoJson?.data?.[0];
           const attrs = restaurant?.attributes || restaurant || {};
           const isDemo = attrs?.is_demo === true;
-          const allowDemoBypass = isDemo && isDemoStaffBypassEnabled();
 
-          if (!cancelled && allowDemoBypass) {
+          if (!cancelled && isDemo) {
             if (import.meta.env.DEV) {
-              console.info('[OwnerRouteGuard] Demo bypass (non-production build or VITE_ENABLE_DEMO_STAFF_BYPASS)');
+              console.info('[OwnerRouteGuard] Demo bypass (is_demo restaurant — public or authenticated)');
             }
             setIsDemoAccess(true);
             setAllowed(true);

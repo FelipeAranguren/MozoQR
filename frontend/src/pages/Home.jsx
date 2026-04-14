@@ -514,7 +514,7 @@ export default function Home() {
                 </Button>
                 <Button
                   size="large"
-                  href="mailto:ventas@mozoqr.com"
+                  href="mailto:felipearanguren03@gmail.com"
                   sx={{
                     bgcolor: 'transparent',
                     border: '1.5px solid rgba(255,255,255,0.3)',
