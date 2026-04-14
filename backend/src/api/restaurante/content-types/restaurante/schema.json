@@ -128,6 +128,18 @@
     },
     "pct_merchant_cbu_alias": {
       "type": "string"
+    },
+    "caja_sesions": {
+      "type": "relation",
+      "relation": "oneToMany",
+      "target": "api::caja-sesion.caja-sesion",
+      "mappedBy": "restaurante"
+    },
+    "compras": {
+      "type": "relation",
+      "relation": "oneToMany",
+      "target": "api::compra.compra",
+      "mappedBy": "restaurante"
     }
   }
 }

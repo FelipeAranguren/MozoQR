@@ -32,6 +32,7 @@ import RefreshIcon from '@mui/icons-material/Refresh';
 import ContentCopyIcon from '@mui/icons-material/ContentCopy';
 import ReceiptDialog from '../components/ReceiptDialog';
 import PagosRealtimeBar from '../components/PagosRealtimeBar';
+import { fetchStockAlertas } from '../api/stock';
 
 const money = (n) =>
   new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS' })
@@ -72,6 +73,7 @@ export default function Mostrador() {
   const [cuentas, setCuentas] = useState([]);
   const [mesas, setMesas] = useState([]);
   const [openSessions, setOpenSessions] = useState([]); // Sesiones abiertas sin pedidos
+  const [lowStockIds, setLowStockIds] = useState(new Set());
   const [error, setError] = useState(null);
   const [showHistoryDrawer, setShowHistoryDrawer] = useState(false);
   const [historyTab, setHistoryTab] = useState(0); // 0: pedidos, 1: cuentas
@@ -1663,6 +1665,9 @@ export default function Mostrador() {
     fetchMesas();
     fetchOpenSessions();
     fetchActiveOrdersForTables();
+    fetchStockAlertas(slug).then(alertas => {
+      if (Array.isArray(alertas)) setLowStockIds(new Set(alertas.map(a => a.id)));
+    }).catch(() => {});
     const interval = setInterval(() => {
       fetchPedidos();
       fetchMesas();
@@ -2600,9 +2605,11 @@ export default function Mostrador() {
               {items.map((item) => {
                 const prod = item?.product;
                 const name = prod?.name || 'Producto sin datos';
+                const prodId = prod?.id || item?.product;
+                const isLowStock = prodId && lowStockIds.has(prodId);
                 return (
-                  <Typography key={item.id} component="li" variant="body2" sx={{ mb: 0.1, fontSize: '0.8125rem', lineHeight: 1.3, fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                    {item.quantity}x {name}
+                  <Typography key={item.id} component="li" variant="body2" sx={{ mb: 0.1, fontSize: '0.8125rem', lineHeight: 1.3, fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: isLowStock ? 'warning.dark' : undefined }}>
+                    {item.quantity}x {name}{isLowStock ? ' ⚠' : ''}
                   </Typography>
                 );
               })}

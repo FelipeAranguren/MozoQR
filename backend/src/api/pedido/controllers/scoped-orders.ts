@@ -4,6 +4,80 @@
 
 declare const strapi: any;
 
+async function deductStockForOrder(strapi: any, orderId: number, restauranteId: number) {
+    try {
+        const items = await strapi.entityService.findMany('api::item-pedido.item-pedido', {
+            filters: { order: orderId },
+            fields: ['id', 'quantity'],
+            populate: { product: { fields: ['id', 'stock_enabled', 'stock_quantity', 'stock_min_alert', 'available', 'name'] } },
+            limit: 200,
+        });
+
+        for (const item of items) {
+            const prod = item.product;
+            if (!prod?.id || !prod.stock_enabled) continue;
+
+            const qty = Number(item.quantity) || 0;
+            if (qty <= 0) continue;
+
+            const previousStock = Number(prod.stock_quantity) || 0;
+            const newStock = Math.max(0, previousStock - qty);
+
+            const updateData: any = { stock_quantity: newStock };
+            if (newStock <= 0) updateData.available = false;
+
+            await strapi.entityService.update('api::producto.producto', prod.id, { data: updateData });
+
+            await strapi.entityService.create('api::movimiento-stock.movimiento-stock', {
+                data: {
+                    type: 'venta',
+                    quantity: -qty,
+                    previous_stock: previousStock,
+                    new_stock: newStock,
+                    reference_type: 'pedido',
+                    reference_id: orderId,
+                    notes: `Pedido #${orderId}`,
+                    timestamp: new Date().toISOString(),
+                    producto: prod.id,
+                    restaurante: restauranteId,
+                },
+            });
+        }
+    } catch (err) {
+        console.error('[deductStockForOrder] Error:', err);
+    }
+}
+
+async function createCajaIngresoForOrder(strapi: any, orderId: number, restauranteId: number, total: number, paymentMethod?: string) {
+    try {
+        const [openCaja] = await strapi.entityService.findMany('api::caja-sesion.caja-sesion', {
+            filters: { restaurante: restauranteId, status: 'open' },
+            fields: ['id'],
+            limit: 1,
+        });
+
+        const cajaPm = paymentMethod === 'cash' ? 'efectivo'
+            : paymentMethod === 'card_present' ? 'tarjeta'
+            : paymentMethod === 'qr' || paymentMethod === 'online' ? 'digital'
+            : 'otro';
+
+        await strapi.entityService.create('api::movimiento-caja.movimiento-caja', {
+            data: {
+                type: 'ingreso',
+                amount: Number(total) || 0,
+                concept: `Cobro pedido #${orderId}`,
+                category: 'venta',
+                payment_method: cajaPm,
+                timestamp: new Date().toISOString(),
+                caja_sesion: openCaja?.id || null,
+                pedido: orderId,
+            },
+        });
+    } catch (err) {
+        console.error('[createCajaIngresoForOrder] Error:', err);
+    }
+}
+
 const ALLOWED_NEXT: Record<string, string[]> = {
     pending: ['preparing', 'served', 'paid'],
     preparing: ['served', 'paid'],
@@ -237,6 +311,17 @@ export default {
         const updated = await strapi.entityService.update('api::pedido.pedido', id, {
             data: { order_status: status },
         });
+
+        if (status === 'preparing') {
+            await deductStockForOrder(strapi, id, restauranteId);
+        }
+
+        if (status === 'paid') {
+            const fullOrder = await strapi.entityService.findOne('api::pedido.pedido', id, {
+                fields: ['id', 'total', 'payment_method'],
+            });
+            await createCajaIngresoForOrder(strapi, id, restauranteId, fullOrder?.total || 0, fullOrder?.payment_method);
+        }
 
         ctx.body = { data: updated };
     },

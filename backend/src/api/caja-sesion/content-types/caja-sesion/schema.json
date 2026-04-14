@@ -1,0 +1,69 @@
+{
+  "kind": "collectionType",
+  "collectionName": "caja_sesions",
+  "info": {
+    "singularName": "caja-sesion",
+    "pluralName": "caja-sesions",
+    "displayName": "CajaSesion"
+  },
+  "options": {
+    "draftAndPublish": false
+  },
+  "pluginOptions": {},
+  "attributes": {
+    "status": {
+      "type": "enumeration",
+      "enum": ["open", "closed"],
+      "default": "open",
+      "required": true
+    },
+    "initial_balance": {
+      "type": "decimal",
+      "default": 0,
+      "required": true
+    },
+    "final_balance": {
+      "type": "decimal"
+    },
+    "total_ingresos": {
+      "type": "decimal",
+      "default": 0
+    },
+    "total_egresos": {
+      "type": "decimal",
+      "default": 0
+    },
+    "opened_at": {
+      "type": "datetime",
+      "required": true
+    },
+    "closed_at": {
+      "type": "datetime"
+    },
+    "notes": {
+      "type": "text"
+    },
+    "restaurante": {
+      "type": "relation",
+      "relation": "manyToOne",
+      "target": "api::restaurante.restaurante",
+      "inversedBy": "caja_sesions"
+    },
+    "opened_by": {
+      "type": "relation",
+      "relation": "manyToOne",
+      "target": "plugin::users-permissions.user"
+    },
+    "closed_by": {
+      "type": "relation",
+      "relation": "manyToOne",
+      "target": "plugin::users-permissions.user"
+    },
+    "movimientos": {
+      "type": "relation",
+      "relation": "oneToMany",
+      "target": "api::movimiento-caja.movimiento-caja",
+      "mappedBy": "caja_sesion"
+    }
+  }
+}

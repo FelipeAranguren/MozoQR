@@ -1,0 +1,60 @@
+{
+  "kind": "collectionType",
+  "collectionName": "movimiento_stocks",
+  "info": {
+    "singularName": "movimiento-stock",
+    "pluralName": "movimiento-stocks",
+    "displayName": "MovimientoStock"
+  },
+  "options": {
+    "draftAndPublish": false
+  },
+  "pluginOptions": {},
+  "attributes": {
+    "type": {
+      "type": "enumeration",
+      "enum": ["compra", "venta", "ajuste_manual", "merma"],
+      "required": true
+    },
+    "quantity": {
+      "type": "decimal",
+      "required": true
+    },
+    "previous_stock": {
+      "type": "decimal",
+      "required": true
+    },
+    "new_stock": {
+      "type": "decimal",
+      "required": true
+    },
+    "reference_type": {
+      "type": "string"
+    },
+    "reference_id": {
+      "type": "integer"
+    },
+    "notes": {
+      "type": "text"
+    },
+    "timestamp": {
+      "type": "datetime",
+      "required": true
+    },
+    "producto": {
+      "type": "relation",
+      "relation": "manyToOne",
+      "target": "api::producto.producto"
+    },
+    "restaurante": {
+      "type": "relation",
+      "relation": "manyToOne",
+      "target": "api::restaurante.restaurante"
+    },
+    "created_by_user": {
+      "type": "relation",
+      "relation": "manyToOne",
+      "target": "plugin::users-permissions.user"
+    }
+  }
+}

@@ -22,6 +22,8 @@ import PsychologyIcon from '@mui/icons-material/Psychology';
 import BuildIcon from '@mui/icons-material/Build';
 import OpenInNewIcon from '@mui/icons-material/OpenInNew';
 import PointOfSaleIcon from '@mui/icons-material/PointOfSale';
+import AccountBalanceIcon from '@mui/icons-material/AccountBalance';
+import InventoryIcon from '@mui/icons-material/Inventory';
 import ContentCopyIcon from '@mui/icons-material/ContentCopy';
 
 const menuItems = [
@@ -39,6 +41,16 @@ const menuItems = [
     label: 'Mesas',
     icon: <TableRestaurantIcon />,
     path: '/owner/:slug/tables',
+  },
+  {
+    label: 'Caja',
+    icon: <AccountBalanceIcon />,
+    path: '/owner/:slug/caja',
+  },
+  {
+    label: 'Stock',
+    icon: <InventoryIcon />,
+    path: '/owner/:slug/stock',
   },
   {
     label: 'Configuración',

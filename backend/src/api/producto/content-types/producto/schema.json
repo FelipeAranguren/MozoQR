@@ -62,6 +62,23 @@
       "relation": "manyToOne",
       "target": "api::categoria.categoria",
       "inversedBy": "productos"
+    },
+    "stock_enabled": {
+      "type": "boolean",
+      "default": false
+    },
+    "stock_quantity": {
+      "type": "decimal",
+      "default": 0
+    },
+    "stock_unit": {
+      "type": "enumeration",
+      "enum": ["unidad", "kg", "litro", "porcion"],
+      "default": "unidad"
+    },
+    "stock_min_alert": {
+      "type": "decimal",
+      "default": 0
     }
   }
 }

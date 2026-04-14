@@ -31,6 +31,10 @@ import RestaurantSettings from './pages/owner/settings/RestaurantSettings';
 import PlanManagement from './pages/owner/plan/PlanManagement';
 import AdvancedPanel from './pages/owner/advanced/AdvancedPanel';
 import AIPanel from './pages/owner/ai/AIPanel';
+import CajaDashboard from './pages/owner/caja/CajaDashboard';
+import CajaHistorial from './pages/owner/caja/CajaHistorial';
+import StockDashboard from './pages/owner/stock/StockDashboard';
+import ComprasManagement from './pages/owner/stock/ComprasManagement';
 import AdminDashboard from './pages/AdminDashboard';
 import ImpersonateCallback from './pages/ImpersonateCallback';
 import DemoLanding from './pages/DemoLanding';
@@ -112,6 +116,10 @@ export default function App() {
             <Route path="plan" element={<PlanManagement />} />
             <Route path="ai" element={<AIPanel />} />
             <Route path="advanced" element={<AdvancedPanel />} />
+            <Route path="caja" element={<CajaDashboard />} />
+            <Route path="caja/historial" element={<CajaHistorial />} />
+            <Route path="stock" element={<StockDashboard />} />
+            <Route path="stock/compras" element={<ComprasManagement />} />
           </Route>
 
           {/* Rutas legacy para compatibilidad */}

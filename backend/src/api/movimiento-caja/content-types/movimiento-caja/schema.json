@@ -1,0 +1,70 @@
+{
+  "kind": "collectionType",
+  "collectionName": "movimiento_cajas",
+  "info": {
+    "singularName": "movimiento-caja",
+    "pluralName": "movimiento-cajas",
+    "displayName": "MovimientoCaja"
+  },
+  "options": {
+    "draftAndPublish": false
+  },
+  "pluginOptions": {},
+  "attributes": {
+    "type": {
+      "type": "enumeration",
+      "enum": ["ingreso", "egreso"],
+      "required": true
+    },
+    "amount": {
+      "type": "decimal",
+      "required": true
+    },
+    "concept": {
+      "type": "string",
+      "required": true
+    },
+    "category": {
+      "type": "enumeration",
+      "enum": [
+        "venta",
+        "propina",
+        "retiro",
+        "gasto_operativo",
+        "compra_insumo",
+        "fondo_inicial",
+        "ajuste",
+        "devolucion"
+      ],
+      "required": true
+    },
+    "payment_method": {
+      "type": "enumeration",
+      "enum": ["efectivo", "tarjeta", "digital", "otro"],
+      "default": "efectivo"
+    },
+    "timestamp": {
+      "type": "datetime",
+      "required": true
+    },
+    "notes": {
+      "type": "text"
+    },
+    "caja_sesion": {
+      "type": "relation",
+      "relation": "manyToOne",
+      "target": "api::caja-sesion.caja-sesion",
+      "inversedBy": "movimientos"
+    },
+    "pedido": {
+      "type": "relation",
+      "relation": "manyToOne",
+      "target": "api::pedido.pedido"
+    },
+    "created_by_user": {
+      "type": "relation",
+      "relation": "manyToOne",
+      "target": "plugin::users-permissions.user"
+    }
+  }
+}

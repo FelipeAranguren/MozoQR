@@ -144,6 +144,35 @@ export default factories.createCoreController(ORDER_UID, ({ strapi }) => ({
 
       strapi.log.info(`[orders.webhook] Pedido ${orderPk} (external_ref=${externalRef}) marcado como paid.`);
 
+      // Auto caja ingreso for online/MP payments
+      try {
+        const paidOrder = await strapi.entityService.findOne(ORDER_UID, orderPk, {
+          fields: ['id', 'total', 'payment_method'],
+          populate: { restaurante: { fields: ['id'] } },
+        });
+        if (paidOrder?.restaurante?.id) {
+          const [openCaja] = await strapi.entityService.findMany('api::caja-sesion.caja-sesion', {
+            filters: { restaurante: paidOrder.restaurante.id, status: 'open' },
+            fields: ['id'],
+            limit: 1,
+          });
+          await strapi.entityService.create('api::movimiento-caja.movimiento-caja', {
+            data: {
+              type: 'ingreso',
+              amount: paidAmount ?? Number(paidOrder.total) ?? 0,
+              concept: `Pago online pedido #${orderPk}`,
+              category: 'venta',
+              payment_method: 'digital',
+              timestamp: new Date().toISOString(),
+              caja_sesion: openCaja?.id || null,
+              pedido: orderPk,
+            },
+          });
+        }
+      } catch (cajaErr: any) {
+        strapi.log.warn('[orders.webhook] caja ingreso failed:', cajaErr?.message ?? cajaErr);
+      }
+
       try {
         await notifyPagoMercadoPagoForOrder(strapi, orderPk, {
           amount: paidAmount,
