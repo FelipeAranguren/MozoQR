@@ -26,6 +26,29 @@ function unwrapCategoriasResponse(res) {
 export async function getRestaurantIdAndDocId(slug) {
   if (!slug) return { id: null, documentId: null };
   try {
+    /** Mismo id que compras/stock owner (meta + policy), evita slug duplicado en /restaurantes. */
+    const token = localStorage.getItem('strapi_jwt') || localStorage.getItem('jwt');
+    if (token) {
+      const canonicalId = await getRestaurantId(slug);
+      if (canonicalId != null && Number(canonicalId) > 0) {
+        let documentId = null;
+        try {
+          const r2 = await api.get(
+            `/restaurantes?filters[id][$eq]=${encodeURIComponent(String(canonicalId))}&publicationState=preview&pagination[pageSize]=1`,
+            { headers: getAuthHeaders() }
+          );
+          const arr = Array.isArray(r2?.data) ? r2.data : r2?.data?.data || [];
+          const m = arr[0];
+          if (m) {
+            documentId = m.documentId ?? m?.attributes?.documentId ?? null;
+          }
+        } catch (_) {
+          /* sin documentId sigue ok con solo id */
+        }
+        return { id: canonicalId, documentId };
+      }
+    }
+
     const res = await api.get(
       `/restaurantes?filters[slug][$eq]=${encodeURIComponent(slug)}&publicationState=live`,
       { headers: getAuthHeaders() }
@@ -86,6 +109,9 @@ export async function fetchCategories(slug) {
       } else if (restauranteDocId) {
         params.append('filters[restaurante][documentId][$eq]', restauranteDocId);
       }
+      params.append('publicationState', 'preview');
+      params.append('pagination[page]', '1');
+      params.append('pagination[pageSize]', '200');
       params.append('populate[0]', 'restaurante');
       params.append('populate[1]', 'productos');
       params.append('populate[productos][populate][0]', 'image');
@@ -190,6 +216,9 @@ export async function fetchProducts(slug, categoryId = null) {
     // NOTA: No filtramos por available aquí porque el owner necesita ver todos los productos para poder editarlos
     const params = new URLSearchParams();
     params.append('filters[restaurante][id][$eq]', restauranteId);
+    params.append('publicationState', 'preview');
+    params.append('pagination[page]', '1');
+    params.append('pagination[pageSize]', '500');
     // No filtrar por available - el owner necesita ver todos los productos
     params.append('populate[image]', 'true');
     params.append('populate[categoria]', 'true');
@@ -208,7 +237,8 @@ export async function fetchProducts(slug, categoryId = null) {
 
     const res = await api.get(url, { headers: getAuthHeaders() });
 
-    const data = res?.data?.data || [];
+    const root = res?.data;
+    const data = Array.isArray(root) ? root : Array.isArray(root?.data) ? root.data : [];
     console.log('✅ [fetchProducts] Productos obtenidos de API directa (TODOS, incluidos no disponibles):', data.length);
 
     return mapProducts(data);
