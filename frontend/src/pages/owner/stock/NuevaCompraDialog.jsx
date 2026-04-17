@@ -193,9 +193,8 @@ export default function NuevaCompraDialog({ open, onClose, slug, onCreated }) {
         )}
         {productos.length > 0 && stockItems.length === 0 && (
           <Alert severity="info" sx={{ mb: 2 }}>
-            No hay registros en stock-items todavía. La compra se guarda por producto; si más adelante creás
-            stock-items vinculados a cada producto, al recibir la compra se actualizará inventario y movimientos con
-            más detalle.
+            No hay stock-items todavía: al crear la compra el sistema genera uno por producto (vinculación 1 a 1) con
+            SKU interno, para que al recibir la compra se registren inventario y movimientos sobre ese ítem.
           </Alert>
         )}
         <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2} sx={{ mt: 1 }}>

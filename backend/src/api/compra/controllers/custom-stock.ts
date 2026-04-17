@@ -70,6 +70,69 @@ async function resolveCompraLineProductoAndStockItem(
   return { productoPk, stockItemPk: null };
 }
 
+const PRODUCTO_STOCK_UNIT_TO_ITEM: Record<string, 'un' | 'kg' | 'lt' | 'pack'> = {
+  unidad: 'un',
+  kg: 'kg',
+  litro: 'lt',
+  porcion: 'un',
+};
+
+/**
+ * Si el producto aún no tiene stock-item (1:1), lo crea y lo publica para que aparezca en GET live.
+ * Asocia la línea de compra al ítem para que "Recibir compra" use movimientos de stock-item.
+ */
+async function ensureStockItemForProducto(
+  strapi: any,
+  productoPk: number,
+  restauranteId: number,
+  unitCost: number
+): Promise<number | null> {
+  const existing = await strapi.db.query('api::stock-item.stock-item').findOne({
+    where: { producto: { id: productoPk } },
+    select: ['id'],
+  });
+  if (existing?.id != null) return Number(existing.id);
+
+  const prod = await strapi.db.query('api::producto.producto').findOne({
+    where: { id: productoPk, restaurante: { id: restauranteId } },
+    select: ['id', 'name', 'sku', 'stock_unit', 'stock_min_alert', 'stock_quantity'],
+  });
+  if (!prod?.id) return null;
+
+  const uRaw = prod.stock_unit != null ? String(prod.stock_unit) : 'unidad';
+  const unidad = PRODUCTO_STOCK_UNIT_TO_ITEM[uRaw] ?? 'un';
+  const sku = `SI-R${restauranteId}-P${prod.id}`;
+  const nom = (prod.name && String(prod.name).trim()) || `Producto ${prod.id}`;
+  const stockQty = Number(prod.stock_quantity) || 0;
+  const minMo = Number(prod.stock_min_alert) || 0;
+  const costOk = Number.isFinite(unitCost) && unitCost >= 0;
+
+  const data: Record<string, unknown> = {
+    nombre: nom,
+    sku,
+    stock_actual: stockQty,
+    stock_minimo: minMo,
+    unidad,
+    ...(costOk ? { precio_costo: unitCost } : {}),
+    estado: true,
+    producto: prod.id,
+    publishedAt: new Date(),
+  };
+
+  try {
+    const created = await strapi.entityService.create('api::stock-item.stock-item', { data });
+    if (created?.id != null) return Number(created.id);
+  } catch (err: any) {
+    strapi.log?.warn?.('[ensureStockItemForProducto] create', err?.message || err);
+    const retry = await strapi.db.query('api::stock-item.stock-item').findOne({
+      where: { producto: { id: productoPk } },
+      select: ['id'],
+    });
+    if (retry?.id != null) return Number(retry.id);
+  }
+  return null;
+}
+
 export default {
   async stockOverview(ctx: any) {
     const strapi: any = getStrapi(ctx);
@@ -316,6 +379,11 @@ export default {
 
       for (let i = 0; i < resolved.length; i += 1) {
         const row = resolved[i];
+        let stockItemFk: number | null =
+          row.stockItemPk != null && Number.isFinite(row.stockItemPk) ? Number(row.stockItemPk) : null;
+        if (stockItemFk == null) {
+          stockItemFk = await ensureStockItemForProducto(strapi, row.productoPk, restauranteId, row.unitCost);
+        }
         const lineTotal = Number((row.qty * row.unitCost).toFixed(2));
         const baseItem: Record<string, unknown> = {
           quantity: row.qty,
@@ -325,8 +393,8 @@ export default {
           producto: row.productoPk,
         };
         const itemData: Record<string, unknown> = { ...baseItem };
-        if (row.stockItemPk != null && Number.isFinite(row.stockItemPk)) {
-          itemData.stock_item = row.stockItemPk;
+        if (stockItemFk != null && Number.isFinite(stockItemFk)) {
+          itemData.stock_item = stockItemFk;
         }
 
         try {
