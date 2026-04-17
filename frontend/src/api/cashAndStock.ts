@@ -40,9 +40,6 @@ export function normalizeEntry<T extends Record<string, unknown>>(row: unknown):
 
 /** Cuerpo JSON de Strapi (`{ data, meta }`) ya sea el de axios o el interno. */
 export function normalizeList<T>(apiBody: unknown): T[] {
-  if (Array.isArray(apiBody)) {
-    return apiBody.map((row) => normalizeEntry<T>(row)).filter(Boolean) as T[];
-  }
   const body = apiBody as { data?: unknown };
   const raw = body?.data;
   if (Array.isArray(raw)) {
@@ -216,38 +213,18 @@ export function cashMovementsFromSession(session: CashSession | null): CashMovem
 
 // ——— Productos (owner / compras) ———
 
-/** Productos para “Nueva compra” usando slug (evita REST `/productos` vacío con JWT). */
-export async function fetchProductosForCompraBySlug(slug: string): Promise<OwnerProductoRow[]> {
-  if (!slug) return [];
-  try {
-    const res = await api.get(`/restaurants/${encodeURIComponent(slug)}/catalog-for-owner`, {
-      headers: getAuthHeaders(),
-    });
-    const packs = (res.data as { data?: { products?: unknown } })?.data?.products ?? (res.data as any)?.products;
-    if (!Array.isArray(packs)) return [];
-    return packs
-      .map((row) => normalizeEntry<OwnerProductoRow>(row as Record<string, unknown>))
-      .filter((p) => p != null && (p.id != null || p.documentId != null)) as OwnerProductoRow[];
-  } catch {
-    return [];
-  }
-}
-
 /** Todos los productos del restaurante (para elegir en “Nueva compra”, sin depender de que exista stock-item). */
 export async function fetchProductosForCompra(restaurantId: number | string): Promise<OwnerProductoRow[]> {
   const params = new URLSearchParams();
   params.append('filters[restaurante][id][$eq]', String(restaurantId));
-  params.append('pagination[page]', '1');
   params.append('pagination[pageSize]', '500');
-  /** Owner: incluir borradores (Strapi solo devuelve “live” por defecto → lista vacía si nada está publicado). */
-  params.append('publicationState', 'preview');
   params.append('fields[0]', 'name');
   params.append('fields[1]', 'sku');
-  params.append('fields[2]', 'documentId');
-  params.append('fields[3]', 'id');
   params.append('sort[0]', 'name:asc');
   const res = await api.get(`/productos?${params.toString()}`, { headers: getAuthHeaders() });
-  return normalizeList<OwnerProductoRow>(res.data);
+  const raw = (res.data as { data?: unknown })?.data ?? (res.data as unknown);
+  const arr = Array.isArray(raw) ? raw : [];
+  return arr.map((row) => normalizeEntry<OwnerProductoRow>(row)).filter(Boolean) as OwnerProductoRow[];
 }
 
 // ——— Stock items ———
@@ -256,7 +233,6 @@ export async function fetchStockItemsForRestaurant(restaurantId: number | string
   const params = {
     ...restaurantFilter(restaurantId, 'filters[producto][restaurante]'),
     ...POPULATE_ALL,
-    publicationState: 'preview',
     'sort[0]': 'nombre:asc',
   };
   const res = await api.get(STOCK_ITEMS_PATH, { params, headers: getAuthHeaders() });
@@ -283,7 +259,6 @@ export async function fetchStockMovementsForRestaurant(
   const params = {
     ...restaurantFilter(restaurantId, 'filters[stock_item][producto][restaurante]'),
     ...POPULATE_ALL,
-    publicationState: 'preview',
     'sort[0]': 'createdAt:desc',
   };
   const res = await api.get(STOCK_MOVEMENTS_PATH, { params, headers: getAuthHeaders() });

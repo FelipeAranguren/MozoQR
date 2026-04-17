@@ -295,6 +295,16 @@ async function applyCompraReceiptInventory(
 }
 
 export default {
+  /** Id de restaurante resuelto por la policy (misma fuente que compras/stock). Útil para filtros REST en el owner. */
+  async ownerContext(ctx: any) {
+    ctx.body = {
+      data: {
+        restauranteId: ctx.state.restauranteId,
+        slug: ctx.params.slug,
+      },
+    };
+  },
+
   async stockOverview(ctx: any) {
     const strapi: any = getStrapi(ctx);
     const restauranteId = ctx.state.restauranteId;
@@ -318,7 +328,7 @@ export default {
           : 'ok',
     }));
 
-    ctx.body = { data, meta: { restauranteId } };
+    ctx.body = { data };
   },
 
   async ajusteStock(ctx: any) {
@@ -389,7 +399,7 @@ export default {
       stock_status: Number(p.stock_quantity) <= 0 ? 'sin_stock' : 'bajo',
     }));
 
-    ctx.body = { data: alertas, meta: { restauranteId } };
+    ctx.body = { data: alertas };
   },
 
   async movimientosStock(ctx: any) {
@@ -417,7 +427,7 @@ export default {
       limit: Number(pageSize),
     });
 
-    ctx.body = { data: movimientos, meta: { restauranteId } };
+    ctx.body = { data: movimientos };
   },
 
   // --- Compras ---
@@ -677,7 +687,7 @@ export default {
       limit: Number(pageSize),
     });
 
-    ctx.body = { data: compras, meta: { restauranteId } };
+    ctx.body = { data: compras };
   },
 
   async detalleCompra(ctx: any) {

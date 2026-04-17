@@ -26,29 +26,6 @@ function unwrapCategoriasResponse(res) {
 export async function getRestaurantIdAndDocId(slug) {
   if (!slug) return { id: null, documentId: null };
   try {
-    /** Mismo id que compras/stock owner (meta + policy), evita slug duplicado en /restaurantes. */
-    const token = localStorage.getItem('strapi_jwt') || localStorage.getItem('jwt');
-    if (token) {
-      const canonicalId = await getRestaurantId(slug);
-      if (canonicalId != null && Number(canonicalId) > 0) {
-        let documentId = null;
-        try {
-          const r2 = await api.get(
-            `/restaurantes?filters[id][$eq]=${encodeURIComponent(String(canonicalId))}&publicationState=preview&pagination[pageSize]=1`,
-            { headers: getAuthHeaders() }
-          );
-          const arr = Array.isArray(r2?.data) ? r2.data : r2?.data?.data || [];
-          const m = arr[0];
-          if (m) {
-            documentId = m.documentId ?? m?.attributes?.documentId ?? null;
-          }
-        } catch (_) {
-          /* sin documentId sigue ok con solo id */
-        }
-        return { id: canonicalId, documentId };
-      }
-    }
-
     const res = await api.get(
       `/restaurantes?filters[slug][$eq]=${encodeURIComponent(slug)}&publicationState=live`,
       { headers: getAuthHeaders() }
@@ -109,9 +86,6 @@ export async function fetchCategories(slug) {
       } else if (restauranteDocId) {
         params.append('filters[restaurante][documentId][$eq]', restauranteDocId);
       }
-      params.append('publicationState', 'preview');
-      params.append('pagination[page]', '1');
-      params.append('pagination[pageSize]', '200');
       params.append('populate[0]', 'restaurante');
       params.append('populate[1]', 'productos');
       params.append('populate[productos][populate][0]', 'image');
@@ -205,43 +179,7 @@ export async function fetchProducts(slug, categoryId = null) {
 
   // Usar API directa directamente (sin intentar endpoint público)
   try {
-    console.log('🔄 [fetchProducts] Cargando productos owner...');
-    /** Catálogo vía entityService (misma policy que stock/compras). El REST `/productos` suele venir vacío con JWT por permisos. */
-    const token = localStorage.getItem('strapi_jwt') || localStorage.getItem('jwt');
-    if (token) {
-      try {
-        const cr = await api.get(`/restaurants/${encodeURIComponent(slug)}/catalog-for-owner`, {
-          headers: getAuthHeaders(),
-        });
-        const packs = cr?.data?.data?.products ?? cr?.data?.products ?? [];
-        if (Array.isArray(packs) && packs.length > 0) {
-          let mapped = mapProducts(packs);
-          if (categoryId) {
-            const numericCatId =
-              typeof categoryId === 'number' && Number.isFinite(categoryId)
-                ? categoryId
-                : typeof categoryId === 'string' && /^\d+$/.test(categoryId)
-                  ? Number(categoryId)
-                  : categoryId;
-            const selIsNumeric = Number.isFinite(numericCatId) && String(categoryId).trim() !== '';
-            mapped = mapped.filter((p) => {
-              const catId = p.categoriaId;
-              if (selIsNumeric && (typeof catId === 'number' || (typeof catId === 'string' && /^\d+$/.test(catId)))) {
-                return Number(catId) === Number(numericCatId);
-              }
-              return String(catId || '') === String(categoryId || '');
-            });
-          }
-          console.log('✅ [fetchProducts] vía catalog-for-owner:', mapped.length);
-          return mapped;
-        }
-        console.warn('[fetchProducts] catalog-for-owner vacío, se intenta /productos REST');
-      } catch (e) {
-        console.warn('[fetchProducts] catalog-for-owner error:', e?.response?.status, e?.response?.data);
-      }
-    }
-
-    console.log('🔄 [fetchProducts] (fallback) GET /productos...');
+    console.log('🔄 [fetchProducts] Usando API directa para obtener TODOS los productos (incluidos no disponibles)...');
     const restauranteId = await getRestaurantId(slug);
     if (!restauranteId) {
       console.warn('❌ [fetchProducts] No se encontró el restaurante con slug:', slug);
@@ -252,9 +190,6 @@ export async function fetchProducts(slug, categoryId = null) {
     // NOTA: No filtramos por available aquí porque el owner necesita ver todos los productos para poder editarlos
     const params = new URLSearchParams();
     params.append('filters[restaurante][id][$eq]', restauranteId);
-    params.append('publicationState', 'preview');
-    params.append('pagination[page]', '1');
-    params.append('pagination[pageSize]', '500');
     // No filtrar por available - el owner necesita ver todos los productos
     params.append('populate[image]', 'true');
     params.append('populate[categoria]', 'true');
@@ -273,8 +208,7 @@ export async function fetchProducts(slug, categoryId = null) {
 
     const res = await api.get(url, { headers: getAuthHeaders() });
 
-    const root = res?.data;
-    const data = Array.isArray(root) ? root : Array.isArray(root?.data) ? root.data : [];
+    const data = res?.data?.data || [];
     console.log('✅ [fetchProducts] Productos obtenidos de API directa (TODOS, incluidos no disponibles):', data.length);
 
     return mapProducts(data);
@@ -467,40 +401,6 @@ export async function fetchProduct(productId) {
   }
 }
 
-/** Id numérico de restaurante en una entrada de listado (nunca convierte documentId UUID a número). */
-function numericRestaurantEntryId(r) {
-  const raw = r?.id ?? r?.attributes?.id;
-  if (typeof raw === 'number' && Number.isFinite(raw) && raw > 0) return raw;
-  if (typeof raw === 'string' && /^\d+$/.test(raw)) return parseInt(raw, 10);
-  return null;
-}
-
-/**
- * `restauranteId` canónico del owner (policy): probamos varias rutas custom que suelen tener el mismo permiso que compras.
- */
-async function getRestauranteIdFromOwnerMeta(slug) {
-  const paths = [
-    `/restaurants/${encodeURIComponent(slug)}/stock/alertas`,
-    `/restaurants/${encodeURIComponent(slug)}/stock/movimientos?pageSize=1&page=1`,
-    `/restaurants/${encodeURIComponent(slug)}/compras?pageSize=1&page=1`,
-    `/restaurants/${encodeURIComponent(slug)}/stock`,
-  ];
-  for (const path of paths) {
-    try {
-      const res = await api.get(path, { headers: getAuthHeaders() });
-      const rid = res?.data?.meta?.restauranteId;
-      const n = rid != null ? Number(rid) : NaN;
-      if (Number.isFinite(n) && n > 0) {
-        console.log('✅ [getRestaurantId] meta desde', path.split('?')[0], '→', n);
-        return n;
-      }
-    } catch (e) {
-      console.warn('⚠️ [getRestaurantId] sin meta en', path.split('?')[0], e?.response?.status);
-    }
-  }
-  return null;
-}
-
 /**
  * Obtiene el ID del restaurante desde el slug
  */
@@ -510,10 +410,26 @@ export async function getRestaurantId(slug) {
   try {
     console.log('🔍 [getRestaurantId] Buscando restaurante con slug:', slug);
 
+    /** Misma resolución que las rutas owner (`by-restaurant-owner`): evita id distinto al filtrar productos/stock. */
     const token = localStorage.getItem('strapi_jwt') || localStorage.getItem('jwt');
     if (token) {
-      const fromOwner = await getRestauranteIdFromOwnerMeta(slug);
-      if (fromOwner != null) return fromOwner;
+      try {
+        const oc = await api.get(`/restaurants/${encodeURIComponent(slug)}/owner-context`, {
+          headers: getAuthHeaders(),
+        });
+        const d = oc?.data?.data ?? oc?.data;
+        const rid = d?.restauranteId;
+        const n = rid != null ? Number(rid) : NaN;
+        if (Number.isFinite(n) && n > 0) {
+          console.log('✅ [getRestaurantId] owner-context → restauranteId', n);
+          return n;
+        }
+      } catch (e) {
+        console.warn(
+          '⚠️ [getRestaurantId] owner-context no disponible, se usa listado /restaurantes',
+          e?.response?.status
+        );
+      }
     }
     
     // Obtener el objeto completo del restaurante (sin fields para evitar problemas)
@@ -559,14 +475,18 @@ export async function getRestaurantId(slug) {
         publishedAt: r?.attributes?.publishedAt || r?.publishedAt
       })));
       
-      const scored = matchingRestaurants
-        .map((r) => ({ r, nid: numericRestaurantEntryId(r) }))
-        .filter((x) => x.nid != null);
-      if (scored.length > 0) {
-        data = scored.reduce((prev, curr) => (curr.nid < prev.nid ? curr : prev)).r;
-      }
+      // SIEMPRE priorizar el de ID más bajo (el más antiguo/principal)
+      // Esto es importante porque el endpoint de menús usa el restaurante con ID más bajo
+      data = matchingRestaurants.reduce((prev, curr) => {
+        const prevId = Number(prev?.id || prev?.documentId || Infinity);
+        const currId = Number(curr?.id || curr?.documentId || Infinity);
+        if (currId < prevId) {
+          return curr;
+        }
+        return prev;
+      });
       
-      console.log('✅ [getRestaurantId] Usando restaurante con ID numérico más bajo:', data?.id);
+      console.log('✅ [getRestaurantId] Usando restaurante con ID más bajo (principal):', data?.id);
       
       // Verificar que esté publicado (advertencia, pero no bloqueante)
       const attrs = data?.attributes || data;

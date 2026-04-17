@@ -9,14 +9,5 @@ export default {
                 policies: ['global::by-restaurant'],
             },
         },
-        {
-            method: 'GET',
-            path: '/restaurants/:slug/catalog-for-owner',
-            handler: 'menus.findForOwner',
-            config: {
-                auth: {},
-                policies: ['global::by-restaurant-owner'],
-            },
-        },
     ],
 };

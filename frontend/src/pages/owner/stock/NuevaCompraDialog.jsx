@@ -19,7 +19,7 @@ import DeleteIcon from '@mui/icons-material/Delete';
 import { getRestaurantId } from '../../../api/menu';
 import {
   crearCompraOwner,
-  fetchProductosForCompraBySlug,
+  fetchProductosForCompra,
   fetchStockItemsForRestaurant,
   restEntityId,
 } from '../../../api/cashAndStock';
@@ -77,7 +77,7 @@ export default function NuevaCompraDialog({ open, onClose, slug, onCreated, apli
         return;
       }
       const [prods, stocks] = await Promise.all([
-        fetchProductosForCompraBySlug(slug),
+        fetchProductosForCompra(rid),
         fetchStockItemsForRestaurant(rid).catch(() => []),
       ]);
       setProductos(prods || []);
