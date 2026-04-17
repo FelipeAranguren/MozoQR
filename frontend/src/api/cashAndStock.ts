@@ -272,9 +272,10 @@ function validationErrorAsAxios(message: string): Error {
 }
 
 /**
- * Crea una compra pendiente vía **ruta custom** del backend (no es REST de una colección):
- * `POST /api/restaurants/:slug/compras` → `compra` + `item-compra` con relación **`stock_item`**.
- * Los movimientos `stock-movements` se generan al **recibir** la compra (`PUT .../recibir`).
+ * Crea una compra vía **ruta custom**: `POST /api/restaurants/:slug/compras`.
+ * Por defecto el backend **aplica inventario al crear** (`aplicar_inventario` omitido): suma cantidades al
+ * stock-item / producto y marca la compra **recibida**. Enviá `aplicar_inventario: false` para dejarla
+ * **pendiente** y aplicar stock solo con `PUT .../compras/:id/recibir`.
  */
 export async function crearCompraOwner(slug: string, payload: OwnerCompraPayload): Promise<unknown> {
   const lines = payload?.items;

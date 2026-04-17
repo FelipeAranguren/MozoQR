@@ -184,6 +184,7 @@ export default function ComprasManagement() {
         onClose={() => setOpenNew(false)}
         slug={slug}
         onCreated={loadCompras}
+        aplicarInventarioAlCrear={false}
       />
     </Box>
   );

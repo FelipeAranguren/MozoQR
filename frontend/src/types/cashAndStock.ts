@@ -135,4 +135,9 @@ export interface OwnerCompraPayload {
   supplier?: string;
   notes?: string;
   items: OwnerCompraItemLine[];
+  /**
+   * Si es `false`, la compra queda **pendiente** y el stock sube solo al **Recibir** en Compras.
+   * Por defecto (omitido u otro valor) el backend **aplica inventario al crear** (útil desde Control de stock).
+   */
+  aplicar_inventario?: boolean;
 }

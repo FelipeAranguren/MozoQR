@@ -59,8 +59,9 @@ function findStockItemForProduct(productoId, stockItems) {
 /**
  * Modal “Nueva compra”: lista **todos los productos** del restaurante.
  * POST `/api/restaurants/:slug/compras` con `productoId` por línea y `stockItemId` si hay stock-item vinculado.
+ * @param {boolean} [aplicarInventarioAlCrear=true] Si es false, la compra queda pendiente (flujo Compras → Recibir).
  */
-export default function NuevaCompraDialog({ open, onClose, slug, onCreated }) {
+export default function NuevaCompraDialog({ open, onClose, slug, onCreated, aplicarInventarioAlCrear = true }) {
   const [productos, setProductos] = useState([]);
   const [stockItems, setStockItems] = useState([]);
   const [form, setForm] = useState(emptyForm);
@@ -149,6 +150,7 @@ export default function NuevaCompraDialog({ open, onClose, slug, onCreated }) {
         supplier: form.supplier,
         notes: form.notes,
         items,
+        ...(aplicarInventarioAlCrear === false ? { aplicar_inventario: false } : {}),
       });
       if (onCreated) await onCreated();
       setForm(emptyForm());
@@ -193,8 +195,9 @@ export default function NuevaCompraDialog({ open, onClose, slug, onCreated }) {
         )}
         {productos.length > 0 && stockItems.length === 0 && (
           <Alert severity="info" sx={{ mb: 2 }}>
-            No hay stock-items todavía: al crear la compra el sistema genera uno por producto (vinculación 1 a 1) con
-            SKU interno, para que al recibir la compra se registren inventario y movimientos sobre ese ítem.
+            {aplicarInventarioAlCrear
+              ? 'No hay stock-items todavía: al guardar se crea uno por producto (SKU interno) y se suma la cantidad al inventario como mercadería ya recibida.'
+              : 'No hay stock-items todavía: al crear la compra se genera el ítem por producto; usá Recibir en Compras para sumar cantidades al inventario.'}
           </Alert>
         )}
         <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2} sx={{ mt: 1 }}>
