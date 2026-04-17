@@ -367,4 +367,36 @@ export default {
             return ctx.badRequest('Error processing request', { error: error.message });
         }
     },
+
+    /**
+     * GET /restaurants/:slug/catalog-for-owner
+     * Lista **todos** los productos del restaurante (incl. no disponibles y borradores) vía entityService.
+     * Evita depender del REST `/api/productos` (Users-Permissions suele devolver vacío para Authenticated).
+     */
+    async findForOwner(ctx: any) {
+        try {
+            const s = ctx?.strapi ?? (typeof global !== 'undefined' && (global as any).__STRAPI__) ?? strapi;
+            const restauranteId = Number(ctx.state.restauranteId);
+            if (!Number.isFinite(restauranteId) || restauranteId <= 0) {
+                return ctx.badRequest('restaurante inválido');
+            }
+
+            const rows = await s.entityService.findMany('api::producto.producto', {
+                filters: { restaurante: { id: restauranteId } },
+                sort: { name: 'asc' },
+                fields: ['id', 'name', 'price', 'available', 'sku', 'slug', 'description'],
+                populate: {
+                    image: true,
+                    categoria: { fields: ['id', 'name', 'slug'] },
+                },
+                publicationState: 'preview',
+                limit: 2000,
+            });
+
+            ctx.body = { data: { products: rows ?? [] }, meta: { restauranteId } };
+        } catch (error: any) {
+            console.error('❌ [menus.findForOwner] Error:', error);
+            return ctx.badRequest(error?.message || 'Error al cargar catálogo');
+        }
+    },
 };

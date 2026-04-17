@@ -205,7 +205,43 @@ export async function fetchProducts(slug, categoryId = null) {
 
   // Usar API directa directamente (sin intentar endpoint público)
   try {
-    console.log('🔄 [fetchProducts] Usando API directa para obtener TODOS los productos (incluidos no disponibles)...');
+    console.log('🔄 [fetchProducts] Cargando productos owner...');
+    /** Catálogo vía entityService (misma policy que stock/compras). El REST `/productos` suele venir vacío con JWT por permisos. */
+    const token = localStorage.getItem('strapi_jwt') || localStorage.getItem('jwt');
+    if (token) {
+      try {
+        const cr = await api.get(`/restaurants/${encodeURIComponent(slug)}/catalog-for-owner`, {
+          headers: getAuthHeaders(),
+        });
+        const packs = cr?.data?.data?.products ?? cr?.data?.products ?? [];
+        if (Array.isArray(packs) && packs.length > 0) {
+          let mapped = mapProducts(packs);
+          if (categoryId) {
+            const numericCatId =
+              typeof categoryId === 'number' && Number.isFinite(categoryId)
+                ? categoryId
+                : typeof categoryId === 'string' && /^\d+$/.test(categoryId)
+                  ? Number(categoryId)
+                  : categoryId;
+            const selIsNumeric = Number.isFinite(numericCatId) && String(categoryId).trim() !== '';
+            mapped = mapped.filter((p) => {
+              const catId = p.categoriaId;
+              if (selIsNumeric && (typeof catId === 'number' || (typeof catId === 'string' && /^\d+$/.test(catId)))) {
+                return Number(catId) === Number(numericCatId);
+              }
+              return String(catId || '') === String(categoryId || '');
+            });
+          }
+          console.log('✅ [fetchProducts] vía catalog-for-owner:', mapped.length);
+          return mapped;
+        }
+        console.warn('[fetchProducts] catalog-for-owner vacío, se intenta /productos REST');
+      } catch (e) {
+        console.warn('[fetchProducts] catalog-for-owner error:', e?.response?.status, e?.response?.data);
+      }
+    }
+
+    console.log('🔄 [fetchProducts] (fallback) GET /productos...');
     const restauranteId = await getRestaurantId(slug);
     if (!restauranteId) {
       console.warn('❌ [fetchProducts] No se encontró el restaurante con slug:', slug);

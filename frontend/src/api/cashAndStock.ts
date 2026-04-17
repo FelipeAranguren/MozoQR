@@ -216,6 +216,23 @@ export function cashMovementsFromSession(session: CashSession | null): CashMovem
 
 // ——— Productos (owner / compras) ———
 
+/** Productos para “Nueva compra” usando slug (evita REST `/productos` vacío con JWT). */
+export async function fetchProductosForCompraBySlug(slug: string): Promise<OwnerProductoRow[]> {
+  if (!slug) return [];
+  try {
+    const res = await api.get(`/restaurants/${encodeURIComponent(slug)}/catalog-for-owner`, {
+      headers: getAuthHeaders(),
+    });
+    const packs = (res.data as { data?: { products?: unknown } })?.data?.products ?? (res.data as any)?.products;
+    if (!Array.isArray(packs)) return [];
+    return packs
+      .map((row) => normalizeEntry<OwnerProductoRow>(row as Record<string, unknown>))
+      .filter((p) => p != null && (p.id != null || p.documentId != null)) as OwnerProductoRow[];
+  } catch {
+    return [];
+  }
+}
+
 /** Todos los productos del restaurante (para elegir en “Nueva compra”, sin depender de que exista stock-item). */
 export async function fetchProductosForCompra(restaurantId: number | string): Promise<OwnerProductoRow[]> {
   const params = new URLSearchParams();
