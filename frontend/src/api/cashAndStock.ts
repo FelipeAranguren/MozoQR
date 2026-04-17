@@ -1,13 +1,13 @@
 import { api } from '../api';
 import type {
   CashMovement,
-  CashMovementTipo,
   CashSession,
   CreateCashMovementPayload,
   CreateCashSessionPayload,
   StockItem,
   StockMovement,
   StrapiEntityId,
+  UpdateCashSessionPayload,
   UpdateStockItemPayload,
 } from '../types/cashAndStock';
 
@@ -117,6 +117,43 @@ export async function createCashSession(payload: CreateCashSessionPayload): Prom
     headers: getAuthHeaders(),
   });
   return normalizeOne<CashSession>(res.data);
+}
+
+export async function updateCashSession(
+  sessionId: string | number,
+  payload: UpdateCashSessionPayload
+): Promise<CashSession | null> {
+  const body = {
+    data: {
+      ...payload,
+      publishedAt: new Date().toISOString(),
+    },
+  };
+  const res = await api.put(`${CASH_SESSIONS_PATH}/${sessionId}`, body, {
+    params: POPULATE_ALL,
+    headers: getAuthHeaders(),
+  });
+  return normalizeOne<CashSession>(res.data);
+}
+
+/** Sesiones cerradas (historial), opcional filtro por rango de fecha_cierre (YYYY-MM-DD). */
+export async function fetchClosedCashSessions(
+  restaurantId: number | string,
+  opts: { desde?: string; hasta?: string; page?: number; pageSize?: number } = {}
+): Promise<CashSession[]> {
+  const { desde, hasta, page = 1, pageSize = 50 } = opts;
+  const params: Record<string, string | number> = {
+    ...restaurantFilter(restaurantId, 'filters[restaurante]'),
+    'filters[estado][$eq]': 'cerrada',
+    ...POPULATE_ALL,
+    'sort[0]': 'fecha_cierre:desc',
+    'pagination[page]': page,
+    'pagination[pageSize]': pageSize,
+  };
+  if (desde) params['filters[fecha_cierre][$gte]'] = `${desde}T00:00:00.000Z`;
+  if (hasta) params['filters[fecha_cierre][$lte]'] = `${hasta}T23:59:59.999Z`;
+  const res = await api.get(CASH_SESSIONS_PATH, { params, headers: getAuthHeaders() });
+  return normalizeList<CashSession>(res.data);
 }
 
 // ——— Cash movements ———

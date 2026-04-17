@@ -1,92 +1,152 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import {
-  Box, Typography, Paper, Table, TableBody, TableCell, TableContainer, TableHead,
-  TableRow, Chip, Button, TextField, Dialog, DialogTitle, DialogContent, DialogActions,
-  CircularProgress, Alert, Stack, Tabs, Tab, IconButton, Tooltip,
+  Box,
+  Typography,
+  Paper,
+  Table,
+  TableBody,
+  TableCell,
+  TableContainer,
+  TableHead,
+  TableRow,
+  Chip,
+  Button,
+  CircularProgress,
+  Alert,
+  Stack,
+  Tabs,
+  Tab,
+  Switch,
 } from '@mui/material';
-import EditIcon from '@mui/icons-material/Edit';
 import WarningIcon from '@mui/icons-material/Warning';
 import HistoryIcon from '@mui/icons-material/History';
-import { fetchStockOverview, ajusteStock, fetchMovimientosStock } from '../../../api/stock';
+import { getRestaurantId } from '../../../api/menu';
+import {
+  fetchStockItemsForRestaurant,
+  fetchStockMovementsForRestaurant,
+  restEntityId,
+  updateStockItemEstado,
+} from '../../../api/cashAndStock';
 
 function formatCurrency(n) {
   return `$${(Number(n) || 0).toLocaleString('es-AR', { minimumFractionDigits: 2 })}`;
 }
 function formatDateTime(iso) {
   if (!iso) return '-';
-  return new Date(iso).toLocaleString('es-AR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
+  return new Date(iso).toLocaleString('es-AR', {
+    day: '2-digit',
+    month: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+  });
 }
 
-const STOCK_STATUS = {
-  ok: { label: 'OK', color: 'success' },
-  bajo: { label: 'Bajo', color: 'warning' },
-  sin_stock: { label: 'Sin stock', color: 'error' },
+const UNIT_LABELS = {
+  un: 'un.',
+  kg: 'kg',
+  lt: 'lt',
+  pack: 'pack',
+  unidad: 'un.',
+  litro: 'lt',
+  porcion: 'porc.',
 };
 
-const UNIT_LABELS = { unidad: 'un.', kg: 'kg', litro: 'lt', porcion: 'porc.' };
+function unwrapRel(rel) {
+  if (!rel) return null;
+  const inner = rel.data ?? rel;
+  if (!inner) return null;
+  return inner.attributes ? { ...inner.attributes, id: inner.id, documentId: inner.documentId } : inner;
+}
+
+function productName(item) {
+  const p = unwrapRel(item.producto);
+  return p?.name || '—';
+}
+
+function movementItemName(m) {
+  const si = unwrapRel(m.stock_item);
+  return si?.nombre || '—';
+}
 
 export default function StockDashboard() {
   const { slug } = useParams();
   const navigate = useNavigate();
   const [tab, setTab] = useState(0);
-  const [productos, setProductos] = useState([]);
-  const [movimientos, setMovimientos] = useState([]);
+  const [items, setItems] = useState([]);
+  const [movements, setMovements] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
-  const [editDialog, setEditDialog] = useState(null);
-  const [editQty, setEditQty] = useState('');
-  const [editNotes, setEditNotes] = useState('');
-  const [saving, setSaving] = useState(false);
 
-  const loadStock = useCallback(async () => {
+  const loadItems = useCallback(async () => {
     setLoading(true);
     setError('');
     try {
-      const data = await fetchStockOverview(slug);
-      setProductos(data || []);
+      const rid = await getRestaurantId(slug);
+      if (!rid) {
+        setItems([]);
+        setError('No se encontró el restaurante.');
+        return;
+      }
+      const data = await fetchStockItemsForRestaurant(rid);
+      setItems(data || []);
     } catch (e) {
-      setError(e?.response?.data?.error?.message || 'Error al cargar stock');
+      setError(e?.response?.data?.error?.message || e.message || 'Error al cargar stock-items');
+      setItems([]);
+    } finally {
+      setLoading(false);
     }
-    setLoading(false);
   }, [slug]);
 
-  const loadMovimientos = useCallback(async () => {
+  const loadMovements = useCallback(async () => {
     setLoading(true);
     setError('');
     try {
-      const data = await fetchMovimientosStock(slug, { pageSize: 100 });
-      setMovimientos(data || []);
+      const rid = await getRestaurantId(slug);
+      if (!rid) {
+        setMovements([]);
+        setError('No se encontró el restaurante.');
+        return;
+      }
+      const data = await fetchStockMovementsForRestaurant(rid);
+      setMovements(data || []);
     } catch (e) {
-      setError(e?.response?.data?.error?.message || 'Error al cargar movimientos');
+      setError(e?.response?.data?.error?.message || e.message || 'Error al cargar stock-movements');
+      setMovements([]);
+    } finally {
+      setLoading(false);
     }
-    setLoading(false);
   }, [slug]);
 
   useEffect(() => {
-    if (tab === 0) loadStock();
-    else loadMovimientos();
-  }, [tab, loadStock, loadMovimientos]);
+    if (tab === 0) loadItems();
+    else loadMovements();
+  }, [tab, loadItems, loadMovements]);
 
-  const handleAjuste = async () => {
-    if (!editDialog) return;
-    setSaving(true);
+  const handleEstado = async (row, next) => {
     try {
-      await ajusteStock(slug, editDialog.id, { new_quantity: Number(editQty), notes: editNotes });
-      setEditDialog(null);
-      await loadStock();
+      const id = restEntityId(row);
+      const updated = await updateStockItemEstado(id, { estado: next });
+      setItems((prev) =>
+        prev.map((r) => (restEntityId(r) === id ? { ...r, ...updated, estado: next } : r))
+      );
     } catch (e) {
-      setError(e?.response?.data?.error?.message || 'Error al ajustar stock');
+      setError(e?.response?.data?.error?.message || e.message || 'No se pudo actualizar estado');
     }
-    setSaving(false);
   };
 
-  const alertCount = productos.filter(p => p.stock_status !== 'ok').length;
+  const alertCount = items.filter((it) => {
+    const q = Number(it.stock_actual) || 0;
+    const min = Number(it.stock_minimo) || 0;
+    return q <= min;
+  }).length;
 
   return (
     <Box sx={{ maxWidth: 1100, mx: 'auto' }}>
       <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 2 }}>
-        <Typography variant="h5" fontWeight={700}>Control de Stock</Typography>
+        <Typography variant="h5" fontWeight={700}>
+          Control de stock
+        </Typography>
         <Button variant="contained" onClick={() => navigate(`/owner/${slug}/stock/compras`)}>
           Compras
         </Button>
@@ -94,11 +154,15 @@ export default function StockDashboard() {
 
       {alertCount > 0 && (
         <Alert severity="warning" sx={{ mb: 2 }} icon={<WarningIcon />}>
-          {alertCount} producto{alertCount > 1 ? 's' : ''} con stock bajo o agotado.
+          {alertCount} ítem{alertCount > 1 ? 's' : ''} en o bajo el mínimo.
         </Alert>
       )}
 
-      {error && <Alert severity="error" sx={{ mb: 2 }} onClose={() => setError('')}>{error}</Alert>}
+      {error && (
+        <Alert severity="error" sx={{ mb: 2 }} onClose={() => setError('')}>
+          {error}
+        </Alert>
+      )}
 
       <Tabs value={tab} onChange={(_, v) => setTab(v)} sx={{ mb: 2 }}>
         <Tab label="Stock actual" />
@@ -106,50 +170,56 @@ export default function StockDashboard() {
       </Tabs>
 
       {loading ? (
-        <Box sx={{ display: 'flex', justifyContent: 'center', py: 6 }}><CircularProgress /></Box>
+        <Box sx={{ display: 'flex', justifyContent: 'center', py: 6 }}>
+          <CircularProgress />
+        </Box>
       ) : tab === 0 ? (
         <Paper>
           <TableContainer>
             <Table>
               <TableHead>
                 <TableRow>
-                  <TableCell>Producto</TableCell>
+                  <TableCell>Nombre</TableCell>
                   <TableCell>SKU</TableCell>
+                  <TableCell align="right">Stock actual</TableCell>
+                  <TableCell align="right">Mínimo</TableCell>
                   <TableCell>Categoría</TableCell>
-                  <TableCell align="right">Precio</TableCell>
-                  <TableCell align="right">Stock</TableCell>
                   <TableCell>Unidad</TableCell>
-                  <TableCell align="right">Mín. alerta</TableCell>
-                  <TableCell>Estado</TableCell>
-                  <TableCell width={60} />
+                  <TableCell align="right">Precio costo</TableCell>
+                  <TableCell>Producto</TableCell>
+                  <TableCell align="center">Estado</TableCell>
                 </TableRow>
               </TableHead>
               <TableBody>
-                {productos.length === 0 && (
-                  <TableRow><TableCell colSpan={9} align="center" sx={{ py: 4 }}>
-                    <Typography color="text.secondary">
-                      No hay productos con stock habilitado. Activá el control de stock desde el menú de productos.
-                    </Typography>
-                  </TableCell></TableRow>
+                {items.length === 0 && (
+                  <TableRow>
+                    <TableCell colSpan={9} align="center" sx={{ py: 4 }}>
+                      <Typography color="text.secondary">
+                        No hay stock-items vinculados a productos de este restaurante.
+                      </Typography>
+                    </TableCell>
+                  </TableRow>
                 )}
-                {productos.map(p => {
-                  const st = STOCK_STATUS[p.stock_status] || STOCK_STATUS.ok;
+                {items.map((it) => {
+                  const q = Number(it.stock_actual) || 0;
+                  const min = Number(it.stock_minimo) || 0;
+                  const low = q <= min;
                   return (
-                    <TableRow key={p.id} sx={p.stock_status !== 'ok' ? { bgcolor: 'action.hover' } : {}}>
-                      <TableCell sx={{ fontWeight: 500 }}>{p.name}</TableCell>
-                      <TableCell>{p.sku || '-'}</TableCell>
-                      <TableCell>{p.categoria?.name || '-'}</TableCell>
-                      <TableCell align="right">{formatCurrency(p.price)}</TableCell>
-                      <TableCell align="right" sx={{ fontWeight: 700 }}>{Number(p.stock_quantity) || 0}</TableCell>
-                      <TableCell>{UNIT_LABELS[p.stock_unit] || p.stock_unit}</TableCell>
-                      <TableCell align="right">{Number(p.stock_min_alert) || 0}</TableCell>
-                      <TableCell><Chip label={st.label} color={st.color} size="small" /></TableCell>
-                      <TableCell>
-                        <Tooltip title="Ajustar stock">
-                          <IconButton size="small" onClick={() => { setEditDialog(p); setEditQty(String(p.stock_quantity || 0)); setEditNotes(''); }}>
-                            <EditIcon fontSize="small" />
-                          </IconButton>
-                        </Tooltip>
+                    <TableRow key={String(it.documentId ?? it.id)} sx={low ? { bgcolor: 'action.hover' } : {}}>
+                      <TableCell sx={{ fontWeight: 500 }}>{it.nombre || '—'}</TableCell>
+                      <TableCell>{it.sku || '—'}</TableCell>
+                      <TableCell align="right">{it.stock_actual ?? '—'}</TableCell>
+                      <TableCell align="right">{it.stock_minimo ?? '—'}</TableCell>
+                      <TableCell>{it.categoria || '—'}</TableCell>
+                      <TableCell>{UNIT_LABELS[it.unidad] || it.unidad || '—'}</TableCell>
+                      <TableCell align="right">{formatCurrency(it.precio_costo)}</TableCell>
+                      <TableCell>{productName(it)}</TableCell>
+                      <TableCell align="center">
+                        <Switch
+                          checked={it.estado !== false}
+                          onChange={(_, v) => handleEstado(it, v)}
+                          inputProps={{ 'aria-label': `estado-${it.sku || it.id}` }}
+                        />
                       </TableCell>
                     </TableRow>
                   );
@@ -165,32 +235,29 @@ export default function StockDashboard() {
               <TableHead>
                 <TableRow>
                   <TableCell>Fecha</TableCell>
-                  <TableCell>Producto</TableCell>
+                  <TableCell>Ítem</TableCell>
                   <TableCell>Tipo</TableCell>
                   <TableCell align="right">Cantidad</TableCell>
-                  <TableCell align="right">Stock anterior</TableCell>
-                  <TableCell align="right">Stock nuevo</TableCell>
-                  <TableCell>Notas</TableCell>
+                  <TableCell>Motivo</TableCell>
                 </TableRow>
               </TableHead>
               <TableBody>
-                {movimientos.length === 0 && (
-                  <TableRow><TableCell colSpan={7} align="center" sx={{ py: 4 }}>Sin movimientos</TableCell></TableRow>
+                {movements.length === 0 && (
+                  <TableRow>
+                    <TableCell colSpan={5} align="center" sx={{ py: 4 }}>
+                      Sin movimientos
+                    </TableCell>
+                  </TableRow>
                 )}
-                {movimientos.map((m, i) => (
-                  <TableRow key={m.id || i}>
-                    <TableCell>{formatDateTime(m.timestamp)}</TableCell>
-                    <TableCell>{m.producto?.name || '-'}</TableCell>
+                {movements.map((m, i) => (
+                  <TableRow key={String(m.documentId ?? m.id ?? i)}>
+                    <TableCell>{formatDateTime(m.createdAt)}</TableCell>
+                    <TableCell>{movementItemName(m)}</TableCell>
                     <TableCell>
-                      <Chip label={(m.type || '').replace(/_/g, ' ')} size="small"
-                        color={m.type === 'compra' ? 'success' : m.type === 'venta' ? 'error' : 'default'} sx={{ textTransform: 'capitalize' }} />
+                      <Chip label={m.tipo || '—'} size="small" sx={{ textTransform: 'capitalize' }} />
                     </TableCell>
-                    <TableCell align="right" sx={{ fontWeight: 600, color: Number(m.quantity) >= 0 ? 'success.main' : 'error.main' }}>
-                      {Number(m.quantity) > 0 ? '+' : ''}{m.quantity}
-                    </TableCell>
-                    <TableCell align="right">{m.previous_stock}</TableCell>
-                    <TableCell align="right">{m.new_stock}</TableCell>
-                    <TableCell>{m.notes || '-'}</TableCell>
+                    <TableCell align="right">{m.cantidad ?? '—'}</TableCell>
+                    <TableCell>{m.motivo || '—'}</TableCell>
                   </TableRow>
                 ))}
               </TableBody>
@@ -198,25 +265,6 @@ export default function StockDashboard() {
           </TableContainer>
         </Paper>
       )}
-
-      <Dialog open={!!editDialog} onClose={() => setEditDialog(null)} maxWidth="xs" fullWidth>
-        <DialogTitle>Ajustar stock: {editDialog?.name}</DialogTitle>
-        <DialogContent>
-          <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
-            Stock actual: {editDialog?.stock_quantity || 0} {UNIT_LABELS[editDialog?.stock_unit] || ''}
-          </Typography>
-          <TextField label="Nueva cantidad" type="number" fullWidth margin="normal" autoFocus
-            value={editQty} onChange={e => setEditQty(e.target.value)} inputProps={{ min: 0, step: 0.5 }} />
-          <TextField label="Notas (opcional)" fullWidth margin="normal" multiline rows={2}
-            value={editNotes} onChange={e => setEditNotes(e.target.value)} />
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={() => setEditDialog(null)}>Cancelar</Button>
-          <Button variant="contained" onClick={handleAjuste} disabled={saving || editQty === ''}>
-            {saving ? 'Guardando...' : 'Guardar'}
-          </Button>
-        </DialogActions>
-      </Dialog>
     </Box>
   );
 }

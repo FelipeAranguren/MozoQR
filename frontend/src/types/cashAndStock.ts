@@ -103,3 +103,10 @@ export interface CreateCashMovementPayload {
 export interface UpdateStockItemPayload {
   estado: boolean;
 }
+
+/** Cierre de sesión de caja (PUT parcial). */
+export interface UpdateCashSessionPayload {
+  fecha_cierre?: string | null;
+  monto_final?: number | null;
+  estado?: 'abierta' | 'cerrada';
+}
