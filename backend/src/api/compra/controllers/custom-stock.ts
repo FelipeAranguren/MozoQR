@@ -12,14 +12,14 @@ async function resolveProductoPk(
 
   if (/^\d+$/.test(str)) {
     const row = await strapi.db.query('api::producto.producto').findOne({
-      where: { id: Number(str), restaurante: restauranteId },
+      where: { id: Number(str), restaurante: { id: restauranteId } },
       select: ['id'],
     });
     return row?.id ?? null;
   }
 
   const byDoc = await strapi.db.query('api::producto.producto').findOne({
-    where: { documentId: str, restaurante: restauranteId },
+    where: { documentId: str, restaurante: { id: restauranteId } },
     select: ['id'],
   });
   return byDoc?.id ?? null;
@@ -203,54 +203,98 @@ export default {
         restaurante: restauranteId,
       };
       if (user?.id != null && user.id !== '') {
-        compraPayload.created_by_user = user.id;
+        const uid = Number(user.id);
+        if (Number.isFinite(uid) && uid > 0) {
+          const urow = await strapi.db.query('plugin::users-permissions.user').findOne({
+            where: { id: uid },
+            select: ['id'],
+          });
+          if (urow?.id) {
+            compraPayload.created_by_user = urow.id;
+          }
+        }
       }
 
-      const compra = await strapi.entityService.create('api::compra.compra', {
-        data: compraPayload,
-      });
-
-      const compraPk = compra?.id;
-      if (compraPk == null) {
-        strapi.log.error('[crearCompra] La compra creada no tiene id', compra);
-        return ctx.internalServerError('No se pudo crear la compra');
-      }
-
-      for (const row of resolved) {
-        const lineTotal = Number((row.qty * row.unitCost).toFixed(2));
-        await strapi.entityService.create('api::item-compra.item-compra', {
-          data: {
-            quantity: row.qty,
-            unit_cost: row.unitCost,
-            total_cost: lineTotal,
-            compra: compraPk,
-            producto: row.productoPk,
-          },
+      let compra: any;
+      try {
+        compra = await strapi.entityService.create('api::compra.compra', {
+          data: compraPayload,
         });
+      } catch (ce: any) {
+        strapi.log.error('[crearCompra] falló create compra', ce);
+        const m = ce?.message || String(ce);
+        if (ce?.name === 'ValidationError' || ce?.details?.errors?.length) {
+          return ctx.badRequest(m);
+        }
+        ctx.status = 500;
+        ctx.body = { error: { message: m } };
+        return;
       }
 
+      let compraPk: number | null = compra?.id != null ? Number(compra.id) : null;
+      if (compraPk == null && compra?.documentId) {
+        const crow = await strapi.db.query('api::compra.compra').findOne({
+          where: { documentId: compra.documentId },
+          select: ['id'],
+        });
+        compraPk = crow?.id != null ? Number(crow.id) : null;
+      }
+      if (compraPk == null || !Number.isFinite(compraPk)) {
+        strapi.log.error('[crearCompra] compra sin id tras create', compra);
+        return ctx.internalServerError('No se pudo crear la compra (sin id)');
+      }
+
+      for (let i = 0; i < resolved.length; i += 1) {
+        const row = resolved[i];
+        const lineTotal = Number((row.qty * row.unitCost).toFixed(2));
+        try {
+          await strapi.entityService.create('api::item-compra.item-compra', {
+            data: {
+              quantity: row.qty,
+              unit_cost: row.unitCost,
+              total_cost: lineTotal,
+              compra: compraPk,
+              producto: row.productoPk,
+            },
+          });
+        } catch (ie: any) {
+          strapi.log.error(`[crearCompra] falló item-compra línea ${i + 1}`, ie);
+          const m = ie?.message || String(ie);
+          if (ie?.name === 'ValidationError' || ie?.details?.errors?.length) {
+            return ctx.badRequest(m);
+          }
+          ctx.status = 500;
+          ctx.body = { error: { message: `Ítem ${i + 1}: ${m}` } };
+          return;
+        }
+      }
+
+      // Leer compra + ítems sin entityService.populate (suele romper en Strapi 5).
       let full: unknown = null;
       try {
-        full = await strapi.entityService.findOne('api::compra.compra', compraPk, {
-          populate: ['items', 'items.producto'],
+        full = await strapi.db.query('api::compra.compra').findOne({
+          where: { id: compraPk },
+          populate: { items: { populate: { producto: true } } },
         });
-      } catch (popErr: any) {
-        strapi.log.warn('[crearCompra] populate profundo falló, reintentando sin producto', popErr?.message);
-        full = await strapi.entityService.findOne('api::compra.compra', compraPk, {
-          populate: ['items'],
-        });
+      } catch (fe: any) {
+        strapi.log.warn('[crearCompra] findOne con items+producto falló', fe?.message);
+        try {
+          full = await strapi.db.query('api::compra.compra').findOne({
+            where: { id: compraPk },
+            populate: { items: true },
+          });
+        } catch (fe2: any) {
+          strapi.log.warn('[crearCompra] findOne solo items falló', fe2?.message);
+          full = { id: compraPk, documentId: compra?.documentId };
+        }
       }
 
       ctx.body = { data: full };
     } catch (e: any) {
-      strapi.log.error('[crearCompra]', e);
+      strapi.log.error('[crearCompra] inesperado', e);
       const msg = e?.message || String(e);
-      if (e?.name === 'ValidationError' || e?.details?.errors?.length) {
-        return ctx.badRequest(msg);
-      }
-      return ctx.internalServerError(
-        process.env.NODE_ENV === 'development' ? msg : 'Error al crear la compra'
-      );
+      ctx.status = 500;
+      ctx.body = { error: { message: msg } };
     }
   },
 
