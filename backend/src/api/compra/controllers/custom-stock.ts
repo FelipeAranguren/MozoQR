@@ -33,9 +33,11 @@ async function resolveCompraLineProductoAndStockItem(
 ): Promise<{ productoPk: number; stockItemPk: number | null } | null> {
   const stockRaw = it.stockItemId ?? it.stock_item_id ?? it.stock_item;
   const prodRaw = it.productoId ?? it.producto;
+  const stockStr = stockRaw == null || stockRaw === '' ? '' : String(stockRaw).trim();
+  const prodStr = prodRaw == null || prodRaw === '' ? '' : String(prodRaw).trim();
 
-  if (stockRaw != null && stockRaw !== '') {
-    const str = String(stockRaw).trim();
+  if (stockStr) {
+    const str = stockStr;
     let row: { id?: number; producto?: { id?: number } | number } | null = null;
     if (/^\d+$/.test(str)) {
       row = await strapi.db.query('api::stock-item.stock-item').findOne({
@@ -59,8 +61,8 @@ async function resolveCompraLineProductoAndStockItem(
     return { productoPk: Number(ok.id), stockItemPk: Number(row.id) };
   }
 
-  if (prodRaw == null || prodRaw === '') return null;
-  const productoPk = await resolveProductoPk(strapi, prodRaw, restauranteId);
+  if (!prodStr) return null;
+  const productoPk = await resolveProductoPk(strapi, prodStr, restauranteId);
   if (!productoPk) return null;
   return { productoPk, stockItemPk: null };
 }
@@ -201,8 +203,13 @@ export default {
     const { date, supplier, notes, items } = body;
 
     if (!date) return ctx.badRequest('date es requerido');
-    if (!Array.isArray(items) || items.length === 0) {
-      return ctx.badRequest('items es requerido y no puede estar vacío');
+    if (!Array.isArray(items)) {
+      return ctx.badRequest('items debe ser un array de líneas de compra.');
+    }
+    if (items.length === 0) {
+      return ctx.badRequest(
+        'No se puede crear una compra sin líneas. Agregá al menos un ítem con stock_item o producto.'
+      );
     }
     if (!Number.isFinite(restauranteId) || restauranteId <= 0) {
       return ctx.badRequest('restaurante inválido');
@@ -216,19 +223,20 @@ export default {
 
       for (const it of items) {
         line += 1;
+        if (it == null || typeof it !== 'object') {
+          return ctx.badRequest(`Línea ${line}: formato inválido (se esperaba un objeto).`);
+        }
         const row = it as Record<string, unknown>;
         if (it.quantity == null || it.unit_cost == null) {
           return ctx.badRequest('Cada item necesita quantity y unit_cost');
         }
-        if (
-          row.stockItemId == null &&
-          row.stock_item_id == null &&
-          row.stock_item == null &&
-          row.productoId == null &&
-          row.producto == null
-        ) {
+        const hasStock = [row.stockItemId, row.stock_item_id, row.stock_item].some(
+          (x) => x != null && String(x).trim() !== ''
+        );
+        const hasProd = [row.productoId, row.producto].some((x) => x != null && String(x).trim() !== '');
+        if (!hasStock && !hasProd) {
           return ctx.badRequest(
-            `Línea ${line}: indicá stockItemId (recomendado) o productoId para vincular el ítem.`
+            `Línea ${line}: falta stockItemId (o stock_item_id) o productoId. No se aceptan referencias nulas o vacías.`
           );
         }
         const ids = await resolveCompraLineProductoAndStockItem(strapi, row, restauranteId);
@@ -278,7 +286,7 @@ export default {
         if (ce?.name === 'ValidationError' || ce?.details?.errors?.length) {
           return ctx.badRequest(m);
         }
-        ctx.status = 500;
+        ctx.status = 400;
         ctx.body = { error: { message: m } };
         return;
       }
@@ -293,7 +301,9 @@ export default {
       }
       if (compraPk == null || !Number.isFinite(compraPk)) {
         strapi.log.error('[crearCompra] compra sin id tras create', compra);
-        return ctx.internalServerError('No se pudo crear la compra (sin id)');
+        ctx.status = 400;
+        ctx.body = { error: { message: 'No se pudo crear la compra (respuesta sin id).' } };
+        return;
       }
 
       for (let i = 0; i < resolved.length; i += 1) {
@@ -319,7 +329,7 @@ export default {
           if (ie?.name === 'ValidationError' || ie?.details?.errors?.length) {
             return ctx.badRequest(m);
           }
-          ctx.status = 500;
+          ctx.status = 400;
           ctx.body = { error: { message: `Ítem ${i + 1}: ${m}` } };
           return;
         }
@@ -349,8 +359,8 @@ export default {
     } catch (e: any) {
       strapi.log.error('[crearCompra] inesperado', e);
       const msg = e?.message || String(e);
-      ctx.status = 500;
-      ctx.body = { error: { message: msg } };
+      ctx.status = 400;
+      ctx.body = { error: { message: `No se pudo crear la compra: ${msg}` } };
     }
   },
 

@@ -248,12 +248,45 @@ export async function fetchStockMovementsForRestaurant(
   return normalizeList<StockMovement>(res.data);
 }
 
+function validationErrorAsAxios(message: string): Error {
+  const err = new Error(message) as Error & { response?: { status: number; data: { error?: { message: string } } } };
+  err.response = { status: 400, data: { error: { message } } };
+  return err;
+}
+
 /**
  * Crea una compra pendiente vía **ruta custom** del backend (no es REST de una colección):
  * `POST /api/restaurants/:slug/compras` → `compra` + `item-compra` con relación **`stock_item`**.
  * Los movimientos `stock-movements` se generan al **recibir** la compra (`PUT .../recibir`).
  */
 export async function crearCompraOwner(slug: string, payload: OwnerCompraPayload): Promise<unknown> {
+  const lines = payload?.items;
+  if (!Array.isArray(lines) || lines.length === 0) {
+    throw validationErrorAsAxios(
+      'La compra debe incluir al menos una línea con ítem de stock, cantidad y costo.'
+    );
+  }
+  for (let i = 0; i < lines.length; i += 1) {
+    const L = lines[i];
+    const sid = L?.stockItemId;
+    if (sid == null || (typeof sid === 'string' && sid.trim() === '')) {
+      throw validationErrorAsAxios(
+        `Línea ${i + 1}: falta stockItemId (id o documentId del stock-item). No se puede enviar nulo ni vacío.`
+      );
+    }
+    if (L.quantity == null || L.unit_cost == null) {
+      throw validationErrorAsAxios(`Línea ${i + 1}: quantity y unit_cost son obligatorios.`);
+    }
+    const q = Number(L.quantity);
+    const c = Number(L.unit_cost);
+    if (!Number.isFinite(q) || q <= 0) {
+      throw validationErrorAsAxios(`Línea ${i + 1}: la cantidad debe ser un número mayor que 0.`);
+    }
+    if (!Number.isFinite(c) || c < 0) {
+      throw validationErrorAsAxios(`Línea ${i + 1}: el costo unitario debe ser un número mayor o igual a 0.`);
+    }
+  }
+
   const res = await api.post(`/restaurants/${slug}/compras`, payload, {
     headers: { ...getAuthHeaders(), 'Content-Type': 'application/json' },
   });

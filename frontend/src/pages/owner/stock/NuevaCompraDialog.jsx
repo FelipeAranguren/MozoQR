@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import {
   Box,
   Typography,
@@ -84,8 +84,12 @@ export default function NuevaCompraDialog({ open, onClose, slug, onCreated }) {
   };
 
   const handleCrear = async () => {
+    if (!canSubmit) {
+      setError('Seleccioná al menos un ítem de stock con cantidad y costo válidos.');
+      return;
+    }
     const items = form.items
-      .filter((it) => it.stockItemId && it.quantity && it.unit_cost)
+      .filter((it) => it.stockItemId && it.quantity !== '' && it.unit_cost !== '')
       .map((it) => ({
         stockItemId: it.stockItemId,
         quantity: Number(it.quantity),
@@ -131,6 +135,21 @@ export default function NuevaCompraDialog({ open, onClose, slug, onCreated }) {
     0
   );
 
+  const canSubmit = useMemo(() => {
+    if (!form.date) return false;
+    if (stockItems.length === 0) return false;
+    const ok = form.items.some((it) => {
+      const sid = it.stockItemId;
+      if (sid == null || sid === '') return false;
+      const q = Number(it.quantity);
+      const c = Number(it.unit_cost);
+      if (!Number.isFinite(q) || q <= 0) return false;
+      if (!Number.isFinite(c) || c < 0) return false;
+      return true;
+    });
+    return ok;
+  }, [form.date, form.items, stockItems.length]);
+
   return (
     <Dialog open={open} onClose={handleClose} maxWidth="md" fullWidth>
       <DialogTitle>Nueva compra</DialogTitle>
@@ -174,11 +193,20 @@ export default function NuevaCompraDialog({ open, onClose, slug, onCreated }) {
               size="small"
               sx={{ minWidth: 220, flex: 2 }}
               options={stockItems}
+              disabled={stockItems.length === 0}
               getOptionLabel={(o) => stockItemLabel(o)}
-              value={stockItems.find((s) => restEntityId(s) === item.stockItemId) || null}
+              value={
+                item.stockItemId == null || item.stockItemId === ''
+                  ? null
+                  : stockItems.find((s) => restEntityId(s) === item.stockItemId) || null
+              }
               onChange={(_, v) => updateItem(idx, 'stockItemId', v ? restEntityId(v) : null)}
               renderInput={(params) => <TextField {...params} label="Ítem de stock" />}
-              isOptionEqualToValue={(o, v) => restEntityId(o) === restEntityId(v)}
+              isOptionEqualToValue={(o, v) => {
+                if (!o && !v) return true;
+                if (!o || !v) return false;
+                return restEntityId(o) === restEntityId(v);
+              }}
             />
             <TextField
               label="Cantidad"
@@ -206,7 +234,7 @@ export default function NuevaCompraDialog({ open, onClose, slug, onCreated }) {
             </IconButton>
           </Stack>
         ))}
-        <Button size="small" startIcon={<AddIcon />} onClick={addItem}>
+        <Button size="small" startIcon={<AddIcon />} onClick={addItem} disabled={stockItems.length === 0}>
           Agregar item
         </Button>
 
@@ -235,7 +263,7 @@ export default function NuevaCompraDialog({ open, onClose, slug, onCreated }) {
         <Button onClick={handleClose} disabled={saving}>
           Cancelar
         </Button>
-        <Button variant="contained" onClick={handleCrear} disabled={saving}>
+        <Button variant="contained" onClick={handleCrear} disabled={saving || !canSubmit}>
           {saving ? 'Guardando...' : 'Crear compra'}
         </Button>
       </DialogActions>
