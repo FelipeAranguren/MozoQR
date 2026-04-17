@@ -189,6 +189,18 @@ function lineUnitCostFromPayload(it: Record<string, unknown>): number {
  * Suma cantidades de ítems al inventario (stock-item o producto) y registra movimientos.
  * No cambia el estado de la compra; el caller marca `recibida` si corresponde.
  */
+/** Cantidad en un ítem de compra (Strapi / decimal / populate anidado). */
+function itemCompraQuantity(item: any): number {
+  const raw = item?.quantity ?? item?.attributes?.quantity;
+  if (raw == null) return 0;
+  if (typeof raw === 'object' && raw != null && typeof (raw as any).toString === 'function') {
+    const n = Number(String(raw));
+    return Number.isFinite(n) ? n : 0;
+  }
+  const n = Number(raw);
+  return Number.isFinite(n) ? n : 0;
+}
+
 async function applyCompraReceiptInventory(
   strapi: any,
   compra: any,
@@ -201,7 +213,7 @@ async function applyCompraReceiptInventory(
     const prod = item.producto;
     if (!prod?.id) continue;
 
-    const addQty = Number(item.quantity) || 0;
+    const addQty = itemCompraQuantity(item);
     if (addQty <= 0) continue;
 
     const linked = (item as any).stock_item;
@@ -283,6 +295,16 @@ async function applyCompraReceiptInventory(
 }
 
 export default {
+  /** Id de restaurante resuelto por la policy (misma fuente que compras/stock). Útil para filtros REST en el owner. */
+  async ownerContext(ctx: any) {
+    ctx.body = {
+      data: {
+        restauranteId: ctx.state.restauranteId,
+        slug: ctx.params.slug,
+      },
+    };
+  },
+
   async stockOverview(ctx: any) {
     const strapi: any = getStrapi(ctx);
     const restauranteId = ctx.state.restauranteId;

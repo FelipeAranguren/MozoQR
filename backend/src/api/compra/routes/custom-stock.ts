@@ -1,5 +1,11 @@
 export default {
   routes: [
+    {
+      method: 'GET',
+      path: '/restaurants/:slug/owner-context',
+      handler: 'custom-stock.ownerContext',
+      config: { auth: {}, policies: ['global::by-restaurant-owner'] },
+    },
     // --- Stock ---
     {
       method: 'GET',
