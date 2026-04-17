@@ -306,17 +306,9 @@ async function applyCompraReceiptInventory(
     }
 
     if (stockRow?.id) {
-      const prevSi = Number(stockRow.stock_actual) || 0;
-      const newSi = prevSi + addQty;
       const unitCost = itemCompraUnitCost(item);
 
-      await strapi.entityService.update('api::stock-item.stock-item', stockRow.id, {
-        data: {
-          stock_actual: newSi,
-          ...(Number.isFinite(unitCost) && unitCost > 0 ? { precio_costo: unitCost } : {}),
-        },
-      });
-
+      // `stock_actual` se actualiza en `stock-movement` `afterCreate` (Query Engine + SQL atómico).
       const movData: Record<string, unknown> = {
         tipo: 'entrada',
         cantidad: addQty,
@@ -328,6 +320,17 @@ async function applyCompraReceiptInventory(
       await strapi.entityService.create('api::stock-movement.stock-movement', {
         data: movData,
       });
+
+      if (Number.isFinite(unitCost) && unitCost > 0) {
+        try {
+          await strapi.db.query('api::stock-item.stock-item').update({
+            where: { id: stockRow.id },
+            data: { precio_costo: unitCost },
+          });
+        } catch (pe: any) {
+          strapi.log?.warn?.('[applyCompraReceiptInventory] precio_costo vía db.query', pe?.message || pe);
+        }
+      }
     } else {
       const pop = (item as any).producto;
       let previousStock = 0;
