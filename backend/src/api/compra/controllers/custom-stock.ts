@@ -677,7 +677,7 @@ export default {
       limit: Number(pageSize),
     });
 
-    ctx.body = { data: compras };
+    ctx.body = { data: compras, meta: { restauranteId } };
   },
 
   async detalleCompra(ctx: any) {

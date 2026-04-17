@@ -401,6 +401,40 @@ export async function fetchProduct(productId) {
   }
 }
 
+/** Id numérico de restaurante en una entrada de listado (nunca convierte documentId UUID a número). */
+function numericRestaurantEntryId(r) {
+  const raw = r?.id ?? r?.attributes?.id;
+  if (typeof raw === 'number' && Number.isFinite(raw) && raw > 0) return raw;
+  if (typeof raw === 'string' && /^\d+$/.test(raw)) return parseInt(raw, 10);
+  return null;
+}
+
+/**
+ * `restauranteId` canónico del owner (policy): probamos varias rutas custom que suelen tener el mismo permiso que compras.
+ */
+async function getRestauranteIdFromOwnerMeta(slug) {
+  const paths = [
+    `/restaurants/${encodeURIComponent(slug)}/stock/alertas`,
+    `/restaurants/${encodeURIComponent(slug)}/stock/movimientos?pageSize=1&page=1`,
+    `/restaurants/${encodeURIComponent(slug)}/compras?pageSize=1&page=1`,
+    `/restaurants/${encodeURIComponent(slug)}/stock`,
+  ];
+  for (const path of paths) {
+    try {
+      const res = await api.get(path, { headers: getAuthHeaders() });
+      const rid = res?.data?.meta?.restauranteId;
+      const n = rid != null ? Number(rid) : NaN;
+      if (Number.isFinite(n) && n > 0) {
+        console.log('✅ [getRestaurantId] meta desde', path.split('?')[0], '→', n);
+        return n;
+      }
+    } catch (e) {
+      console.warn('⚠️ [getRestaurantId] sin meta en', path.split('?')[0], e?.response?.status);
+    }
+  }
+  return null;
+}
+
 /**
  * Obtiene el ID del restaurante desde el slug
  */
@@ -410,28 +444,10 @@ export async function getRestaurantId(slug) {
   try {
     console.log('🔍 [getRestaurantId] Buscando restaurante con slug:', slug);
 
-    /**
-     * Misma resolución que compras/stock owner: `restauranteId` viene en `meta` de una ruta custom ya permitida
-     * en Users-Permissions (evita 403 de rutas nuevas y el bug de slug duplicado vs /restaurantes).
-     */
     const token = localStorage.getItem('strapi_jwt') || localStorage.getItem('jwt');
     if (token) {
-      try {
-        const ar = await api.get(`/restaurants/${encodeURIComponent(slug)}/stock/alertas`, {
-          headers: getAuthHeaders(),
-        });
-        const rid = ar?.data?.meta?.restauranteId;
-        const n = rid != null ? Number(rid) : NaN;
-        if (Number.isFinite(n) && n > 0) {
-          console.log('✅ [getRestaurantId] stock/alertas meta → restauranteId', n);
-          return n;
-        }
-      } catch (e) {
-        console.warn(
-          '⚠️ [getRestaurantId] stock/alertas no disponible, se usa listado /restaurantes',
-          e?.response?.status
-        );
-      }
+      const fromOwner = await getRestauranteIdFromOwnerMeta(slug);
+      if (fromOwner != null) return fromOwner;
     }
     
     // Obtener el objeto completo del restaurante (sin fields para evitar problemas)
@@ -477,18 +493,14 @@ export async function getRestaurantId(slug) {
         publishedAt: r?.attributes?.publishedAt || r?.publishedAt
       })));
       
-      // SIEMPRE priorizar el de ID más bajo (el más antiguo/principal)
-      // Esto es importante porque el endpoint de menús usa el restaurante con ID más bajo
-      data = matchingRestaurants.reduce((prev, curr) => {
-        const prevId = Number(prev?.id || prev?.documentId || Infinity);
-        const currId = Number(curr?.id || curr?.documentId || Infinity);
-        if (currId < prevId) {
-          return curr;
-        }
-        return prev;
-      });
+      const scored = matchingRestaurants
+        .map((r) => ({ r, nid: numericRestaurantEntryId(r) }))
+        .filter((x) => x.nid != null);
+      if (scored.length > 0) {
+        data = scored.reduce((prev, curr) => (curr.nid < prev.nid ? curr : prev)).r;
+      }
       
-      console.log('✅ [getRestaurantId] Usando restaurante con ID más bajo (principal):', data?.id);
+      console.log('✅ [getRestaurantId] Usando restaurante con ID numérico más bajo:', data?.id);
       
       // Verificar que esté publicado (advertencia, pero no bloqueante)
       const attrs = data?.attributes || data;
