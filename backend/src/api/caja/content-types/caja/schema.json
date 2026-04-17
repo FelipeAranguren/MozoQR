@@ -1,0 +1,46 @@
+{
+  "kind": "collectionType",
+  "collectionName": "cajas",
+  "info": {
+    "singularName": "caja",
+    "pluralName": "cash-sessions",
+    "displayName": "Cash-Session"
+  },
+  "options": {
+    "draftAndPublish": true
+  },
+  "pluginOptions": {},
+  "attributes": {
+    "fecha_apertura": {
+      "type": "datetime"
+    },
+    "monto_inicial": {
+      "type": "decimal"
+    },
+    "fecha_cierre": {
+      "type": "datetime"
+    },
+    "monto_final": {
+      "type": "decimal"
+    },
+    "estado": {
+      "type": "enumeration",
+      "enum": [
+        "abierta",
+        "cerrada"
+      ]
+    },
+    "restaurante": {
+      "type": "relation",
+      "relation": "manyToOne",
+      "target": "api::restaurante.restaurante",
+      "inversedBy": "cash_sessions"
+    },
+    "cash_movements": {
+      "type": "relation",
+      "relation": "oneToMany",
+      "target": "api::cash-movement.cash-movement",
+      "mappedBy": "cash_session"
+    }
+  }
+}

@@ -1,0 +1,7 @@
+/**
+ * stock-item controller
+ */
+
+import { factories } from '@strapi/strapi'
+
+export default factories.createCoreController('api::stock-item.stock-item');

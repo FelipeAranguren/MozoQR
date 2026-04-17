@@ -31,6 +31,7 @@ import TablesList from './pages/owner/tables/TablesList';
 import RestaurantSettings from './pages/owner/settings/RestaurantSettings';
 import PlanManagement from './pages/owner/plan/PlanManagement';
 import AdvancedPanel from './pages/owner/advanced/AdvancedPanel';
+import CashAndStockPanel from './pages/owner/operations/CashAndStockPanel';
 import AIPanel from './pages/owner/ai/AIPanel';
 import CajaDashboard from './pages/owner/caja/CajaDashboard';
 import CajaHistorial from './pages/owner/caja/CajaHistorial';
@@ -116,6 +117,7 @@ export default function App() {
             <Route path="settings" element={<RestaurantSettings />} />
             <Route path="plan" element={<PlanManagement />} />
             <Route path="ai" element={<AIPanel />} />
+            <Route path="operations" element={<CashAndStockPanel />} />
             <Route path="advanced" element={<AdvancedPanel />} />
             <Route path="caja" element={<CajaDashboard />} />
             <Route path="caja/historial" element={<CajaHistorial />} />

@@ -373,6 +373,61 @@ export interface AdminUser extends Struct.CollectionTypeSchema {
   };
 }
 
+export interface ApiCajaSesionCajaSesion extends Struct.CollectionTypeSchema {
+  collectionName: 'caja_sesions';
+  info: {
+    displayName: 'CajaSesion';
+    pluralName: 'caja-sesions';
+    singularName: 'caja-sesion';
+  };
+  options: {
+    draftAndPublish: false;
+  };
+  attributes: {
+    closed_at: Schema.Attribute.DateTime;
+    closed_by: Schema.Attribute.Relation<
+      'manyToOne',
+      'plugin::users-permissions.user'
+    >;
+    createdAt: Schema.Attribute.DateTime;
+    createdBy: Schema.Attribute.Relation<'oneToOne', 'admin::user'> &
+      Schema.Attribute.Private;
+    final_balance: Schema.Attribute.Decimal;
+    initial_balance: Schema.Attribute.Decimal &
+      Schema.Attribute.Required &
+      Schema.Attribute.DefaultTo<0>;
+    locale: Schema.Attribute.String & Schema.Attribute.Private;
+    localizations: Schema.Attribute.Relation<
+      'oneToMany',
+      'api::caja-sesion.caja-sesion'
+    > &
+      Schema.Attribute.Private;
+    movimientos: Schema.Attribute.Relation<
+      'oneToMany',
+      'api::movimiento-caja.movimiento-caja'
+    >;
+    notes: Schema.Attribute.Text;
+    opened_at: Schema.Attribute.DateTime & Schema.Attribute.Required;
+    opened_by: Schema.Attribute.Relation<
+      'manyToOne',
+      'plugin::users-permissions.user'
+    >;
+    publishedAt: Schema.Attribute.DateTime;
+    restaurante: Schema.Attribute.Relation<
+      'manyToOne',
+      'api::restaurante.restaurante'
+    >;
+    status: Schema.Attribute.Enumeration<['open', 'closed']> &
+      Schema.Attribute.Required &
+      Schema.Attribute.DefaultTo<'open'>;
+    total_egresos: Schema.Attribute.Decimal & Schema.Attribute.DefaultTo<0>;
+    total_ingresos: Schema.Attribute.Decimal & Schema.Attribute.DefaultTo<0>;
+    updatedAt: Schema.Attribute.DateTime;
+    updatedBy: Schema.Attribute.Relation<'oneToOne', 'admin::user'> &
+      Schema.Attribute.Private;
+  };
+}
+
 export interface ApiCategoriaCategoria extends Struct.CollectionTypeSchema {
   collectionName: 'categorias';
   info: {
@@ -400,7 +455,87 @@ export interface ApiCategoriaCategoria extends Struct.CollectionTypeSchema {
       'manyToOne',
       'api::restaurante.restaurante'
     >;
-    slug: Schema.Attribute.UID;
+    slug: Schema.Attribute.String;
+    updatedAt: Schema.Attribute.DateTime;
+    updatedBy: Schema.Attribute.Relation<'oneToOne', 'admin::user'> &
+      Schema.Attribute.Private;
+  };
+}
+
+export interface ApiCompraCompra extends Struct.CollectionTypeSchema {
+  collectionName: 'compras';
+  info: {
+    displayName: 'Compra';
+    pluralName: 'compras';
+    singularName: 'compra';
+  };
+  options: {
+    draftAndPublish: false;
+  };
+  attributes: {
+    created_by_user: Schema.Attribute.Relation<
+      'manyToOne',
+      'plugin::users-permissions.user'
+    >;
+    createdAt: Schema.Attribute.DateTime;
+    createdBy: Schema.Attribute.Relation<'oneToOne', 'admin::user'> &
+      Schema.Attribute.Private;
+    date: Schema.Attribute.Date & Schema.Attribute.Required;
+    items: Schema.Attribute.Relation<
+      'oneToMany',
+      'api::item-compra.item-compra'
+    >;
+    locale: Schema.Attribute.String & Schema.Attribute.Private;
+    localizations: Schema.Attribute.Relation<
+      'oneToMany',
+      'api::compra.compra'
+    > &
+      Schema.Attribute.Private;
+    notes: Schema.Attribute.Text;
+    publishedAt: Schema.Attribute.DateTime;
+    restaurante: Schema.Attribute.Relation<
+      'manyToOne',
+      'api::restaurante.restaurante'
+    >;
+    status: Schema.Attribute.Enumeration<
+      ['pendiente', 'recibida', 'cancelada']
+    > &
+      Schema.Attribute.Required &
+      Schema.Attribute.DefaultTo<'pendiente'>;
+    supplier: Schema.Attribute.String;
+    total: Schema.Attribute.Decimal & Schema.Attribute.DefaultTo<0>;
+    updatedAt: Schema.Attribute.DateTime;
+    updatedBy: Schema.Attribute.Relation<'oneToOne', 'admin::user'> &
+      Schema.Attribute.Private;
+  };
+}
+
+export interface ApiItemCompraItemCompra extends Struct.CollectionTypeSchema {
+  collectionName: 'item_compras';
+  info: {
+    displayName: 'ItemCompra';
+    pluralName: 'item-compras';
+    singularName: 'item-compra';
+  };
+  options: {
+    draftAndPublish: false;
+  };
+  attributes: {
+    compra: Schema.Attribute.Relation<'manyToOne', 'api::compra.compra'>;
+    createdAt: Schema.Attribute.DateTime;
+    createdBy: Schema.Attribute.Relation<'oneToOne', 'admin::user'> &
+      Schema.Attribute.Private;
+    locale: Schema.Attribute.String & Schema.Attribute.Private;
+    localizations: Schema.Attribute.Relation<
+      'oneToMany',
+      'api::item-compra.item-compra'
+    > &
+      Schema.Attribute.Private;
+    producto: Schema.Attribute.Relation<'manyToOne', 'api::producto.producto'>;
+    publishedAt: Schema.Attribute.DateTime;
+    quantity: Schema.Attribute.Decimal & Schema.Attribute.Required;
+    total_cost: Schema.Attribute.Decimal & Schema.Attribute.Required;
+    unit_cost: Schema.Attribute.Decimal & Schema.Attribute.Required;
     updatedAt: Schema.Attribute.DateTime;
     updatedBy: Schema.Attribute.Relation<'oneToOne', 'admin::user'> &
       Schema.Attribute.Private;
@@ -552,6 +687,7 @@ export interface ApiMetodosPagoMetodosPago extends Struct.CollectionTypeSchema {
       Schema.Attribute.Private;
     mp_access_token: Schema.Attribute.String & Schema.Attribute.Private;
     mp_public_key: Schema.Attribute.String;
+    mp_refresh_token: Schema.Attribute.String & Schema.Attribute.Private;
     mp_webhook_secret: Schema.Attribute.String;
     provider: Schema.Attribute.Enumeration<
       ['mercado_pago', 'tarjeta_posnet', 'efectivo']
@@ -561,6 +697,114 @@ export interface ApiMetodosPagoMetodosPago extends Struct.CollectionTypeSchema {
       'manyToOne',
       'api::restaurante.restaurante'
     >;
+    updatedAt: Schema.Attribute.DateTime;
+    updatedBy: Schema.Attribute.Relation<'oneToOne', 'admin::user'> &
+      Schema.Attribute.Private;
+  };
+}
+
+export interface ApiMovimientoCajaMovimientoCaja
+  extends Struct.CollectionTypeSchema {
+  collectionName: 'movimiento_cajas';
+  info: {
+    displayName: 'MovimientoCaja';
+    pluralName: 'movimiento-cajas';
+    singularName: 'movimiento-caja';
+  };
+  options: {
+    draftAndPublish: false;
+  };
+  attributes: {
+    amount: Schema.Attribute.Decimal & Schema.Attribute.Required;
+    caja_sesion: Schema.Attribute.Relation<
+      'manyToOne',
+      'api::caja-sesion.caja-sesion'
+    >;
+    category: Schema.Attribute.Enumeration<
+      [
+        'venta',
+        'propina',
+        'retiro',
+        'gasto_operativo',
+        'compra_insumo',
+        'fondo_inicial',
+        'ajuste',
+        'devolucion',
+      ]
+    > &
+      Schema.Attribute.Required;
+    concept: Schema.Attribute.String & Schema.Attribute.Required;
+    created_by_user: Schema.Attribute.Relation<
+      'manyToOne',
+      'plugin::users-permissions.user'
+    >;
+    createdAt: Schema.Attribute.DateTime;
+    createdBy: Schema.Attribute.Relation<'oneToOne', 'admin::user'> &
+      Schema.Attribute.Private;
+    locale: Schema.Attribute.String & Schema.Attribute.Private;
+    localizations: Schema.Attribute.Relation<
+      'oneToMany',
+      'api::movimiento-caja.movimiento-caja'
+    > &
+      Schema.Attribute.Private;
+    notes: Schema.Attribute.Text;
+    payment_method: Schema.Attribute.Enumeration<
+      ['efectivo', 'tarjeta', 'digital', 'otro']
+    > &
+      Schema.Attribute.DefaultTo<'efectivo'>;
+    pedido: Schema.Attribute.Relation<'manyToOne', 'api::pedido.pedido'>;
+    publishedAt: Schema.Attribute.DateTime;
+    timestamp: Schema.Attribute.DateTime & Schema.Attribute.Required;
+    type: Schema.Attribute.Enumeration<['ingreso', 'egreso']> &
+      Schema.Attribute.Required;
+    updatedAt: Schema.Attribute.DateTime;
+    updatedBy: Schema.Attribute.Relation<'oneToOne', 'admin::user'> &
+      Schema.Attribute.Private;
+  };
+}
+
+export interface ApiMovimientoStockMovimientoStock
+  extends Struct.CollectionTypeSchema {
+  collectionName: 'movimiento_stocks';
+  info: {
+    displayName: 'MovimientoStock';
+    pluralName: 'movimiento-stocks';
+    singularName: 'movimiento-stock';
+  };
+  options: {
+    draftAndPublish: false;
+  };
+  attributes: {
+    created_by_user: Schema.Attribute.Relation<
+      'manyToOne',
+      'plugin::users-permissions.user'
+    >;
+    createdAt: Schema.Attribute.DateTime;
+    createdBy: Schema.Attribute.Relation<'oneToOne', 'admin::user'> &
+      Schema.Attribute.Private;
+    locale: Schema.Attribute.String & Schema.Attribute.Private;
+    localizations: Schema.Attribute.Relation<
+      'oneToMany',
+      'api::movimiento-stock.movimiento-stock'
+    > &
+      Schema.Attribute.Private;
+    new_stock: Schema.Attribute.Decimal & Schema.Attribute.Required;
+    notes: Schema.Attribute.Text;
+    previous_stock: Schema.Attribute.Decimal & Schema.Attribute.Required;
+    producto: Schema.Attribute.Relation<'manyToOne', 'api::producto.producto'>;
+    publishedAt: Schema.Attribute.DateTime;
+    quantity: Schema.Attribute.Decimal & Schema.Attribute.Required;
+    reference_id: Schema.Attribute.Integer;
+    reference_type: Schema.Attribute.String;
+    restaurante: Schema.Attribute.Relation<
+      'manyToOne',
+      'api::restaurante.restaurante'
+    >;
+    timestamp: Schema.Attribute.DateTime & Schema.Attribute.Required;
+    type: Schema.Attribute.Enumeration<
+      ['compra', 'venta', 'ajuste_manual', 'merma']
+    > &
+      Schema.Attribute.Required;
     updatedAt: Schema.Attribute.DateTime;
     updatedBy: Schema.Attribute.Relation<'oneToOne', 'admin::user'> &
       Schema.Attribute.Private;
@@ -741,7 +985,14 @@ export interface ApiProductoProducto extends Struct.CollectionTypeSchema {
       'api::restaurante.restaurante'
     >;
     sku: Schema.Attribute.String;
-    slug: Schema.Attribute.UID;
+    slug: Schema.Attribute.String;
+    stock_enabled: Schema.Attribute.Boolean & Schema.Attribute.DefaultTo<false>;
+    stock_min_alert: Schema.Attribute.Decimal & Schema.Attribute.DefaultTo<0>;
+    stock_quantity: Schema.Attribute.Decimal & Schema.Attribute.DefaultTo<0>;
+    stock_unit: Schema.Attribute.Enumeration<
+      ['unidad', 'kg', 'litro', 'porcion']
+    > &
+      Schema.Attribute.DefaultTo<'unidad'>;
     updatedAt: Schema.Attribute.DateTime;
     updatedBy: Schema.Attribute.Relation<'oneToOne', 'admin::user'> &
       Schema.Attribute.Private;
@@ -798,10 +1049,15 @@ export interface ApiRestauranteRestaurante extends Struct.CollectionTypeSchema {
     draftAndPublish: true;
   };
   attributes: {
+    caja_sesions: Schema.Attribute.Relation<
+      'oneToMany',
+      'api::caja-sesion.caja-sesion'
+    >;
     categorias: Schema.Attribute.Relation<
       'oneToMany',
       'api::categoria.categoria'
     >;
+    compras: Schema.Attribute.Relation<'oneToMany', 'api::compra.compra'>;
     createdAt: Schema.Attribute.DateTime;
     createdBy: Schema.Attribute.Relation<'oneToOne', 'admin::user'> &
       Schema.Attribute.Private;
@@ -813,6 +1069,8 @@ export interface ApiRestauranteRestaurante extends Struct.CollectionTypeSchema {
     > &
       Schema.Attribute.Private;
     logo: Schema.Attribute.Media<'images' | 'files' | 'videos' | 'audios'>;
+    menu_design: Schema.Attribute.Enumeration<['v1', 'v2']> &
+      Schema.Attribute.DefaultTo<'v2'>;
     mesa_sesions: Schema.Attribute.Relation<
       'oneToMany',
       'api::mesa-sesion.mesa-sesion'
@@ -822,12 +1080,15 @@ export interface ApiRestauranteRestaurante extends Struct.CollectionTypeSchema {
       'oneToMany',
       'api::metodos-pago.metodos-pago'
     >;
+    modo_store_id: Schema.Attribute.String;
+    modo_terminal_id: Schema.Attribute.String;
     name: Schema.Attribute.String & Schema.Attribute.Required;
     owner_comments: Schema.Attribute.Relation<
       'oneToMany',
       'api::owner-comment.owner-comment'
     >;
     owner_email: Schema.Attribute.Email;
+    pct_merchant_cbu_alias: Schema.Attribute.String;
     pedidos: Schema.Attribute.Relation<'oneToMany', 'api::pedido.pedido'>;
     primaryColoraccentColor: Schema.Attribute.String;
     productos: Schema.Attribute.Relation<'oneToMany', 'api::producto.producto'>;
@@ -848,6 +1109,8 @@ export interface ApiRestauranteRestaurante extends Struct.CollectionTypeSchema {
     updatedAt: Schema.Attribute.DateTime;
     updatedBy: Schema.Attribute.Relation<'oneToOne', 'admin::user'> &
       Schema.Attribute.Private;
+    weekly_ai_generated_at: Schema.Attribute.DateTime;
+    weekly_ai_report_markdown: Schema.Attribute.Text;
   };
 }
 
@@ -1413,11 +1676,16 @@ declare module '@strapi/strapi' {
       'admin::transfer-token': AdminTransferToken;
       'admin::transfer-token-permission': AdminTransferTokenPermission;
       'admin::user': AdminUser;
+      'api::caja-sesion.caja-sesion': ApiCajaSesionCajaSesion;
       'api::categoria.categoria': ApiCategoriaCategoria;
+      'api::compra.compra': ApiCompraCompra;
+      'api::item-compra.item-compra': ApiItemCompraItemCompra;
       'api::item-pedido.item-pedido': ApiItemPedidoItemPedido;
       'api::mesa-sesion.mesa-sesion': ApiMesaSesionMesaSesion;
       'api::mesa.mesa': ApiMesaMesa;
       'api::metodos-pago.metodos-pago': ApiMetodosPagoMetodosPago;
+      'api::movimiento-caja.movimiento-caja': ApiMovimientoCajaMovimientoCaja;
+      'api::movimiento-stock.movimiento-stock': ApiMovimientoStockMovimientoStock;
       'api::owner-comment.owner-comment': ApiOwnerCommentOwnerComment;
       'api::payments.payment': ApiPaymentsPayment;
       'api::pedido.pedido': ApiPedidoPedido;

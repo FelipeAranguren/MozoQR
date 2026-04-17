@@ -108,11 +108,11 @@
     },
     "menu_design": {
       "type": "enumeration",
+      "default": "v2",
       "enum": [
         "v1",
         "v2"
-      ],
-      "default": "v2"
+      ]
     },
     "weekly_ai_report_markdown": {
       "type": "text"
@@ -129,6 +129,7 @@
     "pct_merchant_cbu_alias": {
       "type": "string"
     },
+<<<<<<< HEAD
     "caja_sesions": {
       "type": "relation",
       "relation": "oneToMany",
@@ -139,6 +140,12 @@
       "type": "relation",
       "relation": "oneToMany",
       "target": "api::compra.compra",
+=======
+    "cash_sessions": {
+      "type": "relation",
+      "relation": "oneToMany",
+      "target": "api::caja.caja",
+>>>>>>> e5f0ac2 (strapi para caja y cs)
       "mappedBy": "restaurante"
     }
   }

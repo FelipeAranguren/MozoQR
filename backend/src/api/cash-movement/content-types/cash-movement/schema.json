@@ -1,0 +1,34 @@
+{
+  "kind": "collectionType",
+  "collectionName": "cash_movements",
+  "info": {
+    "singularName": "cash-movement",
+    "pluralName": "cash-movements",
+    "displayName": "Cash-Movement"
+  },
+  "options": {
+    "draftAndPublish": true
+  },
+  "pluginOptions": {},
+  "attributes": {
+    "tipo": {
+      "type": "enumeration",
+      "enum": [
+        "ingreso",
+        "egreso"
+      ]
+    },
+    "monto": {
+      "type": "decimal"
+    },
+    "concepto": {
+      "type": "string"
+    },
+    "cash_session": {
+      "type": "relation",
+      "relation": "manyToOne",
+      "target": "api::caja.caja",
+      "inversedBy": "cash_movements"
+    }
+  }
+}

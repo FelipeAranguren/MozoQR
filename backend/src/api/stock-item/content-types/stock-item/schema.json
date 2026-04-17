@@ -1,0 +1,74 @@
+{
+  "kind": "collectionType",
+  "collectionName": "stock_items",
+  "info": {
+    "singularName": "stock-item",
+    "pluralName": "stock-items",
+    "displayName": "Stock-Item"
+  },
+  "options": {
+    "draftAndPublish": true
+  },
+  "pluginOptions": {},
+  "attributes": {
+    "nombre": {
+      "type": "string"
+    },
+    "sku": {
+      "type": "string",
+      "unique": true
+    },
+    "stock_actual": {
+      "type": "decimal"
+    },
+    "stock_minimo": {
+      "type": "decimal"
+    },
+    "categoria": {
+      "type": "enumeration",
+      "enum": [
+        "Bebidas",
+        "Comida",
+        "Insumos"
+      ]
+    },
+    "unidad": {
+      "type": "enumeration",
+      "enum": [
+        "un",
+        "kg",
+        "lt",
+        "pack"
+      ]
+    },
+    "precio_costo": {
+      "type": "decimal"
+    },
+    "estado": {
+      "type": "boolean",
+      "default": true
+    },
+    "imagen": {
+      "type": "media",
+      "multiple": false,
+      "allowedTypes": [
+        "images",
+        "files",
+        "videos",
+        "audios"
+      ]
+    },
+    "producto": {
+      "type": "relation",
+      "relation": "oneToOne",
+      "target": "api::producto.producto",
+      "inversedBy": "stock_item"
+    },
+    "stock_movements": {
+      "type": "relation",
+      "relation": "oneToMany",
+      "target": "api::stock-movement.stock-movement",
+      "mappedBy": "stock_item"
+    }
+  }
+}
