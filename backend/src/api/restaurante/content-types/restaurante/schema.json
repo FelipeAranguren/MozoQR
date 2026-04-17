@@ -129,23 +129,22 @@
     "pct_merchant_cbu_alias": {
       "type": "string"
     },
-<<<<<<< HEAD
     "caja_sesions": {
       "type": "relation",
       "relation": "oneToMany",
       "target": "api::caja-sesion.caja-sesion",
       "mappedBy": "restaurante"
     },
-    "compras": {
-      "type": "relation",
-      "relation": "oneToMany",
-      "target": "api::compra.compra",
-=======
     "cash_sessions": {
       "type": "relation",
       "relation": "oneToMany",
       "target": "api::caja.caja",
->>>>>>> e5f0ac2 (strapi para caja y cs)
+      "mappedBy": "restaurante"
+    },
+    "compras": {
+      "type": "relation",
+      "relation": "oneToMany",
+      "target": "api::compra.compra",
       "mappedBy": "restaurante"
     }
   }

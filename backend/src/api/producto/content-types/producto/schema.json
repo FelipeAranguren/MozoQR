@@ -63,7 +63,6 @@
       "target": "api::categoria.categoria",
       "inversedBy": "productos"
     },
-<<<<<<< HEAD
     "stock_enabled": {
       "type": "boolean",
       "default": false
@@ -80,13 +79,12 @@
     "stock_min_alert": {
       "type": "decimal",
       "default": 0
-=======
+    },
     "stock_item": {
       "type": "relation",
       "relation": "oneToOne",
       "target": "api::stock-item.stock-item",
       "mappedBy": "producto"
->>>>>>> e5f0ac2 (strapi para caja y cs)
     }
   }
 }

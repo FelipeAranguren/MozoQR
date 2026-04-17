@@ -146,13 +146,19 @@ export default factories.createCoreController(ORDER_UID, ({ strapi }) => ({
 
       // Auto caja ingreso for online/MP payments
       try {
-        const paidOrder = await strapi.entityService.findOne(ORDER_UID, orderPk, {
+        const paidOrder = (await strapi.entityService.findOne(ORDER_UID, orderPk, {
           fields: ['id', 'total', 'payment_method'],
           populate: { restaurante: { fields: ['id'] } },
-        });
+        })) as {
+          id: number;
+          total?: number;
+          payment_method?: string;
+          restaurante?: { id: number } | null;
+        } | null;
         if (paidOrder?.restaurante?.id) {
           const [openCaja] = await strapi.entityService.findMany('api::caja-sesion.caja-sesion', {
-            filters: { restaurante: paidOrder.restaurante.id, status: 'open' },
+            // Shorthand de filtro por id; el tipado estricto de Strapi 5 espera forma anidada
+            filters: { restaurante: paidOrder.restaurante.id, status: 'open' } as any,
             fields: ['id'],
             limit: 1,
           });
