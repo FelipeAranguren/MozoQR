@@ -1,9 +1,11 @@
 /**
  * Tras persistir un movimiento, sincroniza `stock_item.stock_actual`.
- * El Document Service a veces no aplica bien updates previos al mismo ítem; el incremento queda acoplado al alta del movimiento.
+ * Strapi 5 a veces expone relaciones solo con `documentId` en `event.result`;
+ * se reintenta con `event.params.data` y, si hace falta, con una lectura al movimiento recién creado.
  */
-function getStrapi(): any {
-  return typeof global !== 'undefined' && (global as any).__STRAPI__ ? (global as any).__STRAPI__ : null;
+function getStrapiApp(): any {
+  const g = typeof global !== 'undefined' ? (global as any) : null;
+  return g?.__STRAPI__ ?? g?.strapi ?? null;
 }
 
 function parseStockItemFk(rel: unknown): number | null {
@@ -26,16 +28,6 @@ function parseStockItemFk(rel: unknown): number | null {
   return null;
 }
 
-function parseCantidad(raw: unknown): number {
-  if (raw == null) return 0;
-  if (typeof raw === 'object' && raw != null && typeof (raw as any).toString === 'function') {
-    const n = Number(String(raw));
-    return Number.isFinite(n) && n > 0 ? n : 0;
-  }
-  const n = Number(raw);
-  return Number.isFinite(n) && n > 0 ? n : 0;
-}
-
 /** FK de stock_item en el payload de create (Strapi 5: id, connect, documentId). */
 function parseStockItemFromCreateData(data: Record<string, unknown> | undefined): number | null {
   if (!data) return null;
@@ -45,15 +37,85 @@ function parseStockItemFromCreateData(data: Record<string, unknown> | undefined)
     const o = s as Record<string, unknown>;
     if (Array.isArray(o.connect)) {
       const first = o.connect[0] as Record<string, unknown> | undefined;
-      if (first) return parseStockItemFk(first.id ?? first.documentId ?? first);
+      if (first) {
+        const fromConnect = parseStockItemFk(first.id ?? first.documentId ?? first);
+        if (fromConnect != null) return fromConnect;
+      }
     }
+    return parseStockItemFk(s);
   }
   return parseStockItemFk(s);
 }
 
+function parseCantidad(raw: unknown): number {
+  if (raw == null) return 0;
+  if (typeof raw === 'string' || typeof raw === 'number') {
+    const n = Number(raw);
+    return Number.isFinite(n) && n > 0 ? n : 0;
+  }
+  if (typeof raw === 'object' && raw != null) {
+    try {
+      const v = Number((raw as { valueOf?: () => unknown }).valueOf?.());
+      if (Number.isFinite(v) && v > 0) return v;
+    } catch {
+      /* ignore */
+    }
+    const s = String(raw);
+    const n = Number(s);
+    if (Number.isFinite(n) && n > 0) return n;
+  }
+  return 0;
+}
+
+async function resolveStockItemInternalId(strapi: any, event: any): Promise<number | null> {
+  const result = event?.result;
+  const paramsData = event?.params?.data as Record<string, unknown> | undefined;
+
+  let id =
+    parseStockItemFk(result?.stock_item) ??
+    parseStockItemFromCreateData(paramsData) ??
+    parseStockItemFk(paramsData?.stock_item);
+
+  if (id != null) return id;
+
+  const rel = (result?.stock_item ?? paramsData?.stock_item) as Record<string, unknown> | undefined;
+  if (rel && typeof rel === 'object') {
+    const doc = rel.documentId;
+    if (doc != null && String(doc).trim() !== '') {
+      const row = await strapi.db.query('api::stock-item.stock-item').findOne({
+        where: { documentId: String(doc).trim() },
+        select: ['id'],
+      });
+      if (row?.id != null) return Number(row.id);
+    }
+  }
+
+  const movNumId = result?.id != null && result.id !== '' ? Number(result.id) : NaN;
+  if (Number.isFinite(movNumId) && movNumId > 0) {
+    const row = await strapi.db.query('api::stock-movement.stock-movement').findOne({
+      where: { id: movNumId },
+      populate: { stock_item: { select: ['id'] } },
+    });
+    const si = (row as { stock_item?: unknown })?.stock_item;
+    return parseStockItemFk(si);
+  }
+
+  const movDoc = result?.documentId;
+  if (movDoc != null && String(movDoc).trim() !== '') {
+    const row = await strapi.db.query('api::stock-movement.stock-movement').findOne({
+      where: { documentId: String(movDoc).trim() },
+      populate: { stock_item: { select: ['id'] } },
+    });
+    const si = (row as { stock_item?: unknown })?.stock_item;
+    return parseStockItemFk(si);
+  }
+
+  return null;
+}
+
 export default {
   async afterCreate(event: any) {
-    const strapi = getStrapi();
+    const strapi = getStrapiApp();
     if (!strapi) return;
 
     const result = event?.result;
@@ -63,12 +125,19 @@ export default {
     if (tipo !== 'entrada' && tipo !== 'salida') return;
 
     const paramsData = event?.params?.data as Record<string, unknown> | undefined;
-    const stockItemId =
-      parseStockItemFk(result.stock_item) ?? parseStockItemFromCreateData(paramsData);
-    if (stockItemId == null) return;
+    const stockItemId = await resolveStockItemInternalId(strapi, event);
+    if (stockItemId == null) {
+      strapi.log?.warn?.(
+        '[stock-movement lifecycles] afterCreate: no se pudo resolver stock_item; stock_actual no se actualiza.'
+      );
+      return;
+    }
 
-    const qty = parseCantidad(result.cantidad ?? (paramsData as any)?.cantidad);
-    if (qty <= 0) return;
+    const qty = parseCantidad(result.cantidad ?? paramsData?.cantidad);
+    if (qty <= 0) {
+      strapi.log?.warn?.('[stock-movement lifecycles] afterCreate: cantidad inválida o <= 0; se omite sync.');
+      return;
+    }
 
     const knex = strapi.db?.connection;
     const table = 'stock_items';
