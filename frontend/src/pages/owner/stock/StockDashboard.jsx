@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams } from 'react-router-dom';
 import {
   Box,
   Typography,
@@ -28,6 +28,7 @@ import {
   restEntityId,
   updateStockItemEstado,
 } from '../../../api/cashAndStock';
+import NuevaCompraDialog from './NuevaCompraDialog';
 
 function formatCurrency(n) {
   return `$${(Number(n) || 0).toLocaleString('es-AR', { minimumFractionDigits: 2 })}`;
@@ -71,12 +72,12 @@ function movementItemName(m) {
 
 export default function StockDashboard() {
   const { slug } = useParams();
-  const navigate = useNavigate();
   const [tab, setTab] = useState(0);
   const [items, setItems] = useState([]);
   const [movements, setMovements] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [compraOpen, setCompraOpen] = useState(false);
 
   const loadItems = useCallback(async () => {
     setLoading(true);
@@ -147,10 +148,30 @@ export default function StockDashboard() {
         <Typography variant="h5" fontWeight={700}>
           Control de stock
         </Typography>
-        <Button variant="contained" onClick={() => navigate(`/owner/${slug}/stock/compras`)}>
+        <Button variant="contained" onClick={() => setCompraOpen(true)}>
           Compras
         </Button>
       </Stack>
+
+      <NuevaCompraDialog
+        open={compraOpen}
+        onClose={() => setCompraOpen(false)}
+        slug={slug}
+        onCreated={async () => {
+          try {
+            const rid = await getRestaurantId(slug);
+            if (!rid) return;
+            const [itemsData, movData] = await Promise.all([
+              fetchStockItemsForRestaurant(rid),
+              fetchStockMovementsForRestaurant(rid),
+            ]);
+            setItems(itemsData || []);
+            setMovements(movData || []);
+          } catch (e) {
+            setError(e?.response?.data?.error?.message || e.message || 'Error al refrescar datos');
+          }
+        }}
+      />
 
       {alertCount > 0 && (
         <Alert severity="warning" sx={{ mb: 2 }} icon={<WarningIcon />}>
