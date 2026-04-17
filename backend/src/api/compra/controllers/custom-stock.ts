@@ -309,21 +309,43 @@ export default {
       for (let i = 0; i < resolved.length; i += 1) {
         const row = resolved[i];
         const lineTotal = Number((row.qty * row.unitCost).toFixed(2));
+        const baseItem: Record<string, unknown> = {
+          quantity: row.qty,
+          unit_cost: row.unitCost,
+          total_cost: lineTotal,
+          compra: compraPk,
+          producto: row.productoPk,
+        };
+        const itemData: Record<string, unknown> = { ...baseItem };
+        if (row.stockItemPk != null && Number.isFinite(row.stockItemPk)) {
+          itemData.stock_item = row.stockItemPk;
+        }
+
         try {
-          const itemData: Record<string, unknown> = {
-            quantity: row.qty,
-            unit_cost: row.unitCost,
-            total_cost: lineTotal,
-            compra: compraPk,
-            producto: row.productoPk,
-          };
-          if (row.stockItemPk != null && Number.isFinite(row.stockItemPk)) {
-            itemData.stock_item = row.stockItemPk;
-          }
           await strapi.entityService.create('api::item-compra.item-compra', {
             data: itemData,
           });
         } catch (ie: any) {
+          const msg0 = String(ie?.message || ie || '');
+          const maybeMissingStockCol =
+            /stock_item|SQLITE_ERROR|no such column|does not exist|Unknown column/i.test(msg0) &&
+            itemData.stock_item != null;
+          if (maybeMissingStockCol) {
+            strapi.log.warn('[crearCompra] reintento item-compra sin stock_item (columna o relación no disponible)');
+            try {
+              await strapi.entityService.create('api::item-compra.item-compra', { data: baseItem });
+              continue;
+            } catch (ie2: any) {
+              strapi.log.error(`[crearCompra] falló item-compra línea ${i + 1} (sin stock_item)`, ie2);
+              const m2 = ie2?.message || String(ie2);
+              if (ie2?.name === 'ValidationError' || ie2?.details?.errors?.length) {
+                return ctx.badRequest(m2);
+              }
+              ctx.status = 400;
+              ctx.body = { error: { message: `Ítem ${i + 1}: ${m2}` } };
+              return;
+            }
+          }
           strapi.log.error(`[crearCompra] falló item-compra línea ${i + 1}`, ie);
           const m = ie?.message || String(ie);
           if (ie?.name === 'ValidationError' || ie?.details?.errors?.length) {
@@ -335,24 +357,30 @@ export default {
         }
       }
 
-      // Leer compra + ítems sin entityService.populate (suele romper en Strapi 5).
-      let full: unknown = null;
+      // Respuesta ligera (evita 500 por referencias circulares al serializar populate profundo).
+      let full: Record<string, unknown> = {
+        id: compraPk,
+        documentId: compra?.documentId ?? null,
+        date,
+        total: Number(total.toFixed(2)),
+        status: 'pendiente',
+      };
       try {
-        full = await strapi.db.query('api::compra.compra').findOne({
-          where: { id: compraPk },
-          populate: { items: { populate: { producto: true } } },
+        const rows = await strapi.db.query('api::item-compra.item-compra').findMany({
+          where: { compra: { id: compraPk } },
+          select: ['id', 'documentId', 'quantity', 'unit_cost', 'total_cost'],
+          populate: { producto: { select: ['id', 'name', 'sku'] } },
+          limit: 50,
         });
+        full.items = rows ?? [];
       } catch (fe: any) {
-        strapi.log.warn('[crearCompra] findOne con items+producto falló', fe?.message);
-        try {
-          full = await strapi.db.query('api::compra.compra').findOne({
-            where: { id: compraPk },
-            populate: { items: true },
-          });
-        } catch (fe2: any) {
-          strapi.log.warn('[crearCompra] findOne solo items falló', fe2?.message);
-          full = { id: compraPk, documentId: compra?.documentId };
-        }
+        strapi.log.warn('[crearCompra] listado de ítems para respuesta falló', fe?.message);
+        full.items = resolved.map((r) => ({
+          quantity: r.qty,
+          unit_cost: r.unitCost,
+          total_cost: Number((r.qty * r.unitCost).toFixed(2)),
+          producto: { id: r.productoPk },
+        }));
       }
 
       ctx.body = { data: full };
