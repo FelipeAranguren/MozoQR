@@ -2,7 +2,7 @@ declare const strapi: any;
 
 async function getOpenCaja(strapi: any, restauranteId: number) {
   const [caja] = await strapi.entityService.findMany('api::caja-sesion.caja-sesion', {
-    filters: { restaurante: restauranteId, status: 'open' },
+    filters: { restaurante: { id: restauranteId }, status: 'open' },
     sort: { opened_at: 'desc' },
     populate: { opened_by: { fields: ['id', 'username', 'fullname'] } },
     limit: 1,
@@ -148,7 +148,7 @@ export default {
     const restauranteId = ctx.state.restauranteId;
     const { desde, hasta, page = 1, pageSize = 20 } = ctx.request.query || {};
 
-    const filters: any = { restaurante: restauranteId, status: 'closed' };
+    const filters: any = { restaurante: { id: restauranteId }, status: 'closed' };
     if (desde || hasta) {
       filters.closed_at = {};
       if (desde) filters.closed_at.$gte = desde;
@@ -217,7 +217,8 @@ export default {
     if (caja_sesion_id) {
       filters.caja_sesion = caja_sesion_id;
     } else {
-      filters.caja_sesion = { restaurante: restauranteId };
+      // Filtrar movimientos por sesiones de caja del restaurante (no pasar { restaurante: id } plano sobre la relación)
+      filters.caja_sesion = { restaurante: { id: restauranteId } };
     }
 
     if (type) filters.type = type;
@@ -247,7 +248,7 @@ export default {
     const restauranteId = ctx.state.restauranteId;
     const { desde, hasta } = ctx.request.query || {};
 
-    const filters: any = { caja_sesion: { restaurante: restauranteId } };
+    const filters: any = { caja_sesion: { restaurante: { id: restauranteId } } };
     if (desde || hasta) {
       filters.timestamp = {};
       if (desde) filters.timestamp.$gte = desde;

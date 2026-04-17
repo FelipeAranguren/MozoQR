@@ -6,9 +6,10 @@ export default {
     const restauranteId = ctx.state.restauranteId;
 
     const productos = await strapi.entityService.findMany('api::producto.producto', {
-      filters: { restaurante: restauranteId, stock_enabled: true },
+      filters: { restaurante: { id: restauranteId }, stock_enabled: true },
       fields: ['id', 'name', 'sku', 'price', 'available', 'stock_quantity', 'stock_unit', 'stock_min_alert', 'stock_enabled'],
-      populate: { categoria: { fields: ['id', 'name'] }, image: true },
+      // Strapi 5: mezclar `fields` en populate + `image: true` puede fallar; el array es el patrón usado en producto.controller
+      populate: ['categoria', 'image'],
       sort: { name: 'asc' },
       limit: 10000,
     });
@@ -79,9 +80,9 @@ export default {
     const restauranteId = ctx.state.restauranteId;
 
     const productos = await strapi.entityService.findMany('api::producto.producto', {
-      filters: { restaurante: restauranteId, stock_enabled: true },
+      filters: { restaurante: { id: restauranteId }, stock_enabled: true },
       fields: ['id', 'name', 'sku', 'stock_quantity', 'stock_unit', 'stock_min_alert', 'available'],
-      populate: { categoria: { fields: ['id', 'name'] } },
+      populate: ['categoria'],
       limit: 10000,
     });
 
@@ -102,7 +103,7 @@ export default {
     const restauranteId = ctx.state.restauranteId;
     const { productoId, type, desde, hasta, page = 1, pageSize = 50 } = ctx.request.query || {};
 
-    const filters: any = { restaurante: restauranteId };
+    const filters: any = { restaurante: { id: restauranteId } };
     if (productoId) filters.producto = productoId;
     if (type) filters.type = type;
     if (desde || hasta) {
@@ -185,7 +186,7 @@ export default {
     const restauranteId = ctx.state.restauranteId;
     const { status, desde, hasta, page = 1, pageSize = 20 } = ctx.request.query || {};
 
-    const filters: any = { restaurante: restauranteId };
+    const filters: any = { restaurante: { id: restauranteId } };
     if (status) filters.status = status;
     if (desde || hasta) {
       filters.date = {};
@@ -195,7 +196,8 @@ export default {
 
     const compras = await strapi.entityService.findMany('api::compra.compra', {
       filters,
-      sort: { date: 'desc', createdAt: 'desc' },
+      // Strapi 5: varios campos de orden → array (objeto con 2+ claves no es válido)
+      sort: [{ date: 'desc' }, { createdAt: 'desc' }],
       populate: {
         items: { populate: { producto: { fields: ['id', 'name'] } } },
         created_by_user: { fields: ['id', 'username', 'fullname'] },
