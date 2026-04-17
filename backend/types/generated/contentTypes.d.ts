@@ -602,6 +602,7 @@ export interface ApiItemCompraItemCompra extends Struct.CollectionTypeSchema {
       Schema.Attribute.Private;
     producto: Schema.Attribute.Relation<'manyToOne', 'api::producto.producto'>;
     publishedAt: Schema.Attribute.DateTime;
+    stock_item: Schema.Attribute.Relation<'manyToOne', 'api::stock-item.stock-item'>;
     quantity: Schema.Attribute.Decimal & Schema.Attribute.Required;
     total_cost: Schema.Attribute.Decimal & Schema.Attribute.Required;
     unit_cost: Schema.Attribute.Decimal & Schema.Attribute.Required;

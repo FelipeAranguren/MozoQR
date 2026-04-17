@@ -4,6 +4,7 @@ import type {
   CashSession,
   CreateCashMovementPayload,
   CreateCashSessionPayload,
+  OwnerCompraPayload,
   StockItem,
   StockMovement,
   StrapiEntityId,
@@ -245,4 +246,17 @@ export async function fetchStockMovementsForRestaurant(
   };
   const res = await api.get(STOCK_MOVEMENTS_PATH, { params, headers: getAuthHeaders() });
   return normalizeList<StockMovement>(res.data);
+}
+
+/**
+ * Crea una compra pendiente vía **ruta custom** del backend (no es REST de una colección):
+ * `POST /api/restaurants/:slug/compras` → `compra` + `item-compra` con relación **`stock_item`**.
+ * Los movimientos `stock-movements` se generan al **recibir** la compra (`PUT .../recibir`).
+ */
+export async function crearCompraOwner(slug: string, payload: OwnerCompraPayload): Promise<unknown> {
+  const res = await api.post(`/restaurants/${slug}/compras`, payload, {
+    headers: { ...getAuthHeaders(), 'Content-Type': 'application/json' },
+  });
+  const body = res.data as { data?: unknown };
+  return body?.data ?? body;
 }

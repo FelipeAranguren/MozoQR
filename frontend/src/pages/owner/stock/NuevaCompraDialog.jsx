@@ -16,8 +16,12 @@ import {
 } from '@mui/material';
 import AddIcon from '@mui/icons-material/Add';
 import DeleteIcon from '@mui/icons-material/Delete';
-import { crearCompra } from '../../../api/stock';
-import { client, unwrap } from '../../../api/client';
+import { getRestaurantId } from '../../../api/menu';
+import {
+  crearCompraOwner,
+  fetchStockItemsForRestaurant,
+  restEntityId,
+} from '../../../api/cashAndStock';
 
 function formatCurrency(n) {
   return `$${(Number(n) || 0).toLocaleString('es-AR', { minimumFractionDigits: 2 })}`;
@@ -27,39 +31,37 @@ const emptyForm = () => ({
   date: new Date().toISOString().slice(0, 10),
   supplier: '',
   notes: '',
-  items: [{ productoId: null, quantity: '', unit_cost: '' }],
+  items: [{ stockItemId: null, quantity: '', unit_cost: '' }],
 });
 
+function stockItemLabel(it) {
+  if (!it) return '';
+  const name = it.nombre || '—';
+  const sku = it.sku ? ` (${it.sku})` : '';
+  return `${name}${sku}`;
+}
+
 /**
- * Modal para crear una compra (misma API que ComprasManagement).
- * @param {{ open: boolean; onClose: () => void; slug: string; onCreated?: () => void | Promise<void> }} props
+ * Modal para crear compra: POST `/api/restaurants/:slug/compras` con **stockItemId** por línea
+ * (colección `stock-items` → relación `item-compra.stock_item` en Strapi).
  */
 export default function NuevaCompraDialog({ open, onClose, slug, onCreated }) {
-  const [productos, setProductos] = useState([]);
+  const [stockItems, setStockItems] = useState([]);
   const [form, setForm] = useState(emptyForm);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
 
-  const loadProductos = useCallback(async () => {
+  const loadStockItems = useCallback(async () => {
     try {
-      const res = await client.get(`/restaurants/${slug}/stock`);
-      const all = unwrap(res) || [];
-      setProductos(all);
-    } catch {
-      try {
-        const res = await client.get(
-          `/productos?filters[restaurante][slug][$eq]=${slug}&pagination[pageSize]=500&fields[0]=id&fields[1]=name&fields[2]=sku`
-        );
-        setProductos(
-          (unwrap(res) || []).map((p) => ({
-            id: p.id,
-            name: p.name || p.attributes?.name,
-            sku: p.sku || p.attributes?.sku,
-          }))
-        );
-      } catch {
-        setProductos([]);
+      const rid = await getRestaurantId(slug);
+      if (!rid) {
+        setStockItems([]);
+        return;
       }
+      const data = await fetchStockItemsForRestaurant(rid);
+      setStockItems(data || []);
+    } catch {
+      setStockItems([]);
     }
   }, [slug]);
 
@@ -67,10 +69,11 @@ export default function NuevaCompraDialog({ open, onClose, slug, onCreated }) {
     if (!open || !slug) return;
     setError('');
     setForm(emptyForm());
-    loadProductos();
-  }, [open, slug, loadProductos]);
+    loadStockItems();
+  }, [open, slug, loadStockItems]);
 
-  const addItem = () => setForm((f) => ({ ...f, items: [...f.items, { productoId: null, quantity: '', unit_cost: '' }] }));
+  const addItem = () =>
+    setForm((f) => ({ ...f, items: [...f.items, { stockItemId: null, quantity: '', unit_cost: '' }] }));
   const removeItem = (idx) => setForm((f) => ({ ...f, items: f.items.filter((_, i) => i !== idx) }));
   const updateItem = (idx, field, value) => {
     setForm((f) => {
@@ -82,20 +85,20 @@ export default function NuevaCompraDialog({ open, onClose, slug, onCreated }) {
 
   const handleCrear = async () => {
     const items = form.items
-      .filter((it) => it.productoId && it.quantity && it.unit_cost)
+      .filter((it) => it.stockItemId && it.quantity && it.unit_cost)
       .map((it) => ({
-        productoId: it.productoId,
+        stockItemId: it.stockItemId,
         quantity: Number(it.quantity),
         unit_cost: Number(it.unit_cost),
       }));
     if (items.length === 0) {
-      setError('Agregá al menos un item con producto, cantidad y costo');
+      setError('Agregá al menos un ítem de stock, cantidad y costo unitario.');
       return;
     }
     setSaving(true);
     setError('');
     try {
-      await crearCompra(slug, {
+      await crearCompraOwner(slug, {
         date: form.date,
         supplier: form.supplier,
         notes: form.notes,
@@ -137,6 +140,12 @@ export default function NuevaCompraDialog({ open, onClose, slug, onCreated }) {
             {error}
           </Alert>
         )}
+        {stockItems.length === 0 && !error && (
+          <Alert severity="info" sx={{ mb: 2 }}>
+            No hay ítems de stock para este restaurante. Creá **stock-items** vinculados a productos en Strapi para
+            poder cargar compras.
+          </Alert>
+        )}
         <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2} sx={{ mt: 1 }}>
           <TextField
             label="Fecha"
@@ -157,19 +166,19 @@ export default function NuevaCompraDialog({ open, onClose, slug, onCreated }) {
         </Stack>
 
         <Typography variant="subtitle2" sx={{ mt: 3, mb: 1 }}>
-          Items
+          Ítems (stock-item)
         </Typography>
         {form.items.map((item, idx) => (
           <Stack key={idx} direction="row" spacing={1} alignItems="center" sx={{ mb: 1 }}>
             <Autocomplete
               size="small"
               sx={{ minWidth: 220, flex: 2 }}
-              options={productos}
-              getOptionLabel={(o) => (o?.name ? `${o.name}${o.sku ? ` (${o.sku})` : ''}` : '')}
-              value={productos.find((p) => p.id === item.productoId) || null}
-              onChange={(_, v) => updateItem(idx, 'productoId', v?.id || null)}
-              renderInput={(params) => <TextField {...params} label="Producto" />}
-              isOptionEqualToValue={(o, v) => o?.id === v?.id}
+              options={stockItems}
+              getOptionLabel={(o) => stockItemLabel(o)}
+              value={stockItems.find((s) => restEntityId(s) === item.stockItemId) || null}
+              onChange={(_, v) => updateItem(idx, 'stockItemId', v ? restEntityId(v) : null)}
+              renderInput={(params) => <TextField {...params} label="Ítem de stock" />}
+              isOptionEqualToValue={(o, v) => restEntityId(o) === restEntityId(v)}
             />
             <TextField
               label="Cantidad"

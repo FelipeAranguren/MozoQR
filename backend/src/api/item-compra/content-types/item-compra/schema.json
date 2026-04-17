@@ -33,6 +33,11 @@
       "type": "relation",
       "relation": "manyToOne",
       "target": "api::producto.producto"
+    },
+    "stock_item": {
+      "type": "relation",
+      "relation": "manyToOne",
+      "target": "api::stock-item.stock-item"
     }
   }
 }

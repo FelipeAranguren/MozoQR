@@ -25,6 +25,46 @@ async function resolveProductoPk(
   return byDoc?.id ?? null;
 }
 
+/** Línea de compra: producto obligatorio en BD; stock_item opcional pero recomendado para stock-movements. */
+async function resolveCompraLineProductoAndStockItem(
+  strapi: any,
+  it: Record<string, unknown>,
+  restauranteId: number
+): Promise<{ productoPk: number; stockItemPk: number | null } | null> {
+  const stockRaw = it.stockItemId ?? it.stock_item_id ?? it.stock_item;
+  const prodRaw = it.productoId ?? it.producto;
+
+  if (stockRaw != null && stockRaw !== '') {
+    const str = String(stockRaw).trim();
+    let row: { id?: number; producto?: { id?: number } | number } | null = null;
+    if (/^\d+$/.test(str)) {
+      row = await strapi.db.query('api::stock-item.stock-item').findOne({
+        where: { id: Number(str) },
+        populate: { producto: { select: ['id'] } },
+      });
+    } else {
+      row = await strapi.db.query('api::stock-item.stock-item').findOne({
+        where: { documentId: str },
+        populate: { producto: { select: ['id'] } },
+      });
+    }
+    if (!row?.id) return null;
+    const prodId = (row.producto as any)?.id ?? row.producto;
+    if (prodId == null) return null;
+    const ok = await strapi.db.query('api::producto.producto').findOne({
+      where: { id: Number(prodId), restaurante: { id: restauranteId } },
+      select: ['id'],
+    });
+    if (!ok?.id) return null;
+    return { productoPk: Number(ok.id), stockItemPk: Number(row.id) };
+  }
+
+  if (prodRaw == null || prodRaw === '') return null;
+  const productoPk = await resolveProductoPk(strapi, prodRaw, restauranteId);
+  if (!productoPk) return null;
+  return { productoPk, stockItemPk: null };
+}
+
 export default {
   async stockOverview(ctx: any) {
     const strapi: any = ctx.strapi;
@@ -169,20 +209,32 @@ export default {
     }
 
     try {
-      type ResolvedLine = { productoPk: number; qty: number; unitCost: number };
+      type ResolvedLine = { productoPk: number; stockItemPk: number | null; qty: number; unitCost: number };
       const resolved: ResolvedLine[] = [];
       let total = 0;
       let line = 0;
 
       for (const it of items) {
         line += 1;
-        if (it.productoId == null || it.quantity == null || it.unit_cost == null) {
-          return ctx.badRequest('Cada item necesita productoId, quantity y unit_cost');
+        const row = it as Record<string, unknown>;
+        if (it.quantity == null || it.unit_cost == null) {
+          return ctx.badRequest('Cada item necesita quantity y unit_cost');
         }
-        const productoPk = await resolveProductoPk(strapi, it.productoId, restauranteId);
-        if (!productoPk) {
+        if (
+          row.stockItemId == null &&
+          row.stock_item_id == null &&
+          row.stock_item == null &&
+          row.productoId == null &&
+          row.producto == null
+        ) {
           return ctx.badRequest(
-            `Producto inválido o no pertenece a este restaurante (línea ${line}). Verificá el producto seleccionado.`
+            `Línea ${line}: indicá stockItemId (recomendado) o productoId para vincular el ítem.`
+          );
+        }
+        const ids = await resolveCompraLineProductoAndStockItem(strapi, row, restauranteId);
+        if (!ids) {
+          return ctx.badRequest(
+            `Stock-item o producto inválido o no pertenece a este restaurante (línea ${line}).`
           );
         }
         const qty = Number(it.quantity);
@@ -191,7 +243,7 @@ export default {
           return ctx.badRequest(`Cantidad o costo unitario inválidos (línea ${line})`);
         }
         total += qty * unitCost;
-        resolved.push({ productoPk, qty, unitCost });
+        resolved.push({ productoPk: ids.productoPk, stockItemPk: ids.stockItemPk, qty, unitCost });
       }
 
       const compraPayload: Record<string, unknown> = {
@@ -248,14 +300,18 @@ export default {
         const row = resolved[i];
         const lineTotal = Number((row.qty * row.unitCost).toFixed(2));
         try {
+          const itemData: Record<string, unknown> = {
+            quantity: row.qty,
+            unit_cost: row.unitCost,
+            total_cost: lineTotal,
+            compra: compraPk,
+            producto: row.productoPk,
+          };
+          if (row.stockItemPk != null && Number.isFinite(row.stockItemPk)) {
+            itemData.stock_item = row.stockItemPk;
+          }
           await strapi.entityService.create('api::item-compra.item-compra', {
-            data: {
-              quantity: row.qty,
-              unit_cost: row.unitCost,
-              total_cost: lineTotal,
-              compra: compraPk,
-              producto: row.productoPk,
-            },
+            data: itemData,
           });
         } catch (ie: any) {
           strapi.log.error(`[crearCompra] falló item-compra línea ${i + 1}`, ie);
@@ -354,7 +410,7 @@ export default {
     const compraId = ctx.params.id;
 
     const compra = await strapi.entityService.findOne('api::compra.compra', compraId, {
-      populate: ['items', 'items.producto', 'restaurante'],
+      populate: ['items', 'items.producto', 'items.stock_item', 'restaurante'],
     });
 
     if (!compra?.id) return ctx.notFound('Compra no encontrada');
@@ -374,10 +430,29 @@ export default {
       const addQty = Number(item.quantity) || 0;
       if (addQty <= 0) continue;
 
-      const stockRow = await strapi.db.query('api::stock-item.stock-item').findOne({
-        where: { producto: prod.id },
-        select: ['id', 'stock_actual'],
-      });
+      const linked = (item as any).stock_item;
+      const linkedRef = linked?.id ?? linked?.documentId ?? linked;
+      let stockRow: { id?: number; stock_actual?: unknown } | null = null;
+      if (linkedRef != null && linkedRef !== '') {
+        const s = String(linkedRef).trim();
+        if (/^\d+$/.test(s)) {
+          stockRow = await strapi.db.query('api::stock-item.stock-item').findOne({
+            where: { id: Number(s) },
+            select: ['id', 'stock_actual'],
+          });
+        } else {
+          stockRow = await strapi.db.query('api::stock-item.stock-item').findOne({
+            where: { documentId: s },
+            select: ['id', 'stock_actual'],
+          });
+        }
+      }
+      if (!stockRow?.id) {
+        stockRow = await strapi.db.query('api::stock-item.stock-item').findOne({
+          where: { producto: prod.id },
+          select: ['id', 'stock_actual'],
+        });
+      }
 
       if (stockRow?.id) {
         const prevSi = Number(stockRow.stock_actual) || 0;

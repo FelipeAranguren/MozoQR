@@ -27,6 +27,10 @@ export async function fetchMovimientosStock(slug, { productoId, type, desde, has
   return unwrap(res);
 }
 
+/**
+ * POST `/api/restaurants/:slug/compras` (controlador custom en Strapi, no es `/api/stock-movements`).
+ * Para el dashboard owner con **stock-item**, preferí `crearCompraOwner` en `api/cashAndStock.ts`.
+ */
 export async function crearCompra(slug, compra) {
   const res = await client.post(`/restaurants/${slug}/compras`, compra);
   return unwrap(res);
