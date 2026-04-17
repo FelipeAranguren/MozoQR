@@ -10,6 +10,7 @@ import type {
   StrapiEntityId,
   UpdateCashSessionPayload,
   UpdateStockItemPayload,
+  OwnerProductoRow,
 } from '../types/cashAndStock';
 
 function getAuthHeaders() {
@@ -210,6 +211,22 @@ export function cashMovementsFromSession(session: CashSession | null): CashMovem
   return Array.isArray(un) ? un : [un];
 }
 
+// ——— Productos (owner / compras) ———
+
+/** Todos los productos del restaurante (para elegir en “Nueva compra”, sin depender de que exista stock-item). */
+export async function fetchProductosForCompra(restaurantId: number | string): Promise<OwnerProductoRow[]> {
+  const params = new URLSearchParams();
+  params.append('filters[restaurante][id][$eq]', String(restaurantId));
+  params.append('pagination[pageSize]', '500');
+  params.append('fields[0]', 'name');
+  params.append('fields[1]', 'sku');
+  params.append('sort[0]', 'name:asc');
+  const res = await api.get(`/productos?${params.toString()}`, { headers: getAuthHeaders() });
+  const raw = (res.data as { data?: unknown })?.data ?? (res.data as unknown);
+  const arr = Array.isArray(raw) ? raw : [];
+  return arr.map((row) => normalizeEntry<OwnerProductoRow>(row)).filter(Boolean) as OwnerProductoRow[];
+}
+
 // ——— Stock items ———
 
 export async function fetchStockItemsForRestaurant(restaurantId: number | string): Promise<StockItem[]> {
@@ -263,15 +280,18 @@ export async function crearCompraOwner(slug: string, payload: OwnerCompraPayload
   const lines = payload?.items;
   if (!Array.isArray(lines) || lines.length === 0) {
     throw validationErrorAsAxios(
-      'La compra debe incluir al menos una línea con ítem de stock, cantidad y costo.'
+      'La compra debe incluir al menos una línea con producto, cantidad y costo.'
     );
   }
   for (let i = 0; i < lines.length; i += 1) {
     const L = lines[i];
+    const pid = L?.productoId;
     const sid = L?.stockItemId;
-    if (sid == null || (typeof sid === 'string' && sid.trim() === '')) {
+    const hasProd = pid != null && String(pid).trim() !== '';
+    const hasStock = sid != null && String(sid).trim() !== '';
+    if (!hasProd && !hasStock) {
       throw validationErrorAsAxios(
-        `Línea ${i + 1}: falta stockItemId (id o documentId del stock-item). No se puede enviar nulo ni vacío.`
+        `Línea ${i + 1}: falta productoId (producto del restaurante) o stockItemId.`
       );
     }
     if (L.quantity == null || L.unit_cost == null) {

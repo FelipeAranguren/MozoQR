@@ -19,6 +19,7 @@ import DeleteIcon from '@mui/icons-material/Delete';
 import { getRestaurantId } from '../../../api/menu';
 import {
   crearCompraOwner,
+  fetchProductosForCompra,
   fetchStockItemsForRestaurant,
   restEntityId,
 } from '../../../api/cashAndStock';
@@ -31,36 +32,57 @@ const emptyForm = () => ({
   date: new Date().toISOString().slice(0, 10),
   supplier: '',
   notes: '',
-  items: [{ stockItemId: null, quantity: '', unit_cost: '' }],
+  items: [{ productoId: null, quantity: '', unit_cost: '' }],
 });
 
-function stockItemLabel(it) {
-  if (!it) return '';
-  const name = it.nombre || '—';
-  const sku = it.sku ? ` (${it.sku})` : '';
+function productoLabel(p) {
+  if (!p) return '';
+  const name = p.name || '—';
+  const sku = p.sku ? ` (${p.sku})` : '';
   return `${name}${sku}`;
 }
 
+/** Si existe un stock-item ligado al mismo producto, devuelve ese documento (para enviar stockItemId al backend). */
+function findStockItemForProduct(productoId, stockItems) {
+  if (productoId == null || !Array.isArray(stockItems) || stockItems.length === 0) return null;
+  const want = String(productoId);
+  for (const si of stockItems) {
+    const rel = si.producto?.data ?? si.producto;
+    if (!rel) continue;
+    const flat = rel.attributes ? { ...rel.attributes, id: rel.id, documentId: rel.documentId } : rel;
+    const ids = [flat.id, flat.documentId].filter((x) => x != null).map(String);
+    if (ids.includes(want)) return si;
+  }
+  return null;
+}
+
 /**
- * Modal para crear compra: POST `/api/restaurants/:slug/compras` con **stockItemId** por línea
- * (colección `stock-items` → relación `item-compra.stock_item` en Strapi).
+ * Modal “Nueva compra”: lista **todos los productos** del restaurante.
+ * POST `/api/restaurants/:slug/compras` con `productoId` por línea y `stockItemId` si hay stock-item vinculado.
  */
 export default function NuevaCompraDialog({ open, onClose, slug, onCreated }) {
+  const [productos, setProductos] = useState([]);
   const [stockItems, setStockItems] = useState([]);
   const [form, setForm] = useState(emptyForm);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
 
-  const loadStockItems = useCallback(async () => {
+  const loadData = useCallback(async () => {
     try {
       const rid = await getRestaurantId(slug);
       if (!rid) {
+        setProductos([]);
         setStockItems([]);
         return;
       }
-      const data = await fetchStockItemsForRestaurant(rid);
-      setStockItems(data || []);
+      const [prods, stocks] = await Promise.all([
+        fetchProductosForCompra(rid),
+        fetchStockItemsForRestaurant(rid).catch(() => []),
+      ]);
+      setProductos(prods || []);
+      setStockItems(stocks || []);
     } catch {
+      setProductos([]);
       setStockItems([]);
     }
   }, [slug]);
@@ -69,11 +91,11 @@ export default function NuevaCompraDialog({ open, onClose, slug, onCreated }) {
     if (!open || !slug) return;
     setError('');
     setForm(emptyForm());
-    loadStockItems();
-  }, [open, slug, loadStockItems]);
+    loadData();
+  }, [open, slug, loadData]);
 
   const addItem = () =>
-    setForm((f) => ({ ...f, items: [...f.items, { stockItemId: null, quantity: '', unit_cost: '' }] }));
+    setForm((f) => ({ ...f, items: [...f.items, { productoId: null, quantity: '', unit_cost: '' }] }));
   const removeItem = (idx) => setForm((f) => ({ ...f, items: f.items.filter((_, i) => i !== idx) }));
   const updateItem = (idx, field, value) => {
     setForm((f) => {
@@ -83,20 +105,40 @@ export default function NuevaCompraDialog({ open, onClose, slug, onCreated }) {
     });
   };
 
+  const canSubmit = useMemo(() => {
+    if (!form.date) return false;
+    if (productos.length === 0) return false;
+    return form.items.some((it) => {
+      if (it.productoId == null || it.productoId === '') return false;
+      const q = Number(it.quantity);
+      const c = Number(it.unit_cost);
+      if (!Number.isFinite(q) || q <= 0) return false;
+      if (!Number.isFinite(c) || c < 0) return false;
+      return true;
+    });
+  }, [form.date, form.items, productos.length]);
+
   const handleCrear = async () => {
     if (!canSubmit) {
-      setError('Seleccioná al menos un ítem de stock con cantidad y costo válidos.');
+      setError('Seleccioná al menos un producto con cantidad y costo válidos.');
       return;
     }
     const items = form.items
-      .filter((it) => it.stockItemId && it.quantity !== '' && it.unit_cost !== '')
-      .map((it) => ({
-        stockItemId: it.stockItemId,
-        quantity: Number(it.quantity),
-        unit_cost: Number(it.unit_cost),
-      }));
+      .filter((it) => it.productoId && it.quantity !== '' && it.unit_cost !== '')
+      .map((it) => {
+        const linked = findStockItemForProduct(it.productoId, stockItems);
+        const line = {
+          productoId: it.productoId,
+          quantity: Number(it.quantity),
+          unit_cost: Number(it.unit_cost),
+        };
+        if (linked) {
+          line.stockItemId = restEntityId(linked);
+        }
+        return line;
+      });
     if (items.length === 0) {
-      setError('Agregá al menos un ítem de stock, cantidad y costo unitario.');
+      setError('Agregá al menos un producto, cantidad y costo unitario.');
       return;
     }
     setSaving(true);
@@ -135,21 +177,6 @@ export default function NuevaCompraDialog({ open, onClose, slug, onCreated }) {
     0
   );
 
-  const canSubmit = useMemo(() => {
-    if (!form.date) return false;
-    if (stockItems.length === 0) return false;
-    const ok = form.items.some((it) => {
-      const sid = it.stockItemId;
-      if (sid == null || sid === '') return false;
-      const q = Number(it.quantity);
-      const c = Number(it.unit_cost);
-      if (!Number.isFinite(q) || q <= 0) return false;
-      if (!Number.isFinite(c) || c < 0) return false;
-      return true;
-    });
-    return ok;
-  }, [form.date, form.items, stockItems.length]);
-
   return (
     <Dialog open={open} onClose={handleClose} maxWidth="md" fullWidth>
       <DialogTitle>Nueva compra</DialogTitle>
@@ -159,10 +186,16 @@ export default function NuevaCompraDialog({ open, onClose, slug, onCreated }) {
             {error}
           </Alert>
         )}
-        {stockItems.length === 0 && !error && (
+        {productos.length === 0 && !error && (
           <Alert severity="info" sx={{ mb: 2 }}>
-            No hay ítems de stock para este restaurante. Creá **stock-items** vinculados a productos en Strapi para
-            poder cargar compras.
+            No hay productos cargados para este restaurante. Creá productos en Strapi para poder registrar compras.
+          </Alert>
+        )}
+        {productos.length > 0 && stockItems.length === 0 && (
+          <Alert severity="info" sx={{ mb: 2 }}>
+            No hay registros en stock-items todavía. La compra se guarda por producto; si más adelante creás
+            stock-items vinculados a cada producto, al recibir la compra se actualizará inventario y movimientos con
+            más detalle.
           </Alert>
         )}
         <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2} sx={{ mt: 1 }}>
@@ -185,23 +218,23 @@ export default function NuevaCompraDialog({ open, onClose, slug, onCreated }) {
         </Stack>
 
         <Typography variant="subtitle2" sx={{ mt: 3, mb: 1 }}>
-          Ítems (stock-item)
+          Productos
         </Typography>
         {form.items.map((item, idx) => (
           <Stack key={idx} direction="row" spacing={1} alignItems="center" sx={{ mb: 1 }}>
             <Autocomplete
               size="small"
               sx={{ minWidth: 220, flex: 2 }}
-              options={stockItems}
-              disabled={stockItems.length === 0}
-              getOptionLabel={(o) => stockItemLabel(o)}
+              options={productos}
+              disabled={productos.length === 0}
+              getOptionLabel={(o) => productoLabel(o)}
               value={
-                item.stockItemId == null || item.stockItemId === ''
+                item.productoId == null || item.productoId === ''
                   ? null
-                  : stockItems.find((s) => restEntityId(s) === item.stockItemId) || null
+                  : productos.find((p) => restEntityId(p) === item.productoId) || null
               }
-              onChange={(_, v) => updateItem(idx, 'stockItemId', v ? restEntityId(v) : null)}
-              renderInput={(params) => <TextField {...params} label="Ítem de stock" />}
+              onChange={(_, v) => updateItem(idx, 'productoId', v ? restEntityId(v) : null)}
+              renderInput={(params) => <TextField {...params} label="Producto" />}
               isOptionEqualToValue={(o, v) => {
                 if (!o && !v) return true;
                 if (!o || !v) return false;
@@ -234,7 +267,7 @@ export default function NuevaCompraDialog({ open, onClose, slug, onCreated }) {
             </IconButton>
           </Stack>
         ))}
-        <Button size="small" startIcon={<AddIcon />} onClick={addItem} disabled={stockItems.length === 0}>
+        <Button size="small" startIcon={<AddIcon />} onClick={addItem} disabled={productos.length === 0}>
           Agregar item
         </Button>
 

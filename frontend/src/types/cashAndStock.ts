@@ -111,12 +111,21 @@ export interface UpdateCashSessionPayload {
   estado?: 'abierta' | 'cerrada';
 }
 
+/** Producto del restaurante (lista para compras / owner). */
+export interface OwnerProductoRow {
+  id?: StrapiEntityId;
+  documentId?: string;
+  name?: string | null;
+  sku?: string | null;
+}
+
 /**
  * Línea de compra owner (POST `/api/restaurants/:slug/compras`).
- * `stockItemId` = id o documentId del **stock-item** (se guarda en `item-compra.stock_item` y el producto se deduce).
+ * Mandá **`productoId`** (producto del restaurante). Si hay **stock-item** vinculado, también **`stockItemId`**.
  */
 export interface OwnerCompraItemLine {
-  stockItemId: StrapiEntityId;
+  productoId: StrapiEntityId;
+  stockItemId?: StrapiEntityId | null;
   quantity: number;
   unit_cost: number;
 }
