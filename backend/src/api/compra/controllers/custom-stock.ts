@@ -186,12 +186,69 @@ function lineUnitCostFromPayload(it: Record<string, unknown>): number {
 }
 
 /**
+ * Id numérico interno desde relación populada o FK escalar (Strapi 5 puede devolver
+ * número, `{ id }`, `{ data: { id } }` o legacy `{ attributes }`).
+ */
+function entityNumericId(ref: unknown): number | null {
+  if (ref == null || ref === '') return null;
+  if (typeof ref === 'number' && Number.isFinite(ref) && ref > 0) return ref;
+  if (typeof ref === 'string') {
+    const t = ref.trim();
+    if (/^\d+$/.test(t)) return Number(t);
+    return null;
+  }
+  if (typeof ref !== 'object') return null;
+  const o = ref as Record<string, unknown>;
+  if (o.data != null) return entityNumericId(o.data);
+  const idTop = o.id;
+  if (idTop != null && idTop !== '') {
+    const n = typeof idTop === 'number' ? idTop : Number(idTop);
+    if (Number.isFinite(n) && n > 0) return n;
+  }
+  const attrs = o.attributes;
+  if (attrs && typeof attrs === 'object') {
+    const idA = (attrs as Record<string, unknown>).id;
+    if (idA != null && idA !== '') {
+      const n = typeof idA === 'number' ? idA : Number(idA);
+      if (Number.isFinite(n) && n > 0) return n;
+    }
+  }
+  return null;
+}
+
+/** Id numérico o documentId para consultas `db.query` por stock-item. */
+function entityRefForQuery(ref: unknown): string | number | null {
+  const num = entityNumericId(ref);
+  if (num != null) return num;
+  if (ref != null && typeof ref === 'object') {
+    const o = ref as Record<string, unknown>;
+    if (o.data != null) return entityRefForQuery(o.data);
+    const doc = o.documentId;
+    if (doc != null && String(doc).trim() !== '') return String(doc).trim();
+  }
+  return null;
+}
+
+function compraItemsArray(compra: any): any[] {
+  const raw = compra?.items;
+  if (Array.isArray(raw)) return raw;
+  if (raw && typeof raw === 'object' && Array.isArray((raw as { data?: unknown }).data)) {
+    return (raw as { data: any[] }).data;
+  }
+  return [];
+}
+
+/**
  * Suma cantidades de ítems al inventario (stock-item o producto) y registra movimientos.
  * No cambia el estado de la compra; el caller marca `recibida` si corresponde.
  */
 /** Cantidad en un ítem de compra (Strapi / decimal / populate anidado). */
 function itemCompraQuantity(item: any): number {
-  const raw = item?.quantity ?? item?.attributes?.quantity;
+  const raw =
+    item?.quantity ??
+    item?.attributes?.quantity ??
+    item?.data?.quantity ??
+    (item?.data?.attributes as Record<string, unknown> | undefined)?.quantity;
   if (raw == null) return 0;
   if (typeof raw === 'object' && raw != null && typeof (raw as any).toString === 'function') {
     const n = Number(String(raw));
@@ -199,6 +256,15 @@ function itemCompraQuantity(item: any): number {
   }
   const n = Number(raw);
   return Number.isFinite(n) ? n : 0;
+}
+
+function itemCompraUnitCost(item: any): number {
+  const raw =
+    item?.unit_cost ??
+    item?.attributes?.unit_cost ??
+    item?.data?.unit_cost ??
+    (item?.data?.attributes as Record<string, unknown> | undefined)?.unit_cost;
+  return Number(raw);
 }
 
 async function applyCompraReceiptInventory(
@@ -209,15 +275,14 @@ async function applyCompraReceiptInventory(
 ): Promise<void> {
   const now = new Date().toISOString();
 
-  for (const item of compra.items || []) {
-    const prod = item.producto;
-    if (!prod?.id) continue;
+  for (const item of compraItemsArray(compra)) {
+    const productoPk = entityNumericId((item as any).producto);
+    if (productoPk == null) continue;
 
     const addQty = itemCompraQuantity(item);
     if (addQty <= 0) continue;
 
-    const linked = (item as any).stock_item;
-    const linkedRef = linked?.id ?? linked?.documentId ?? linked;
+    const linkedRef = entityRefForQuery((item as any).stock_item);
     let stockRow: { id?: number; stock_actual?: unknown } | null = null;
     if (linkedRef != null && linkedRef !== '') {
       const s = String(linkedRef).trim();
@@ -235,7 +300,7 @@ async function applyCompraReceiptInventory(
     }
     if (!stockRow?.id) {
       stockRow = await strapi.db.query('api::stock-item.stock-item').findOne({
-        where: { producto: prod.id },
+        where: { producto: { id: productoPk } },
         select: ['id', 'stock_actual'],
       });
     }
@@ -243,7 +308,7 @@ async function applyCompraReceiptInventory(
     if (stockRow?.id) {
       const prevSi = Number(stockRow.stock_actual) || 0;
       const newSi = prevSi + addQty;
-      const unitCost = Number(item.unit_cost);
+      const unitCost = itemCompraUnitCost(item);
 
       await strapi.entityService.update('api::stock-item.stock-item', stockRow.id, {
         data: {
@@ -264,10 +329,20 @@ async function applyCompraReceiptInventory(
         data: movData,
       });
     } else {
-      const previousStock = Number(prod.stock_quantity) || 0;
+      const pop = (item as any).producto;
+      let previousStock = 0;
+      if (pop && typeof pop === 'object' && 'stock_quantity' in pop) {
+        previousStock = Number((pop as any).stock_quantity) || 0;
+      } else {
+        const prow = await strapi.db.query('api::producto.producto').findOne({
+          where: { id: productoPk },
+          select: ['stock_quantity'],
+        });
+        previousStock = Number(prow?.stock_quantity) || 0;
+      }
       const newStock = previousStock + addQty;
 
-      await strapi.entityService.update('api::producto.producto', prod.id, {
+      await strapi.entityService.update('api::producto.producto', productoPk, {
         data: { stock_quantity: newStock, stock_enabled: true },
       });
 
@@ -280,7 +355,7 @@ async function applyCompraReceiptInventory(
         reference_id: compra.id,
         notes: `Compra #${compra.id} recibida`,
         timestamp: now,
-        producto: prod.id,
+        producto: productoPk,
         restaurante: restauranteId,
       };
       if (user?.id != null && user.id !== '') {
