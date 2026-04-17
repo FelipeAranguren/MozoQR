@@ -105,7 +105,14 @@ export default function NuevaCompraDialog({ open, onClose, slug, onCreated }) {
       setForm(emptyForm());
       onClose();
     } catch (e) {
-      setError(e?.response?.data?.error?.message || 'Error al crear compra');
+      const d = e?.response?.data;
+      setError(
+        d?.error?.message ||
+          d?.message ||
+          (typeof d === 'string' ? d : null) ||
+          e?.message ||
+          'Error al crear compra'
+      );
     }
     setSaving(false);
   };

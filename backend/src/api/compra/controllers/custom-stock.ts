@@ -1,5 +1,30 @@
 declare const strapi: any;
 
+/** Resuelve id numérico de producto (Strapi 5 puede mandar documentId en el payload). */
+async function resolveProductoPk(
+  strapi: any,
+  raw: unknown,
+  restauranteId: number
+): Promise<number | null> {
+  if (raw === null || raw === undefined || raw === '') return null;
+  const str = String(raw).trim();
+  if (!str) return null;
+
+  if (/^\d+$/.test(str)) {
+    const row = await strapi.db.query('api::producto.producto').findOne({
+      where: { id: Number(str), restaurante: restauranteId },
+      select: ['id'],
+    });
+    return row?.id ?? null;
+  }
+
+  const byDoc = await strapi.db.query('api::producto.producto').findOne({
+    where: { documentId: str, restaurante: restauranteId },
+    select: ['id'],
+  });
+  return byDoc?.id ?? null;
+}
+
 export default {
   async stockOverview(ctx: any) {
     const strapi: any = ctx.strapi;
@@ -130,7 +155,7 @@ export default {
 
   async crearCompra(ctx: any) {
     const strapi: any = ctx.strapi;
-    const restauranteId = ctx.state.restauranteId;
+    const restauranteId = Number(ctx.state.restauranteId);
     const user = ctx.state.user;
     const body = ctx.request.body?.data || ctx.request.body || {};
     const { date, supplier, notes, items } = body;
@@ -139,46 +164,94 @@ export default {
     if (!Array.isArray(items) || items.length === 0) {
       return ctx.badRequest('items es requerido y no puede estar vacío');
     }
+    if (!Number.isFinite(restauranteId) || restauranteId <= 0) {
+      return ctx.badRequest('restaurante inválido');
+    }
 
-    let total = 0;
-    for (const it of items) {
-      if (!it.productoId || !it.quantity || !it.unit_cost) {
-        return ctx.badRequest('Cada item necesita productoId, quantity y unit_cost');
+    try {
+      type ResolvedLine = { productoPk: number; qty: number; unitCost: number };
+      const resolved: ResolvedLine[] = [];
+      let total = 0;
+      let line = 0;
+
+      for (const it of items) {
+        line += 1;
+        if (it.productoId == null || it.quantity == null || it.unit_cost == null) {
+          return ctx.badRequest('Cada item necesita productoId, quantity y unit_cost');
+        }
+        const productoPk = await resolveProductoPk(strapi, it.productoId, restauranteId);
+        if (!productoPk) {
+          return ctx.badRequest(
+            `Producto inválido o no pertenece a este restaurante (línea ${line}). Verificá el producto seleccionado.`
+          );
+        }
+        const qty = Number(it.quantity);
+        const unitCost = Number(it.unit_cost);
+        if (!Number.isFinite(qty) || qty <= 0 || !Number.isFinite(unitCost) || unitCost < 0) {
+          return ctx.badRequest(`Cantidad o costo unitario inválidos (línea ${line})`);
+        }
+        total += qty * unitCost;
+        resolved.push({ productoPk, qty, unitCost });
       }
-      total += Number(it.quantity) * Number(it.unit_cost);
-    }
 
-    const compra = await strapi.entityService.create('api::compra.compra', {
-      data: {
+      const compraPayload: Record<string, unknown> = {
         date,
-        supplier: supplier || null,
-        total,
+        supplier: supplier ? String(supplier).trim() : null,
+        total: Number(total.toFixed(2)),
         status: 'pendiente',
-        notes: notes || null,
+        notes: notes ? String(notes).trim() : null,
         restaurante: restauranteId,
-        created_by_user: user?.id || null,
-      },
-    });
+      };
+      if (user?.id != null && user.id !== '') {
+        compraPayload.created_by_user = user.id;
+      }
 
-    for (const it of items) {
-      const qty = Number(it.quantity);
-      const unitCost = Number(it.unit_cost);
-      await strapi.entityService.create('api::item-compra.item-compra', {
-        data: {
-          quantity: qty,
-          unit_cost: unitCost,
-          total_cost: qty * unitCost,
-          compra: compra.id,
-          producto: it.productoId,
-        },
+      const compra = await strapi.entityService.create('api::compra.compra', {
+        data: compraPayload,
       });
+
+      const compraPk = compra?.id;
+      if (compraPk == null) {
+        strapi.log.error('[crearCompra] La compra creada no tiene id', compra);
+        return ctx.internalServerError('No se pudo crear la compra');
+      }
+
+      for (const row of resolved) {
+        const lineTotal = Number((row.qty * row.unitCost).toFixed(2));
+        await strapi.entityService.create('api::item-compra.item-compra', {
+          data: {
+            quantity: row.qty,
+            unit_cost: row.unitCost,
+            total_cost: lineTotal,
+            compra: compraPk,
+            producto: row.productoPk,
+          },
+        });
+      }
+
+      let full: unknown = null;
+      try {
+        full = await strapi.entityService.findOne('api::compra.compra', compraPk, {
+          populate: ['items', 'items.producto'],
+        });
+      } catch (popErr: any) {
+        strapi.log.warn('[crearCompra] populate profundo falló, reintentando sin producto', popErr?.message);
+        full = await strapi.entityService.findOne('api::compra.compra', compraPk, {
+          populate: ['items'],
+        });
+      }
+
+      ctx.body = { data: full };
+    } catch (e: any) {
+      strapi.log.error('[crearCompra]', e);
+      const msg = e?.message || String(e);
+      if (e?.name === 'ValidationError' || e?.details?.errors?.length) {
+        return ctx.badRequest(msg);
+      }
+      return ctx.internalServerError(
+        process.env.NODE_ENV === 'development' ? msg : 'Error al crear la compra'
+      );
     }
-
-    const full = await strapi.entityService.findOne('api::compra.compra', compra.id, {
-      populate: { items: { populate: { producto: { fields: ['id', 'name', 'sku'] } } } },
-    });
-
-    ctx.body = { data: full };
   },
 
   async listarCompras(ctx: any) {
@@ -237,10 +310,7 @@ export default {
     const compraId = ctx.params.id;
 
     const compra = await strapi.entityService.findOne('api::compra.compra', compraId, {
-      populate: {
-        items: { populate: { producto: { fields: ['id', 'stock_quantity', 'stock_enabled'] } } },
-        restaurante: { fields: ['id'] },
-      },
+      populate: ['items', 'items.producto', 'restaurante'],
     });
 
     if (!compra?.id) return ctx.notFound('Compra no encontrada');
@@ -257,16 +327,46 @@ export default {
       const prod = item.producto;
       if (!prod?.id) continue;
 
-      const previousStock = Number(prod.stock_quantity) || 0;
       const addQty = Number(item.quantity) || 0;
-      const newStock = previousStock + addQty;
+      if (addQty <= 0) continue;
 
-      await strapi.entityService.update('api::producto.producto', prod.id, {
-        data: { stock_quantity: newStock, stock_enabled: true },
+      const stockRow = await strapi.db.query('api::stock-item.stock-item').findOne({
+        where: { producto: prod.id },
+        select: ['id', 'stock_actual'],
       });
 
-      await strapi.entityService.create('api::movimiento-stock.movimiento-stock', {
-        data: {
+      if (stockRow?.id) {
+        const prevSi = Number(stockRow.stock_actual) || 0;
+        const newSi = prevSi + addQty;
+        const unitCost = Number(item.unit_cost);
+
+        await strapi.entityService.update('api::stock-item.stock-item', stockRow.id, {
+          data: {
+            stock_actual: newSi,
+            ...(Number.isFinite(unitCost) && unitCost > 0 ? { precio_costo: unitCost } : {}),
+          },
+        });
+
+        const movData: Record<string, unknown> = {
+          tipo: 'entrada',
+          cantidad: addQty,
+          motivo: `Compra #${compra.id} recibida`,
+          stock_item: stockRow.id,
+          publishedAt: now,
+        };
+
+        await strapi.entityService.create('api::stock-movement.stock-movement', {
+          data: movData,
+        });
+      } else {
+        const previousStock = Number(prod.stock_quantity) || 0;
+        const newStock = previousStock + addQty;
+
+        await strapi.entityService.update('api::producto.producto', prod.id, {
+          data: { stock_quantity: newStock, stock_enabled: true },
+        });
+
+        const movimientoPayload: Record<string, unknown> = {
           type: 'compra',
           quantity: addQty,
           previous_stock: previousStock,
@@ -277,9 +377,15 @@ export default {
           timestamp: now,
           producto: prod.id,
           restaurante: restauranteId,
-          created_by_user: user?.id || null,
-        },
-      });
+        };
+        if (user?.id != null && user.id !== '') {
+          movimientoPayload.created_by_user = user.id;
+        }
+
+        await strapi.entityService.create('api::movimiento-stock.movimiento-stock', {
+          data: movimientoPayload,
+        });
+      }
     }
 
     const updated = await strapi.entityService.update('api::compra.compra', compraId, {
