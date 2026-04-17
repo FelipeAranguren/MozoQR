@@ -410,23 +410,25 @@ export async function getRestaurantId(slug) {
   try {
     console.log('🔍 [getRestaurantId] Buscando restaurante con slug:', slug);
 
-    /** Misma resolución que las rutas owner (`by-restaurant-owner`): evita id distinto al filtrar productos/stock. */
+    /**
+     * Misma resolución que compras/stock owner: `restauranteId` viene en `meta` de una ruta custom ya permitida
+     * en Users-Permissions (evita 403 de rutas nuevas y el bug de slug duplicado vs /restaurantes).
+     */
     const token = localStorage.getItem('strapi_jwt') || localStorage.getItem('jwt');
     if (token) {
       try {
-        const oc = await api.get(`/restaurants/${encodeURIComponent(slug)}/owner-context`, {
+        const ar = await api.get(`/restaurants/${encodeURIComponent(slug)}/stock/alertas`, {
           headers: getAuthHeaders(),
         });
-        const d = oc?.data?.data ?? oc?.data;
-        const rid = d?.restauranteId;
+        const rid = ar?.data?.meta?.restauranteId;
         const n = rid != null ? Number(rid) : NaN;
         if (Number.isFinite(n) && n > 0) {
-          console.log('✅ [getRestaurantId] owner-context → restauranteId', n);
+          console.log('✅ [getRestaurantId] stock/alertas meta → restauranteId', n);
           return n;
         }
       } catch (e) {
         console.warn(
-          '⚠️ [getRestaurantId] owner-context no disponible, se usa listado /restaurantes',
+          '⚠️ [getRestaurantId] stock/alertas no disponible, se usa listado /restaurantes',
           e?.response?.status
         );
       }
