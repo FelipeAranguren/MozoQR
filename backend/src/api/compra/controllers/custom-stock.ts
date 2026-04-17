@@ -1,4 +1,7 @@
-declare const strapi: any;
+/** Instancia Strapi: en algunos despliegues `ctx.strapi` viene vacío; el bootstrap expone `global.__STRAPI__`. */
+function getStrapi(ctx: any): any {
+  return ctx?.strapi ?? (typeof global !== 'undefined' && (global as any).__STRAPI__) ?? null;
+}
 
 /** Resuelve id numérico de producto (Strapi 5 puede mandar documentId en el payload). */
 async function resolveProductoPk(
@@ -69,7 +72,7 @@ async function resolveCompraLineProductoAndStockItem(
 
 export default {
   async stockOverview(ctx: any) {
-    const strapi: any = ctx.strapi;
+    const strapi: any = getStrapi(ctx);
     const restauranteId = ctx.state.restauranteId;
 
     const productos = await strapi.entityService.findMany('api::producto.producto', {
@@ -95,7 +98,7 @@ export default {
   },
 
   async ajusteStock(ctx: any) {
-    const strapi: any = ctx.strapi;
+    const strapi: any = getStrapi(ctx);
     const restauranteId = ctx.state.restauranteId;
     const user = ctx.state.user;
     const productoId = ctx.params.productoId;
@@ -143,7 +146,7 @@ export default {
   },
 
   async alertas(ctx: any) {
-    const strapi: any = ctx.strapi;
+    const strapi: any = getStrapi(ctx);
     const restauranteId = ctx.state.restauranteId;
 
     const productos = await strapi.entityService.findMany('api::producto.producto', {
@@ -166,7 +169,7 @@ export default {
   },
 
   async movimientosStock(ctx: any) {
-    const strapi: any = ctx.strapi;
+    const strapi: any = getStrapi(ctx);
     const restauranteId = ctx.state.restauranteId;
     const { productoId, type, desde, hasta, page = 1, pageSize = 50 } = ctx.request.query || {};
 
@@ -196,7 +199,7 @@ export default {
   // --- Compras ---
 
   async crearCompra(ctx: any) {
-    const strapi: any = ctx.strapi;
+    const strapi: any = getStrapi(ctx);
     const restauranteId = Number(ctx.state.restauranteId);
     const user = ctx.state.user;
     const body = ctx.request.body?.data || ctx.request.body || {};
@@ -213,6 +216,11 @@ export default {
     }
     if (!Number.isFinite(restauranteId) || restauranteId <= 0) {
       return ctx.badRequest('restaurante inválido');
+    }
+    if (!strapi) {
+      ctx.status = 503;
+      ctx.body = { error: { message: 'Strapi no está listo; reintentá en unos segundos.' } };
+      return;
     }
 
     try {
@@ -385,7 +393,7 @@ export default {
 
       ctx.body = { data: full };
     } catch (e: any) {
-      strapi.log.error('[crearCompra] inesperado', e);
+      getStrapi(ctx)?.log?.error?.('[crearCompra] inesperado', e);
       const msg = e?.message || String(e);
       ctx.status = 400;
       ctx.body = { error: { message: `No se pudo crear la compra: ${msg}` } };
@@ -393,7 +401,7 @@ export default {
   },
 
   async listarCompras(ctx: any) {
-    const strapi: any = ctx.strapi;
+    const strapi: any = getStrapi(ctx);
     const restauranteId = ctx.state.restauranteId;
     const { status, desde, hasta, page = 1, pageSize = 20 } = ctx.request.query || {};
 
@@ -421,7 +429,7 @@ export default {
   },
 
   async detalleCompra(ctx: any) {
-    const strapi: any = ctx.strapi;
+    const strapi: any = getStrapi(ctx);
     const restauranteId = ctx.state.restauranteId;
     const compraId = ctx.params.id;
 
@@ -442,7 +450,7 @@ export default {
   },
 
   async recibirCompra(ctx: any) {
-    const strapi: any = ctx.strapi;
+    const strapi: any = getStrapi(ctx);
     const restauranteId = ctx.state.restauranteId;
     const user = ctx.state.user;
     const compraId = ctx.params.id;
@@ -553,7 +561,7 @@ export default {
   },
 
   async cancelarCompra(ctx: any) {
-    const strapi: any = ctx.strapi;
+    const strapi: any = getStrapi(ctx);
     const restauranteId = ctx.state.restauranteId;
     const compraId = ctx.params.id;
 
