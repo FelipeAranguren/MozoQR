@@ -934,6 +934,8 @@ export default {
       const shouldMarkPaid = normalizedStatus === 'approved';
       if (shouldMarkPaid) {
         await markOrderPaid(strapi, orderPk);
+        // Inventario: al pasar el pedido a `order_status: paid`, el lifecycle del pedido ejecuta
+        // `safeDeductStockForPaidOrder` (ver api/pedido/content-types/pedido/lifecycles.ts).
         try {
           await notifyPagoMercadoPagoForOrder(strapi, orderPk, {
             amount: rawPayment != null ? Number(rawPayment.transaction_amount) : null,

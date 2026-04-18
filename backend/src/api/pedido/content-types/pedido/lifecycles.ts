@@ -1,4 +1,4 @@
-import { deductStockForOrder } from '../../services/deduct-stock-for-order';
+import { safeDeductStockForPaidOrder } from '../../services/deduct-stock-for-order';
 
 export default {
   async beforeCreate(event: any) {
@@ -88,7 +88,7 @@ export default {
     }
 
     if (restauranteId != null && Number.isFinite(restauranteId)) {
-      await deductStockForOrder(strapi, Number(orderId), restauranteId);
+      await safeDeductStockForPaidOrder(strapi, Number(orderId), restauranteId);
     }
   },
 };

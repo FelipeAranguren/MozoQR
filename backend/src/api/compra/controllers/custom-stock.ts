@@ -258,51 +258,16 @@ function itemCompraQuantity(item: any): number {
   return Number.isFinite(n) ? n : 0;
 }
 
-/**
- * Costo medio ponderado por unidad a partir de todas las líneas de compra recibidas
- * para ese stock-item: sum(qty * unit_cost) / sum(qty).
- */
-async function recalculatePrecioCostoPonderadoFromCompras(strapi: any, stockItemId: number): Promise<void> {
-  if (stockItemId == null || !Number.isFinite(stockItemId) || stockItemId <= 0) return;
-
-  let lines: { quantity?: unknown; unit_cost?: unknown }[] = [];
-  try {
-    lines =
-      (await strapi.db.query('api::item-compra.item-compra').findMany({
-        where: {
-          stock_item: stockItemId,
-          compra: { status: 'recibida' },
-        },
-        select: ['quantity', 'unit_cost'],
-        limit: 10000,
-      })) ?? [];
-  } catch (e: any) {
-    strapi.log?.warn?.('[recalculatePrecioCostoPonderadoFromCompras] query', e?.message || e);
-    return;
-  }
-
-  let sumQty = 0;
-  let sumExtended = 0;
-  for (const row of lines) {
-    const q = Number(row.quantity);
-    const uc = Number(row.unit_cost);
-    if (!Number.isFinite(q) || q <= 0) continue;
-    if (!Number.isFinite(uc) || uc < 0) continue;
-    sumQty += q;
-    sumExtended += q * uc;
-  }
-
-  if (sumQty <= 0) return;
-
-  const precio = Number((sumExtended / sumQty).toFixed(4));
-  try {
-    await strapi.db.query('api::stock-item.stock-item').update({
-      where: { id: stockItemId },
-      data: { precio_costo: precio },
-    });
-  } catch (pe: any) {
-    strapi.log?.warn?.('[recalculatePrecioCostoPonderadoFromCompras] update precio_costo', pe?.message || pe);
-  }
+/** Costo unitario de la línea de compra (Strapi / populate anidado). */
+function itemCompraUnitCost(item: any): number | null {
+  const raw =
+    item?.unit_cost ??
+    item?.attributes?.unit_cost ??
+    item?.data?.unit_cost ??
+    (item?.data?.attributes as Record<string, unknown> | undefined)?.unit_cost;
+  if (raw == null) return null;
+  const n = Number.parseFloat(String(raw));
+  return Number.isFinite(n) && n >= 0 ? n : null;
 }
 
 async function applyCompraReceiptInventory(
@@ -345,12 +310,35 @@ async function applyCompraReceiptInventory(
     }
 
     if (stockRow?.id) {
+      const verified = await strapi.db.query('api::stock-item.stock-item').findOne({
+        where: { id: Number(stockRow.id), producto: { id: productoPk } },
+        select: ['id', 'stock_actual', 'precio_costo'],
+      });
+      if (!verified?.id) {
+        strapi.log?.warn?.(
+          `[applyCompraReceiptInventory] stock_item ${stockRow.id} no coincide con producto ${productoPk}; línea omitida.`,
+        );
+        continue;
+      }
+
+      const sa = Number.parseFloat(String(verified.stock_actual ?? '0'));
+      const caRaw = verified.precio_costo;
+      const caParsed =
+        caRaw == null || caRaw === '' ? Number.NaN : Number.parseFloat(String(caRaw));
+      const ca = Number.isFinite(caParsed) ? caParsed : 0;
+      const costoCompra = itemCompraUnitCost(item);
+      if (costoCompra == null) {
+        strapi.log?.warn?.(
+          `[applyCompraReceiptInventory] unit_cost inválido en ítem de compra (compra #${compra.id}, producto ${productoPk}); se omite CPP.`,
+        );
+      }
+
       // `stock_actual` se actualiza en `stock-movement` `afterCreate` (Query Engine + SQL atómico).
       const movData: Record<string, unknown> = {
         tipo: 'entrada',
         cantidad: addQty,
         motivo: `Compra #${compra.id} recibida`,
-        stock_item: stockRow.id,
+        stock_item: verified.id,
         publishedAt: now,
       };
 
@@ -358,7 +346,26 @@ async function applyCompraReceiptInventory(
         data: movData,
       });
 
-      affectedStockItemIds.add(Number(stockRow.id));
+      if (costoCompra != null) {
+        let nuevoCosto: number;
+        if (!Number.isFinite(sa) || sa <= 0) {
+          nuevoCosto = costoCompra;
+        } else {
+          const denom = sa + addQty;
+          nuevoCosto = denom > 0 ? (sa * ca + addQty * costoCompra) / denom : costoCompra;
+        }
+        const precioGuardado = Number.parseFloat(nuevoCosto.toFixed(4));
+        try {
+          await strapi.db.query('api::stock-item.stock-item').update({
+            where: { id: verified.id },
+            data: { precio_costo: precioGuardado },
+          });
+        } catch (pe: any) {
+          strapi.log?.warn?.('[applyCompraReceiptInventory] update precio_costo (CPP)', pe?.message || pe);
+        }
+      }
+
+      affectedStockItemIds.add(Number(verified.id));
     } else {
       const pop = (item as any).producto;
       let previousStock = 0;
@@ -753,14 +760,11 @@ export default {
           populate: ['items', 'items.producto', 'items.stock_item', 'restaurante'],
         });
         if (compraFull?.id) {
-          const stockIdsRecibidos = await applyCompraReceiptInventory(strapi, compraFull, restauranteId, user);
+          await applyCompraReceiptInventory(strapi, compraFull, restauranteId, user);
           await strapi.entityService.update('api::compra.compra', compraPk, {
             data: { status: 'recibida' },
           });
           full.status = 'recibida';
-          for (const sid of stockIdsRecibidos) {
-            await recalculatePrecioCostoPonderadoFromCompras(strapi, sid);
-          }
         }
       }
 
@@ -840,15 +844,11 @@ export default {
       return ctx.badRequest(`No se puede recibir una compra con estado "${compra.status}"`);
     }
 
-    const stockIdsRecibidos = await applyCompraReceiptInventory(strapi, compra, restauranteId, user);
+    await applyCompraReceiptInventory(strapi, compra, restauranteId, user);
 
     const updated = await strapi.entityService.update('api::compra.compra', compraId, {
       data: { status: 'recibida' },
     });
-
-    for (const sid of stockIdsRecibidos) {
-      await recalculatePrecioCostoPonderadoFromCompras(strapi, sid);
-    }
 
     ctx.body = { data: updated };
   },
