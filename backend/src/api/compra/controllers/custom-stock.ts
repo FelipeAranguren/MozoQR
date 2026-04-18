@@ -258,13 +258,51 @@ function itemCompraQuantity(item: any): number {
   return Number.isFinite(n) ? n : 0;
 }
 
-function itemCompraUnitCost(item: any): number {
-  const raw =
-    item?.unit_cost ??
-    item?.attributes?.unit_cost ??
-    item?.data?.unit_cost ??
-    (item?.data?.attributes as Record<string, unknown> | undefined)?.unit_cost;
-  return Number(raw);
+/**
+ * Costo medio ponderado por unidad a partir de todas las líneas de compra recibidas
+ * para ese stock-item: sum(qty * unit_cost) / sum(qty).
+ */
+async function recalculatePrecioCostoPonderadoFromCompras(strapi: any, stockItemId: number): Promise<void> {
+  if (stockItemId == null || !Number.isFinite(stockItemId) || stockItemId <= 0) return;
+
+  let lines: { quantity?: unknown; unit_cost?: unknown }[] = [];
+  try {
+    lines =
+      (await strapi.db.query('api::item-compra.item-compra').findMany({
+        where: {
+          stock_item: stockItemId,
+          compra: { status: 'recibida' },
+        },
+        select: ['quantity', 'unit_cost'],
+        limit: 10000,
+      })) ?? [];
+  } catch (e: any) {
+    strapi.log?.warn?.('[recalculatePrecioCostoPonderadoFromCompras] query', e?.message || e);
+    return;
+  }
+
+  let sumQty = 0;
+  let sumExtended = 0;
+  for (const row of lines) {
+    const q = Number(row.quantity);
+    const uc = Number(row.unit_cost);
+    if (!Number.isFinite(q) || q <= 0) continue;
+    if (!Number.isFinite(uc) || uc < 0) continue;
+    sumQty += q;
+    sumExtended += q * uc;
+  }
+
+  if (sumQty <= 0) return;
+
+  const precio = Number((sumExtended / sumQty).toFixed(4));
+  try {
+    await strapi.db.query('api::stock-item.stock-item').update({
+      where: { id: stockItemId },
+      data: { precio_costo: precio },
+    });
+  } catch (pe: any) {
+    strapi.log?.warn?.('[recalculatePrecioCostoPonderadoFromCompras] update precio_costo', pe?.message || pe);
+  }
 }
 
 async function applyCompraReceiptInventory(
@@ -272,8 +310,9 @@ async function applyCompraReceiptInventory(
   compra: any,
   restauranteId: number,
   user: any
-): Promise<void> {
+): Promise<number[]> {
   const now = new Date().toISOString();
+  const affectedStockItemIds = new Set<number>();
 
   for (const item of compraItemsArray(compra)) {
     const productoPk = entityNumericId((item as any).producto);
@@ -306,8 +345,6 @@ async function applyCompraReceiptInventory(
     }
 
     if (stockRow?.id) {
-      const unitCost = itemCompraUnitCost(item);
-
       // `stock_actual` se actualiza en `stock-movement` `afterCreate` (Query Engine + SQL atómico).
       const movData: Record<string, unknown> = {
         tipo: 'entrada',
@@ -321,16 +358,7 @@ async function applyCompraReceiptInventory(
         data: movData,
       });
 
-      if (Number.isFinite(unitCost) && unitCost > 0) {
-        try {
-          await strapi.db.query('api::stock-item.stock-item').update({
-            where: { id: stockRow.id },
-            data: { precio_costo: unitCost },
-          });
-        } catch (pe: any) {
-          strapi.log?.warn?.('[applyCompraReceiptInventory] precio_costo vía db.query', pe?.message || pe);
-        }
-      }
+      affectedStockItemIds.add(Number(stockRow.id));
     } else {
       const pop = (item as any).producto;
       let previousStock = 0;
@@ -370,6 +398,8 @@ async function applyCompraReceiptInventory(
       });
     }
   }
+
+  return [...affectedStockItemIds];
 }
 
 export default {
@@ -723,11 +753,14 @@ export default {
           populate: ['items', 'items.producto', 'items.stock_item', 'restaurante'],
         });
         if (compraFull?.id) {
-          await applyCompraReceiptInventory(strapi, compraFull, restauranteId, user);
+          const stockIdsRecibidos = await applyCompraReceiptInventory(strapi, compraFull, restauranteId, user);
           await strapi.entityService.update('api::compra.compra', compraPk, {
             data: { status: 'recibida' },
           });
           full.status = 'recibida';
+          for (const sid of stockIdsRecibidos) {
+            await recalculatePrecioCostoPonderadoFromCompras(strapi, sid);
+          }
         }
       }
 
@@ -807,11 +840,15 @@ export default {
       return ctx.badRequest(`No se puede recibir una compra con estado "${compra.status}"`);
     }
 
-    await applyCompraReceiptInventory(strapi, compra, restauranteId, user);
+    const stockIdsRecibidos = await applyCompraReceiptInventory(strapi, compra, restauranteId, user);
 
     const updated = await strapi.entityService.update('api::compra.compra', compraId, {
       data: { status: 'recibida' },
     });
+
+    for (const sid of stockIdsRecibidos) {
+      await recalculatePrecioCostoPonderadoFromCompras(strapi, sid);
+    }
 
     ctx.body = { data: updated };
   },

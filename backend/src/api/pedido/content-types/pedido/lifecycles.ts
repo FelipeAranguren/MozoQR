@@ -1,3 +1,5 @@
+import { deductStockForOrder } from '../../services/deduct-stock-for-order';
+
 export default {
   async beforeCreate(event: any) {
     const { data } = event.params;
@@ -55,6 +57,39 @@ export default {
         console.error('[pedido lifecycles] Error obteniendo mesaNumber en beforeUpdate:', err);
       }
     }
-  }
+  },
+
+  async afterUpdate(event: any) {
+    const result = event?.result;
+    if (!result || result.order_status !== 'paid') return;
+
+    const orderId = result.id;
+    if (orderId == null) return;
+
+    let restauranteId: number | null = null;
+    const r = result.restaurante;
+    if (typeof r === 'number') restauranteId = r;
+    else if (r && typeof r === 'object' && 'id' in r) restauranteId = Number((r as { id: number }).id);
+    else if (r != null) restauranteId = Number(r);
+
+    if (restauranteId == null || !Number.isFinite(restauranteId)) {
+      try {
+        const full = (await strapi.entityService.findOne('api::pedido.pedido', orderId, {
+          fields: ['id'],
+          populate: { restaurante: { fields: ['id'] } },
+        })) as { restaurante?: { id?: number } | number } | null;
+        const rr = full?.restaurante as { id?: number } | number | undefined;
+        if (typeof rr === 'number') restauranteId = rr;
+        else if (rr && typeof rr === 'object' && rr.id != null) restauranteId = Number(rr.id);
+      } catch (e) {
+        console.error('[pedido lifecycles] afterUpdate: no se pudo resolver restaurante', e);
+        return;
+      }
+    }
+
+    if (restauranteId != null && Number.isFinite(restauranteId)) {
+      await deductStockForOrder(strapi, Number(orderId), restauranteId);
+    }
+  },
 };
 
