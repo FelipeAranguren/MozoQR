@@ -687,23 +687,27 @@ export default {
             row.stockMinimo
           );
         }
-        /** Strapi 5 valida relaciones con `documentId`; el id numérico recién creado a veces falla en el primer intento. */
-        let stockItemRelationRef: string | number | null = null;
+        /**
+         * Relación `item-compra` → stock-item: Strapi valida bien con `documentId`.
+         * `entityService.update` debe usar el **id entero**; si se pasa `documentId`, Postgres hace `where id = $1` con string y falla.
+         */
+        let stockItemForItemCompraRel: string | number | null = null;
         if (stockItemFk != null && Number.isFinite(stockItemFk)) {
           const siRow = await strapi.db.query('api::stock-item.stock-item').findOne({
             where: { id: stockItemFk },
             select: ['id', 'documentId'],
           });
           if (siRow?.id != null) {
-            stockItemRelationRef =
+            const internalId = Number(siRow.id);
+            if (row.stockMinimo !== undefined) {
+              await strapi.entityService.update('api::stock-item.stock-item', internalId, {
+                data: { stock_minimo: row.stockMinimo },
+              });
+            }
+            stockItemForItemCompraRel =
               siRow.documentId != null && String(siRow.documentId).trim() !== ''
                 ? String(siRow.documentId).trim()
-                : Number(siRow.id);
-          }
-          if (stockItemRelationRef != null && row.stockMinimo !== undefined) {
-            await strapi.entityService.update('api::stock-item.stock-item', stockItemRelationRef, {
-              data: { stock_minimo: row.stockMinimo },
-            });
+                : internalId;
           }
         }
         const lineTotal = Number((row.qty * row.unitCost).toFixed(2));
@@ -715,8 +719,8 @@ export default {
           producto: row.productoPk,
         };
         const itemData: Record<string, unknown> = { ...baseItem };
-        if (stockItemRelationRef != null) {
-          itemData.stock_item = stockItemRelationRef;
+        if (stockItemForItemCompraRel != null) {
+          itemData.stock_item = stockItemForItemCompraRel;
         }
 
         try {
