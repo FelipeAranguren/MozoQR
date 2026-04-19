@@ -67,7 +67,7 @@ export async function deductStockForOrder(strapi: any, orderId: number, restaura
         }
       | undefined;
     const cartProductId = prodPop?.id;
-    if (cartProductId == null || !prodPop?.stock_enabled) continue;
+    if (cartProductId == null) continue;
 
     const dbProd = await strapi.db.query('api::producto.producto').findOne({
       where: { id: cartProductId, restaurante: { id: restauranteId } },
@@ -91,6 +91,10 @@ export async function deductStockForOrder(strapi: any, orderId: number, restaura
       });
       stockItemId = row?.id != null ? Number(row.id) : null;
     }
+
+    const tracksInventory =
+      prodPop?.stock_enabled === true || (stockItemId != null && stockItemId > 0);
+    if (!tracksInventory) continue;
 
     const useProductQty = dbProd.stock_quantity != null;
 

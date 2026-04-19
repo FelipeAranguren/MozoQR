@@ -173,8 +173,12 @@ async function ensureStockItemForProducto(
   };
 
   try {
-    const created = await strapi.entityService.create('api::stock-item.stock-item', { data });
-    if (created?.id != null) return Number(created.id);
+    await strapi.entityService.create('api::stock-item.stock-item', { data });
+    const verify = await strapi.db.query('api::stock-item.stock-item').findOne({
+      where: { producto: productoPk },
+      select: ['id'],
+    });
+    if (verify?.id != null) return Number(verify.id);
   } catch (err: any) {
     strapi.log?.warn?.('[ensureStockItemForProducto] create', err?.message || err);
     const retry = await strapi.db.query('api::stock-item.stock-item').findOne({
@@ -683,10 +687,24 @@ export default {
             row.stockMinimo
           );
         }
-        if (stockItemFk != null && row.stockMinimo !== undefined) {
-          await strapi.entityService.update('api::stock-item.stock-item', stockItemFk, {
-            data: { stock_minimo: row.stockMinimo },
+        /** Strapi 5 valida relaciones con `documentId`; el id numérico recién creado a veces falla en el primer intento. */
+        let stockItemRelationRef: string | number | null = null;
+        if (stockItemFk != null && Number.isFinite(stockItemFk)) {
+          const siRow = await strapi.db.query('api::stock-item.stock-item').findOne({
+            where: { id: stockItemFk },
+            select: ['id', 'documentId'],
           });
+          if (siRow?.id != null) {
+            stockItemRelationRef =
+              siRow.documentId != null && String(siRow.documentId).trim() !== ''
+                ? String(siRow.documentId).trim()
+                : Number(siRow.id);
+          }
+          if (stockItemRelationRef != null && row.stockMinimo !== undefined) {
+            await strapi.entityService.update('api::stock-item.stock-item', stockItemRelationRef, {
+              data: { stock_minimo: row.stockMinimo },
+            });
+          }
         }
         const lineTotal = Number((row.qty * row.unitCost).toFixed(2));
         const baseItem: Record<string, unknown> = {
@@ -697,8 +715,8 @@ export default {
           producto: row.productoPk,
         };
         const itemData: Record<string, unknown> = { ...baseItem };
-        if (stockItemFk != null && Number.isFinite(stockItemFk)) {
-          itemData.stock_item = stockItemFk;
+        if (stockItemRelationRef != null) {
+          itemData.stock_item = stockItemRelationRef;
         }
 
         try {
