@@ -6,15 +6,45 @@
  * (incluye pagos MP confirm, webhook, caja manual, etc.). No debe lanzar: usar `safeDeductStockForPaidOrder`.
  */
 
-export async function safeDeductStockForPaidOrder(strapi: any, orderId: number, restauranteId: number) {
+export async function safeDeductStockForPaidOrder(
+  strapi: any,
+  orderRef: number | string,
+  restauranteId: number,
+) {
   try {
-    await deductStockForOrder(strapi, orderId, restauranteId);
+    await deductStockForOrder(strapi, orderRef, restauranteId);
   } catch (err: any) {
     strapi?.log?.error?.(
-      `[deductStockForOrder] Fallo no controlado (pedido ${orderId}):`,
+      `[deductStockForOrder] Fallo no controlado (pedido ${String(orderRef)}):`,
       err?.message ?? err,
     );
   }
+}
+
+/** Strapi 5: el update puede identificar el pedido por `id` numérico o `documentId`; las líneas guardan FK al id interno. */
+async function resolvePedidoInternalId(strapi: any, ref: string | number | undefined | null): Promise<number | null> {
+  if (ref == null || ref === '') return null;
+  if (typeof ref === 'number' && Number.isFinite(ref) && ref > 0) {
+    const row = await strapi.db.query('api::pedido.pedido').findOne({
+      where: { id: ref },
+      select: ['id'],
+    });
+    if (row?.id != null) return Number(row.id);
+  }
+  const s = String(ref).trim();
+  if (!s) return null;
+  if (/^\d+$/.test(s)) {
+    const row = await strapi.db.query('api::pedido.pedido').findOne({
+      where: { id: Number(s) },
+      select: ['id'],
+    });
+    if (row?.id != null) return Number(row.id);
+  }
+  const byDoc = await strapi.db.query('api::pedido.pedido').findOne({
+    where: { documentId: s },
+    select: ['id'],
+  });
+  return byDoc?.id != null ? Number(byDoc.id) : null;
 }
 
 function parseStockItemIdFromPopulate(prodPop: {
@@ -51,10 +81,32 @@ function lineProductFromItem(item: { product?: unknown }): {
   return raw as ReturnType<typeof lineProductFromItem>;
 }
 
-async function loadItemPedidosForOrder(strapi: any, orderId: number) {
+async function loadItemPedidosForOrder(strapi: any, orderPk: number) {
+  /** Preferir DB: evita filtros raros del entity API y líneas en borrador sin publicar. */
+  try {
+    let rows = await strapi.db.query('api::item-pedido.item-pedido').findMany({
+      where: { order: orderPk },
+      populate: { product: { populate: { stock_item: true } } },
+      limit: 200,
+    });
+    if ((!Array.isArray(rows) || rows.length === 0) && Number.isFinite(orderPk)) {
+      rows = await strapi.db.query('api::item-pedido.item-pedido').findMany({
+        where: { order: { id: orderPk } },
+        populate: { product: { populate: { stock_item: true } } },
+        limit: 200,
+      });
+    }
+    if (Array.isArray(rows) && rows.length > 0) {
+      strapi?.log?.info?.(`[deductStockForOrder] pedido ${orderPk}: ${rows.length} línea(s) item-pedido (db.query).`);
+      return rows;
+    }
+  } catch (e: any) {
+    strapi?.log?.warn?.(`[deductStockForOrder] db.query item-pedido: ${e?.message || e}`);
+  }
+
   try {
     const es = await strapi.entityService.findMany('api::item-pedido.item-pedido', {
-      filters: { order: { id: { $eq: orderId } } },
+      filters: { order: orderPk },
       fields: ['id', 'quantity'],
       publicationState: 'preview',
       populate: {
@@ -65,32 +117,51 @@ async function loadItemPedidosForOrder(strapi: any, orderId: number) {
       },
       limit: 200,
     });
-    if (Array.isArray(es) && es.length > 0) return es;
+    if (Array.isArray(es) && es.length > 0) {
+      strapi?.log?.info?.(`[deductStockForOrder] pedido ${orderPk}: ${es.length} línea(s) (entityService preview).`);
+      return es;
+    }
   } catch (e: any) {
-    strapi?.log?.warn?.(
-      `[deductStockForOrder] findMany item-pedido (preview): ${e?.message || e}; se usa db.query.`,
-    );
+    strapi?.log?.warn?.(`[deductStockForOrder] findMany item-pedido: ${e?.message || e}`);
   }
 
-  /** Fallback: líneas en borrador / filtros que no matchean en entity API. */
-  return strapi.db.query('api::item-pedido.item-pedido').findMany({
-    where: { order: orderId },
-    populate: { product: { populate: { stock_item: true } } },
-    limit: 200,
-  });
+  strapi?.log?.warn?.(`[deductStockForOrder] pedido ${orderPk}: sin líneas item-pedido.`);
+  return [];
 }
 
-export async function deductStockForOrder(strapi: any, orderId: number, restauranteId: number) {
+async function stockItemRefForMovementCreate(strapi: any, stockItemInternalId: number): Promise<string | number> {
+  const row = await strapi.db.query('api::stock-item.stock-item').findOne({
+    where: { id: stockItemInternalId },
+    select: ['id', 'documentId'],
+  });
+  if (row?.documentId != null && String(row.documentId).trim() !== '') {
+    return String(row.documentId).trim();
+  }
+  return stockItemInternalId;
+}
+
+export async function deductStockForOrder(
+  strapi: any,
+  orderRef: string | number,
+  restauranteId: number,
+) {
+  const orderPk = await resolvePedidoInternalId(strapi, orderRef);
+  if (orderPk == null || !Number.isFinite(orderPk)) {
+    strapi?.log?.warn?.(`[deductStockForOrder] pedido no resuelto: ref=${String(orderRef)}`);
+    return;
+  }
+
   const existing = await strapi.entityService.findMany('api::movimiento-stock.movimiento-stock', {
-    filters: { reference_type: 'pedido', reference_id: orderId },
+    filters: { reference_type: 'pedido', reference_id: orderPk },
     fields: ['id'],
     limit: 1,
   });
   if (Array.isArray(existing) && existing.length > 0) {
+    strapi?.log?.info?.(`[deductStockForOrder] pedido ${orderPk}: ya hay movimiento-stock (idempotente).`);
     return;
   }
 
-  const items = await loadItemPedidosForOrder(strapi, orderId);
+  const items = await loadItemPedidosForOrder(strapi, orderPk);
 
   const nowIso = new Date().toISOString();
 
@@ -181,8 +252,8 @@ export async function deductStockForOrder(strapi: any, orderId: number, restaura
         previous_stock: previousForMov,
         new_stock: newForMov,
         reference_type: 'pedido',
-        reference_id: orderId,
-        notes: `Pedido #${orderId}`,
+        reference_id: orderPk,
+        notes: `Pedido #${orderPk}`,
         timestamp: nowIso,
         producto: dbProd.id,
         restaurante: restauranteId,
@@ -203,18 +274,26 @@ export async function deductStockForOrder(strapi: any, orderId: number, restaura
 
       const stockActualBefore = Number.parseFloat(String(siRow.stock_actual ?? '0'));
       strapi?.log?.info?.(
-        `[deductStockForOrder] orderId=${orderId} productId=${dbProd.id} qty=${qty} stockItemId=${stockItemId} stock_actual_before=${stockActualBefore}`,
+        `[deductStockForOrder] orderPk=${orderPk} productId=${dbProd.id} qty=${qty} stockItemId=${stockItemId} stock_actual_before=${stockActualBefore}`,
       );
 
-      await strapi.entityService.create('api::stock-movement.stock-movement', {
-        data: {
-          tipo: 'salida',
-          cantidad: qty,
-          motivo: `Venta pedido #${orderId}`,
-          stock_item: stockItemId,
-          publishedAt: nowIso,
-        },
-      });
+      try {
+        const stockRel = await stockItemRefForMovementCreate(strapi, stockItemId);
+        await strapi.entityService.create('api::stock-movement.stock-movement', {
+          data: {
+            tipo: 'salida',
+            cantidad: qty,
+            motivo: `Venta pedido #${orderPk}`,
+            stock_item: stockRel,
+            publishedAt: nowIso,
+          },
+        });
+      } catch (smErr: any) {
+        strapi?.log?.error?.(
+          `[deductStockForOrder] crear stock-movement salida pedido ${orderPk} producto ${dbProd.id}:`,
+          smErr?.message ?? smErr,
+        );
+      }
 
       const siAfter = await strapi.db.query('api::stock-item.stock-item').findOne({
         where: { id: stockItemId },
@@ -222,7 +301,7 @@ export async function deductStockForOrder(strapi: any, orderId: number, restaura
       });
       const stockActualAfter = Number.parseFloat(String(siAfter?.stock_actual ?? 'NaN'));
       strapi?.log?.info?.(
-        `[deductStockForOrder] orderId=${orderId} productId=${dbProd.id} qty=${qty} stockItemId=${stockItemId} stock_actual_after=${Number.isFinite(stockActualAfter) ? stockActualAfter : 'n/a'}`,
+        `[deductStockForOrder] orderPk=${orderPk} productId=${dbProd.id} qty=${qty} stockItemId=${stockItemId} stock_actual_after=${Number.isFinite(stockActualAfter) ? stockActualAfter : 'n/a'}`,
       );
     }
   }

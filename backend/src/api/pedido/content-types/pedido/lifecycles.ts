@@ -61,15 +61,15 @@ export default {
 
   async afterUpdate(event: any) {
     const result = event?.result;
-    if (!result?.id) return;
+    if (!result) return;
+
+    const orderRefForLookup = result.id ?? (result as { documentId?: string }).documentId;
+    if (orderRefForLookup == null || orderRefForLookup === '') return;
 
     /** `result` a veces viene sin `order_status`; el payload del update sí lo trae al pasar a paid. */
     const data = event?.params?.data as { order_status?: string } | undefined;
     const orderStatus = data?.order_status ?? result.order_status;
     if (orderStatus !== 'paid') return;
-
-    const orderId = result.id;
-    if (orderId == null) return;
 
     let restauranteId: number | null = null;
     const r = result.restaurante;
@@ -79,7 +79,7 @@ export default {
 
     if (restauranteId == null || !Number.isFinite(restauranteId)) {
       try {
-        const full = (await strapi.entityService.findOne('api::pedido.pedido', orderId, {
+        const full = (await strapi.entityService.findOne('api::pedido.pedido', orderRefForLookup, {
           fields: ['id'],
           populate: { restaurante: { fields: ['id'] } },
         })) as { restaurante?: { id?: number } | number } | null;
@@ -93,7 +93,7 @@ export default {
     }
 
     if (restauranteId != null && Number.isFinite(restauranteId)) {
-      await safeDeductStockForPaidOrder(strapi, Number(orderId), restauranteId);
+      await safeDeductStockForPaidOrder(strapi, orderRefForLookup, restauranteId);
     }
   },
 };
