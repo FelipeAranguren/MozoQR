@@ -10,6 +10,7 @@ import { MercadoPagoConfig, Preference, Payment } from 'mercadopago';
 import { ensureHttpUrl, getFrontendUrl, getBackendUrl, isHttps } from '../../../config/urls';
 import { fetchMpPaymentWithAnyToken, fetchMpPreferenceWithAnyToken } from '../../../utils/mpPaymentFetch';
 import { notifyPagoMercadoPagoForOrder } from '../../notificaciones/services/pagosNotifier';
+import { safeDeductStockAfterPedidoMarkedPaid } from '../../pedido/services/deduct-stock-for-order';
 
 const PRODUCTO_UID = 'api::producto.producto';
 const RESTAURANTE_UID = 'api::restaurante.restaurante';
@@ -291,6 +292,7 @@ async function markOrderPaid(strapi: any, orderPk: number) {
   for (const t of tries) {
     try {
       await strapi.entityService.update(ORDER_UID, orderPk, t as any);
+      await safeDeductStockAfterPedidoMarkedPaid(strapi, orderPk);
       return true;
     } catch (_err) {
       /* sigue intentando */
@@ -934,8 +936,7 @@ export default {
       const shouldMarkPaid = normalizedStatus === 'approved';
       if (shouldMarkPaid) {
         await markOrderPaid(strapi, orderPk);
-        // Inventario: al pasar el pedido a `order_status: paid`, el lifecycle del pedido ejecuta
-        // `safeDeductStockForPaidOrder` (ver api/pedido/content-types/pedido/lifecycles.ts).
+        // markOrderPaid ya dispara safeDeductStockAfterPedidoMarkedPaid (defensa si el lifecycle del pedido no corre).
         try {
           await notifyPagoMercadoPagoForOrder(strapi, orderPk, {
             amount: rawPayment != null ? Number(rawPayment.transaction_amount) : null,
@@ -1098,6 +1099,7 @@ export default {
       await strapi.entityService.update('api::pedido.pedido', order.id, {
         data: { order_status: 'paid' },
       });
+      await safeDeductStockAfterPedidoMarkedPaid(strapi, order.id);
     }
 
     ctx.body = { data: { ok: true } };

@@ -14,6 +14,7 @@ import {
   verifyModoWebhookSecret,
   type ModoCreatePaymentBody,
 } from '../../../services/modoPctClient';
+import { safeDeductStockAfterPedidoMarkedPaid } from '../../pedido/services/deduct-stock-for-order';
 
 const ORDER_UID = 'api::pedido.pedido';
 
@@ -62,6 +63,7 @@ async function markOrderPaid(strapi: any, orderPk: number): Promise<boolean> {
   for (const t of tries) {
     try {
       await strapi.entityService.update(ORDER_UID, orderPk, t as any);
+      await safeDeductStockAfterPedidoMarkedPaid(strapi, orderPk);
       return true;
     } catch (_err) {
       /* siguiente */

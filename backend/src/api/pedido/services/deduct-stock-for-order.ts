@@ -23,6 +23,34 @@ export async function safeDeductStockForPaidOrder(
   }
 }
 
+/**
+ * Tras `entityService.update` que marca `order_status: paid` (pasarelas, webhooks), el lifecycle del pedido
+ * debería descontar; en despliegues donde `getStrapiApp()` falla en lifecycles, esto evita stock sin mover.
+ */
+export async function safeDeductStockAfterPedidoMarkedPaid(strapi: any, orderPk: number) {
+  try {
+    const full = await strapi.entityService.findOne('api::pedido.pedido', orderPk, {
+      fields: ['id'],
+      populate: { restaurante: { fields: ['id'] } },
+    });
+    if (!full?.id) return;
+    const r = full.restaurante as { id?: number } | number | undefined;
+    const rid =
+      typeof r === 'number'
+        ? r
+        : r && typeof r === 'object' && r.id != null
+          ? Number(r.id)
+          : null;
+    if (rid == null || !Number.isFinite(rid)) return;
+    strapi?.log?.info?.(
+      `[deductStockForOrder] payment/mark path → safeDeductStockForPaidOrder pedido=${orderPk} restauranteId=${rid}`,
+    );
+    await safeDeductStockForPaidOrder(strapi, orderPk, rid);
+  } catch (err: any) {
+    strapi?.log?.warn?.(`[deductStockForOrder] safeDeductStockAfterPedidoMarkedPaid: ${err?.message ?? err}`);
+  }
+}
+
 /** Strapi 5: el update puede identificar el pedido por `id` numérico o `documentId`; las líneas guardan FK al id interno. */
 async function resolvePedidoInternalId(strapi: any, ref: string | number | undefined | null): Promise<number | null> {
   if (ref == null || ref === '') return null;
