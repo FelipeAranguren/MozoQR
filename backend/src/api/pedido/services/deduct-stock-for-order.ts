@@ -238,6 +238,12 @@ export async function deductStockForOrder(
     if (!tracksInventory) continue;
 
     const useProductQty = dbProd.stock_quantity != null;
+    if (useProductQty && stockItemId != null && stockItemId > 0) {
+      strapi?.log?.warn?.(
+        `[deductStockForOrder] producto ${dbProd.id}: tiene stock_quantity y stock-item; se usa rama legacy (producto). ` +
+          `Para inventario solo en stock-item, dejá stock_quantity en null.`,
+      );
+    }
 
     if (!useProductQty && (stockItemId == null || stockItemId <= 0)) {
       strapi?.log?.warn?.(

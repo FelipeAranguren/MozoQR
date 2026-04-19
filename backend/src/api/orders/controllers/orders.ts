@@ -1,5 +1,6 @@
 import { factories } from '@strapi/strapi';
 import { notifyPagoMercadoPagoForOrder } from '../../notificaciones/services/pagosNotifier';
+import { safeDeductStockAfterPedidoMarkedPaid } from '../../pedido/services/deduct-stock-for-order';
 import { fetchMerchantOrderWithAnyToken, fetchMpPaymentWithAnyToken } from '../../../utils/mpPaymentFetch';
 
 /** UID del Content Type pedido en Strapi (api::pedido.pedido) */
@@ -143,6 +144,9 @@ export default factories.createCoreController(ORDER_UID, ({ strapi }) => ({
       });
 
       strapi.log.info(`[orders.webhook] Pedido ${orderPk} (external_ref=${externalRef}) marcado como paid.`);
+      // Misma defensa que payments/modo-pct: lifecycle del pedido puede no tener strapi global.
+      await safeDeductStockAfterPedidoMarkedPaid(strapi, orderPk);
+      strapi.log.info(`[orders.webhook] inventario: safeDeductStockAfterPedidoMarkedPaid pedido=${orderPk}`);
 
       // Auto caja ingreso for online/MP payments
       try {
