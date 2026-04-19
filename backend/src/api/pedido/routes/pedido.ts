@@ -26,6 +26,12 @@ export default {
       config: { policies: [], middlewares: [] },
     },
     {
+      method: 'PATCH',
+      path: '/pedidos/:id',
+      handler: 'pedido.update',
+      config: { policies: [], middlewares: [] },
+    },
+    {
       method: 'DELETE',
       path: '/pedidos/:id',
       handler: 'pedido.delete',

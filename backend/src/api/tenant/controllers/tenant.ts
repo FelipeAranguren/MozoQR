@@ -10,6 +10,8 @@
  *  - POST /api/restaurants/:slug/open-session
  *  - PUT /api/restaurants/:slug/close-session
  */
+import { safeDeductStockForPaidOrder } from '../../pedido/services/deduct-stock-for-order';
+
 // eslint-disable-next-line @typescript-eslint/no-var-requires
 const { errors } = require('@strapi/utils');
 type ID = number | string;
@@ -47,20 +49,40 @@ async function markPedidosPaidWithEntityService(
   strapi: any,
   pedidoRows: Array<{ id: number }>,
   dataExtra?: (row: { id: number; staffNotes?: unknown }) => Record<string, unknown>,
+  restauranteIdHint?: number | string,
 ) {
   const rows = (pedidoRows || []).filter((p) => p?.id != null);
   if (rows.length === 0) return;
   const now = new Date();
   await Promise.all(
-    rows.map((pedido) =>
-      strapi.entityService.update('api::pedido.pedido', pedido.id, {
+    rows.map(async (pedido) => {
+      await strapi.entityService.update('api::pedido.pedido', pedido.id, {
         data: {
           order_status: 'paid',
           publishedAt: now,
           ...(dataExtra ? dataExtra(pedido as { id: number; staffNotes?: unknown }) : {}),
         },
-      }),
-    ),
+      });
+      let rid: number | null =
+        restauranteIdHint != null && String(restauranteIdHint).trim() !== ''
+          ? Number(restauranteIdHint)
+          : null;
+      if (rid != null && !Number.isFinite(rid)) rid = null;
+      if (rid == null) {
+        const full = await strapi.entityService.findOne('api::pedido.pedido', pedido.id, {
+          fields: ['id'],
+          populate: { restaurante: { fields: ['id'] } },
+        });
+        const r = full?.restaurante as { id?: number } | number | undefined;
+        rid = typeof r === 'number' ? r : r && typeof r === 'object' && r.id != null ? Number(r.id) : null;
+      }
+      if (rid != null && Number.isFinite(rid)) {
+        strapi.log?.info?.(
+          `[markPedidosPaid] safeDeductStockForPaidOrder pedido=${pedido.id} restauranteId=${rid}`,
+        );
+        await safeDeductStockForPaidOrder(strapi, pedido.id, rid);
+      }
+    }),
   );
 }
 
@@ -1605,7 +1627,7 @@ export default {
           },
           select: ['id'],
         });
-        await markPedidosPaidWithEntityService(strapi, pedidosPorSesion || []);
+        await markPedidosPaidWithEntityService(strapi, pedidosPorSesion || [], undefined, restaurante.id);
       }
 
       const pedidosPorMesa = await strapi.db.query('api::pedido.pedido').findMany({
@@ -1616,7 +1638,7 @@ export default {
         },
         select: ['id'],
       });
-      await markPedidosPaidWithEntityService(strapi, pedidosPorMesa || []);
+      await markPedidosPaidWithEntityService(strapi, pedidosPorMesa || [], undefined, restaurante.id);
 
       ctx.body = { data: { success: true } };
     } catch (err: any) {
@@ -1785,11 +1807,16 @@ export default {
       
       if (pedidos.length > 0) {
         if (closeStaffNote) {
-          await markPedidosPaidWithEntityService(strapi, pedidos, (pedido) => ({
-            staffNotes: appendTimelineNote(pedido?.staffNotes, 'Cierre de mesa', closeStaffNote),
-          }));
+          await markPedidosPaidWithEntityService(
+            strapi,
+            pedidos,
+            (pedido) => ({
+              staffNotes: appendTimelineNote(pedido?.staffNotes, 'Cierre de mesa', closeStaffNote),
+            }),
+            restaurante.id,
+          );
         } else {
-          await markPedidosPaidWithEntityService(strapi, pedidos);
+          await markPedidosPaidWithEntityService(strapi, pedidos, undefined, restaurante.id);
         }
         console.log('✅ [closeAccount] Pedidos cerrados exitosamente');
       }

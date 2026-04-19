@@ -1,5 +1,14 @@
 // src/api/pedido/controllers/pedido.ts
 import { factories } from '@strapi/strapi';
+import { safeDeductStockForPaidOrder } from '../services/deduct-stock-for-order';
+
+function restauranteIdFromPedidoEntity(entity: unknown): number | null {
+  if (!entity || typeof entity !== 'object') return null;
+  const r = (entity as { restaurante?: unknown }).restaurante as { id?: number } | number | undefined;
+  if (typeof r === 'number') return Number.isFinite(r) ? r : null;
+  if (r && typeof r === 'object' && r.id != null) return Number(r.id);
+  return null;
+}
 
 export default factories.createCoreController('api::pedido.pedido', ({ strapi: strapiInstance }) => ({
 
@@ -88,7 +97,20 @@ export default factories.createCoreController('api::pedido.pedido', ({ strapi: s
 
       // Responder la versión más reciente tras actualizar.
       realId = ids[0];
-      const updatedLatest = await strapiInstance.entityService.findOne('api::pedido.pedido', realId);
+      const updatedLatest = await strapiInstance.entityService.findOne('api::pedido.pedido', realId, {
+        populate: { restaurante: { fields: ['id'] } },
+      });
+      if (payload.order_status === 'paid') {
+        const rid = restauranteIdFromPedidoEntity(updatedLatest);
+        if (rid != null) {
+          for (const oid of ids) {
+            strapiInstance.log?.info?.(
+              `[pedido.update] PATCH/PUT paid (documentId) → safeDeductStockForPaidOrder pedido=${oid} restauranteId=${rid}`,
+            );
+            await safeDeductStockForPaidOrder(strapiInstance, oid, rid);
+          }
+        }
+      }
       ctx.body = { data: updatedLatest };
       return;
     }
@@ -96,6 +118,22 @@ export default factories.createCoreController('api::pedido.pedido', ({ strapi: s
     const updated = await strapiInstance.entityService.update('api::pedido.pedido', realId, {
       data: payload,
     });
+
+    if (payload.order_status === 'paid') {
+      let rid = restauranteIdFromPedidoEntity(updated);
+      if (rid == null && updated?.id != null) {
+        const full = await strapiInstance.entityService.findOne('api::pedido.pedido', updated.id, {
+          populate: { restaurante: { fields: ['id'] } },
+        });
+        rid = restauranteIdFromPedidoEntity(full);
+      }
+      if (rid != null) {
+        strapiInstance.log?.info?.(
+          `[pedido.update] PATCH/PUT paid → safeDeductStockForPaidOrder pedido=${updated.id} restauranteId=${rid}`,
+        );
+        await safeDeductStockForPaidOrder(strapiInstance, updated.id, rid);
+      }
+    }
 
     ctx.body = { data: updated };
   },

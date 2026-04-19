@@ -2,6 +2,8 @@
  * scoped-orders controller
  */
 
+import { safeDeductStockForPaidOrder } from '../services/deduct-stock-for-order';
+
 declare const strapi: any;
 
 async function createCajaIngresoForOrder(strapi: any, orderId: number, restauranteId: number, total: number, paymentMethod?: string) {
@@ -273,6 +275,10 @@ export default {
                 fields: ['id', 'total', 'payment_method'],
             });
             await createCajaIngresoForOrder(strapi, id, restauranteId, fullOrder?.total || 0, fullOrder?.payment_method);
+            strapi.log?.info?.(
+                `[scoped-orders.updateStatus] paid → safeDeductStockForPaidOrder pedido=${id} restauranteId=${restauranteId}`,
+            );
+            await safeDeductStockForPaidOrder(strapi, id, restauranteId);
         }
 
         ctx.body = { data: updated };
