@@ -18,7 +18,7 @@ export async function safeDeductStockForPaidOrder(strapi: any, orderId: number, 
 }
 
 function parseStockItemIdFromPopulate(prodPop: {
-  stock_item?: { id?: number } | { data?: { id?: number } } | null;
+  stock_item?: { id?: number; documentId?: string } | { data?: { id?: number } } | null;
 }): number | null {
   const si = prodPop.stock_item as Record<string, unknown> | null | undefined;
   if (si && typeof si === 'object') {
@@ -28,6 +28,56 @@ function parseStockItemIdFromPopulate(prodPop: {
     }
   }
   return null;
+}
+
+/** Normaliza `product` desde entityService o desde `db.query` (formas distintas en Strapi 5). */
+function lineProductFromItem(item: { product?: unknown }): {
+  id?: number;
+  stock_enabled?: boolean;
+  stock_quantity?: unknown;
+  stock_min_alert?: unknown;
+  available?: boolean;
+  name?: string;
+  stock_item?: unknown;
+} | null {
+  const raw = item?.product as Record<string, unknown> | null | undefined;
+  if (raw == null) return null;
+  if (raw.id != null) return raw as ReturnType<typeof lineProductFromItem>;
+  const d = raw.data as Record<string, unknown> | undefined;
+  if (d?.id != null) {
+    const attrs = (d.attributes as Record<string, unknown>) || {};
+    return { ...attrs, id: d.id, documentId: d.documentId, stock_item: attrs.stock_item ?? raw.stock_item } as any;
+  }
+  return raw as ReturnType<typeof lineProductFromItem>;
+}
+
+async function loadItemPedidosForOrder(strapi: any, orderId: number) {
+  try {
+    const es = await strapi.entityService.findMany('api::item-pedido.item-pedido', {
+      filters: { order: { id: { $eq: orderId } } },
+      fields: ['id', 'quantity'],
+      publicationState: 'preview',
+      populate: {
+        product: {
+          fields: ['id', 'stock_enabled', 'stock_quantity', 'stock_min_alert', 'available', 'name'],
+          populate: { stock_item: { fields: ['id', 'documentId'] } },
+        },
+      },
+      limit: 200,
+    });
+    if (Array.isArray(es) && es.length > 0) return es;
+  } catch (e: any) {
+    strapi?.log?.warn?.(
+      `[deductStockForOrder] findMany item-pedido (preview): ${e?.message || e}; se usa db.query.`,
+    );
+  }
+
+  /** Fallback: líneas en borrador / filtros que no matchean en entity API. */
+  return strapi.db.query('api::item-pedido.item-pedido').findMany({
+    where: { order: orderId },
+    populate: { product: { populate: { stock_item: true } } },
+    limit: 200,
+  });
 }
 
 export async function deductStockForOrder(strapi: any, orderId: number, restauranteId: number) {
@@ -40,22 +90,12 @@ export async function deductStockForOrder(strapi: any, orderId: number, restaura
     return;
   }
 
-  const items = await strapi.entityService.findMany('api::item-pedido.item-pedido', {
-    filters: { order: orderId },
-    fields: ['id', 'quantity'],
-    populate: {
-      product: {
-        fields: ['id', 'stock_enabled', 'stock_quantity', 'stock_min_alert', 'available', 'name'],
-        populate: { stock_item: { fields: ['id'] } },
-      },
-    },
-    limit: 200,
-  });
+  const items = await loadItemPedidosForOrder(strapi, orderId);
 
   const nowIso = new Date().toISOString();
 
   for (const item of items) {
-    const prodPop = item.product as
+    const prodPop = lineProductFromItem(item as { product?: unknown }) as
       | {
           id?: number;
           stock_enabled?: boolean;

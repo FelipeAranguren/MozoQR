@@ -61,7 +61,12 @@ export default {
 
   async afterUpdate(event: any) {
     const result = event?.result;
-    if (!result || result.order_status !== 'paid') return;
+    if (!result?.id) return;
+
+    /** `result` a veces viene sin `order_status`; el payload del update sí lo trae al pasar a paid. */
+    const data = event?.params?.data as { order_status?: string } | undefined;
+    const orderStatus = data?.order_status ?? result.order_status;
+    if (orderStatus !== 'paid') return;
 
     const orderId = result.id;
     if (orderId == null) return;
