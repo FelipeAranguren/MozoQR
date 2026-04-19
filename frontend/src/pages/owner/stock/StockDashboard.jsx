@@ -17,7 +17,6 @@ import {
   Stack,
   Tabs,
   Tab,
-  Switch,
 } from '@mui/material';
 import WarningIcon from '@mui/icons-material/Warning';
 import HistoryIcon from '@mui/icons-material/History';
@@ -25,8 +24,6 @@ import { getRestaurantId } from '../../../api/menu';
 import {
   fetchStockItemsForRestaurant,
   fetchStockMovementsForRestaurant,
-  restEntityId,
-  updateStockItemEstado,
 } from '../../../api/cashAndStock';
 import NuevaCompraDialog from './NuevaCompraDialog';
 
@@ -58,11 +55,6 @@ function unwrapRel(rel) {
   const inner = rel.data ?? rel;
   if (!inner) return null;
   return inner.attributes ? { ...inner.attributes, id: inner.id, documentId: inner.documentId } : inner;
-}
-
-function productName(item) {
-  const p = unwrapRel(item.producto);
-  return p?.name || '—';
 }
 
 function movementItemName(m) {
@@ -123,18 +115,6 @@ export default function StockDashboard() {
     if (tab === 0) loadItems();
     else loadMovements();
   }, [tab, loadItems, loadMovements]);
-
-  const handleEstado = async (row, next) => {
-    try {
-      const id = restEntityId(row);
-      const updated = await updateStockItemEstado(id, { estado: next });
-      setItems((prev) =>
-        prev.map((r) => (restEntityId(r) === id ? { ...r, ...updated, estado: next } : r))
-      );
-    } catch (e) {
-      setError(e?.response?.data?.error?.message || e.message || 'No se pudo actualizar estado');
-    }
-  };
 
   const alertCount = items.filter((it) => {
     const q = Number(it.stock_actual) || 0;
@@ -200,21 +180,17 @@ export default function StockDashboard() {
             <Table>
               <TableHead>
                 <TableRow>
-                  <TableCell>Nombre</TableCell>
-                  <TableCell>SKU</TableCell>
-                  <TableCell align="right">Stock actual</TableCell>
-                  <TableCell align="right">Mínimo</TableCell>
-                  <TableCell>Categoría</TableCell>
-                  <TableCell>Unidad</TableCell>
-                  <TableCell align="right">Precio costo</TableCell>
                   <TableCell>Producto</TableCell>
-                  <TableCell align="center">Estado</TableCell>
+                  <TableCell align="right">Stock actual</TableCell>
+                  <TableCell align="right">Alerta</TableCell>
+                  <TableCell>Unidad</TableCell>
+                  <TableCell align="right">Costo Promedio</TableCell>
                 </TableRow>
               </TableHead>
               <TableBody>
                 {items.length === 0 && (
                   <TableRow>
-                    <TableCell colSpan={9} align="center" sx={{ py: 4 }}>
+                    <TableCell colSpan={5} align="center" sx={{ py: 4 }}>
                       <Typography color="text.secondary">
                         No hay stock-items vinculados a productos de este restaurante.
                       </Typography>
@@ -228,20 +204,10 @@ export default function StockDashboard() {
                   return (
                     <TableRow key={String(it.documentId ?? it.id)} sx={low ? { bgcolor: 'action.hover' } : {}}>
                       <TableCell sx={{ fontWeight: 500 }}>{it.nombre || '—'}</TableCell>
-                      <TableCell>{it.sku || '—'}</TableCell>
                       <TableCell align="right">{it.stock_actual ?? '—'}</TableCell>
                       <TableCell align="right">{it.stock_minimo ?? '—'}</TableCell>
-                      <TableCell>{it.categoria || '—'}</TableCell>
                       <TableCell>{UNIT_LABELS[it.unidad] || it.unidad || '—'}</TableCell>
                       <TableCell align="right">{formatCurrency(it.precio_costo)}</TableCell>
-                      <TableCell>{productName(it)}</TableCell>
-                      <TableCell align="center">
-                        <Switch
-                          checked={it.estado !== false}
-                          onChange={(_, v) => handleEstado(it, v)}
-                          inputProps={{ 'aria-label': `estado-${it.sku || it.id}` }}
-                        />
-                      </TableCell>
                     </TableRow>
                   );
                 })}
