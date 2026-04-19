@@ -117,6 +117,7 @@ export interface OwnerProductoRow {
   documentId?: string;
   name?: string | null;
   sku?: string | null;
+  stock_min_alert?: number | string | null;
 }
 
 /**
@@ -128,6 +129,8 @@ export interface OwnerCompraItemLine {
   stockItemId?: StrapiEntityId | null;
   quantity: number;
   unit_cost: number;
+  /** Umbral de alerta (`stock-item.stock_minimo`). Si se omite, no se cambia el mínimo en ítems ya existentes. */
+  stock_minimo?: number;
 }
 
 export interface OwnerCompraPayload {

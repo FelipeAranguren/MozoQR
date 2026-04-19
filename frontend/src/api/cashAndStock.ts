@@ -220,6 +220,7 @@ export async function fetchProductosForCompra(restaurantId: number | string): Pr
   params.append('pagination[pageSize]', '500');
   params.append('fields[0]', 'name');
   params.append('fields[1]', 'sku');
+  params.append('fields[2]', 'stock_min_alert');
   params.append('sort[0]', 'name:asc');
   const res = await api.get(`/productos?${params.toString()}`, { headers: getAuthHeaders() });
   const raw = (res.data as { data?: unknown })?.data ?? (res.data as unknown);

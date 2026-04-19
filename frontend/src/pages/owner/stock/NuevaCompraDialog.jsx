@@ -32,7 +32,7 @@ const emptyForm = () => ({
   date: new Date().toISOString().slice(0, 10),
   supplier: '',
   notes: '',
-  items: [{ productoId: null, quantity: '', unit_cost: '' }],
+  items: [{ productoId: null, quantity: '', unit_cost: '', stock_minimo: '' }],
 });
 
 function productoLabel(p) {
@@ -54,6 +54,18 @@ function findStockItemForProduct(productoId, stockItems) {
     if (ids.includes(want)) return si;
   }
   return null;
+}
+
+/** Valor inicial del umbral de alerta: stock-item vinculado o `stock_min_alert` del producto. */
+function defaultStockMinimoForLine(productoId, producto, stockItems) {
+  if (productoId == null) return '';
+  const linked = findStockItemForProduct(productoId, stockItems);
+  if (linked != null && linked.stock_minimo != null && linked.stock_minimo !== '') {
+    return String(linked.stock_minimo);
+  }
+  const a = producto?.stock_min_alert;
+  if (a != null && a !== '') return String(a);
+  return '';
 }
 
 /**
@@ -96,7 +108,10 @@ export default function NuevaCompraDialog({ open, onClose, slug, onCreated, apli
   }, [open, slug, loadData]);
 
   const addItem = () =>
-    setForm((f) => ({ ...f, items: [...f.items, { productoId: null, quantity: '', unit_cost: '' }] }));
+    setForm((f) => ({
+      ...f,
+      items: [...f.items, { productoId: null, quantity: '', unit_cost: '', stock_minimo: '' }],
+    }));
   const removeItem = (idx) => setForm((f) => ({ ...f, items: f.items.filter((_, i) => i !== idx) }));
   const updateItem = (idx, field, value) => {
     setForm((f) => {
@@ -135,6 +150,10 @@ export default function NuevaCompraDialog({ open, onClose, slug, onCreated, apli
         };
         if (linked) {
           line.stockItemId = restEntityId(linked);
+        }
+        if (it.stock_minimo !== '' && it.stock_minimo != null) {
+          const m = Number(it.stock_minimo);
+          if (Number.isFinite(m) && m >= 0) line.stock_minimo = m;
         }
         return line;
       });
@@ -223,7 +242,14 @@ export default function NuevaCompraDialog({ open, onClose, slug, onCreated, apli
           Productos
         </Typography>
         {form.items.map((item, idx) => (
-          <Stack key={idx} direction="row" spacing={1} alignItems="center" sx={{ mb: 1 }}>
+          <Stack
+            key={idx}
+            direction="row"
+            spacing={1}
+            alignItems="center"
+            flexWrap="wrap"
+            sx={{ mb: 1, rowGap: 1 }}
+          >
             <Autocomplete
               size="small"
               sx={{ minWidth: 220, flex: 2 }}
@@ -235,7 +261,15 @@ export default function NuevaCompraDialog({ open, onClose, slug, onCreated, apli
                   ? null
                   : productos.find((p) => restEntityId(p) === item.productoId) || null
               }
-              onChange={(_, v) => updateItem(idx, 'productoId', v ? restEntityId(v) : null)}
+              onChange={(_, v) => {
+                const pid = v ? restEntityId(v) : null;
+                const defMin = defaultStockMinimoForLine(pid, v, stockItems);
+                setForm((f) => {
+                  const items = [...f.items];
+                  items[idx] = { ...items[idx], productoId: pid, stock_minimo: defMin };
+                  return { ...f, items };
+                });
+              }}
               renderInput={(params) => <TextField {...params} label="Producto" />}
               isOptionEqualToValue={(o, v) => {
                 if (!o && !v) return true;
@@ -260,6 +294,15 @@ export default function NuevaCompraDialog({ open, onClose, slug, onCreated, apli
               value={item.unit_cost}
               onChange={(e) => updateItem(idx, 'unit_cost', e.target.value)}
               inputProps={{ min: 0, step: 0.01 }}
+            />
+            <TextField
+              label="Alerta (mín.)"
+              size="small"
+              type="number"
+              sx={{ width: 118 }}
+              value={item.stock_minimo}
+              onChange={(e) => updateItem(idx, 'stock_minimo', e.target.value)}
+              inputProps={{ min: 0, step: 0.5 }}
             />
             <Typography variant="body2" sx={{ minWidth: 80, textAlign: 'right', fontWeight: 500 }}>
               {formatCurrency((Number(item.quantity) || 0) * (Number(item.unit_cost) || 0))}

@@ -39,6 +39,31 @@ function getPayload(raw: any) {
   return raw && typeof raw === 'object' && 'data' in raw ? raw.data : raw;
 }
 
+/**
+ * Marca pedidos como pagados con `entityService.update` para disparar lifecycles del pedido
+ * (p. ej. descuento de stock idempotente). `db.query().update` / `updateMany` no ejecutan esos hooks.
+ */
+async function markPedidosPaidWithEntityService(
+  strapi: any,
+  pedidoRows: Array<{ id: number }>,
+  dataExtra?: (row: { id: number; staffNotes?: unknown }) => Record<string, unknown>,
+) {
+  const rows = (pedidoRows || []).filter((p) => p?.id != null);
+  if (rows.length === 0) return;
+  const now = new Date();
+  await Promise.all(
+    rows.map((pedido) =>
+      strapi.entityService.update('api::pedido.pedido', pedido.id, {
+        data: {
+          order_status: 'paid',
+          publishedAt: now,
+          ...(dataExtra ? dataExtra(pedido as { id: number; staffNotes?: unknown }) : {}),
+        },
+      }),
+    ),
+  );
+}
+
 type MesaColumnSupport = {
   activeSessionCode: boolean;
   occupiedAt: boolean;
@@ -1571,26 +1596,27 @@ export default {
       }
 
       // 2) Marcar pedidos pendientes de la mesa como paid para que no reaparezca "Ver cuenta".
-      // Primero por sesiones relacionadas.
+      // entityService por pedido (updateMany no dispara lifecycle → inventario).
       if (sessionIds.length > 0) {
-        await strapi.db.query('api::pedido.pedido').updateMany({
+        const pedidosPorSesion = await strapi.db.query('api::pedido.pedido').findMany({
           where: {
             mesa_sesion: { id: { $in: sessionIds } },
             order_status: { $in: ['pending', 'preparing', 'served'] },
           },
-          data: { order_status: 'paid', publishedAt: new Date() },
+          select: ['id'],
         });
+        await markPedidosPaidWithEntityService(strapi, pedidosPorSesion || []);
       }
 
-      // Fallback por mesaNumber (pedidos viejos o huérfanos de sesión).
-      await strapi.db.query('api::pedido.pedido').updateMany({
+      const pedidosPorMesa = await strapi.db.query('api::pedido.pedido').findMany({
         where: {
           restaurante: restaurante.id,
           mesaNumber: Number(table),
           order_status: { $in: ['pending', 'preparing', 'served'] },
         },
-        data: { order_status: 'paid', publishedAt: new Date() },
+        select: ['id'],
       });
+      await markPedidosPaidWithEntityService(strapi, pedidosPorMesa || []);
 
       ctx.body = { data: { success: true } };
     } catch (err: any) {
@@ -1759,23 +1785,11 @@ export default {
       
       if (pedidos.length > 0) {
         if (closeStaffNote) {
-          await Promise.all(
-            pedidos.map((pedido: any) =>
-              strapi.db.query('api::pedido.pedido').update({
-                where: { id: pedido.id },
-                data: {
-                  order_status: 'paid',
-                  staffNotes: appendTimelineNote(pedido?.staffNotes, 'Cierre de mesa', closeStaffNote),
-                  publishedAt: new Date(),
-                },
-              })
-            )
-          );
+          await markPedidosPaidWithEntityService(strapi, pedidos, (pedido) => ({
+            staffNotes: appendTimelineNote(pedido?.staffNotes, 'Cierre de mesa', closeStaffNote),
+          }));
         } else {
-          await strapi.db.query('api::pedido.pedido').updateMany({
-            where: { id: { $in: pedidos.map((p: any) => p.id) } },
-            data: { order_status: 'paid', publishedAt: new Date() }
-          });
+          await markPedidosPaidWithEntityService(strapi, pedidos);
         }
         console.log('✅ [closeAccount] Pedidos cerrados exitosamente');
       }

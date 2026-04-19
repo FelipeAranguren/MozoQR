@@ -122,11 +122,20 @@ const PRODUCTO_STOCK_UNIT_TO_ITEM: Record<string, 'un' | 'kg' | 'lt' | 'pack'> =
  * Si el producto aún no tiene stock-item (1:1), lo crea y lo publica para que aparezca en GET live.
  * Asocia la línea de compra al ítem para que "Recibir compra" use movimientos de stock-item.
  */
+function lineStockMinimoFromPayload(it: Record<string, unknown>): number | undefined {
+  const v = it.stock_minimo ?? it.stock_min_alert ?? it.stockMinimo;
+  if (v === null || v === undefined || v === '') return undefined;
+  const n = Number(v);
+  if (!Number.isFinite(n) || n < 0) return undefined;
+  return n;
+}
+
 async function ensureStockItemForProducto(
   strapi: any,
   productoPk: number,
   restauranteId: number,
-  unitCost: number
+  unitCost: number,
+  stockMinimoOverride?: number
 ): Promise<number | null> {
   const existing = await strapi.db.query('api::stock-item.stock-item').findOne({
     where: { producto: { id: productoPk } },
@@ -145,7 +154,10 @@ async function ensureStockItemForProducto(
   const sku = `SI-R${restauranteId}-P${prod.id}`;
   const nom = (prod.name && String(prod.name).trim()) || `Producto ${prod.id}`;
   const stockQty = Number(prod.stock_quantity) || 0;
-  const minMo = Number(prod.stock_min_alert) || 0;
+  const minMo =
+    stockMinimoOverride !== undefined && Number.isFinite(stockMinimoOverride) && stockMinimoOverride >= 0
+      ? stockMinimoOverride
+      : Number(prod.stock_min_alert) || 0;
   const costOk = Number.isFinite(unitCost) && unitCost >= 0;
 
   const data: Record<string, unknown> = {
@@ -553,7 +565,13 @@ export default {
     }
 
     try {
-      type ResolvedLine = { productoPk: number; stockItemPk: number | null; qty: number; unitCost: number };
+      type ResolvedLine = {
+        productoPk: number;
+        stockItemPk: number | null;
+        qty: number;
+        unitCost: number;
+        stockMinimo?: number;
+      };
       const resolved: ResolvedLine[] = [];
       let total = 0;
       let line = 0;
@@ -590,7 +608,14 @@ export default {
           return ctx.badRequest(`Cantidad o costo unitario inválidos (línea ${line})`);
         }
         total += qty * unitCost;
-        resolved.push({ productoPk: ids.productoPk, stockItemPk: ids.stockItemPk, qty, unitCost });
+        const stockMinimo = lineStockMinimoFromPayload(row);
+        resolved.push({
+          productoPk: ids.productoPk,
+          stockItemPk: ids.stockItemPk,
+          qty,
+          unitCost,
+          ...(stockMinimo !== undefined ? { stockMinimo } : {}),
+        });
       }
 
       const compraPayload: Record<string, unknown> = {
@@ -650,7 +675,18 @@ export default {
         let stockItemFk: number | null =
           row.stockItemPk != null && Number.isFinite(row.stockItemPk) ? Number(row.stockItemPk) : null;
         if (stockItemFk == null) {
-          stockItemFk = await ensureStockItemForProducto(strapi, row.productoPk, restauranteId, row.unitCost);
+          stockItemFk = await ensureStockItemForProducto(
+            strapi,
+            row.productoPk,
+            restauranteId,
+            row.unitCost,
+            row.stockMinimo
+          );
+        }
+        if (stockItemFk != null && row.stockMinimo !== undefined) {
+          await strapi.entityService.update('api::stock-item.stock-item', stockItemFk, {
+            data: { stock_minimo: row.stockMinimo },
+          });
         }
         const lineTotal = Number((row.qty * row.unitCost).toFixed(2));
         const baseItem: Record<string, unknown> = {
