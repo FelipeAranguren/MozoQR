@@ -1453,6 +1453,14 @@ export default {
       }
     }));
 
+    const rid = Number(restaurante.id);
+    if (Number.isFinite(rid) && pedido?.id) {
+      strapi.log?.info?.(
+        `[createOrder] inventario → safeDeductStockForPaidOrder pedido=${pedido.id} restauranteId=${rid}`,
+      );
+      await safeDeductStockForPaidOrder(strapi, pedido.id, rid);
+    }
+
     ctx.body = { data: { id: pedido.id } };
   },
 

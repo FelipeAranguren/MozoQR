@@ -1,11 +1,13 @@
 /**
- * Descuenta inventario al cobrar un pedido: `producto.stock_quantity` + movimiento-stock legacy,
- * y si existe `stock-item` vinculado, crea `stock-movement` tipo salida (sincroniza `stock_actual`).
+ * Descuenta inventario una vez por pedido: `producto.stock_quantity` + movimiento-stock legacy,
+ * y si existe `stock-item` vinculado, crea `stock-movement` tipo salida (sincroniza `stock_actual` vía lifecycle).
  *
- * Se invoca desde el lifecycle `afterUpdate` del pedido cuando pasa a `order_status: 'paid'`, y de forma
- * redundante desde controladores que actualizan con `entityService` (`pedido.update`, `scoped-orders.updateStatus`,
- * `markPedidosPaidWithEntityService`) para cubrir despliegues donde `getStrapiApp()` en lifecycles no está disponible.
- * Idempotente vía `movimiento-stock` (`reference_type: 'pedido'`). No debe lanzar: usar `safeDeductStockForPaidOrder`.
+ * Flujo recomendado (menú): se llama al **crear** el pedido con sus líneas (`scoped-orders.create`, `tenant.createOrder`)
+ * para que el stock baje al pedir. Sigue invocándose al pasar a `order_status: 'paid'` (lifecycle, pagos, etc.); la
+ * idempotencia vía `movimiento-stock` (`reference_type: 'pedido'`, `reference_id` = id interno del pedido) hace que
+ * el segundo intento no duplique descuentos ni movimientos.
+ *
+ * No debe lanzar: usar `safeDeductStockForPaidOrder` (nombre histórico; aplica también al pedido recién creado).
  */
 
 export async function safeDeductStockForPaidOrder(

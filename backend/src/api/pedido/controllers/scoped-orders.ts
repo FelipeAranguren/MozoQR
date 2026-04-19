@@ -226,6 +226,11 @@ export default {
             });
         }
 
+        strapi.log?.info?.(
+            `[scoped-orders.create] inventario → safeDeductStockForPaidOrder pedido=${created.id} restauranteId=${restauranteId}`,
+        );
+        await safeDeductStockForPaidOrder(strapi, created.id, restauranteId);
+
         const full = await strapi.entityService.findOne('api::pedido.pedido', created.id, {
             populate: {
                 items: { populate: { product: { fields: ['name', 'sku'] } } },

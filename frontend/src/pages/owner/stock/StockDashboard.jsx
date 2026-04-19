@@ -71,49 +71,83 @@ export default function StockDashboard() {
   const [error, setError] = useState('');
   const [compraOpen, setCompraOpen] = useState(false);
 
-  const loadItems = useCallback(async () => {
-    setLoading(true);
-    setError('');
+  const loadItems = useCallback(async (opts) => {
+    const silent = Boolean(opts?.silent);
+    if (!silent) {
+      setLoading(true);
+      setError('');
+    }
     try {
       const rid = await getRestaurantId(slug);
       if (!rid) {
         setItems([]);
-        setError('No se encontró el restaurante.');
+        if (!silent) setError('No se encontró el restaurante.');
         return;
       }
       const data = await fetchStockItemsForRestaurant(rid);
       setItems(data || []);
     } catch (e) {
-      setError(e?.response?.data?.error?.message || e.message || 'Error al cargar stock-items');
-      setItems([]);
+      if (!silent) {
+        setError(e?.response?.data?.error?.message || e.message || 'Error al cargar stock-items');
+        setItems([]);
+      }
     } finally {
-      setLoading(false);
+      if (!silent) setLoading(false);
     }
   }, [slug]);
 
-  const loadMovements = useCallback(async () => {
-    setLoading(true);
-    setError('');
+  const loadMovements = useCallback(async (opts) => {
+    const silent = Boolean(opts?.silent);
+    if (!silent) {
+      setLoading(true);
+      setError('');
+    }
     try {
       const rid = await getRestaurantId(slug);
       if (!rid) {
         setMovements([]);
-        setError('No se encontró el restaurante.');
+        if (!silent) setError('No se encontró el restaurante.');
         return;
       }
       const data = await fetchStockMovementsForRestaurant(rid);
       setMovements(data || []);
     } catch (e) {
-      setError(e?.response?.data?.error?.message || e.message || 'Error al cargar stock-movements');
-      setMovements([]);
+      if (!silent) {
+        setError(e?.response?.data?.error?.message || e.message || 'Error al cargar stock-movements');
+        setMovements([]);
+      }
     } finally {
-      setLoading(false);
+      if (!silent) setLoading(false);
     }
   }, [slug]);
 
   useEffect(() => {
     if (tab === 0) loadItems();
     else loadMovements();
+  }, [tab, loadItems, loadMovements]);
+
+  /** Refresco en background para ver ventas desde el menú sin recargar la página. */
+  useEffect(() => {
+    const tick = () => {
+      if (typeof document !== 'undefined' && document.visibilityState !== 'visible') return;
+      if (tab === 0) loadItems({ silent: true });
+      else loadMovements({ silent: true });
+    };
+    const id = setInterval(tick, 45_000);
+    return () => clearInterval(id);
+  }, [tab, loadItems, loadMovements]);
+
+  useEffect(() => {
+    const onVis = () => {
+      if (typeof document !== 'undefined' && document.visibilityState !== 'visible') return;
+      if (tab === 0) loadItems({ silent: true });
+      else loadMovements({ silent: true });
+    };
+    if (typeof document !== 'undefined') {
+      document.addEventListener('visibilitychange', onVis);
+      return () => document.removeEventListener('visibilitychange', onVis);
+    }
+    return undefined;
   }, [tab, loadItems, loadMovements]);
 
   const alertCount = items.filter((it) => {
