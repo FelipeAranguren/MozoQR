@@ -139,27 +139,51 @@ export default {
       return;
     }
 
-    const knex = strapi.db?.connection;
-    const table = 'stock_items';
-
     try {
       if (tipo === 'entrada') {
-        if (knex?.raw) {
-          await knex(table).where({ id: stockItemId }).update({
-            stock_actual: knex.raw('COALESCE(stock_actual, 0) + ?', [qty]),
-          });
-        } else {
-          const row = await strapi.db.query('api::stock-item.stock-item').findOne({
-            where: { id: stockItemId },
-            select: ['id', 'stock_actual'],
-          });
-          if (!row?.id) return;
-          const next = (Number(row.stock_actual) || 0) + qty;
-          await strapi.db.query('api::stock-item.stock-item').update({
-            where: { id: stockItemId },
-            data: { stock_actual: next },
-          });
+        const row = await strapi.db.query('api::stock-item.stock-item').findOne({
+          where: { id: stockItemId },
+          select: ['id', 'stock_actual', 'precio_costo'],
+        });
+        if (!row?.id) return;
+
+        const stockViejo = Number(row.stock_actual) || 0;
+        const newStock = stockViejo + qty;
+
+        const syncCpp =
+          paramsData?.sincronizar_cpp !== false && result?.sincronizar_cpp !== false;
+
+        const updateData: Record<string, unknown> = { stock_actual: newStock };
+
+        if (syncCpp) {
+          const caRaw = row.precio_costo;
+          const costoViejoParsed =
+            caRaw == null || caRaw === '' ? Number.NaN : Number(String(caRaw));
+          const costoViejo = Number.isFinite(costoViejoParsed) ? Number(costoViejoParsed) : 0;
+
+          const rawPc = result.precio_compra ?? paramsData?.precio_compra;
+          let precioCompra: number;
+          if (rawPc != null && rawPc !== '') {
+            precioCompra = Number(rawPc);
+          } else {
+            precioCompra = costoViejo;
+          }
+
+          if (Number.isFinite(precioCompra)) {
+            let nuevoCpp: number;
+            if (stockViejo <= 0) {
+              nuevoCpp = precioCompra;
+            } else {
+              nuevoCpp = (stockViejo * costoViejo + qty * precioCompra) / (stockViejo + qty);
+            }
+            updateData.precio_costo = Number(Number(nuevoCpp).toFixed(4));
+          }
         }
+
+        await strapi.db.query('api::stock-item.stock-item').update({
+          where: { id: stockItemId },
+          data: updateData,
+        });
       } else {
         const row = await strapi.db.query('api::stock-item.stock-item').findOne({
           where: { id: stockItemId },

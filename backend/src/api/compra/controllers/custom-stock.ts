@@ -321,11 +321,6 @@ async function applyCompraReceiptInventory(
         continue;
       }
 
-      const sa = Number.parseFloat(String(verified.stock_actual ?? '0'));
-      const caRaw = verified.precio_costo;
-      const caParsed =
-        caRaw == null || caRaw === '' ? Number.NaN : Number.parseFloat(String(caRaw));
-      const ca = Number.isFinite(caParsed) ? caParsed : 0;
       const costoCompra = itemCompraUnitCost(item);
       if (costoCompra == null) {
         strapi.log?.warn?.(
@@ -333,37 +328,22 @@ async function applyCompraReceiptInventory(
         );
       }
 
-      // `stock_actual` se actualiza en `stock-movement` `afterCreate` (Query Engine + SQL atómico).
+      // `stock_actual` y `precio_costo` (CPP) se sincronizan en `stock-movement` `afterCreate`.
       const movData: Record<string, unknown> = {
         tipo: 'entrada',
         cantidad: addQty,
         motivo: `Compra #${compra.id} recibida`,
         stock_item: verified.id,
         publishedAt: now,
+        sincronizar_cpp: costoCompra != null,
       };
+      if (costoCompra != null) {
+        movData.precio_compra = costoCompra;
+      }
 
       await strapi.entityService.create('api::stock-movement.stock-movement', {
         data: movData,
       });
-
-      if (costoCompra != null) {
-        let nuevoCosto: number;
-        if (!Number.isFinite(sa) || sa <= 0) {
-          nuevoCosto = costoCompra;
-        } else {
-          const denom = sa + addQty;
-          nuevoCosto = denom > 0 ? (sa * ca + addQty * costoCompra) / denom : costoCompra;
-        }
-        const precioGuardado = Number.parseFloat(nuevoCosto.toFixed(4));
-        try {
-          await strapi.db.query('api::stock-item.stock-item').update({
-            where: { id: verified.id },
-            data: { precio_costo: precioGuardado },
-          });
-        } catch (pe: any) {
-          strapi.log?.warn?.('[applyCompraReceiptInventory] update precio_costo (CPP)', pe?.message || pe);
-        }
-      }
 
       affectedStockItemIds.add(Number(verified.id));
     } else {

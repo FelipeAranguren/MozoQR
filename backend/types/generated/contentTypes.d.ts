@@ -602,8 +602,11 @@ export interface ApiItemCompraItemCompra extends Struct.CollectionTypeSchema {
       Schema.Attribute.Private;
     producto: Schema.Attribute.Relation<'manyToOne', 'api::producto.producto'>;
     publishedAt: Schema.Attribute.DateTime;
-    stock_item: Schema.Attribute.Relation<'manyToOne', 'api::stock-item.stock-item'>;
     quantity: Schema.Attribute.Decimal & Schema.Attribute.Required;
+    stock_item: Schema.Attribute.Relation<
+      'manyToOne',
+      'api::stock-item.stock-item'
+    >;
     total_cost: Schema.Attribute.Decimal & Schema.Attribute.Required;
     unit_cost: Schema.Attribute.Decimal & Schema.Attribute.Required;
     updatedAt: Schema.Attribute.DateTime;
@@ -1056,11 +1059,11 @@ export interface ApiProductoProducto extends Struct.CollectionTypeSchema {
     >;
     sku: Schema.Attribute.String;
     slug: Schema.Attribute.String;
+    stock_enabled: Schema.Attribute.Boolean & Schema.Attribute.DefaultTo<false>;
     stock_item: Schema.Attribute.Relation<
       'oneToOne',
       'api::stock-item.stock-item'
     >;
-    stock_enabled: Schema.Attribute.Boolean & Schema.Attribute.DefaultTo<false>;
     stock_min_alert: Schema.Attribute.Decimal & Schema.Attribute.DefaultTo<0>;
     stock_quantity: Schema.Attribute.Decimal & Schema.Attribute.DefaultTo<0>;
     stock_unit: Schema.Attribute.Enumeration<
@@ -1109,87 +1112,6 @@ export interface ApiRestaurantMemberRestaurantMember
       'manyToOne',
       'plugin::users-permissions.user'
     >;
-  };
-}
-
-export interface ApiStockItemStockItem extends Struct.CollectionTypeSchema {
-  collectionName: 'stock_items';
-  info: {
-    displayName: 'Stock-Item';
-    pluralName: 'stock-items';
-    singularName: 'stock-item';
-  };
-  options: {
-    draftAndPublish: true;
-  };
-  attributes: {
-    categoria: Schema.Attribute.Enumeration<
-      ['Bebidas', 'Comida', 'Insumos']
-    >;
-    createdAt: Schema.Attribute.DateTime;
-    createdBy: Schema.Attribute.Relation<'oneToOne', 'admin::user'> &
-      Schema.Attribute.Private;
-    estado: Schema.Attribute.Boolean & Schema.Attribute.DefaultTo<true>;
-    imagen: Schema.Attribute.Media<'images' | 'files' | 'videos' | 'audios'>;
-    locale: Schema.Attribute.String & Schema.Attribute.Private;
-    localizations: Schema.Attribute.Relation<
-      'oneToMany',
-      'api::stock-item.stock-item'
-    > &
-      Schema.Attribute.Private;
-    nombre: Schema.Attribute.String;
-    precio_costo: Schema.Attribute.Decimal;
-    producto: Schema.Attribute.Relation<
-      'oneToOne',
-      'api::producto.producto'
-    >;
-    publishedAt: Schema.Attribute.DateTime;
-    sku: Schema.Attribute.String & Schema.Attribute.Unique;
-    stock_actual: Schema.Attribute.Decimal;
-    stock_minimo: Schema.Attribute.Decimal;
-    stock_movements: Schema.Attribute.Relation<
-      'oneToMany',
-      'api::stock-movement.stock-movement'
-    >;
-    unidad: Schema.Attribute.Enumeration<['un', 'kg', 'lt', 'pack']>;
-    updatedAt: Schema.Attribute.DateTime;
-    updatedBy: Schema.Attribute.Relation<'oneToOne', 'admin::user'> &
-      Schema.Attribute.Private;
-  };
-}
-
-export interface ApiStockMovementStockMovement
-  extends Struct.CollectionTypeSchema {
-  collectionName: 'stock_movements';
-  info: {
-    displayName: 'Stock-Movement';
-    pluralName: 'stock-movements';
-    singularName: 'stock-movement';
-  };
-  options: {
-    draftAndPublish: true;
-  };
-  attributes: {
-    cantidad: Schema.Attribute.Decimal;
-    createdAt: Schema.Attribute.DateTime;
-    createdBy: Schema.Attribute.Relation<'oneToOne', 'admin::user'> &
-      Schema.Attribute.Private;
-    locale: Schema.Attribute.String & Schema.Attribute.Private;
-    localizations: Schema.Attribute.Relation<
-      'oneToMany',
-      'api::stock-movement.stock-movement'
-    > &
-      Schema.Attribute.Private;
-    motivo: Schema.Attribute.String;
-    publishedAt: Schema.Attribute.DateTime;
-    stock_item: Schema.Attribute.Relation<
-      'manyToOne',
-      'api::stock-item.stock-item'
-    >;
-    tipo: Schema.Attribute.Enumeration<['entrada', 'salida']>;
-    updatedAt: Schema.Attribute.DateTime;
-    updatedBy: Schema.Attribute.Relation<'oneToOne', 'admin::user'> &
-      Schema.Attribute.Private;
   };
 }
 
@@ -1267,6 +1189,85 @@ export interface ApiRestauranteRestaurante extends Struct.CollectionTypeSchema {
       Schema.Attribute.Private;
     weekly_ai_generated_at: Schema.Attribute.DateTime;
     weekly_ai_report_markdown: Schema.Attribute.Text;
+  };
+}
+
+export interface ApiStockItemStockItem extends Struct.CollectionTypeSchema {
+  collectionName: 'stock_items';
+  info: {
+    displayName: 'Stock-Item';
+    pluralName: 'stock-items';
+    singularName: 'stock-item';
+  };
+  options: {
+    draftAndPublish: true;
+  };
+  attributes: {
+    categoria: Schema.Attribute.Enumeration<['Bebidas', 'Comida', 'Insumos']>;
+    createdAt: Schema.Attribute.DateTime;
+    createdBy: Schema.Attribute.Relation<'oneToOne', 'admin::user'> &
+      Schema.Attribute.Private;
+    estado: Schema.Attribute.Boolean & Schema.Attribute.DefaultTo<true>;
+    imagen: Schema.Attribute.Media<'images' | 'files' | 'videos' | 'audios'>;
+    locale: Schema.Attribute.String & Schema.Attribute.Private;
+    localizations: Schema.Attribute.Relation<
+      'oneToMany',
+      'api::stock-item.stock-item'
+    > &
+      Schema.Attribute.Private;
+    nombre: Schema.Attribute.String;
+    precio_costo: Schema.Attribute.Decimal;
+    producto: Schema.Attribute.Relation<'oneToOne', 'api::producto.producto'>;
+    publishedAt: Schema.Attribute.DateTime;
+    sku: Schema.Attribute.String & Schema.Attribute.Unique;
+    stock_actual: Schema.Attribute.Decimal;
+    stock_minimo: Schema.Attribute.Decimal;
+    stock_movements: Schema.Attribute.Relation<
+      'oneToMany',
+      'api::stock-movement.stock-movement'
+    >;
+    unidad: Schema.Attribute.Enumeration<['un', 'kg', 'lt', 'pack']>;
+    updatedAt: Schema.Attribute.DateTime;
+    updatedBy: Schema.Attribute.Relation<'oneToOne', 'admin::user'> &
+      Schema.Attribute.Private;
+  };
+}
+
+export interface ApiStockMovementStockMovement
+  extends Struct.CollectionTypeSchema {
+  collectionName: 'stock_movements';
+  info: {
+    displayName: 'Stock-Movement';
+    pluralName: 'stock-movements';
+    singularName: 'stock-movement';
+  };
+  options: {
+    draftAndPublish: true;
+  };
+  attributes: {
+    cantidad: Schema.Attribute.Decimal;
+    createdAt: Schema.Attribute.DateTime;
+    createdBy: Schema.Attribute.Relation<'oneToOne', 'admin::user'> &
+      Schema.Attribute.Private;
+    locale: Schema.Attribute.String & Schema.Attribute.Private;
+    localizations: Schema.Attribute.Relation<
+      'oneToMany',
+      'api::stock-movement.stock-movement'
+    > &
+      Schema.Attribute.Private;
+    motivo: Schema.Attribute.String;
+    precio_compra: Schema.Attribute.Decimal;
+    publishedAt: Schema.Attribute.DateTime;
+    sincronizar_cpp: Schema.Attribute.Boolean &
+      Schema.Attribute.DefaultTo<true>;
+    stock_item: Schema.Attribute.Relation<
+      'manyToOne',
+      'api::stock-item.stock-item'
+    >;
+    tipo: Schema.Attribute.Enumeration<['entrada', 'salida']>;
+    updatedAt: Schema.Attribute.DateTime;
+    updatedBy: Schema.Attribute.Relation<'oneToOne', 'admin::user'> &
+      Schema.Attribute.Private;
   };
 }
 

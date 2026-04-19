@@ -21,6 +21,13 @@
     "cantidad": {
       "type": "decimal"
     },
+    "precio_compra": {
+      "type": "decimal"
+    },
+    "sincronizar_cpp": {
+      "type": "boolean",
+      "default": true
+    },
     "motivo": {
       "type": "string"
     },

@@ -17,6 +17,19 @@ export async function safeDeductStockForPaidOrder(strapi: any, orderId: number, 
   }
 }
 
+function parseStockItemIdFromPopulate(prodPop: {
+  stock_item?: { id?: number } | { data?: { id?: number } } | null;
+}): number | null {
+  const si = prodPop.stock_item as Record<string, unknown> | null | undefined;
+  if (si && typeof si === 'object') {
+    if ('id' in si && si.id != null) return Number(si.id) || null;
+    if ('data' in si && si.data && typeof si.data === 'object' && 'id' in (si.data as object)) {
+      return Number((si.data as { id?: number }).id) || null;
+    }
+  }
+  return null;
+}
+
 export async function deductStockForOrder(strapi: any, orderId: number, restauranteId: number) {
   const existing = await strapi.entityService.findMany('api::movimiento-stock.movimiento-stock', {
     filters: { reference_type: 'pedido', reference_id: orderId },
@@ -66,27 +79,63 @@ export async function deductStockForOrder(strapi: any, orderId: number, restaura
       );
       continue;
     }
-    if (dbProd.stock_quantity == null) continue;
 
     const qty = Number(item.quantity) || 0;
     if (qty <= 0) continue;
 
-    const previousStock = Number.parseFloat(String(dbProd.stock_quantity));
-    if (!Number.isFinite(previousStock)) continue;
+    let stockItemId: number | null = parseStockItemIdFromPopulate(prodPop);
+    if (stockItemId == null) {
+      const row = await strapi.db.query('api::stock-item.stock-item').findOne({
+        where: { producto: { id: dbProd.id } },
+        select: ['id'],
+      });
+      stockItemId = row?.id != null ? Number(row.id) : null;
+    }
 
-    const newStock = Math.max(0, previousStock - qty);
+    const useProductQty = dbProd.stock_quantity != null;
 
-    const updateData: Record<string, unknown> = { stock_quantity: newStock };
-    if (newStock <= 0) updateData.available = false;
+    if (!useProductQty && (stockItemId == null || stockItemId <= 0)) {
+      strapi?.log?.warn?.(
+        `[deductStockForOrder] producto ${dbProd.id} sin stock_quantity ni stock_item; no hay inventario que descontar.`,
+      );
+      continue;
+    }
 
-    await strapi.entityService.update('api::producto.producto', dbProd.id, { data: updateData });
+    let previousForMov: number;
+    let newForMov: number;
+
+    if (useProductQty) {
+      const previousStock = Number.parseFloat(String(dbProd.stock_quantity));
+      if (!Number.isFinite(previousStock)) continue;
+      newForMov = Math.max(0, previousStock - qty);
+      previousForMov = previousStock;
+
+      const updateData: Record<string, unknown> = { stock_quantity: newForMov };
+      if (newForMov <= 0) updateData.available = false;
+
+      await strapi.entityService.update('api::producto.producto', dbProd.id, { data: updateData });
+    } else {
+      const siRow = await strapi.db.query('api::stock-item.stock-item').findOne({
+        where: { id: stockItemId, producto: { id: dbProd.id } },
+        select: ['id', 'stock_actual'],
+      });
+      if (!siRow?.id) {
+        strapi?.log?.warn?.(
+          `[deductStockForOrder] stock_item ${stockItemId} no coincide con producto ${dbProd.id}; se omite línea.`,
+        );
+        continue;
+      }
+      previousForMov = Number.parseFloat(String(siRow.stock_actual ?? '0'));
+      if (!Number.isFinite(previousForMov)) continue;
+      newForMov = Math.max(0, previousForMov - qty);
+    }
 
     await strapi.entityService.create('api::movimiento-stock.movimiento-stock', {
       data: {
         type: 'venta',
         quantity: -qty,
-        previous_stock: previousStock,
-        new_stock: newStock,
+        previous_stock: previousForMov,
+        new_stock: newForMov,
         reference_type: 'pedido',
         reference_id: orderId,
         notes: `Pedido #${orderId}`,
@@ -96,26 +145,10 @@ export async function deductStockForOrder(strapi: any, orderId: number, restaura
       },
     });
 
-    let stockItemId: number | null = null;
-    const si = prodPop.stock_item as Record<string, unknown> | null | undefined;
-    if (si && typeof si === 'object') {
-      if ('id' in si && si.id != null) stockItemId = Number(si.id) || null;
-      else if ('data' in si && si.data && typeof si.data === 'object' && 'id' in (si.data as object)) {
-        stockItemId = Number((si.data as { id?: number }).id) || null;
-      }
-    }
-    if (stockItemId == null) {
-      const row = await strapi.db.query('api::stock-item.stock-item').findOne({
-        where: { producto: { id: dbProd.id } },
-        select: ['id'],
-      });
-      stockItemId = row?.id != null ? Number(row.id) : null;
-    }
-
     if (stockItemId != null && stockItemId > 0) {
       const siRow = await strapi.db.query('api::stock-item.stock-item').findOne({
         where: { id: stockItemId, producto: { id: dbProd.id } },
-        select: ['id'],
+        select: ['id', 'stock_actual'],
       });
       if (!siRow?.id) {
         strapi?.log?.warn?.(
@@ -123,6 +156,11 @@ export async function deductStockForOrder(strapi: any, orderId: number, restaura
         );
         continue;
       }
+
+      const stockActualBefore = Number.parseFloat(String(siRow.stock_actual ?? '0'));
+      strapi?.log?.info?.(
+        `[deductStockForOrder] orderId=${orderId} productId=${dbProd.id} qty=${qty} stockItemId=${stockItemId} stock_actual_before=${stockActualBefore}`,
+      );
 
       await strapi.entityService.create('api::stock-movement.stock-movement', {
         data: {
@@ -133,6 +171,15 @@ export async function deductStockForOrder(strapi: any, orderId: number, restaura
           publishedAt: nowIso,
         },
       });
+
+      const siAfter = await strapi.db.query('api::stock-item.stock-item').findOne({
+        where: { id: stockItemId },
+        select: ['stock_actual'],
+      });
+      const stockActualAfter = Number.parseFloat(String(siAfter?.stock_actual ?? 'NaN'));
+      strapi?.log?.info?.(
+        `[deductStockForOrder] orderId=${orderId} productId=${dbProd.id} qty=${qty} stockItemId=${stockItemId} stock_actual_after=${Number.isFinite(stockActualAfter) ? stockActualAfter : 'n/a'}`,
+      );
     }
   }
 }
