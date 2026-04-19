@@ -240,9 +240,7 @@ export default function CajaDashboard() {
           <Typography color="text.secondary" sx={{ mb: 2 }}>
             No hay sesión de caja abierta.
           </Typography>
-          <Typography variant="body2" color="text.secondary">
-            Abrí una caja para registrar ingresos y egresos (Strapi: <code>cash-sessions</code> / <code>cash-movements</code>).
-          </Typography>
+          
         </Paper>
       )}
 
@@ -380,10 +378,10 @@ export default function CajaDashboard() {
         <DialogTitle>Cerrar caja</DialogTitle>
         <DialogContent>
           <Alert severity="warning" sx={{ mb: 2 }}>
-            Se guardará el cierre con balance {formatCurrency(balance)} como <code>monto_final</code>.
+            Se guardará el cierre con balance {formatCurrency(balance)} como monto final.
           </Alert>
           <TextField
-            label="Notas (solo uso local; no se envían a Strapi en este flujo)"
+            label="Notas"
             fullWidth
             margin="normal"
             multiline
