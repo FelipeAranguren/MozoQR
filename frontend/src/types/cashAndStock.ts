@@ -80,6 +80,8 @@ export interface StockMovement {
   tipo?: StockMovementTipo | null;
   cantidad?: number | string | null;
   motivo?: string | null;
+  /** Notas del formulario de compra (copiadas al registrar la entrada). */
+  notas?: string | null;
   stock_item?: StockItem | StrapiRelationOne<StockItem> | StrapiEntityId | null;
   createdAt?: string;
   updatedAt?: string;

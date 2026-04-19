@@ -31,6 +31,9 @@
     "motivo": {
       "type": "string"
     },
+    "notas": {
+      "type": "text"
+    },
     "stock_item": {
       "type": "relation",
       "relation": "manyToOne",

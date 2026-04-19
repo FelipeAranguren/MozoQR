@@ -286,6 +286,14 @@ function itemCompraUnitCost(item: any): number | null {
   return Number.isFinite(n) && n >= 0 ? n : null;
 }
 
+/** Notas del popup de compra (`compra.notes` en Strapi) para copiar al movimiento de stock. */
+function compraNotesForStockMovement(compra: any): string | undefined {
+  const n = compra?.notes ?? compra?.attributes?.notes;
+  if (n == null) return undefined;
+  const s = String(n).trim();
+  return s.length ? s : undefined;
+}
+
 async function applyCompraReceiptInventory(
   strapi: any,
   compra: any,
@@ -353,6 +361,10 @@ async function applyCompraReceiptInventory(
         publishedAt: now,
         sincronizar_cpp: costoCompra != null,
       };
+      const notasCompra = compraNotesForStockMovement(compra);
+      if (notasCompra) {
+        movData.notas = notasCompra;
+      }
       if (costoCompra != null) {
         movData.precio_compra = costoCompra;
       }

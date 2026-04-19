@@ -466,7 +466,7 @@ export default function CashAndStockPanel() {
                       <TableCell>Ítem</TableCell>
                       <TableCell>Tipo</TableCell>
                       <TableCell align="right">Cantidad</TableCell>
-                      <TableCell>Motivo</TableCell>
+                      <TableCell>Notas</TableCell>
                     </TableRow>
                   </TableHead>
                   <TableBody>
@@ -494,7 +494,7 @@ export default function CashAndStockPanel() {
                             <TableCell>{itemFlat?.nombre || '—'}</TableCell>
                             <TableCell>{m.tipo}</TableCell>
                             <TableCell align="right">{m.cantidad ?? '—'}</TableCell>
-                            <TableCell>{m.motivo || '—'}</TableCell>
+                            <TableCell>{m.notas?.trim() ? m.notas : '—'}</TableCell>
                           </TableRow>
                         );
                       })

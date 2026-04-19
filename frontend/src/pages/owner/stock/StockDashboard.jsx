@@ -211,14 +211,30 @@ export default function StockDashboard() {
       ) : tab === 0 ? (
         <Paper>
           <TableContainer>
-            <Table>
+            <Table
+              sx={{
+                tableLayout: 'fixed',
+                width: '100%',
+                '& .MuiTableCell-root': { verticalAlign: 'middle' },
+              }}
+            >
               <TableHead>
                 <TableRow>
-                  <TableCell>Producto</TableCell>
-                  <TableCell align="right">Stock actual</TableCell>
-                  <TableCell align="right">Alerta</TableCell>
-                  <TableCell>Unidad</TableCell>
-                  <TableCell align="right">Costo Promedio</TableCell>
+                  <TableCell align="center" sx={{ width: '20%', fontWeight: 600 }}>
+                    Producto
+                  </TableCell>
+                  <TableCell align="center" sx={{ width: '20%', fontWeight: 600 }}>
+                    Stock actual
+                  </TableCell>
+                  <TableCell align="center" sx={{ width: '20%', fontWeight: 600 }}>
+                    Alerta
+                  </TableCell>
+                  <TableCell align="center" sx={{ width: '20%', fontWeight: 600 }}>
+                    Unidad
+                  </TableCell>
+                  <TableCell align="center" sx={{ width: '20%', fontWeight: 600 }}>
+                    Costo Promedio
+                  </TableCell>
                 </TableRow>
               </TableHead>
               <TableBody>
@@ -238,10 +254,10 @@ export default function StockDashboard() {
                   return (
                     <TableRow key={String(it.documentId ?? it.id)} sx={low ? { bgcolor: 'action.hover' } : {}}>
                       <TableCell sx={{ fontWeight: 500 }}>{it.nombre || '—'}</TableCell>
-                      <TableCell align="right">{it.stock_actual ?? '—'}</TableCell>
-                      <TableCell align="right">{it.stock_minimo ?? '—'}</TableCell>
-                      <TableCell>{UNIT_LABELS[it.unidad] || it.unidad || '—'}</TableCell>
-                      <TableCell align="right">{formatCurrency(it.precio_costo)}</TableCell>
+                      <TableCell align="center">{it.stock_actual ?? '—'}</TableCell>
+                      <TableCell align="center">{it.stock_minimo ?? '—'}</TableCell>
+                      <TableCell align="center">{UNIT_LABELS[it.unidad] || it.unidad || '—'}</TableCell>
+                      <TableCell align="center">{formatCurrency(it.precio_costo)}</TableCell>
                     </TableRow>
                   );
                 })}
@@ -259,7 +275,7 @@ export default function StockDashboard() {
                   <TableCell>Ítem</TableCell>
                   <TableCell>Tipo</TableCell>
                   <TableCell align="right">Cantidad</TableCell>
-                  <TableCell>Motivo</TableCell>
+                  <TableCell>Notas</TableCell>
                 </TableRow>
               </TableHead>
               <TableBody>
@@ -278,7 +294,7 @@ export default function StockDashboard() {
                       <Chip label={m.tipo || '—'} size="small" sx={{ textTransform: 'capitalize' }} />
                     </TableCell>
                     <TableCell align="right">{m.cantidad ?? '—'}</TableCell>
-                    <TableCell>{m.motivo || '—'}</TableCell>
+                    <TableCell>{m.notas?.trim() ? m.notas : '—'}</TableCell>
                   </TableRow>
                 ))}
               </TableBody>

@@ -1256,6 +1256,7 @@ export interface ApiStockMovementStockMovement
     > &
       Schema.Attribute.Private;
     motivo: Schema.Attribute.String;
+    notas: Schema.Attribute.Text;
     precio_compra: Schema.Attribute.Decimal;
     publishedAt: Schema.Attribute.DateTime;
     sincronizar_cpp: Schema.Attribute.Boolean &
