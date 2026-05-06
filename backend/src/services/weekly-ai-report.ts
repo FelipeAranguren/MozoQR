@@ -7,7 +7,8 @@ const MAX_ORDERS_SCAN = 12_000;
 const BATCH = 400;
 const WEEK_MS = 7 * 24 * 60 * 60 * 1000;
 
-const GEMINI_MODELS = ['gemini-2.0-flash', 'gemini-1.5-flash', 'gemini-1.5-flash-latest'];
+/** Orden: modelos actuales primero; evitar alias `-latest` obsoletos (p. ej. gemini-1.5-flash-latest → 404 en v1beta). */
+const GEMINI_MODELS = ['gemini-2.5-flash', 'gemini-2.0-flash', 'gemini-1.5-flash'];
 
 type ProductAgg = { qty: number; revenue: number };
 
