@@ -7,8 +7,19 @@ const MAX_ORDERS_SCAN = 12_000;
 const BATCH = 400;
 const WEEK_MS = 7 * 24 * 60 * 60 * 1000;
 
-/** Orden: modelos actuales primero; evitar alias `-latest` obsoletos (p. ej. gemini-1.5-flash-latest → 404 en v1beta). */
-const GEMINI_MODELS = ['gemini-2.5-flash', 'gemini-2.0-flash', 'gemini-1.5-flash'];
+/**
+ * REST estable usa v1 (ver https://ai.google.dev/gemini-api/docs/api-versions ).
+ * v1beta puede devolver 404 para los mismos IDs según despliegue de Google.
+ */
+const GEMINI_API_VERSIONS = ['v1', 'v1beta'] as const;
+
+/** Modelos soportados en AI Studio; 1.5 genérico suele estar retirado del listado público. */
+const GEMINI_MODELS = [
+  'gemini-2.5-flash',
+  'gemini-2.5-flash-lite',
+  'gemini-3-flash-preview',
+  'gemini-2.0-flash',
+];
 
 type ProductAgg = { qty: number; revenue: number };
 
@@ -187,23 +198,36 @@ export async function buildOrderHistorySummary(
 }
 
 async function callGeminiOnce(apiKey: string, model: string, prompt: string): Promise<string> {
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${encodeURIComponent(apiKey)}`;
-  const res = await fetch(url, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      contents: [{ role: 'user', parts: [{ text: prompt }] }],
-      generationConfig: {
-        temperature: 0.65,
-        maxOutputTokens: 8192,
-      },
-    }),
-  });
+  let lastHttpErr: Error | null = null;
+  for (const ver of GEMINI_API_VERSIONS) {
+    const url = `https://generativelanguage.googleapis.com/${ver}/models/${encodeURIComponent(model)}:generateContent?key=${encodeURIComponent(apiKey)}`;
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        contents: [{ role: 'user', parts: [{ text: prompt }] }],
+        generationConfig: {
+          temperature: 0.65,
+          maxOutputTokens: 8192,
+        },
+      }),
+    });
 
-  const raw = await res.text();
-  if (!res.ok) {
-    throw new Error(`Gemini HTTP ${res.status}: ${raw.slice(0, 500)}`);
+    const raw = await res.text();
+    if (res.ok) {
+      return parseGeminiGenerateContentJson(raw);
+    }
+    lastHttpErr = new Error(`Gemini HTTP ${res.status} (${ver}/${model}): ${raw.slice(0, 500)}`);
+    const isNotFound =
+      res.status === 404 && /not found|NOT_FOUND/i.test(raw);
+    if (!isNotFound) {
+      throw lastHttpErr;
+    }
   }
+  throw lastHttpErr || new Error('Gemini: sin respuesta');
+}
+
+function parseGeminiGenerateContentJson(raw: string): string {
   let data: any;
   try {
     data = JSON.parse(raw);
