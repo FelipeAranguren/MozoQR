@@ -24,6 +24,7 @@ import { useExchangeRate } from '../hooks/useExchangeRate';
 import { formatArs } from '../api/exchangeRate';
 import { PLAN_BASE_USD } from '../constants/planPricing';
 import { createSubscriptionPreference } from '../api/payments';
+import { openMercadoPagoCheckout } from '../utils/openMercadoPagoCheckout';
 import MercadoPagoMark from '../components/MercadoPagoMark';
 
 function MercadoPagoLogo() {
@@ -75,7 +76,7 @@ export default function Checkout() {
       const result = await createSubscriptionPreference({ plan: selectedPlan });
       const url = result?.init_point;
       if (url) {
-        window.location.href = url;
+        openMercadoPagoCheckout({ initPoint: url, preferenceId: result?.preference_id });
         return;
       }
       setSubmitError('No se recibió el link de pago. Intentá de nuevo.');

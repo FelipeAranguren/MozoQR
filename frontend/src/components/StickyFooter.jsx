@@ -19,6 +19,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { useCart } from '../context/CartContext';
 import { createOrder, closeAccount, hasOpenAccount, fetchOrderDetails } from '../api/tenant';
 import { createMobbexCheckout, createMpPreference, createModoCheckout } from '../api/payments';
+import { openMercadoPagoCheckout } from '../utils/openMercadoPagoCheckout';
 import { saveLastReceiptToStorage } from '../utils/receipt';
 import { customerOrderListStatusLabel } from '../utils/orderStatusEs';
 import { useNetworkStatus } from '../hooks/useNetworkStatus';
@@ -914,7 +915,7 @@ export default function StickyFooter({
         throw new Error('No se recibió el enlace de pago de Mercado Pago.');
       }
 
-      window.location.href = url;
+      openMercadoPagoCheckout({ initPoint: url, preferenceId: data?.preference_id });
       // No setPayLoading(false): la página redirige; el estado se mantiene hasta el cambio de ventana
     } catch (err) {
       console.error(err);

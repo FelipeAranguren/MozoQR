@@ -2,6 +2,7 @@
 import React, { useState } from "react";
 import { Box, Button, CircularProgress } from "@mui/material";
 import { createMpPreference } from "../api/payments";
+import { openMercadoPagoCheckout } from "../utils/openMercadoPagoCheckout";
 import { useNetworkStatus } from "../hooks/useNetworkStatus";
 
 /**
@@ -89,7 +90,7 @@ export default function PayWithMercadoPago({
         alert("No se recibió el enlace de pago. Intentá de nuevo.");
         return;
       }
-      window.location.href = url; // redirige a Checkout Pro; no setLoading(false), la ventana cambia
+      openMercadoPagoCheckout({ initPoint: url, preferenceId: data.preference_id }); // app móvil primero si aplica
     } catch (err) {
       const msg =
         (err && typeof err.message === "string" && err.message) ||
