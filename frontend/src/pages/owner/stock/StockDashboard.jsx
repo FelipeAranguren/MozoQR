@@ -220,19 +220,22 @@ export default function StockDashboard() {
             >
               <TableHead>
                 <TableRow>
-                  <TableCell align="center" sx={{ width: '20%', fontWeight: 600 }}>
+                  <TableCell align="center" sx={{ width: '18%', fontWeight: 600 }}>
                     Producto
                   </TableCell>
-                  <TableCell align="center" sx={{ width: '20%', fontWeight: 600 }}>
+                  <TableCell align="center" sx={{ width: '14%', fontWeight: 600 }}>
+                    SKU
+                  </TableCell>
+                  <TableCell align="center" sx={{ width: '17%', fontWeight: 600 }}>
                     Stock actual
                   </TableCell>
-                  <TableCell align="center" sx={{ width: '20%', fontWeight: 600 }}>
+                  <TableCell align="center" sx={{ width: '17%', fontWeight: 600 }}>
                     Alerta
                   </TableCell>
-                  <TableCell align="center" sx={{ width: '20%', fontWeight: 600 }}>
+                  <TableCell align="center" sx={{ width: '17%', fontWeight: 600 }}>
                     Unidad
                   </TableCell>
-                  <TableCell align="center" sx={{ width: '20%', fontWeight: 600 }}>
+                  <TableCell align="center" sx={{ width: '17%', fontWeight: 600 }}>
                     Costo Promedio
                   </TableCell>
                 </TableRow>
@@ -240,7 +243,7 @@ export default function StockDashboard() {
               <TableBody>
                 {items.length === 0 && (
                   <TableRow>
-                    <TableCell colSpan={5} align="center" sx={{ py: 4 }}>
+                    <TableCell colSpan={6} align="center" sx={{ py: 4 }}>
                       <Typography color="text.secondary">
                         No hay stock-items vinculados a productos de este restaurante.
                       </Typography>
@@ -251,9 +254,14 @@ export default function StockDashboard() {
                   const q = Number(it.stock_actual) || 0;
                   const min = Number(it.stock_minimo) || 0;
                   const low = q <= min;
+                  const prod = unwrapRel(it.producto);
+                  const sku = it.sku || prod?.sku || null;
                   return (
                     <TableRow key={String(it.documentId ?? it.id)} sx={low ? { bgcolor: 'action.hover' } : {}}>
                       <TableCell sx={{ fontWeight: 500 }}>{it.nombre || '—'}</TableCell>
+                      <TableCell align="center" sx={{ fontFamily: 'monospace', fontSize: '0.8125rem' }}>
+                        {sku || '—'}
+                      </TableCell>
                       <TableCell align="center">{it.stock_actual ?? '—'}</TableCell>
                       <TableCell align="center">{it.stock_minimo ?? '—'}</TableCell>
                       <TableCell align="center">{UNIT_LABELS[it.unidad] || it.unidad || '—'}</TableCell>
