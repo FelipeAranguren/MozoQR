@@ -3,6 +3,7 @@
  */
 
 import { safeDeductStockForPaidOrder } from '../services/deduct-stock-for-order';
+import { notifyNewOrder, type PrintOrderItem } from '../../../lib/print-server';
 
 declare const strapi: any;
 
@@ -239,6 +240,31 @@ export default {
         });
 
         ctx.body = { data: full };
+
+        // Notificar al programa de impresión (best-effort, no bloquea la respuesta)
+        try {
+            const slug = ctx.params?.slug as string | undefined;
+            if (slug && full) {
+                notifyNewOrder(slug, {
+                    orderId: full.id,
+                    restaurantSlug: slug,
+                    mesaNumber: full.mesaNumber ?? null,
+                    customerNotes: full.customerNotes ?? null,
+                    total: Number(full.total) || 0,
+                    createdAt: full.createdAt || new Date().toISOString(),
+                    items: (full.items ?? []).map((it: any): PrintOrderItem => ({
+                        name: it.product?.name ?? 'Producto',
+                        sku: it.product?.sku ?? null,
+                        quantity: it.quantity ?? 0,
+                        unitPrice: Number(it.UnitPrice) || 0,
+                        totalPrice: Number(it.totalPrice) || 0,
+                        notes: it.notes ?? null,
+                    })),
+                });
+            }
+        } catch (err: any) {
+            strapi.log?.warn?.('[scoped-orders.create] Error notificando impresora: ' + (err?.message || err));
+        }
     },
 
     /**

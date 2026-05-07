@@ -128,5 +128,18 @@ export default {
         .catch((e) => strapi?.log?.warn?.('[cron] close-empty-sessions error:', e?.message || e));
     }, CLEANUP_INTERVAL_MS);
     strapi?.log?.info?.(`[bootstrap] ✅ Cron close-empty-sessions programado cada ${CLEANUP_INTERVAL_MS / 1000}s`);
+
+    // WebSocket de impresión térmica
+    try {
+      const httpServer = (strapi as any).server?.httpServer;
+      if (httpServer) {
+        const { initPrintServer } = await import('./lib/print-server');
+        initPrintServer(httpServer);
+      } else {
+        strapi?.log?.warn?.('[bootstrap] httpServer no disponible — WebSocket de impresión no iniciado');
+      }
+    } catch (err: any) {
+      strapi?.log?.warn?.('[bootstrap] No se pudo iniciar WebSocket de impresión: ' + (err?.message || err));
+    }
   },
 };
