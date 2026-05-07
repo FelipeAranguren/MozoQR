@@ -24,7 +24,8 @@ import { useExchangeRate } from '../hooks/useExchangeRate';
 import { formatArs } from '../api/exchangeRate';
 import { PLAN_BASE_USD } from '../constants/planPricing';
 import { createSubscriptionPreference } from '../api/payments';
-import { openMercadoPagoCheckout } from '../utils/openMercadoPagoCheckout';
+import { shouldOfferMercadoPagoApp, openMercadoPagoInWebBrowser } from '../utils/openMercadoPagoCheckout';
+import MercadoPagoLaunchDialog from '../components/MercadoPagoLaunchDialog';
 import MercadoPagoMark from '../components/MercadoPagoMark';
 
 function MercadoPagoLogo() {
@@ -61,6 +62,7 @@ export default function Checkout() {
   const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
   const [submitting, setSubmitting] = React.useState(false);
   const [submitError, setSubmitError] = React.useState(null);
+  const [mpLaunch, setMpLaunch] = React.useState(null);
 
   const planOption = PLAN_OPTIONS.find((p) => p.key === selectedPlan) || PLAN_OPTIONS[0];
   const totalArs = planOption.priceUsd * rate;
@@ -76,7 +78,11 @@ export default function Checkout() {
       const result = await createSubscriptionPreference({ plan: selectedPlan });
       const url = result?.init_point;
       if (url) {
-        openMercadoPagoCheckout({ initPoint: url, preferenceId: result?.preference_id });
+        if (shouldOfferMercadoPagoApp()) {
+          setMpLaunch({ initPoint: url, preferenceId: result?.preference_id });
+        } else {
+          openMercadoPagoInWebBrowser(url);
+        }
         return;
       }
       setSubmitError('No se recibió el link de pago. Intentá de nuevo.');
@@ -96,6 +102,12 @@ export default function Checkout() {
         px: 1,
       }}
     >
+      <MercadoPagoLaunchDialog
+        open={Boolean(mpLaunch)}
+        onClose={() => setMpLaunch(null)}
+        initPoint={mpLaunch?.initPoint}
+        preferenceId={mpLaunch?.preferenceId}
+      />
       <Container maxWidth="md">
         {/* Header */}
         <Box

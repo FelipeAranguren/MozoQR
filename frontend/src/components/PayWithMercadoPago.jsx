@@ -2,7 +2,8 @@
 import React, { useState } from "react";
 import { Box, Button, CircularProgress } from "@mui/material";
 import { createMpPreference } from "../api/payments";
-import { openMercadoPagoCheckout } from "../utils/openMercadoPagoCheckout";
+import { shouldOfferMercadoPagoApp, openMercadoPagoInWebBrowser } from "../utils/openMercadoPagoCheckout";
+import MercadoPagoLaunchDialog from "./MercadoPagoLaunchDialog";
 import { useNetworkStatus } from "../hooks/useNetworkStatus";
 
 /**
@@ -33,6 +34,7 @@ export default function PayWithMercadoPago({
   disabled = false,
 }) {
   const [loading, setLoading] = useState(false);
+  const [mpLaunch, setMpLaunch] = useState(null);
   const [errorMsg, setErrorMsg] = useState(null);
   const online = useNetworkStatus();
 
@@ -90,7 +92,12 @@ export default function PayWithMercadoPago({
         alert("No se recibió el enlace de pago. Intentá de nuevo.");
         return;
       }
-      openMercadoPagoCheckout({ initPoint: url, preferenceId: data.preference_id }); // app móvil primero si aplica
+      if (shouldOfferMercadoPagoApp()) {
+        setLoading(false);
+        setMpLaunch({ initPoint: url, preferenceId: data.preference_id });
+      } else {
+        openMercadoPagoInWebBrowser(url);
+      }
     } catch (err) {
       const msg =
         (err && typeof err.message === "string" && err.message) ||
@@ -104,6 +111,12 @@ export default function PayWithMercadoPago({
 
   return (
     <>
+      <MercadoPagoLaunchDialog
+        open={Boolean(mpLaunch)}
+        onClose={() => setMpLaunch(null)}
+        initPoint={mpLaunch?.initPoint}
+        preferenceId={mpLaunch?.preferenceId}
+      />
       {errorMsg && (
         <Box
           sx={{

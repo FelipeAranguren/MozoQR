@@ -19,7 +19,8 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { useCart } from '../context/CartContext';
 import { createOrder, closeAccount, hasOpenAccount, fetchOrderDetails } from '../api/tenant';
 import { createMobbexCheckout, createMpPreference, createModoCheckout } from '../api/payments';
-import { openMercadoPagoCheckout } from '../utils/openMercadoPagoCheckout';
+import { shouldOfferMercadoPagoApp, openMercadoPagoInWebBrowser } from '../utils/openMercadoPagoCheckout';
+import MercadoPagoLaunchDialog from './MercadoPagoLaunchDialog';
 import { saveLastReceiptToStorage } from '../utils/receipt';
 import { customerOrderListStatusLabel } from '../utils/orderStatusEs';
 import { useNetworkStatus } from '../hooks/useNetworkStatus';
@@ -284,6 +285,8 @@ export default function StickyFooter({
   const [payOpen, setPayOpen] = useState(false);
   const [payMethod, setPayMethod] = useState(null); // 'card' | 'cash' — ningún método seleccionado por defecto
   const [payLoading, setPayLoading] = useState(false);
+  /** Tras crear preferencia MP en móvil: mostrar diálogo app vs navegador */
+  const [mpLaunch, setMpLaunch] = useState(null);
   const [modoPayLoading, setModoPayLoading] = useState(false);
   const [payRequestSent, setPayRequestSent] = useState(false); // Prevenir múltiples solicitudes
   const [card, setCard] = useState({ number: '', expiry: '', cvv: '', name: '' });
@@ -915,8 +918,13 @@ export default function StickyFooter({
         throw new Error('No se recibió el enlace de pago de Mercado Pago.');
       }
 
-      openMercadoPagoCheckout({ initPoint: url, preferenceId: data?.preference_id });
-      // No setPayLoading(false): la página redirige; el estado se mantiene hasta el cambio de ventana
+      if (shouldOfferMercadoPagoApp()) {
+        setPayLoading(false);
+        setMpLaunch({ initPoint: url, preferenceId: data?.preference_id });
+      } else {
+        openMercadoPagoInWebBrowser(url);
+      }
+      // En escritorio la página redirige; en móvil queda el diálogo
     } catch (err) {
       console.error(err);
       const msg =
@@ -1766,6 +1774,13 @@ export default function StickyFooter({
           {snack.msg}
         </Alert>
       </Snackbar>
+
+      <MercadoPagoLaunchDialog
+        open={Boolean(mpLaunch)}
+        onClose={() => setMpLaunch(null)}
+        initPoint={mpLaunch?.initPoint}
+        preferenceId={mpLaunch?.preferenceId}
+      />
 
       {/* Modal de pago mejorado */}
       <Dialog
