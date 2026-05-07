@@ -11,6 +11,7 @@
  *  - PUT /api/restaurants/:slug/close-session
  */
 import { safeDeductStockForPaidOrder } from '../../pedido/services/deduct-stock-for-order';
+import { notifyNewOrder, type PrintOrderItem } from '../../../lib/print-server';
 
 // eslint-disable-next-line @typescript-eslint/no-var-requires
 const { errors } = require('@strapi/utils');
@@ -1459,6 +1460,33 @@ export default {
         `[createOrder] inventario → safeDeductStockForPaidOrder pedido=${pedido.id} restauranteId=${rid}`,
       );
       await safeDeductStockForPaidOrder(strapi, pedido.id, rid);
+    }
+
+    // Notificar al programa de impresión (best-effort, no bloquea la respuesta)
+    try {
+      const fullOrder = await strapi.entityService.findOne('api::pedido.pedido', pedido.id, {
+        populate: {
+          items: { populate: { product: { fields: ['name', 'sku'] } } },
+        },
+      });
+      notifyNewOrder(String(slug), {
+        orderId: pedido.id,
+        restaurantSlug: String(slug),
+        mesaNumber: mesaNumber ? Number(mesaNumber) : null,
+        customerNotes: data?.customerNotes || null,
+        total: Number(total) || 0,
+        createdAt: pedido.createdAt || new Date().toISOString(),
+        items: (fullOrder?.items ?? []).map((it: any): PrintOrderItem => ({
+          name: it.product?.name ?? it.notes ?? 'Producto',
+          sku: it.product?.sku ?? null,
+          quantity: it.quantity ?? 0,
+          unitPrice: Number(it.UnitPrice) || 0,
+          totalPrice: Number(it.totalPrice) || 0,
+          notes: it.notes ?? null,
+        })),
+      });
+    } catch (err: any) {
+      strapi.log?.warn?.('[createOrder] Error notificando impresora: ' + (err?.message || err));
     }
 
     ctx.body = { data: { id: pedido.id } };
