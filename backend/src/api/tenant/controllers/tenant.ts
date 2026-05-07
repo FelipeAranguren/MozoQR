@@ -1464,11 +1464,34 @@ export default {
 
     // Notificar al programa de impresión (best-effort, no bloquea la respuesta)
     try {
-      const fullOrder = await strapi.entityService.findOne('api::pedido.pedido', pedido.id, {
-        populate: {
-          items: { populate: { product: { fields: ['name', 'sku'] } } },
-        },
-      });
+      // Resolvemos nombres de productos individualmente en lugar de depender del
+      // populate de relación, que en Strapi v5 puede devolver vacío justo después de crear.
+      const printItems: PrintOrderItem[] = await Promise.all(
+        normalizedItems.map(async (item): Promise<PrintOrderItem> => {
+          const isSystem = typeof item.productId === 'string' && String(item.productId).startsWith('sys-');
+          let name: string = item.name || 'Producto';
+          let sku: string | null = null;
+          if (!isSystem && item.productId) {
+            try {
+              const prod = await strapi.entityService.findOne(
+                'api::producto.producto',
+                Number(item.productId),
+                { fields: ['name', 'sku'] },
+              );
+              if (prod?.name) name = prod.name;
+              if (prod?.sku) sku = prod.sku;
+            } catch { /* usar fallback si falla */ }
+          }
+          return {
+            name,
+            sku,
+            quantity: item.quantity,
+            unitPrice: item.unitPrice,
+            totalPrice: item.totalPrice,
+            notes: item.notes || null,
+          };
+        }),
+      );
       notifyNewOrder(String(slug), {
         orderId: pedido.id,
         restaurantSlug: String(slug),
@@ -1476,14 +1499,7 @@ export default {
         customerNotes: data?.customerNotes || null,
         total: Number(total) || 0,
         createdAt: pedido.createdAt || new Date().toISOString(),
-        items: (fullOrder?.items ?? []).map((it: any): PrintOrderItem => ({
-          name: it.product?.name ?? it.notes ?? 'Producto',
-          sku: it.product?.sku ?? null,
-          quantity: it.quantity ?? 0,
-          unitPrice: Number(it.UnitPrice) || 0,
-          totalPrice: Number(it.totalPrice) || 0,
-          notes: it.notes ?? null,
-        })),
+        items: printItems,
       });
     } catch (err: any) {
       strapi.log?.warn?.('[createOrder] Error notificando impresora: ' + (err?.message || err));
