@@ -43,6 +43,8 @@ import DemoLanding from './pages/DemoLanding';
 import Checkout from './pages/Checkout';
 import ScrollToTop from './components/ScrollToTop';
 import OfflineBanner from './components/OfflineBanner';
+import MiCuenta from './pages/MiCuenta';
+import LoyaltyManagement from './pages/owner/loyalty/LoyaltyManagement';
 
 // Si Grant/Strapi redirige a "/" (o otra ruta) con access_token, llevamos al usuario a la página que lo procesa
 function GoogleTokenRedirect({ children }) {
@@ -96,6 +98,7 @@ export default function App() {
           <Route path="/:slug/pedido/:orderId" element={<OrderPlaced />} />
           <Route path="/:slug/menu" element={<RestaurantMenuEntry />} />
           <Route path="/:slug" element={<RestaurantMenuEntry />} />
+          <Route path="/mi-cuenta" element={<AuthGuard><MiCuenta /></AuthGuard>} />
 
           {/* Staff autenticado */}
           <Route path="/staff/:slug/orders" element={<OwnerRouteGuard><Mostrador /></OwnerRouteGuard>} />
@@ -123,6 +126,7 @@ export default function App() {
             <Route path="caja/historial" element={<CajaHistorial />} />
             <Route path="stock" element={<StockDashboard />} />
             <Route path="stock/compras" element={<ComprasManagement />} />
+            <Route path="loyalty" element={<LoyaltyManagement />} />
           </Route>
 
           {/* Rutas legacy para compatibilidad */}

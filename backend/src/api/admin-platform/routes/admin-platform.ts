@@ -2,6 +2,18 @@ export default {
   routes: [
     {
       method: 'GET',
+      path: '/admin/auth-check',
+      handler: 'admin-platform.authCheck',
+      config: { auth: {}, policies: ['global::is-platform-admin'] },
+    },
+    {
+      method: 'GET',
+      path: '/admin/permissions-overview',
+      handler: 'admin-platform.permissionsOverview',
+      config: { auth: {}, policies: ['global::is-platform-admin'] },
+    },
+    {
+      method: 'GET',
       path: '/admin/users',
       handler: 'admin-platform.listUsers',
       config: { auth: {}, policies: ['global::is-platform-admin'] },

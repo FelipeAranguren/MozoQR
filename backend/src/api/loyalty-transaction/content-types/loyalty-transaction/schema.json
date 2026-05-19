@@ -1,0 +1,41 @@
+{
+  "kind": "collectionType",
+  "collectionName": "loyalty_transactions",
+  "info": {
+    "singularName": "loyalty-transaction",
+    "pluralName": "loyalty-transactions",
+    "displayName": "Loyalty Transaction"
+  },
+  "options": {
+    "draftAndPublish": false
+  },
+  "attributes": {
+    "loyalty_account": {
+      "type": "relation",
+      "relation": "manyToOne",
+      "target": "api::loyalty-account.loyalty-account",
+      "inversedBy": "loyalty_transactions"
+    },
+    "pedido": {
+      "type": "relation",
+      "relation": "manyToOne",
+      "target": "api::pedido.pedido"
+    },
+    "delta": {
+      "type": "integer",
+      "required": true
+    },
+    "reason": {
+      "type": "enumeration",
+      "enum": ["earn", "redeem", "adjust", "expire"],
+      "required": true
+    },
+    "idempotencyKey": {
+      "type": "string",
+      "unique": true
+    },
+    "notes": {
+      "type": "text"
+    }
+  }
+}

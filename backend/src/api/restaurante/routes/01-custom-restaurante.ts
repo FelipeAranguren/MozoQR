@@ -6,7 +6,8 @@ export default {
             path: '/restaurantes/impersonate',
             handler: 'restaurante.impersonate',
             config: {
-                policies: [], // We will check admin role in controller or via global policy if available
+                auth: {},
+                policies: ['global::is-platform-admin'],
             },
         },
     ],

@@ -24,7 +24,7 @@ import { useRestaurantPlan } from '../../../hooks/useRestaurantPlan';
 import { generateAIInsights } from '../../../utils/aiInsights';
 import { fetchProducts } from '../../../api/menu';
 import { getPaidOrdersForAI } from '../../../api/analytics';
-import { fetchWeeklyAiReport } from '../../../api/weeklyAi';
+import { fetchWeeklyAiReport, fetchAiStatus } from '../../../api/weeklyAi';
 import { formatAxiosError } from '../../../utils/apiErrors';
 import PsychologyIcon from '@mui/icons-material/Psychology';
 import TrendingDownIcon from '@mui/icons-material/TrendingDown';
@@ -115,6 +115,8 @@ export default function AIPanel() {
   const [weeklyLoading, setWeeklyLoading] = useState(false);
   const [weeklyData, setWeeklyData] = useState(null);
   const [weeklyError, setWeeklyError] = useState(null);
+  const [aiStatus, setAiStatus] = useState(null);
+  const [regenerating, setRegenerating] = useState(false);
   const [dataStats, setDataStats] = useState({
     products: 0,
     orders: 0,
@@ -200,8 +202,14 @@ export default function AIPanel() {
       setWeeklyLoading(true);
       setWeeklyError(null);
       try {
-        const data = await fetchWeeklyAiReport(slug);
-        if (!cancelled) setWeeklyData(data);
+        const [data, status] = await Promise.all([
+          fetchWeeklyAiReport(slug),
+          fetchAiStatus(slug).catch(() => null),
+        ]);
+        if (!cancelled) {
+          setWeeklyData(data);
+          setAiStatus(status);
+        }
       } catch (e) {
         if (!cancelled) {
           let msg = formatAxiosError(e);
@@ -218,6 +226,26 @@ export default function AIPanel() {
       cancelled = true;
     };
   }, [slug, planLoading, plan]);
+
+  const handleRegenerateWeekly = async () => {
+    if (!slug || regenerating) return;
+    setRegenerating(true);
+    setWeeklyError(null);
+    try {
+      const data = await fetchWeeklyAiReport(slug, { force: true });
+      setWeeklyData(data);
+      const status = await fetchAiStatus(slug).catch(() => null);
+      if (status) setAiStatus(status);
+    } catch (e) {
+      let msg = formatAxiosError(e);
+      if (e?.response?.status === 502) {
+        msg += ' Verificá GEMINI_API_KEY en el servidor y que el plan Ultra esté activo.';
+      }
+      setWeeklyError(msg);
+    } finally {
+      setRegenerating(false);
+    }
+  };
 
   if (planLoading || loading) {
     return (
@@ -248,17 +276,36 @@ export default function AIPanel() {
             </Button>
           </Box>
           <Typography variant="body2" color="text.secondary">
-            Análisis en tiempo real con reglas + informe semanal con IA (Google Gemini, sin tarjeta en Google AI Studio).
+            Proveedor único: <strong>Google Gemini</strong> (tier gratis en AI Studio). Las tarjetas de abajo son análisis automático por reglas; el informe semanal sí usa Gemini.
           </Typography>
+          {aiStatus && (
+            <Stack direction="row" spacing={1} sx={{ mt: 1, flexWrap: 'wrap' }}>
+              <Chip
+                size="small"
+                label={aiStatus.hasGeminiApiKey ? 'API key configurada' : 'Sin API key en servidor'}
+                color={aiStatus.hasGeminiApiKey ? 'success' : 'warning'}
+              />
+              {aiStatus.model && <Chip size="small" variant="outlined" label={`Modelo: ${aiStatus.model}`} />}
+            </Stack>
+          )}
         </Box>
 
         <Card sx={{ mb: 3, border: `1px solid ${MARANA_COLORS.border}`, boxShadow: COLORS.shadow2 }}>
           <CardContent>
-            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2 }}>
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2, flexWrap: 'wrap' }}>
               <AutoAwesomeIcon sx={{ color: MARANA_COLORS.secondary }} />
               <Typography variant="h6" sx={{ fontWeight: 700 }}>
-                Informe semanal (IA)
+                Informe semanal (Gemini)
               </Typography>
+              <Button
+                size="small"
+                variant="outlined"
+                disabled={weeklyLoading || regenerating}
+                onClick={handleRegenerateWeekly}
+                sx={{ textTransform: 'none', ml: 'auto' }}
+              >
+                {regenerating ? 'Regenerando…' : 'Regenerar informe'}
+              </Button>
             </Box>
             <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
               Se genera como máximo una vez por semana por restaurante usando todo el historial de pedidos pagados
@@ -301,6 +348,7 @@ export default function AIPanel() {
               <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 2 }}>
                 {weeklyData.cached ? 'Desde caché · ' : 'Recién generado · '}
                 Fecha: {new Date(weeklyData.generatedAt).toLocaleString('es-AR')}
+                {weeklyData.model && <> · Modelo: {weeklyData.model}</>}
                 {weeklyData.nextRefreshApprox && (
                   <> · Próxima regeneración automática: {new Date(weeklyData.nextRefreshApprox).toLocaleString('es-AR')}</>
                 )}
@@ -330,6 +378,10 @@ export default function AIPanel() {
             Error al cargar insights: {error}
           </Alert>
         )}
+
+        <Typography variant="h6" sx={{ fontWeight: 700, mb: 2, mt: 1 }}>
+          Análisis automático (reglas, sin LLM)
+        </Typography>
 
         {!error && (
           <Alert severity="info" sx={{ mb: 3 }}>

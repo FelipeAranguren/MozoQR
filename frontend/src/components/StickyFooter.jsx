@@ -26,6 +26,8 @@ import { customerOrderListStatusLabel } from '../utils/orderStatusEs';
 import { useNetworkStatus } from '../hooks/useNetworkStatus';
 import { isAxiosOrNetworkError } from '../utils/networkError';
 import { withRetry } from '../utils/retry';
+import { useAuth } from '../context/AuthContext';
+import { fetchLoyaltyProgram, fetchMyLoyalty, redeemLoyaltyPoints } from '../api/loyalty';
 
 // Redondear a 2 decimales para montos en pesos (evitar pérdida de centavos)
 const roundMoney = (n) => Math.round(Number(n) * 100) / 100;
@@ -302,6 +304,10 @@ export default function StickyFooter({
   const [couponDiscount, setCouponDiscount] = useState(null); // { type: 'percent' | 'fixed', value: number, code: string }
   const [validatingCoupon, setValidatingCoupon] = useState(false);
   const [showMobileCoupon, setShowMobileCoupon] = useState(false);
+  const { jwt } = useAuth();
+  const [loyaltyProgram, setLoyaltyProgram] = useState(null);
+  const [loyaltyBalance, setLoyaltyBalance] = useState(0);
+  const [redeemingLoyalty, setRedeemingLoyalty] = useState(false);
   const [mobilePayStep, setMobilePayStep] = useState(1);
   const [summaryOrdersOpen, setSummaryOrdersOpen] = useState(false);
 
@@ -1047,6 +1053,55 @@ export default function StickyFooter({
     setCard((c) => ({ ...c, cvv: v }));
   };
   const handleName = (e) => setCard((c) => ({ ...c, name: e.target.value }));
+
+  useEffect(() => {
+    if (!slug) return;
+    fetchLoyaltyProgram(slug).then(setLoyaltyProgram).catch(() => setLoyaltyProgram(null));
+  }, [slug]);
+
+  useEffect(() => {
+    if (!jwt || !slug) {
+      setLoyaltyBalance(0);
+      return;
+    }
+    fetchMyLoyalty(slug)
+      .then((data) => {
+        const acc = (data?.accounts || [])[0];
+        setLoyaltyBalance(Number(acc?.pointsBalance || 0));
+      })
+      .catch(() => setLoyaltyBalance(0));
+  }, [jwt, slug, payOpen]);
+
+  const handleRedeemLoyalty = async (tierPoints, discountPercent) => {
+    if (!jwt) {
+      setSnack({ open: true, msg: 'Iniciá sesión para canjear puntos', severity: 'warning' });
+      return;
+    }
+    setRedeemingLoyalty(true);
+    try {
+      const result = await redeemLoyaltyPoints(slug, tierPoints);
+      setCouponDiscount({
+        type: 'percent',
+        value: result.discountPercent || discountPercent,
+        code: `Puntos (${tierPoints})`,
+        loyalty: true,
+      });
+      setLoyaltyBalance(result.newBalance ?? loyaltyBalance - tierPoints);
+      setSnack({
+        open: true,
+        msg: `Canjeaste ${tierPoints} puntos por ${result.discountPercent}% de descuento`,
+        severity: 'success',
+      });
+    } catch (e) {
+      setSnack({
+        open: true,
+        msg: e?.response?.data?.error?.message || 'No se pudo canjear',
+        severity: 'error',
+      });
+    } finally {
+      setRedeemingLoyalty(false);
+    }
+  };
 
   // ---------- Validar cupón ----------
   const handleValidateCoupon = async () => {
@@ -2068,10 +2123,39 @@ export default function StickyFooter({
               </Typography>
             </Box>
 
+            {loyaltyProgram?.enabled && jwt && (
+              <Box sx={{ mt: 2, mb: 2, p: 1.5, borderRadius: 2, bgcolor: 'action.hover' }}>
+                <Typography variant="body2" sx={{ fontWeight: 600, mb: 1 }}>
+                  Puntos de fidelización: {loyaltyBalance}
+                </Typography>
+                <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1 }}>
+                  {(loyaltyProgram.redemptionTiers || []).map((tier) => (
+                    <Button
+                      key={tier.points}
+                      size="small"
+                      variant="outlined"
+                      disabled={redeemingLoyalty || loyaltyBalance < tier.points || Boolean(couponDiscount)}
+                      onClick={() => handleRedeemLoyalty(tier.points, tier.discountPercent)}
+                    >
+                      {tier.points} pts → {tier.discountPercent}%
+                    </Button>
+                  ))}
+                </Box>
+              </Box>
+            )}
+            {loyaltyProgram?.enabled && !jwt && (
+              <Alert severity="info" sx={{ mt: 2 }}>
+                <Button size="small" onClick={() => navigate('/login', { state: { from: window.location.pathname } })}>
+                  Iniciá sesión
+                </Button>
+                {' '}para sumar y canjear puntos.
+              </Alert>
+            )}
+
             {/* Cupón de descuento */}
             <Box sx={{ mt: 2, mb: 2 }}>
               <Typography variant="body2" sx={{ mb: 1, fontWeight: 500 }}>
-                Cupón de descuento
+                Cupón de descuento (opcional)
               </Typography>
               {!couponDiscount ? (
                 <Box sx={{ display: 'flex', gap: 1 }}>

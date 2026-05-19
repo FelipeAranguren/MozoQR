@@ -120,6 +120,9 @@
     "weekly_ai_generated_at": {
       "type": "datetime"
     },
+    "weekly_ai_model": {
+      "type": "string"
+    },
     "modo_store_id": {
       "type": "string"
     },

@@ -33,6 +33,7 @@ import ContentCopyIcon from '@mui/icons-material/ContentCopy';
 import ReceiptDialog from '../components/ReceiptDialog';
 import PagosRealtimeBar from '../components/PagosRealtimeBar';
 import { fetchStockAlertas } from '../api/stock';
+import StaffOrderItemEditor from '../components/StaffOrderItemEditor';
 
 const money = (n) =>
   new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS' })
@@ -3411,6 +3412,15 @@ export default function Mostrador() {
                   );
                 })}
               </List>
+              <StaffOrderItemEditor
+                slug={slug}
+                pedido={orderDetailDialog.pedido}
+                onUpdated={(updated) => {
+                  setOrderDetailDialog((d) => ({ ...d, pedido: updated }));
+                  setPedidos((prev) => prev.map((p) => (p.id === updated.id ? { ...p, ...updated } : p)));
+                }}
+                onSnack={(msg, severity) => setSnack({ open: true, msg, severity: severity || 'info' })}
+              />
               <Divider sx={{ my: 2 }} />
               <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                 <Typography variant="h6">Total:</Typography>

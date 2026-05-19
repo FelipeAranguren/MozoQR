@@ -1,0 +1,46 @@
+{
+  "kind": "collectionType",
+  "collectionName": "loyalty_programs",
+  "info": {
+    "singularName": "loyalty-program",
+    "pluralName": "loyalty-programs",
+    "displayName": "Loyalty Program"
+  },
+  "options": {
+    "draftAndPublish": false
+  },
+  "attributes": {
+    "restaurante": {
+      "type": "relation",
+      "relation": "oneToOne",
+      "target": "api::restaurante.restaurante"
+    },
+    "enabled": {
+      "type": "boolean",
+      "default": false
+    },
+    "earnMode": {
+      "type": "enumeration",
+      "default": "money",
+      "enum": ["money", "visit", "both"]
+    },
+    "pointsPerCurrency": {
+      "type": "decimal",
+      "default": 1
+    },
+    "pointsPerVisit": {
+      "type": "integer",
+      "default": 1
+    },
+    "redemptionTiers": {
+      "type": "json",
+      "default": [
+        { "points": 100, "discountPercent": 10 },
+        { "points": 200, "discountPercent": 15 }
+      ]
+    },
+    "minOrderToEarn": {
+      "type": "decimal"
+    }
+  }
+}

@@ -33,10 +33,12 @@ export default {
       if (hasRestaurantes) {
         const hasWeeklyMd = await knex.schema.hasColumn('restaurantes', 'weekly_ai_report_markdown');
         const hasWeeklyAt = await knex.schema.hasColumn('restaurantes', 'weekly_ai_generated_at');
-        if (!hasWeeklyMd || !hasWeeklyAt) {
+        const hasWeeklyModel = await knex.schema.hasColumn('restaurantes', 'weekly_ai_model');
+        if (!hasWeeklyMd || !hasWeeklyAt || !hasWeeklyModel) {
           await knex.schema.alterTable('restaurantes', (table: any) => {
             if (!hasWeeklyMd) table.text('weekly_ai_report_markdown');
             if (!hasWeeklyAt) table.dateTime('weekly_ai_generated_at');
+            if (!hasWeeklyModel) table.string('weekly_ai_model');
           });
           strapi?.log?.info?.('[bootstrap] ✅ Added weekly_ai_* columns to restaurantes');
         }
@@ -128,6 +130,51 @@ export default {
         .catch((e) => strapi?.log?.warn?.('[cron] close-empty-sessions error:', e?.message || e));
     }, CLEANUP_INTERVAL_MS);
     strapi?.log?.info?.(`[bootstrap] ✅ Cron close-empty-sessions programado cada ${CLEANUP_INTERVAL_MS / 1000}s`);
+
+    try {
+      const roleExists = await strapi.db.query('plugin::users-permissions.role').findOne({
+        where: { type: 'customer' },
+      });
+      if (!roleExists) {
+        await strapi.db.query('plugin::users-permissions.role').create({
+          data: { name: 'Customer', type: 'customer', description: 'Comensal / programa de fidelización' },
+        });
+        strapi?.log?.info?.('[bootstrap] ✅ Rol Customer creado');
+      }
+    } catch (e: any) {
+      strapi?.log?.warn?.('[bootstrap] No se pudo crear rol Customer:', e?.message || e);
+    }
+
+    try {
+      const knexLoyalty = strapi?.db?.connection;
+      if (knexLoyalty?.schema && (await knexLoyalty.schema.hasTable('pedidos'))) {
+        for (const col of ['loyalty_points_earned', 'loyalty_discount_percent', 'loyalty_points_redeemed']) {
+          const has = await knexLoyalty.schema.hasColumn('pedidos', col);
+          if (!has) {
+            await knexLoyalty.schema.alterTable('pedidos', (table: any) => {
+              if (col === 'loyalty_points_earned' || col === 'loyalty_points_redeemed') {
+                table.integer(col);
+              } else {
+                table.decimal(col, 10, 2);
+              }
+            });
+          }
+        }
+      }
+      if (knexLoyalty?.schema && (await knexLoyalty.schema.hasTable('up_users'))) {
+        for (const col of ['birthday', 'phone']) {
+          const has = await knexLoyalty.schema.hasColumn('up_users', col);
+          if (!has) {
+            await knexLoyalty.schema.alterTable('up_users', (table: any) => {
+              if (col === 'birthday') table.date(col);
+              else table.string(col);
+            });
+          }
+        }
+      }
+    } catch (e: any) {
+      strapi?.log?.warn?.('[bootstrap] loyalty column migration:', e?.message || e);
+    }
 
     // WebSocket de impresión térmica
     try {

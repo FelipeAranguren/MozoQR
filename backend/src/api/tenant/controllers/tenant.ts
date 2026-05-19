@@ -11,6 +11,7 @@
  *  - PUT /api/restaurants/:slug/close-session
  */
 import { safeDeductStockForPaidOrder } from '../../pedido/services/deduct-stock-for-order';
+import { creditLoyaltyForPaidOrder } from '../../../services/loyalty-core';
 
 // eslint-disable-next-line @typescript-eslint/no-var-requires
 const { errors } = require('@strapi/utils');
@@ -81,6 +82,7 @@ async function markPedidosPaidWithEntityService(
           `[markPedidosPaid] safeDeductStockForPaidOrder pedido=${pedido.id} restauranteId=${rid}`,
         );
         await safeDeductStockForPaidOrder(strapi, pedido.id, rid);
+        await creditLoyaltyForPaidOrder(strapi, pedido.id);
       }
     }),
   );
@@ -1360,6 +1362,10 @@ export default {
     };
     if (paymentMethodStrapi) {
       (pedidoData as any).payment_method = paymentMethodStrapi;
+    }
+    const authUserId = ctx.state?.user?.id;
+    if (authUserId) {
+      (pedidoData as any).users_permissions_user = Number(authUserId);
     }
     console.log(`[createOrder] Datos del pedido a crear:`, JSON.stringify(pedidoData, null, 2));
     

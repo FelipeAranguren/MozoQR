@@ -25,6 +25,7 @@ import PointOfSaleIcon from '@mui/icons-material/PointOfSale';
 import AccountBalanceIcon from '@mui/icons-material/AccountBalance';
 import InventoryIcon from '@mui/icons-material/Inventory';
 import ContentCopyIcon from '@mui/icons-material/ContentCopy';
+import CardGiftcardIcon from '@mui/icons-material/CardGiftcard';
 
 const menuItems = [
   {
@@ -61,6 +62,11 @@ const menuItems = [
     label: 'Plan',
     icon: <CreditCardIcon />,
     path: '/owner/:slug/plan',
+  },
+  {
+    label: 'Fidelización',
+    icon: <CardGiftcardIcon />,
+    path: '/owner/:slug/loyalty',
   },
   {
     label: 'IA Integrada',

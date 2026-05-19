@@ -1,5 +1,20 @@
 import { client, unwrap } from './client';
 
+export async function fetchAdminAuthCheck() {
+  const res = await client.get('/admin/auth-check');
+  return res.data;
+}
+
+export async function fetchPermissionsOverview({ search, page = 1, pageSize = 50, filter } = {}) {
+  const params = new URLSearchParams();
+  if (search) params.set('search', search);
+  if (filter) params.set('filter', filter);
+  params.set('page', String(page));
+  params.set('pageSize', String(pageSize));
+  const res = await client.get(`/admin/permissions-overview?${params}`);
+  return res.data;
+}
+
 export async function fetchAdminUsers({ search, blocked, page = 1, pageSize = 50 } = {}) {
   const params = new URLSearchParams();
   if (search) params.set('search', search);

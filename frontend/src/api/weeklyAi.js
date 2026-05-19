@@ -8,3 +8,8 @@ export async function fetchWeeklyAiReport(slug, { force = false } = {}) {
   const res = await api.get(`/owner/${slug}/weekly-ai-report${qs}`);
   return res.data;
 }
+
+export async function fetchAiStatus(slug) {
+  const res = await api.get(`/owner/${slug}/ai-status`);
+  return res.data;
+}

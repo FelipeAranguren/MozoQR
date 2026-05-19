@@ -3,6 +3,7 @@ import { getBackendUrl } from '../../../config/urls';
 import {
   buildOrderHistorySummary,
   generateWeeklyReportMarkdown,
+  GEMINI_MODELS,
   isWeeklyCacheFresh,
   WEEK_MS,
 } from '../../../services/weekly-ai-report';
@@ -127,6 +128,42 @@ export default {
   },
 
   /**
+   * GET /api/owner/:slug/ai-status
+   * Estado de IA sin consumir tokens de Gemini.
+   */
+  async aiStatus(ctx: any) {
+    const restauranteId = ctx.state.restauranteId;
+    if (!restauranteId) {
+      return ctx.badRequest('Falta restaurante');
+    }
+
+    const rest = await strapi.entityService.findOne('api::restaurante.restaurante', restauranteId, {
+      fields: ['Suscripcion', 'weekly_ai_generated_at', 'weekly_ai_model'],
+    });
+
+    if (!rest) {
+      return ctx.notFound('Restaurante no encontrado');
+    }
+
+    const plan = String(rest.Suscripcion || 'basic').toLowerCase();
+    const apiKey = process.env.GEMINI_API_KEY;
+    const generatedAt = rest.weekly_ai_generated_at;
+    const cacheFresh = isWeeklyCacheFresh(generatedAt);
+
+    ctx.body = {
+      ok: true,
+      plan,
+      hasUltraPlan: plan === 'ultra',
+      hasGeminiApiKey: Boolean(apiKey && String(apiKey).trim()),
+      cacheFresh,
+      generatedAt: generatedAt || null,
+      model: rest.weekly_ai_model || null,
+      preferredModels: GEMINI_MODELS,
+      provider: 'google-gemini',
+    };
+  },
+
+  /**
    * GET /api/owner/:slug/weekly-ai-report
    * Informe semanal con IA (Gemini). Máximo 1 generación nueva cada 7 días por restaurante (caché en BD).
    * Query: force=1 para forzar regeneración (solo uso interno / soporte).
@@ -144,7 +181,7 @@ export default {
     }
 
     const rest = await strapi.entityService.findOne('api::restaurante.restaurante', restauranteId, {
-      fields: ['name', 'Suscripcion', 'weekly_ai_report_markdown', 'weekly_ai_generated_at'],
+      fields: ['name', 'Suscripcion', 'weekly_ai_report_markdown', 'weekly_ai_generated_at', 'weekly_ai_model'],
     });
 
     if (!rest) {
@@ -167,7 +204,9 @@ export default {
         generatedAt,
         nextRefreshApprox: new Date(genTime + WEEK_MS).toISOString(),
         reportMarkdown: cachedMarkdown,
+        model: rest.weekly_ai_model || null,
         missingApiKey: false,
+        provider: 'google-gemini',
       };
       return;
     }
@@ -188,15 +227,18 @@ export default {
 
     try {
       const summary = await buildOrderHistorySummary(strapi, restauranteId, rest.name || slug);
-      const reportMarkdown = await generateWeeklyReportMarkdown(apiKey, summary);
+      const { markdown: reportMarkdown, model } = await generateWeeklyReportMarkdown(apiKey, summary);
       const nowIso = new Date().toISOString();
 
       await strapi.entityService.update('api::restaurante.restaurante', restauranteId, {
         data: {
           weekly_ai_report_markdown: reportMarkdown,
           weekly_ai_generated_at: nowIso,
+          weekly_ai_model: model,
         },
       });
+
+      strapi.log.info(`[weeklyAiReport] slug=${slug} model=${model}`);
 
       ctx.body = {
         ok: true,
@@ -204,7 +246,9 @@ export default {
         generatedAt: nowIso,
         nextRefreshApprox: new Date(Date.now() + WEEK_MS).toISOString(),
         reportMarkdown,
+        model,
         missingApiKey: false,
+        provider: 'google-gemini',
       };
     } catch (err: any) {
       strapi.log.error('[weeklyAiReport]', err);

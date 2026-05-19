@@ -13,11 +13,12 @@ const WEEK_MS = 7 * 24 * 60 * 60 * 1000;
  */
 const GEMINI_API_VERSIONS = ['v1', 'v1beta'] as const;
 
-/** Modelos soportados en AI Studio; 1.5 genérico suele estar retirado del listado público. */
-const GEMINI_MODELS = [
+/** Modelos con tier gratis en Google AI Studio (orden: calidad → fallback). */
+export const GEMINI_MODELS = [
   'gemini-2.5-flash',
+  'gemini-3.5-flash',
   'gemini-2.5-flash-lite',
-  'gemini-3-flash-preview',
+  'gemini-3.1-flash-lite',
   'gemini-2.0-flash',
 ];
 
@@ -242,7 +243,12 @@ function parseGeminiGenerateContentJson(raw: string): string {
   return text.trim();
 }
 
-export async function generateWeeklyReportMarkdown(apiKey: string, dataSummary: string): Promise<string> {
+export type WeeklyReportResult = { markdown: string; model: string };
+
+export async function generateWeeklyReportMarkdown(
+  apiKey: string,
+  dataSummary: string
+): Promise<WeeklyReportResult> {
   const prompt = `Sos un asesor gastronómico y de operaciones para restaurantes en Argentina (español rioplatense).
 
 Te paso datos REALES agregados del historial de pedidos pagados y del menú actual. No inventes cifras que no estén implícitas en los datos. Si algo falta, decilo.
@@ -262,7 +268,8 @@ ${dataSummary}`;
   let lastErr: Error | null = null;
   for (const model of GEMINI_MODELS) {
     try {
-      return await callGeminiOnce(apiKey.trim(), model, prompt);
+      const markdown = await callGeminiOnce(apiKey.trim(), model, prompt);
+      return { markdown, model };
     } catch (e: any) {
       lastErr = e instanceof Error ? e : new Error(String(e));
     }

@@ -11,6 +11,15 @@ export default {
     },
     {
       method: 'GET',
+      path: '/owner/:slug/ai-status',
+      handler: 'api::restaurante.owner.aiStatus',
+      config: {
+        auth: {},
+        policies: ['global::by-restaurant-owner'],
+      },
+    },
+    {
+      method: 'GET',
       path: '/owner/:slug/weekly-ai-report',
       handler: 'api::restaurante.owner.weeklyAiReport',
       config: {

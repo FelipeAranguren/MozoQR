@@ -80,6 +80,18 @@
     },
     "fullname": {
       "type": "string"
+    },
+    "birthday": {
+      "type": "date"
+    },
+    "phone": {
+      "type": "string"
+    },
+    "loyalty_accounts": {
+      "type": "relation",
+      "relation": "oneToMany",
+      "target": "api::loyalty-account.loyalty-account",
+      "mappedBy": "users_permissions_user"
     }
   }
 }

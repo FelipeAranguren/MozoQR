@@ -68,6 +68,7 @@ import { getAllOwnerComments } from '../api/comments';
 import {
   fetchAdminUsers, createAdminUser, updateAdminUser, toggleBlockUser,
   resetUserPassword, fetchAdminMemberships, updateMembership, createMembership,
+  fetchPermissionsOverview,
 } from '../api/admin';
 import axios from 'axios';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -640,6 +641,7 @@ export default function AdminDashboard() {
           <Tab label="Finanzas e Historial" icon={<ReceiptIcon />} iconPosition="start" sx={{ fontWeight: 600, minHeight: 60 }} />
           <Tab label="Centro de Comentarios" icon={<MessageIcon />} iconPosition="start" sx={{ fontWeight: 600, minHeight: 60 }} />
           <Tab label="Usuarios" icon={<PeopleIcon />} iconPosition="start" sx={{ fontWeight: 600, minHeight: 60 }} />
+          <Tab label="Permisos" icon={<FilterIcon />} iconPosition="start" sx={{ fontWeight: 600, minHeight: 60 }} />
         </Tabs>
 
         {/* TAB 0: FLEET MANAGEMENT */}
@@ -811,6 +813,7 @@ export default function AdminDashboard() {
 
         {/* TAB 3: USERS */}
         {activeTab === 3 && <UsersPanel restaurantes={restaurantes || []} />}
+        {activeTab === 4 && <PermissionsPanel />}
       </Card>
 
       {/* MENÚ DE ACCIONES RÁPIDAS */}
@@ -1190,6 +1193,126 @@ function UsersPanel({ restaurantes }) {
           </Button>
         </DialogActions>
       </Dialog>
+    </Box>
+  );
+}
+
+function PermissionsPanel() {
+  const [rows, setRows] = useState([]);
+  const [meta, setMeta] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [search, setSearch] = useState('');
+  const [filter, setFilter] = useState('');
+  const [page, setPage] = useState(0);
+  const [pageSize, setPageSize] = useState(50);
+
+  const load = async () => {
+    setLoading(true);
+    try {
+      const res = await fetchPermissionsOverview({
+        search: search || undefined,
+        filter: filter || undefined,
+        page: page + 1,
+        pageSize,
+      });
+      setRows(res?.data || []);
+      setMeta(res?.meta || null);
+    } catch (e) {
+      console.error(e);
+      setRows([]);
+    }
+    setLoading(false);
+  };
+
+  useEffect(() => { load(); }, [page, pageSize, filter]);
+
+  const exportCsv = () => {
+    const header = ['email', 'strapiRole', 'superAdmin', 'memberships', 'legacyOwner', 'blocked'];
+    const lines = rows.map((r) => [
+      r.email,
+      r.strapiRole || '',
+      r.isPlatformAdmin ? 'yes' : 'no',
+      (r.memberships || []).map((m) => `${m.name}:${m.role}`).join('; '),
+      (r.legacyOwnerRestaurants || []).map((x) => x.name).join('; '),
+      r.blocked ? 'yes' : 'no',
+    ].map((c) => `"${String(c).replace(/"/g, '""')}"`).join(','));
+    const csv = [header.join(','), ...lines].join('\n');
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'mozoqr-permisos.csv';
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  return (
+    <Box sx={{ p: 2 }}>
+      <Stack direction="row" spacing={2} sx={{ mb: 2, flexWrap: 'wrap' }} alignItems="center">
+        <TextField size="small" label="Buscar email" value={search} onChange={(e) => setSearch(e.target.value)} />
+        <TextField size="small" select label="Filtro" value={filter} onChange={(e) => setFilter(e.target.value)} sx={{ minWidth: 160 }}>
+          <MenuItem value="">Todos</MenuItem>
+          <MenuItem value="owners">Solo owners</MenuItem>
+          <MenuItem value="superadmin">Super admins</MenuItem>
+          <MenuItem value="blocked">Bloqueados</MenuItem>
+        </TextField>
+        <Button variant="contained" onClick={() => { setPage(0); load(); }}>Buscar</Button>
+        <Button startIcon={<DownloadIcon />} onClick={exportCsv} disabled={!rows.length}>Exportar CSV</Button>
+        {meta?.stats && (
+          <Typography variant="body2" color="text.secondary" sx={{ ml: 'auto' }}>
+            {meta.stats.totalUsers} usuarios · {meta.stats.platformAdmins} super admin(s)
+          </Typography>
+        )}
+      </Stack>
+      {loading ? (
+        <CircularProgress />
+      ) : (
+        <>
+          <TableContainer component={Paper} variant="outlined">
+            <Table size="small">
+              <TableHead sx={{ bgcolor: COLORS.bgAlt }}>
+                <TableRow>
+                  <TableCell sx={{ fontWeight: 700 }}>Email</TableCell>
+                  <TableCell sx={{ fontWeight: 700 }}>Rol Strapi</TableCell>
+                  <TableCell sx={{ fontWeight: 700 }}>Super Admin</TableCell>
+                  <TableCell sx={{ fontWeight: 700 }}>Restaurantes (membership)</TableCell>
+                  <TableCell sx={{ fontWeight: 700 }}>Legacy owner_email</TableCell>
+                  <TableCell sx={{ fontWeight: 700 }}>Bloqueado</TableCell>
+                </TableRow>
+              </TableHead>
+              <TableBody>
+                {rows.map((r) => (
+                  <TableRow key={r.id} hover>
+                    <TableCell>{r.email}</TableCell>
+                    <TableCell>{r.strapiRole || '-'}</TableCell>
+                    <TableCell>{r.isPlatformAdmin ? <Chip label="Sí" color="primary" size="small" /> : '-'}</TableCell>
+                    <TableCell>
+                      {(r.memberships || []).map((m, i) => (
+                        <Chip key={i} size="small" label={`${m.name} (${m.role})`} sx={{ mr: 0.5, mb: 0.5 }} />
+                      ))}
+                    </TableCell>
+                    <TableCell>
+                      {(r.legacyOwnerRestaurants || []).map((x, i) => (
+                        <Chip key={i} size="small" color="warning" variant="outlined" label={x.name} sx={{ mr: 0.5 }} />
+                      ))}
+                    </TableCell>
+                    <TableCell>{r.blocked ? <Chip label="Sí" color="error" size="small" /> : 'No'}</TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </TableContainer>
+          <TablePagination
+            count={meta?.pagination?.total || 0}
+            page={page}
+            onPageChange={(_, p) => setPage(p)}
+            rowsPerPage={pageSize}
+            onRowsPerPageChange={(e) => { setPageSize(parseInt(e.target.value, 10)); setPage(0); }}
+            rowsPerPageOptions={[25, 50, 100]}
+            labelRowsPerPage="Filas"
+          />
+        </>
+      )}
     </Box>
   );
 }

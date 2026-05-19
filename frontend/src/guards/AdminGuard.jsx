@@ -1,7 +1,6 @@
 import { useEffect, useState } from "react";
 import { Navigate, useLocation } from "react-router-dom";
-
-const ADMIN_EMAILS = ["marioealfonzo@gmail.com"];
+import { fetchAdminAuthCheck } from "../api/admin";
 
 function readToken() {
   return localStorage.getItem("strapi_jwt") || localStorage.getItem("jwt") || null;
@@ -26,10 +25,12 @@ export default function AdminGuard({ children }) {
     const token = readToken();
     if (!token) { setStatus("denied"); return; }
 
-    const email = readUserEmail();
-    if (!email || !ADMIN_EMAILS.includes(email)) { setStatus("denied"); return; }
-
-    setStatus("ok");
+    fetchAdminAuthCheck()
+      .then((data) => {
+        if (data?.ok && data?.isPlatformAdmin) setStatus("ok");
+        else setStatus("denied");
+      })
+      .catch(() => setStatus("denied"));
   }, []);
 
   if (status === null) return <p>Verificando acceso...</p>;

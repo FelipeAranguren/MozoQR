@@ -1,5 +1,7 @@
 declare const strapi: any;
 
+import { getPlatformAdminEmails } from '../../../config/platform-admin';
+
 const USER_UID = 'plugin::users-permissions.user';
 const MEMBER_UID = 'api::restaurant-member.restaurant-member';
 const RESTAURANT_UID = 'api::restaurante.restaurante';
@@ -7,6 +9,132 @@ const RESTAURANT_UID = 'api::restaurante.restaurante';
 const userFields = ['id', 'username', 'email', 'fullname', 'provider', 'confirmed', 'blocked', 'createdAt'];
 
 export default {
+  async authCheck(ctx: any) {
+    ctx.body = {
+      ok: true,
+      email: ctx.state.user?.email,
+      isPlatformAdmin: true,
+    };
+  },
+
+  /**
+   * GET /api/admin/permissions-overview
+   * Vista unificada: email, rol Strapi, memberships, legacy owner_email, super admin.
+   */
+  async permissionsOverview(ctx: any) {
+    const strapi: any = ctx.strapi;
+    const { search, page = 1, pageSize = 50, filter } = ctx.request.query || {};
+    const pg = Math.max(1, Number(page));
+    const limit = Math.min(500, Math.max(1, Number(pageSize)));
+
+    const filters: any = {};
+    if (search) {
+      filters.$or = [
+        { email: { $containsi: search } },
+        { username: { $containsi: search } },
+        { fullname: { $containsi: search } },
+      ];
+    }
+    if (filter === 'blocked') filters.blocked = true;
+    if (filter === 'owners') {
+      // filtrado post-query por memberships owner
+    }
+
+    const total = await strapi.db.query(USER_UID).count({ where: filters });
+
+    const users = await strapi.entityService.findMany(USER_UID, {
+      filters,
+      fields: userFields,
+      populate: {
+        role: { fields: ['id', 'name', 'type'] },
+        restaurant_members: {
+          publicationState: 'preview',
+          fields: ['id', 'role', 'active'],
+          populate: {
+            restaurante: { publicationState: 'preview', fields: ['id', 'name', 'slug'] },
+          },
+        },
+      },
+      sort: { createdAt: 'desc' },
+      start: (pg - 1) * limit,
+      limit,
+    });
+
+    const restaurants = await strapi.entityService.findMany(RESTAURANT_UID, {
+      fields: ['id', 'name', 'slug', 'owner_email'],
+      publicationState: 'preview',
+      limit: 5000,
+    });
+
+    const adminEmails = new Set(getPlatformAdminEmails());
+
+    const rows = (users || []).map((u: any) => {
+      const email = String(u.email || '').trim().toLowerCase();
+      const activeMembers = (u.restaurant_members || []).filter((m: any) => m.active !== false);
+      const membershipSummary = activeMembers.map((m: any) => ({
+        restauranteId: m.restaurante?.id,
+        name: m.restaurante?.name,
+        slug: m.restaurante?.slug,
+        role: m.role,
+      }));
+
+      const memberRestaurantIds = new Set(
+        activeMembers.map((m: any) => String(m.restaurante?.id)).filter(Boolean)
+      );
+
+      const legacyOwner = (restaurants || [])
+        .filter((r: any) => {
+          const oe = String(r.owner_email || '').trim().toLowerCase();
+          return oe && oe === email && !memberRestaurantIds.has(String(r.id));
+        })
+        .map((r: any) => ({ id: r.id, name: r.name, slug: r.slug }));
+
+      return {
+        id: u.id,
+        email: u.email,
+        fullname: u.fullname,
+        username: u.username,
+        blocked: u.blocked,
+        confirmed: u.confirmed,
+        strapiRole: u.role?.name || null,
+        strapiRoleType: u.role?.type || null,
+        isPlatformAdmin: adminEmails.has(email),
+        memberships: membershipSummary,
+        legacyOwnerRestaurants: legacyOwner,
+        isOwner: activeMembers.some((m: any) => m.role === 'owner') || legacyOwner.length > 0,
+        isStaff: activeMembers.some((m: any) => m.role === 'staff'),
+      };
+    });
+
+    let filteredRows = rows;
+    if (filter === 'owners') {
+      filteredRows = rows.filter((r: any) => r.isOwner);
+    }
+    if (filter === 'superadmin') {
+      filteredRows = rows.filter((r: any) => r.isPlatformAdmin);
+    }
+
+    const stats = {
+      totalUsers: total,
+      platformAdmins: adminEmails.size,
+      ownersInPage: filteredRows.filter((r: any) => r.isOwner).length,
+    };
+
+    ctx.body = {
+      data: filteredRows,
+      meta: {
+        pagination: {
+          page: pg,
+          pageSize: limit,
+          total,
+          pageCount: Math.ceil(total / limit) || 1,
+        },
+        stats,
+        platformAdminEmails: [...adminEmails],
+      },
+    };
+  },
+
   async listUsers(ctx: any) {
     const strapi: any = ctx.strapi;
     const { search, blocked, page = 1, pageSize = 50 } = ctx.request.query || {};

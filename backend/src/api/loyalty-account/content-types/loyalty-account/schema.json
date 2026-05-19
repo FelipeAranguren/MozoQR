@@ -1,0 +1,41 @@
+{
+  "kind": "collectionType",
+  "collectionName": "loyalty_accounts",
+  "info": {
+    "singularName": "loyalty-account",
+    "pluralName": "loyalty-accounts",
+    "displayName": "Loyalty Account"
+  },
+  "options": {
+    "draftAndPublish": false
+  },
+  "attributes": {
+    "users_permissions_user": {
+      "type": "relation",
+      "relation": "manyToOne",
+      "target": "plugin::users-permissions.user"
+    },
+    "restaurante": {
+      "type": "relation",
+      "relation": "manyToOne",
+      "target": "api::restaurante.restaurante"
+    },
+    "pointsBalance": {
+      "type": "integer",
+      "default": 0
+    },
+    "lifetimePoints": {
+      "type": "integer",
+      "default": 0
+    },
+    "birthday": {
+      "type": "date"
+    },
+    "loyalty_transactions": {
+      "type": "relation",
+      "relation": "oneToMany",
+      "target": "api::loyalty-transaction.loyalty-transaction",
+      "mappedBy": "loyalty_account"
+    }
+  }
+}

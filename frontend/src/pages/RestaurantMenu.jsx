@@ -1,6 +1,6 @@
 // src/pages/RestaurantMenu.jsx
 import React, { useEffect, useState, useMemo, useRef } from 'react';
-import { useParams, useNavigate, useLocation } from 'react-router-dom';
+import { useParams, useNavigate, useLocation, Link as RouterLink } from 'react-router-dom';
 import {
   Box,
   Container,
@@ -28,6 +28,7 @@ import { alpha } from '@mui/material/styles';
 import { motion, AnimatePresence } from 'framer-motion';
 
 import { useCart } from '../context/CartContext';
+import { useAuth } from '../context/AuthContext';
 import { fetchMenus, openSession, releaseTableIfNoOrders, fetchOrderDetails } from '../api/tenant';
 import { fetchTables, fetchTable } from '../api/tables';
 import { fetchRestaurant } from '../api/restaurant';
@@ -108,6 +109,7 @@ export default function RestaurantMenu() {
   const [hasModoHomebanking, setHasModoHomebanking] = useState(false);
 
   const { items, addItem, removeItem } = useCart();
+  const { jwt } = useAuth();
   const [changeTableDialog, setChangeTableDialog] = useState(false);
   const [showScrollTop, setShowScrollTop] = useState(false);
   const availablePollHitsRef = useRef(0);
@@ -929,6 +931,30 @@ export default function RestaurantMenu() {
             >
               Carta digital
             </Typography>
+
+            <Box sx={{ mb: 1 }}>
+              {jwt ? (
+                <Chip
+                  component={RouterLink}
+                  to="/mi-cuenta"
+                  clickable
+                  size="small"
+                  color="primary"
+                  variant="outlined"
+                  label="Mis puntos"
+                />
+              ) : (
+                <Button
+                  size="small"
+                  component={RouterLink}
+                  to="/login"
+                  state={{ from: `/${slug}/menu` }}
+                  sx={{ textTransform: 'none' }}
+                >
+                  Iniciar sesión · sumar puntos
+                </Button>
+              )}
+            </Box>
 
             {table && (
               <Button

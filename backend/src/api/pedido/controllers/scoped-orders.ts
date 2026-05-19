@@ -3,7 +3,14 @@
  */
 
 import { safeDeductStockForPaidOrder } from '../services/deduct-stock-for-order';
+import {
+    getFullOrder,
+    loadStaffOrder,
+    recalculateOrderTotal,
+    validateProductForRestaurant,
+} from '../services/order-items';
 import { notifyNewOrder, type PrintOrderItem } from '../../../lib/print-server';
+import { creditLoyaltyForPaidOrder } from '../../../services/loyalty-core';
 
 declare const strapi: any;
 
@@ -147,7 +154,7 @@ export default {
      */
     async create(ctx: any) {
         const strapi: any = ctx.strapi;
-        const restauranteId = ctx.state.restauranteId;
+        const restauranteId = ctx.state.restaurantId ?? ctx.state.restauranteId;
         const payload = (ctx.request.body && ctx.request.body.data) || ctx.request.body || {};
         const { table, tableSessionId, items, notes } = payload as OrderPayload;
 
@@ -210,6 +217,7 @@ export default {
         }
 
         // Crear pedido + items
+        const staffUserId = ctx.state?.user?.id;
         const created = await strapi.entityService.create('api::pedido.pedido', {
             data: {
                 order_status: 'pending',
@@ -218,6 +226,7 @@ export default {
                 mesa_sesion: sesion.id,
                 restaurante: restauranteId,
                 mesaNumber: mesa?.number ? Number(mesa.number) : null,
+                ...(staffUserId ? { users_permissions_user: Number(staffUserId) } : {}),
             },
         });
 
@@ -310,8 +319,141 @@ export default {
                 `[scoped-orders.updateStatus] paid → safeDeductStockForPaidOrder pedido=${id} restauranteId=${restauranteId}`,
             );
             await safeDeductStockForPaidOrder(strapi, id, restauranteId);
+            await creditLoyaltyForPaidOrder(strapi, id);
         }
 
         ctx.body = { data: updated };
     },
+
+    /**
+     * POST /restaurants/:slug/orders/:id/items
+     * body: { productId, quantity, notes? }
+     */
+    async addItem(ctx: any) {
+        const strapi: any = ctx.strapi;
+        const restauranteId = ctx.state.restaurantId ?? ctx.state.restauranteId;
+        const orderId = Number(ctx.params.id);
+        const body = ctx.request.body?.data || ctx.request.body || {};
+        const productId = Number(body.productId);
+        const quantity = Number(body.quantity || 1);
+        const notes = body.notes || null;
+
+        if (!productId || quantity <= 0) {
+            return ctx.badRequest('productId y quantity requeridos');
+        }
+
+        const loaded = await loadStaffOrder(strapi, orderId, restauranteId);
+        if (loaded.error === 'not_found') return ctx.notFound('Pedido no encontrado');
+        if (loaded.error === 'forbidden') return ctx.unauthorized('Pedido de otro restaurante');
+        if (loaded.error === 'not_editable') {
+            return ctx.badRequest('No se pueden editar ítems de un pedido cerrado o cancelado');
+        }
+
+        const prod = await validateProductForRestaurant(strapi, productId, restauranteId);
+        if (!prod) return ctx.badRequest('Producto inválido');
+        if ((prod as any).error === 'unavailable') {
+            return ctx.badRequest(`Producto no disponible: ${(prod as any).name}`);
+        }
+
+        const unit = Number(prod.price || 0);
+        const totalPrice = unit * quantity;
+
+        await strapi.entityService.create('api::item-pedido.item-pedido', {
+            data: {
+                product: productId,
+                order: orderId,
+                quantity,
+                UnitPrice: unit,
+                totalPrice,
+                notes,
+            },
+        });
+
+        const staffNote = `[Staff] +${quantity}x ${prod.name}`;
+        const prevNotes = loaded.order?.staffNotes || '';
+        await strapi.entityService.update('api::pedido.pedido', orderId, {
+            data: {
+                staffNotes: prevNotes ? `${prevNotes}\n${staffNote}` : staffNote,
+            },
+        });
+
+        await recalculateOrderTotal(strapi, orderId);
+        const full = await getFullOrder(strapi, orderId);
+        ctx.body = { data: full };
+    },
+
+    /**
+     * PATCH /restaurants/:slug/orders/:id/items/:itemId
+     * body: { quantity?, notes? }
+     */
+    async updateItem(ctx: any) {
+        const strapi: any = ctx.strapi;
+        const restauranteId = ctx.state.restaurantId ?? ctx.state.restauranteId;
+        const orderId = Number(ctx.params.id);
+        const itemId = Number(ctx.params.itemId);
+        const body = ctx.request.body?.data || ctx.request.body || {};
+
+        const loaded = await loadStaffOrder(strapi, orderId, restauranteId);
+        if (loaded.error === 'not_found') return ctx.notFound('Pedido no encontrado');
+        if (loaded.error === 'forbidden') return ctx.unauthorized('Pedido de otro restaurante');
+        if (loaded.error === 'not_editable') {
+            return ctx.badRequest('No se pueden editar ítems de un pedido cerrado o cancelado');
+        }
+
+        const item = await strapi.entityService.findOne('api::item-pedido.item-pedido', itemId, {
+            fields: ['id', 'quantity', 'UnitPrice', 'notes', 'order'],
+            populate: { order: { fields: ['id'] } },
+        });
+        if (!item?.id || String(item.order?.id || item.order) !== String(orderId)) {
+            return ctx.notFound('Ítem no encontrado');
+        }
+
+        const quantity = body.quantity != null ? Number(body.quantity) : Number(item.quantity);
+        if (quantity <= 0) {
+            return ctx.badRequest('quantity debe ser mayor a 0');
+        }
+
+        const unit = Number(item.UnitPrice || 0);
+        const data: Record<string, unknown> = {
+            quantity,
+            totalPrice: unit * quantity,
+        };
+        if (body.notes !== undefined) data.notes = body.notes;
+
+        await strapi.entityService.update('api::item-pedido.item-pedido', itemId, { data });
+        await recalculateOrderTotal(strapi, orderId);
+        const full = await getFullOrder(strapi, orderId);
+        ctx.body = { data: full };
+    },
+
+    /**
+     * DELETE /restaurants/:slug/orders/:id/items/:itemId
+     */
+    async deleteItem(ctx: any) {
+        const strapi: any = ctx.strapi;
+        const restauranteId = ctx.state.restaurantId ?? ctx.state.restauranteId;
+        const orderId = Number(ctx.params.id);
+        const itemId = Number(ctx.params.itemId);
+
+        const loaded = await loadStaffOrder(strapi, orderId, restauranteId);
+        if (loaded.error === 'not_found') return ctx.notFound('Pedido no encontrado');
+        if (loaded.error === 'forbidden') return ctx.unauthorized('Pedido de otro restaurante');
+        if (loaded.error === 'not_editable') {
+            return ctx.badRequest('No se pueden editar ítems de un pedido cerrado o cancelado');
+        }
+
+        const item = await strapi.entityService.findOne('api::item-pedido.item-pedido', itemId, {
+            fields: ['id'],
+            populate: { order: { fields: ['id'] }, product: { fields: ['name'] } },
+        });
+        if (!item?.id || String(item.order?.id || item.order) !== String(orderId)) {
+            return ctx.notFound('Ítem no encontrado');
+        }
+
+        await strapi.entityService.delete('api::item-pedido.item-pedido', itemId);
+        await recalculateOrderTotal(strapi, orderId);
+        const full = await getFullOrder(strapi, orderId);
+        ctx.body = { data: full };
+    },
+
 };

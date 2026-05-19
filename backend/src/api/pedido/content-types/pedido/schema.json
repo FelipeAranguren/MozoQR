@@ -76,6 +76,15 @@
     },
     "mesaNumber": {
       "type": "integer"
+    },
+    "loyalty_points_earned": {
+      "type": "integer"
+    },
+    "loyalty_discount_percent": {
+      "type": "decimal"
+    },
+    "loyalty_points_redeemed": {
+      "type": "integer"
     }
   }
 }
