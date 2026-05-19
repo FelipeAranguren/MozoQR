@@ -26,4 +26,5 @@ Point your frontend to backend with `VITE_API_URL`.
 
 ## Ops
 - 2026-04-14: Trigger-only commit to re-run Vercel deployment pipeline.
+- 2026-05-19: IA Gemini unificada, edición de pedidos en Mostrador, tab Permisos en Super Admin, fidelización in-app, fix 500 en usuarios admin.
 
