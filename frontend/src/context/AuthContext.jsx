@@ -1,8 +1,7 @@
 import React, { createContext, useContext, useEffect, useState } from "react";
+import { API_URL } from "../api/client";
 
 const AuthContext = createContext(null);
-// Los endpoints de auth están bajo /api
-const API_URL = import.meta.env?.VITE_API_URL || import.meta.env?.VITE_STRAPI_URL || "http://localhost:1337/api";
 
 export function AuthProvider({ children }) {
   const [jwt, setJwt] = useState(null);
@@ -43,7 +42,11 @@ export function AuthProvider({ children }) {
       const data = await response.json();
 
       if (!response.ok) {
-        throw new Error(data.error?.message || "Error al iniciar sesión");
+        const msg = data.error?.message || "Error al iniciar sesión";
+        if (msg.includes("Invalid identifier") || msg.includes("password")) {
+          throw new Error("Email o contraseña incorrectos");
+        }
+        throw new Error(msg);
       }
 
       if (data.jwt && data.user) {

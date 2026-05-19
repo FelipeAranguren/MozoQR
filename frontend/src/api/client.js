@@ -21,7 +21,7 @@ function normalizeStrapiApiBase(raw) {
     }
 }
 
-const API_URL = normalizeStrapiApiBase(
+export const API_URL = normalizeStrapiApiBase(
     import.meta.env?.VITE_API_URL || import.meta.env?.VITE_STRAPI_URL,
 );
 

@@ -1,0 +1,13 @@
+{
+  "kind": "singleType",
+  "collectionName": "admin_platform_config",
+  "info": {
+    "singularName": "admin-platform",
+    "pluralName": "admin-platforms",
+    "displayName": "Admin Platform API"
+  },
+  "options": {
+    "draftAndPublish": false
+  },
+  "attributes": {}
+}

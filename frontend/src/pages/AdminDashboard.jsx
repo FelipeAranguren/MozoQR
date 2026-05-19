@@ -57,6 +57,7 @@ import {
   ReceiptLong as ReceiptIcon,
   TrendingUp as TrendingUpIcon,
   History as HistoryIcon,
+  CardGiftcard as ClientesIcon,
   MoreVert as MoreVertIcon,
   Star as StarIcon,
   CloudDownload as DownloadIcon,
@@ -70,6 +71,8 @@ import {
   resetUserPassword, fetchAdminMemberships, updateMembership, createMembership,
   fetchPermissionsOverview,
 } from '../api/admin';
+import UserDetailDialog from '../components/admin/UserDetailDialog';
+import CustomersPanel from '../components/admin/CustomersPanel';
 import axios from 'axios';
 import { motion, AnimatePresence } from 'framer-motion';
 import { COLORS } from '../theme';
@@ -641,6 +644,7 @@ export default function AdminDashboard() {
           <Tab label="Finanzas e Historial" icon={<ReceiptIcon />} iconPosition="start" sx={{ fontWeight: 600, minHeight: 60 }} />
           <Tab label="Centro de Comentarios" icon={<MessageIcon />} iconPosition="start" sx={{ fontWeight: 600, minHeight: 60 }} />
           <Tab label="Usuarios" icon={<PeopleIcon />} iconPosition="start" sx={{ fontWeight: 600, minHeight: 60 }} />
+          <Tab label="Clientes app" icon={<ClientesIcon />} iconPosition="start" sx={{ fontWeight: 600, minHeight: 60 }} />
           <Tab label="Permisos" icon={<FilterIcon />} iconPosition="start" sx={{ fontWeight: 600, minHeight: 60 }} />
         </Tabs>
 
@@ -813,7 +817,8 @@ export default function AdminDashboard() {
 
         {/* TAB 3: USERS */}
         {activeTab === 3 && <UsersPanel restaurantes={restaurantes || []} />}
-        {activeTab === 4 && <PermissionsPanel />}
+        {activeTab === 4 && <CustomersPanel restaurantes={restaurantes || []} />}
+        {activeTab === 5 && <PermissionsPanel />}
       </Card>
 
       {/* MENÚ DE ACCIONES RÁPIDAS */}
@@ -891,6 +896,7 @@ function UsersPanel({ restaurantes }) {
   const [editForm, setEditForm] = useState({});
   const [newPassword, setNewPassword] = useState('');
   const [newMember, setNewMember] = useState({ userId: '', restauranteId: '', role: 'staff' });
+  const [detailUserId, setDetailUserId] = useState(null);
 
   const loadUsers = async () => {
     setLoading(true);
@@ -1023,6 +1029,7 @@ function UsersPanel({ restaurantes }) {
                     <TableCell sx={{ fontWeight: 700 }}>ID</TableCell>
                     <TableCell sx={{ fontWeight: 700 }}>Nombre</TableCell>
                     <TableCell sx={{ fontWeight: 700 }}>Email</TableCell>
+                    <TableCell sx={{ fontWeight: 700 }}>Rol Strapi</TableCell>
                     <TableCell sx={{ fontWeight: 700 }}>Provider</TableCell>
                     <TableCell sx={{ fontWeight: 700 }}>Estado</TableCell>
                     <TableCell sx={{ fontWeight: 700 }}>Restaurantes</TableCell>
@@ -1032,13 +1039,21 @@ function UsersPanel({ restaurantes }) {
                 </TableHead>
                 <TableBody>
                   {users.length === 0 && (
-                    <TableRow><TableCell colSpan={8} align="center" sx={{ py: 3 }}>Sin usuarios</TableCell></TableRow>
+                    <TableRow><TableCell colSpan={9} align="center" sx={{ py: 3 }}>Sin usuarios</TableCell></TableRow>
                   )}
                   {users.map(u => (
-                    <TableRow key={u.id} hover>
+                    <TableRow
+                      key={u.id}
+                      hover
+                      sx={{ cursor: 'pointer' }}
+                      onClick={() => setDetailUserId(u.id)}
+                    >
                       <TableCell>{u.id}</TableCell>
                       <TableCell sx={{ fontWeight: 500 }}>{u.fullname || u.username || '-'}</TableCell>
                       <TableCell sx={{ fontFamily: 'monospace', fontSize: '0.8rem' }}>{u.email}</TableCell>
+                      <TableCell>
+                        <Chip label={u.role?.name || '—'} size="small" variant="outlined" />
+                      </TableCell>
                       <TableCell><Chip label={u.provider || 'local'} size="small" variant="outlined" /></TableCell>
                       <TableCell>
                         {u.blocked ? <Chip label="Bloqueado" color="error" size="small" /> :
@@ -1053,8 +1068,13 @@ function UsersPanel({ restaurantes }) {
                         {(u.restaurant_members || []).filter(m => m.active).length === 0 && <Typography variant="caption" color="text.secondary">Sin acceso</Typography>}
                       </TableCell>
                       <TableCell sx={{ fontSize: '0.75rem' }}>{formatDate(u.createdAt)}</TableCell>
-                      <TableCell align="right">
-                        <Tooltip title="Editar"><IconButton size="small" onClick={() => { setEditDialog(u); setEditForm({ fullname: u.fullname || '', email: u.email, username: u.username }); }}><EditIcon fontSize="small" /></IconButton></Tooltip>
+                      <TableCell align="right" onClick={(e) => e.stopPropagation()}>
+                        <Tooltip title="Ver detalle, fidelización y panel">
+                          <Button size="small" variant="outlined" sx={{ mr: 0.5, textTransform: 'none' }} onClick={() => setDetailUserId(u.id)}>
+                            Ver
+                          </Button>
+                        </Tooltip>
+                        <Tooltip title="Editar rápido"><IconButton size="small" onClick={() => { setEditDialog(u); setEditForm({ fullname: u.fullname || '', email: u.email, username: u.username }); }}><EditIcon fontSize="small" /></IconButton></Tooltip>
                         <Tooltip title={u.blocked ? 'Desbloquear' : 'Bloquear'}><IconButton size="small" color={u.blocked ? 'success' : 'error'} onClick={() => handleToggleBlock(u)}>{u.blocked ? <CheckCircleIcon fontSize="small" /> : <CancelIcon fontSize="small" />}</IconButton></Tooltip>
                         <Tooltip title="Resetear password"><IconButton size="small" onClick={() => { setResetPwDialog(u); setNewPassword(''); }}><EditIcon fontSize="small" sx={{ color: COLORS.warning }} /></IconButton></Tooltip>
                       </TableCell>
@@ -1115,6 +1135,13 @@ function UsersPanel({ restaurantes }) {
           </TableContainer>
         </>
       )}
+
+      <UserDetailDialog
+        userId={detailUserId}
+        open={Boolean(detailUserId)}
+        onClose={() => setDetailUserId(null)}
+        onUpdated={() => { loadUsers(); loadMemberships(); }}
+      />
 
       {/* Dialog Crear Usuario */}
       <Dialog open={createDialog} onClose={() => setCreateDialog(false)} maxWidth="sm" fullWidth>
@@ -1205,6 +1232,7 @@ function PermissionsPanel() {
   const [filter, setFilter] = useState('');
   const [page, setPage] = useState(0);
   const [pageSize, setPageSize] = useState(50);
+  const [detailUserId, setDetailUserId] = useState(null);
 
   const load = async () => {
     setLoading(true);
@@ -1278,11 +1306,12 @@ function PermissionsPanel() {
                   <TableCell sx={{ fontWeight: 700 }}>Restaurantes (membership)</TableCell>
                   <TableCell sx={{ fontWeight: 700 }}>Legacy owner_email</TableCell>
                   <TableCell sx={{ fontWeight: 700 }}>Bloqueado</TableCell>
+                  <TableCell sx={{ fontWeight: 700 }} align="right">Acción</TableCell>
                 </TableRow>
               </TableHead>
               <TableBody>
                 {rows.map((r) => (
-                  <TableRow key={r.id} hover>
+                  <TableRow key={r.id} hover sx={{ cursor: 'pointer' }} onClick={() => setDetailUserId(r.id)}>
                     <TableCell>{r.email}</TableCell>
                     <TableCell>{r.strapiRole || '-'}</TableCell>
                     <TableCell>{r.isPlatformAdmin ? <Chip label="Sí" color="primary" size="small" /> : '-'}</TableCell>
@@ -1297,11 +1326,22 @@ function PermissionsPanel() {
                       ))}
                     </TableCell>
                     <TableCell>{r.blocked ? <Chip label="Sí" color="error" size="small" /> : 'No'}</TableCell>
+                    <TableCell align="right" onClick={(e) => e.stopPropagation()}>
+                      <Button size="small" variant="outlined" sx={{ textTransform: 'none' }} onClick={() => setDetailUserId(r.id)}>
+                        Ver detalle
+                      </Button>
+                    </TableCell>
                   </TableRow>
                 ))}
               </TableBody>
             </Table>
           </TableContainer>
+          <UserDetailDialog
+            userId={detailUserId}
+            open={Boolean(detailUserId)}
+            onClose={() => setDetailUserId(null)}
+            onUpdated={load}
+          />
           <TablePagination
             count={meta?.pagination?.total || 0}
             page={page}

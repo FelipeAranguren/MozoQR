@@ -15,6 +15,16 @@ export async function fetchPermissionsOverview({ search, page = 1, pageSize = 50
   return res.data;
 }
 
+export async function fetchAdminCustomers({ search, restauranteId, page = 1, pageSize = 50 } = {}) {
+  const params = new URLSearchParams();
+  if (search) params.set('search', search);
+  if (restauranteId) params.set('restauranteId', String(restauranteId));
+  params.set('page', String(page));
+  params.set('pageSize', String(pageSize));
+  const res = await client.get(`/admin/customers?${params}`);
+  return res.data;
+}
+
 export async function fetchAdminUsers({ search, blocked, page = 1, pageSize = 50 } = {}) {
   const params = new URLSearchParams();
   if (search) params.set('search', search);
@@ -28,6 +38,24 @@ export async function fetchAdminUsers({ search, blocked, page = 1, pageSize = 50
 export async function fetchAdminUser(id) {
   const res = await client.get(`/admin/users/${id}`);
   return unwrap(res);
+}
+
+export async function fetchAdminUserDetail(id) {
+  const res = await client.get(`/admin/users/${id}/detail`);
+  return res.data?.data ?? res.data;
+}
+
+export async function impersonateAdminUser(id, slug) {
+  const res = await client.post(`/admin/users/${id}/impersonate`, slug ? { slug } : {});
+  return res.data;
+}
+
+export async function adjustAdminUserLoyalty(userId, accountId, delta, notes) {
+  const res = await client.post(`/admin/users/${userId}/loyalty-accounts/${accountId}/adjust`, {
+    delta,
+    notes,
+  });
+  return res.data?.data ?? res.data;
 }
 
 export async function createAdminUser(data) {

@@ -1,0 +1,13 @@
+{
+  "kind": "singleType",
+  "collectionName": "loyalty_api_config",
+  "info": {
+    "singularName": "loyalty-api",
+    "pluralName": "loyalty-apis",
+    "displayName": "Loyalty API"
+  },
+  "options": {
+    "draftAndPublish": false
+  },
+  "attributes": {}
+}
