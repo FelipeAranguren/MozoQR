@@ -1,6 +1,6 @@
-declare const strapi: any;
-
 import { getPlatformAdminEmails } from '../../../config/platform-admin';
+
+declare const strapi: any;
 
 const USER_UID = 'plugin::users-permissions.user';
 const MEMBER_UID = 'api::restaurant-member.restaurant-member';
@@ -40,7 +40,7 @@ export default {
       // filtrado post-query por memberships owner
     }
 
-    const total = await strapi.db.query(USER_UID).count({ where: filters });
+    const total = await strapi.entityService.count(USER_UID, { filters });
 
     const users = await strapi.entityService.findMany(USER_UID, {
       filters,
@@ -48,10 +48,9 @@ export default {
       populate: {
         role: { fields: ['id', 'name', 'type'] },
         restaurant_members: {
-          publicationState: 'preview',
           fields: ['id', 'role', 'active'],
           populate: {
-            restaurante: { publicationState: 'preview', fields: ['id', 'name', 'slug'] },
+            restaurante: { fields: ['id', 'name', 'slug'] },
           },
         },
       },
@@ -62,7 +61,6 @@ export default {
 
     const restaurants = await strapi.entityService.findMany(RESTAURANT_UID, {
       fields: ['id', 'name', 'slug', 'owner_email'],
-      publicationState: 'preview',
       limit: 5000,
     });
 
@@ -137,41 +135,47 @@ export default {
 
   async listUsers(ctx: any) {
     const strapi: any = ctx.strapi;
-    const { search, blocked, page = 1, pageSize = 50 } = ctx.request.query || {};
+    try {
+      const { search, blocked, page = 1, pageSize = 50 } = ctx.request.query || {};
+      const limit = Math.min(200, Math.max(1, Number(pageSize) || 50));
+      const pg = Math.max(1, Number(page) || 1);
 
-    const filters: any = {};
-    if (blocked === 'true') filters.blocked = true;
-    if (blocked === 'false') filters.blocked = false;
-    if (search) {
-      filters.$or = [
-        { email: { $containsi: search } },
-        { username: { $containsi: search } },
-        { fullname: { $containsi: search } },
-      ];
-    }
+      const filters: any = {};
+      if (blocked === 'true') filters.blocked = true;
+      if (blocked === 'false') filters.blocked = false;
+      if (search) {
+        filters.$or = [
+          { email: { $containsi: search } },
+          { username: { $containsi: search } },
+          { fullname: { $containsi: search } },
+        ];
+      }
 
-    const users = await strapi.entityService.findMany(USER_UID, {
-      filters,
-      fields: userFields,
-      populate: {
-        role: { fields: ['id', 'name', 'type'] },
-        restaurant_members: {
-          publicationState: 'preview',
-          fields: ['id', 'role', 'active'],
-          populate: {
-            restaurante: {
-              publicationState: 'preview',
-              fields: ['id', 'name', 'slug'],
+      const users = await strapi.entityService.findMany(USER_UID, {
+        filters,
+        fields: userFields,
+        populate: {
+          role: { fields: ['id', 'name', 'type'] },
+          restaurant_members: {
+            fields: ['id', 'role', 'active'],
+            populate: {
+              restaurante: { fields: ['id', 'name', 'slug'] },
             },
           },
         },
-      },
-      sort: { createdAt: 'desc' },
-      start: (Number(page) - 1) * Number(pageSize),
-      limit: Number(pageSize),
-    });
+        sort: { createdAt: 'desc' },
+        start: (pg - 1) * limit,
+        limit,
+      });
 
-    ctx.body = { data: users };
+      ctx.body = { data: users || [] };
+    } catch (err: any) {
+      strapi.log.error('[admin.listUsers]', err);
+      ctx.status = 500;
+      ctx.body = {
+        error: { message: err?.message || 'Error al listar usuarios' },
+      };
+    }
   },
 
   async getUser(ctx: any) {
@@ -183,13 +187,9 @@ export default {
       populate: {
         role: { fields: ['id', 'name', 'type'] },
         restaurant_members: {
-          publicationState: 'preview',
           fields: ['id', 'role', 'active'],
           populate: {
-            restaurante: {
-              publicationState: 'preview',
-              fields: ['id', 'name', 'slug'],
-            },
+            restaurante: { fields: ['id', 'name', 'slug'] },
           },
         },
       },
@@ -285,29 +285,35 @@ export default {
 
   async listMemberships(ctx: any) {
     const strapi: any = ctx.strapi;
-    const { restauranteId, userId, page = 1, pageSize = 100 } = ctx.request.query || {};
+    try {
+      const { restauranteId, userId, page = 1, pageSize = 100 } = ctx.request.query || {};
+      const limit = Math.min(500, Math.max(1, Number(pageSize) || 100));
+      const pg = Math.max(1, Number(page) || 1);
 
-    const filters: any = {};
-    if (restauranteId) filters.restaurante = restauranteId;
-    if (userId) filters.users_permissions_user = userId;
+      const filters: any = {};
+      if (restauranteId) filters.restaurante = restauranteId;
+      if (userId) filters.users_permissions_user = userId;
 
-    const members = await strapi.entityService.findMany(MEMBER_UID, {
-      filters,
-      publicationState: 'preview',
-      fields: ['id', 'role', 'active', 'createdAt'],
-      populate: {
-        users_permissions_user: { fields: ['id', 'email', 'fullname', 'username'] },
-        restaurante: {
-          publicationState: 'preview',
-          fields: ['id', 'name', 'slug'],
+      const members = await strapi.entityService.findMany(MEMBER_UID, {
+        filters,
+        fields: ['id', 'role', 'active', 'createdAt'],
+        populate: {
+          users_permissions_user: { fields: ['id', 'email', 'fullname', 'username'] },
+          restaurante: { fields: ['id', 'name', 'slug'] },
         },
-      },
-      sort: { createdAt: 'desc' },
-      start: (Number(page) - 1) * Number(pageSize),
-      limit: Number(pageSize),
-    });
+        sort: { createdAt: 'desc' },
+        start: (pg - 1) * limit,
+        limit,
+      });
 
-    ctx.body = { data: members };
+      ctx.body = { data: members || [] };
+    } catch (err: any) {
+      strapi.log.error('[admin.listMemberships]', err);
+      ctx.status = 500;
+      ctx.body = {
+        error: { message: err?.message || 'Error al listar memberships' },
+      };
+    }
   },
 
   async updateMembership(ctx: any) {

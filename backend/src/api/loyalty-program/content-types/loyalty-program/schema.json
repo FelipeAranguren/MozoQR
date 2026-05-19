@@ -12,7 +12,7 @@
   "attributes": {
     "restaurante": {
       "type": "relation",
-      "relation": "oneToOne",
+      "relation": "manyToOne",
       "target": "api::restaurante.restaurante"
     },
     "enabled": {
