@@ -34,6 +34,8 @@ import ReceiptDialog from '../components/ReceiptDialog';
 import PagosRealtimeBar from '../components/PagosRealtimeBar';
 import { fetchStockAlertas } from '../api/stock';
 import StaffOrderItemEditor from '../components/StaffOrderItemEditor';
+import StaffTableAddProducts from '../components/StaffTableAddProducts';
+import AddIcon from '@mui/icons-material/Add';
 
 const money = (n) =>
   new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS' })
@@ -92,6 +94,7 @@ export default function Mostrador() {
   const [completeOrderDialog, setCompleteOrderDialog] = useState({ open: false, pedido: null, staffNotes: '', loading: false });
   const [cancelOrderDialog, setCancelOrderDialog] = useState({ open: false, pedido: null, reason: '' });
   const [tableDetailDialog, setTableDetailDialog] = useState({ open: false, mesa: null });
+  const [tableAddProductsOpen, setTableAddProductsOpen] = useState(false);
   const [cleanupDialog, setCleanupDialog] = useState({ open: false, loading: false });
   const [receiptDialog, setReceiptDialog] = useState({ open: false, data: null });
   const [lastUpdateAt, setLastUpdateAt] = useState(null);
@@ -2917,7 +2920,8 @@ export default function Mostrador() {
               const mesaActual = mesas.find(m => Number(m.number) === Number(table.number)) || table;
               const mesaPedidos = pedidos.filter(p =>
                 !isSystemOrder(p) &&
-                p.mesa_sesion?.mesa?.number === table.number
+                Number(p.mesa_sesion?.mesa?.number ?? p.mesaNumber) === Number(table.number) &&
+                !['paid', 'cancelled'].includes(String(p.order_status || '').toLowerCase())
               );
               const mesaSystemPedidos = pedidos.filter(p =>
                 isSystemOrder(p) &&
@@ -3528,7 +3532,10 @@ export default function Mostrador() {
       <Drawer
         anchor="right"
         open={tableDetailDialog.open}
-        onClose={() => setTableDetailDialog({ open: false, mesa: null })}
+        onClose={() => {
+          setTableAddProductsOpen(false);
+          setTableDetailDialog({ open: false, mesa: null });
+        }}
         PaperProps={{
           sx: { width: { xs: '100%', sm: '80%', md: '50%' }, maxWidth: 600 }
         }}
@@ -3541,13 +3548,30 @@ export default function Mostrador() {
                 Mesa {tableDetailDialog.mesa?.number ?? 's/n'}
               </Typography>
             </Box>
-            <IconButton onClick={() => setTableDetailDialog({ open: false, mesa: null })}>
+            <IconButton onClick={() => {
+              setTableAddProductsOpen(false);
+              setTableDetailDialog({ open: false, mesa: null });
+            }}>
               <CloseIcon />
             </IconButton>
           </Box>
 
           {tableDetailDialog.mesa && (
             <>
+              {!mesaNecesitaLimpieza(tableDetailDialog.mesa?.number) && (
+                <Button
+                  variant="contained"
+                  color="primary"
+                  fullWidth
+                  size="large"
+                  startIcon={<AddIcon />}
+                  sx={{ mb: 3, py: 1.25, fontWeight: 700 }}
+                  onClick={() => setTableAddProductsOpen(true)}
+                >
+                  Agregar productos a la cuenta
+                </Button>
+              )}
+
               {/* Llamadas del sistema (mozo / pago / asistencia) */}
               {tableDetailDialog.mesa.systemPedidos && tableDetailDialog.mesa.systemPedidos.length > 0 && (
                 <Box sx={{ mb: 3 }}>
@@ -3779,6 +3803,59 @@ export default function Mostrador() {
           )}
         </Box>
       </Drawer>
+
+      <StaffTableAddProducts
+        slug={slug}
+        mesaNumber={tableDetailDialog.mesa?.number}
+        pedidos={tableDetailDialog.mesa?.pedidos || []}
+        mesaStatus={mesas.find((m) => Number(m.number) === Number(tableDetailDialog.mesa?.number))?.status}
+        open={tableAddProductsOpen && tableDetailDialog.open}
+        onClose={() => setTableAddProductsOpen(false)}
+        onSnack={(msg, severity) => setSnack({ open: true, msg, severity: severity || 'info' })}
+        onDone={async () => {
+          await fetchPedidos();
+          await Promise.all([fetchMesas(), fetchActiveOrdersForTables()]);
+          const n = tableDetailDialog.mesa?.number;
+          if (n == null) return;
+          setTableDetailDialog((prev) => {
+            if (!prev.open) return prev;
+            const mesaPedidos = pedidosRef.current.filter(
+              (p) =>
+                !isSystemOrder(p) &&
+                Number(p.mesa_sesion?.mesa?.number ?? p.mesaNumber) === Number(n) &&
+                !['paid', 'cancelled'].includes(String(p.order_status || '').toLowerCase())
+            );
+            const mesaPedidosCuenta = pedidosRef.current.filter(
+              (p) =>
+                !isSystemOrder(p) &&
+                Number(p.mesa_sesion?.mesa?.number ?? p.mesaNumber) === Number(n) &&
+                p.order_status !== 'paid'
+            );
+            const mesaCuenta = mesaPedidosCuenta.length
+              ? {
+                  mesaNumber: n,
+                  pedidos: mesaPedidosCuenta,
+                  total: mesaPedidosCuenta.reduce((s, p) => s + Number(p.total || 0), 0),
+                  hasUnpaid: mesaPedidosCuenta.some((p) => p.order_status !== 'paid'),
+                }
+              : null;
+            const mesaSystemPedidos = pedidosRef.current.filter(
+              (p) => isSystemOrder(p) && Number(p.mesa_sesion?.mesa?.number ?? p.mesaNumber) === Number(n)
+            );
+            const mesaActual = mesas.find((m) => Number(m.number) === Number(n));
+            return {
+              ...prev,
+              mesa: {
+                ...prev.mesa,
+                ...mesaActual,
+                pedidos: mesaPedidos,
+                cuenta: mesaCuenta,
+                systemPedidos: mesaSystemPedidos,
+              },
+            };
+          });
+        }}
+      />
 
       {/* Dialog de detalles de cuenta (historial) */}
       <Dialog
